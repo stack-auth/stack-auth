@@ -127,4 +127,38 @@ struct OAuthTests {
         let encodedRedirect = customRedirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? customRedirect
         #expect(result.url.absoluteString.contains(encodedRedirect) || result.url.absoluteString.contains("redirect_uri="))
     }
+    
+    // MARK: - Redirect URI Consistency Tests
+    // These tests verify the redirect URI is constructed correctly and returned
+    // in OAuthUrlResult so token exchange uses the same value as authorization.
+    
+    @Test("Should return redirect URI for token exchange")
+    func returnsRedirectUriForTokenExchange() async throws {
+        let app = TestConfig.createClientApp()
+        
+        let result = try await app.getOAuthUrl(provider: "google")
+        
+        // redirectUri must be returned so callOAuthCallback can use it
+        #expect(!result.redirectUri.isEmpty)
+        #expect(result.redirectUri.hasPrefix("stackauth-\(testProjectId)://"))
+    }
+    
+    @Test("Should preserve full URL when provided")
+    func preservesFullUrl() async throws {
+        let app = TestConfig.createClientApp()
+        let fullUrl = "https://myapp.com/callback"
+        
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: fullUrl)
+        
+        #expect(result.redirectUri == fullUrl)
+    }
+    
+    @Test("Should use custom callback scheme when provided")
+    func usesCustomCallbackScheme() async throws {
+        let app = TestConfig.createClientApp()
+        
+        let result = try await app.getOAuthUrl(provider: "google", callbackUrlScheme: "myapp")
+        
+        #expect(result.redirectUri.hasPrefix("myapp://"))
+    }
 }

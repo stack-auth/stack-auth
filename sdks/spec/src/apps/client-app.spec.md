@@ -70,7 +70,9 @@ Arguments:
   provider: string - OAuth provider ID (e.g., "google", "github", "microsoft")
   options.returnTo: string? - URL to return to after OAuth completes (default: urls.oauthCallback)
 
-Returns: never (opens browser/webview and redirects)
+Returns: 
+  - Browser: never (opens browser and redirects)
+  - Native apps: void (async, completes when user finishes OAuth flow)
 
 Note: Additional provider scopes are configured via oauthScopesOnSignIn constructor option.
 
@@ -80,14 +82,14 @@ Implementation:
 3. Generate random state string for CSRF protection
 4. Store code verifier for later retrieval, keyed by state
    - Browser: cookie "stack-oauth-outer-{state}" (maxAge: 1 hour)
-   - Mobile/other: secure storage appropriate to the platform
+   - Mobile/other: in-memory (passed directly to callback handler)
 
-5. Build authorization URL:
+5. Build authorization URL using getOAuthUrl():
    GET /api/v1/auth/oauth/authorize/{provider}
    Query params:
      client_id: <projectId>
      client_secret: <publishableClientKey>
-     redirect_uri: <urls.oauthCallback> (with code/state params removed if present)
+     redirect_uri: <full URL - see getOAuthUrl for construction>
      scope: "legacy"
      state: <generated state>
      grant_type: "authorization_code"
@@ -95,7 +97,7 @@ Implementation:
      code_challenge_method: "S256"
      response_type: "code"
      type: "authenticate"
-     error_redirect_url: <urls.error>
+     error_redirect_url: <full error URL - same construction as redirect_uri>
      token: <access_token if user already logged in> (optional)
      provider_scope: <options.providerScope> (if provided)
    
@@ -103,11 +105,30 @@ Implementation:
 
 6. Open the authorization URL:
    - Browser: window.location.assign(authorization_url)
-   - Mobile: Open in-app browser/WebView (e.g., ASWebAuthenticationSession on iOS,
-     Custom Tabs on Android) with the callback URL registered as a deep link
+   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stackauth-{projectId}"
+   - Android: Custom Tabs with callback URL registered as deep link
    - Desktop: Open system browser with registered URL scheme for callback
 
-7. Never returns (control transfers to browser/webview)
+7. Handle callback:
+   - Browser: Never returns; user lands on callback page which calls callOAuthCallback()
+   - Native apps: ASWebAuthenticationSession/Custom Tabs returns callback URL directly;
+     call callOAuthCallback(url, codeVerifier, redirectUri) to exchange code for tokens
+
+Native App Implementation (iOS/macOS example):
+```
+let callbackScheme = "stackauth-\(projectId)"
+let oauth = try await getOAuthUrl(provider: provider, callbackUrlScheme: callbackScheme)
+
+let session = ASWebAuthenticationSession(
+    url: oauth.url,
+    callbackURLScheme: callbackScheme
+) { callbackUrl, error in
+    if let callbackUrl = callbackUrl {
+        try await callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUri: oauth.redirectUri)
+    }
+}
+session.start()
+```
 
 The flow continues when the user is redirected back to urls.oauthCallback.
 Call callOAuthCallback() on the callback page/handler to complete the flow.
@@ -125,22 +146,31 @@ Arguments:
   options.redirectUrl: string? - custom callback URL (default: urls.oauthCallback)
   options.state: string? - custom state parameter (default: auto-generated)
   options.codeVerifier: string? - custom PKCE verifier (default: auto-generated)
+  options.callbackUrlScheme: string? - custom URL scheme for native app callbacks
+    Default: "stackauth-{projectId}" for native apps
+    Used to construct full redirect URIs from relative paths (e.g., "/handler/oauth-callback"
+    becomes "stackauth-myproject://handler/oauth-callback")
+    Only needed for native apps (iOS, macOS, Android). Browser SDKs use window.location.
 
-Returns: { url: string, state: string, codeVerifier: string }
+Returns: { url: string, state: string, codeVerifier: string, redirectUri: string }
   url: The full authorization URL to open in a browser
   state: The state parameter (for CSRF verification)
   codeVerifier: The PKCE code verifier (store for token exchange)
+  redirectUri: The full redirect URI used (needed for token exchange - must match exactly)
 
 Implementation:
 1. Generate or use provided state and codeVerifier
 2. Compute code challenge: base64url(sha256(codeVerifier))
-3. Build authorization URL (same as signInWithOAuth step 5)
-4. Return { url, state, codeVerifier } without redirecting
+3. Construct full redirect URI:
+   - If redirectUrl is already a full URL (contains "://"): use as-is
+   - Otherwise: prepend callbackUrlScheme (e.g., "stackauth-{projectId}://") to the path
+4. Build authorization URL (same as signInWithOAuth step 5)
+5. Return { url, state, codeVerifier, redirectUri } without redirecting
 
 The caller is responsible for:
 - Opening the URL in a browser/webview
-- Storing the state and codeVerifier
-- Calling callOAuthCallback() with the callback URL
+- Storing the state, codeVerifier, and redirectUri
+- Calling callOAuthCallback() with the callback URL and these values
 
 Does not error.
 
@@ -726,6 +756,47 @@ Implementation:
 9. Return true
 
 Does not return errors - throws on OAuth errors.
+
+
+## callOAuthCallback(url, codeVerifier, redirectUri)  [NON-BROWSER]
+
+Non-browser variant for native apps (iOS, macOS, Android).
+Called after receiving the callback URL from ASWebAuthenticationSession or similar.
+
+Arguments:
+  url: URL - the callback URL received from the OAuth provider
+  codeVerifier: string - the PKCE code verifier from getOAuthUrl()
+  redirectUri: string - the redirect URI from getOAuthUrl() (must match exactly)
+
+Returns: void
+
+Implementation:
+1. Parse the callback URL to extract "code" and "error" query parameters
+
+2. If "error" present: throw OAuthError with error code and description
+
+3. If "code" missing: throw OAuthError("missing_code", "No authorization code in callback URL")
+
+4. Exchange authorization code for tokens:
+   POST /api/v1/auth/oauth/token
+   Content-Type: application/x-www-form-urlencoded
+   Body:
+     - grant_type=authorization_code
+     - code=<authorization code from URL>
+     - redirect_uri=<redirectUri argument - must match getOAuthUrl exactly>
+     - code_verifier=<codeVerifier argument>
+     - client_id=<projectId>
+     - client_secret=<publishableClientKey>
+
+   Response on success:
+     { access_token: string, refresh_token: string }
+
+5. Store tokens { access_token, refresh_token }
+
+IMPORTANT: The redirect_uri must exactly match the one used in getOAuthUrl().
+This is why getOAuthUrl() returns redirectUri - store it and pass it here.
+
+Throws OAuthError on failure.
 
 
 ## promptCliLogin(options)  [CLI-ONLY]

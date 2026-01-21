@@ -1926,7 +1926,3 @@ struct SessionsView: View {
         }
     }
 }
-
-#Preview {
-    ContentView()
-}

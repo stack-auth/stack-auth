@@ -71,6 +71,7 @@ public struct OAuthUrlResult: Sendable {
     public let url: URL
     public let state: String
     public let codeVerifier: String
+    public let redirectUri: String
 }
 
 /// Get user options
@@ -79,6 +80,14 @@ public enum GetUserOr: Sendable {
     case redirect
     case `throw`
     case anonymous
+}
+
+private func constructRedirectUrl(redirectUrl: String, callbackUrlScheme: String) -> String {
+    if redirectUrl.contains("://") {
+        return redirectUrl
+    }
+    let path = redirectUrl.hasPrefix("/") ? String(redirectUrl.dropFirst()) : redirectUrl
+    return "\(callbackUrlScheme)://\(path)"
 }
 
 /// The main Stack Auth client
@@ -178,20 +187,23 @@ public actor StackClientApp {
         provider: String,
         redirectUrl: String? = nil,
         state: String? = nil,
-        codeVerifier: String? = nil
+        codeVerifier: String? = nil,
+        callbackUrlScheme: String? = nil
     ) async throws -> OAuthUrlResult {
         let actualState = state ?? generateRandomString(length: 32)
         let actualCodeVerifier = codeVerifier ?? generateCodeVerifier()
         let codeChallenge = generateCodeChallenge(from: actualCodeVerifier)
         
         let callbackUrl = redirectUrl ?? urls.oauthCallback
+        let scheme = callbackUrlScheme ?? "stackauth-\(projectId)"
+        let redirectUri = constructRedirectUrl(redirectUrl: callbackUrl, callbackUrlScheme: scheme)
         
         var components = URLComponents(string: "\(baseUrl)/api/v1/auth/oauth/authorize/\(provider.lowercased())")!
         let publishableKey = await client.publishableClientKey
         components.queryItems = [
             URLQueryItem(name: "client_id", value: projectId),
             URLQueryItem(name: "client_secret", value: publishableKey),
-            URLQueryItem(name: "redirect_uri", value: callbackUrl),
+            URLQueryItem(name: "redirect_uri", value: redirectUri),
             URLQueryItem(name: "scope", value: "legacy"),
             URLQueryItem(name: "state", value: actualState),
             URLQueryItem(name: "grant_type", value: "authorization_code"),
@@ -199,7 +211,7 @@ public actor StackClientApp {
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "type", value: "authenticate"),
-            URLQueryItem(name: "error_redirect_url", value: urls.error)
+            URLQueryItem(name: "error_redirect_url", value: constructRedirectUrl(redirectUrl: urls.error, callbackUrlScheme: scheme))
         ]
         
         // Add access token if user is already logged in
@@ -211,7 +223,7 @@ public actor StackClientApp {
             throw StackAuthError(code: "invalid_url", message: "Failed to construct OAuth URL")
         }
         
-        return OAuthUrlResult(url: url, state: actualState, codeVerifier: actualCodeVerifier)
+        return OAuthUrlResult(url: url, state: actualState, codeVerifier: actualCodeVerifier, redirectUri: redirectUri)
     }
     
     #if canImport(AuthenticationServices) && !os(watchOS)
@@ -221,9 +233,8 @@ public actor StackClientApp {
         provider: String,
         presentationContextProvider: ASWebAuthenticationPresentationContextProviding? = nil
     ) async throws {
-        let oauth = try await getOAuthUrl(provider: provider)
-        
         let callbackScheme = "stackauth-\(projectId)"
+        let oauth = try await getOAuthUrl(provider: provider,callbackUrlScheme: callbackScheme)
         
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let session = ASWebAuthenticationSession(
@@ -246,7 +257,7 @@ public actor StackClientApp {
                 
                 Task {
                     do {
-                        try await self.callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier)
+                        try await self.callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUri: oauth.redirectUri)
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -268,7 +279,11 @@ public actor StackClientApp {
     #endif
     
     /// Complete the OAuth flow with the callback URL
-    public func callOAuthCallback(url: URL, codeVerifier: String) async throws {
+    /// - Parameters:
+    ///   - url: The callback URL received from the OAuth provider
+    ///   - codeVerifier: The PKCE code verifier used during authorization
+    ///   - redirectUri: The redirect URI used during authorization (must match exactly for token exchange)
+    public func callOAuthCallback(url: URL, codeVerifier: String, redirectUri: String) async throws {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         
         guard let code = components?.queryItems?.first(where: { $0.name == "code" })?.value else {
@@ -290,7 +305,7 @@ public actor StackClientApp {
         let body = [
             "grant_type=authorization_code",
             "code=\(formURLEncode(code))",
-            "redirect_uri=\(formURLEncode(urls.oauthCallback))",
+            "redirect_uri=\(formURLEncode(redirectUri))",
             "code_verifier=\(formURLEncode(codeVerifier))",
             "client_id=\(formURLEncode(projectId))",
             "client_secret=\(formURLEncode(publishableKey))"

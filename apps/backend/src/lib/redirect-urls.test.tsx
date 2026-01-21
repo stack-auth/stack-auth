@@ -473,4 +473,57 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('https://other.com/handler', tenancy)).toBe(false);
     });
   });
+
+  describe('custom URL schemes (native app support)', () => {
+    it('should validate custom URL schemes for native apps', () => {
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {
+            '1': { baseUrl: 'stackauth-internal://handler', handlerPath: '/oauth-callback' },
+          },
+        },
+      });
+
+      expect(validateRedirectUrl('stackauth-internal://handler/oauth-callback', tenancy)).toBe(true);
+      expect(validateRedirectUrl('stackauth-internal://handler/any-path', tenancy)).toBe(true);
+      expect(validateRedirectUrl('stackauth-internal://handler', tenancy)).toBe(true);
+
+      expect(validateRedirectUrl('stackauth-other://handler/oauth-callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('https://handler/oauth-callback', tenancy)).toBe(false);
+    });
+
+    it('should validate multiple custom URL schemes', () => {
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {
+            '1': { baseUrl: 'stackauth-myapp://callback', handlerPath: '/handler' },
+            '2': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+          },
+        },
+      });
+
+      expect(validateRedirectUrl('stackauth-myapp://callback/handler', tenancy)).toBe(true);
+      expect(validateRedirectUrl('stackauth-myapp://callback/any-path', tenancy)).toBe(true);
+
+      expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(true);
+
+      expect(validateRedirectUrl('stackauth-otherapp://callback/handler', tenancy)).toBe(false);
+    });
+
+    it('should not allow arbitrary custom schemes', () => {
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {
+            '1': { baseUrl: 'stackauth-internal://handler', handlerPath: '/oauth-callback' },
+          },
+        },
+      });
+
+      expect(validateRedirectUrl('myapp://handler/oauth-callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('customscheme://handler/oauth-callback', tenancy)).toBe(false);
+    });
+  });
 });
