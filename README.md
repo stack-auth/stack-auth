@@ -196,51 +196,6 @@ pnpm verify-data-integrity: Verify the integrity of the data in the database by 
 
 Note: When working with AI, you should keep a terminal tab with the dev server open so the AI can run queries against it.
 
-### Chat with the codebase
-
-Storia trained an [AI on our codebase](https://sage.storia.ai/stack-auth) that can answer questions about using and contributing to Stack Auth.
-
-### Architecture overview
-
-```mermaid
-  graph TB
-      Website[Your Website]
-      User((User))
-      Admin((Admin))
-      subgraph "Stack Auth System"
-          Dashboard[Stack Auth Dashboard<br/>/apps/dashboard]
-          Backend[Stack Auth API Backend<br/>/apps/backend]
-          Database[(PostgreSQL Database)]
-          EmailService[Email Service<br/>Inbucket]
-          WebhookService[Webhook Service<br/>Svix]
-          StackSDK[Client SDK<br/>/packages/stack]
-          subgraph Shared
-              StackUI[Stack Auth UI<br/>/packages/stack-ui]
-              StackShared[Stack Auth Shared<br/>/packages/stack-shared]
-              StackEmails[Stack Auth Emails<br/>/packages/stack-emails]
-          end
-      end
-      Admin --> Dashboard
-      User --> Website
-      Website --> StackSDK
-      Backend --> Database
-      Backend --> EmailService
-      Backend --> WebhookService
-      Dashboard --> Shared
-      Dashboard --> StackSDK
-      StackSDK --HTTP Requests--> Backend
-      StackSDK --> Shared
-      Backend --> Shared
-      classDef container fill:#1168bd,stroke:#0b4884,color:#ffffff
-      classDef database fill:#2b78e4,stroke:#1a4d91,color:#ffffff
-      classDef external fill:#999999,stroke:#666666,color:#ffffff
-      classDef deprecated stroke-dasharray: 5 5
-      class Dashboard,Backend,EmailService,WebhookService,Website container
-      class Database database
-```
-
-Thanks to [CodeViz](https://www.codeviz.ai) for generating the diagram!
-
 ## ❤ Contributors
 
 <a href="https://github.com/stack-auth/stack-auth/graphs/contributors">
