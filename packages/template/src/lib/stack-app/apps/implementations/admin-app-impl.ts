@@ -638,6 +638,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.createStripeWidgetAccountSession();
   }
 
+  async getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null> {
+    return await this._interface.getPaymentMethodConfigs();
+  }
+
+  async updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void> {
+    await this._interface.updatePaymentMethodConfigs(configId, updates);
+  }
+
   async createItemQuantityChange(options: (
     { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
     { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |

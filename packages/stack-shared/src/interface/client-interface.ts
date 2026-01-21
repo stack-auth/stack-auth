@@ -18,6 +18,7 @@ import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
@@ -1837,6 +1838,23 @@ export class StackClientInterface {
       limit: options.limit !== undefined ? options.limit.toString() : undefined,
     }));
     const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}`;
+    const response = await this.sendClientRequest(
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  async listInvoices(
+    options: ListCustomerInvoicesOptions,
+    session: InternalSession | null,
+  ): Promise<CustomerInvoicesListResponse> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit !== undefined ? options.limit.toString() : undefined,
+    }));
+    const path = urlString`/payments/invoices/${options.customer_type}/${options.customer_id}`;
     const response = await this.sendClientRequest(
       `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {},

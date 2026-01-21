@@ -1039,6 +1039,9 @@ model SubscriptionInvoice {
   stripeSubscriptionId          String
   stripeInvoiceId               String
   isSubscriptionCreationInvoice Boolean
+  status                        String?
+  amountTotal                   Int?
+  hostedInvoiceUrl              String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
