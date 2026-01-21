@@ -9,7 +9,7 @@ import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
-import { clickhouseAdminClient } from "./clickhouse";
+import { getClickhouseAdminClient, isClickhouseConfigured } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
@@ -195,26 +195,28 @@ export async function logEvent<T extends EventType[]>(
       },
     });
 
-    const clickhouseClient = clickhouseAdminClient;
-    await clickhouseClient.insert({
-      table: "analytics_internal.events",
-      values: eventTypesArray.map(eventType => ({
-        event_type: eventType.id,
-        event_at: timeRange.end,
-        data: clickhouseEventData,
-        project_id: projectId,
-        branch_id: branchId,
-        user_id: userId,
-        team_id: teamId,
-        is_anonymous: isAnonymous,
-        session_id: sessionId,
-      })),
-      format: "JSONEachRow",
-      clickhouse_settings: {
-        date_time_input_format: "best_effort",
-        async_insert: 1,
-      },
-    });
+    if (isClickhouseConfigured()) {
+      const clickhouseClient = getClickhouseAdminClient();
+      await clickhouseClient.insert({
+        table: "analytics_internal.events",
+        values: eventTypesArray.map(eventType => ({
+          event_type: eventType.id,
+          event_at: timeRange.end,
+          data: clickhouseEventData,
+          project_id: projectId,
+          branch_id: branchId,
+          user_id: userId,
+          team_id: teamId,
+          is_anonymous: isAnonymous,
+          session_id: sessionId,
+        })),
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          date_time_input_format: "best_effort",
+          async_insert: 1,
+        },
+      });
+    }
 
     // log event in PostHog
     if (getNodeEnvironment().includes("production") && !getEnvVariable("CI", "")) {

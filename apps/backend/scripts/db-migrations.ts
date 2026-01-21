@@ -1,6 +1,6 @@
 import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
-import { clickhouseAdminClient, createClickhouseClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { spawnSync } from "child_process";
@@ -11,13 +11,14 @@ import { seed } from "../prisma/seed";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
 
-const clickhouseClient = createClickhouseClient("admin");
+const getClickhouseClient = () => getClickhouseAdminClient();
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
   await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
+  const clickhouseClient = getClickhouseClient();
   await clickhouseClient.command({ query: "DROP DATABASE IF EXISTS analytics_internal" });
   await clickhouseClient.command({ query: "CREATE DATABASE IF NOT EXISTS analytics_internal" });
 };

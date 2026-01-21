@@ -1,4 +1,4 @@
-import { clickhouseAdminClient, createClickhouseClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClient, isClickhouseConfigured } from "@/lib/clickhouse";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -144,7 +144,10 @@ export const POST = createSmartRouteHandler({
     let migratedEvents = 0;
 
     if (events.length) {
-      const clickhouseClient = clickhouseAdminClient;
+      if (!isClickhouseConfigured()) {
+        throw new StatusError(StatusError.ServiceUnavailable, "ClickHouse is not configured");
+      }
+      const clickhouseClient = getClickhouseAdminClient();
       const rowsByEvent = events.map(createClickhouseRows);
       const rowsToInsert = rowsByEvent.flat();
       migratedEvents = rowsByEvent.reduce((acc, rows) => acc + (rows.length ? 1 : 0), 0);
