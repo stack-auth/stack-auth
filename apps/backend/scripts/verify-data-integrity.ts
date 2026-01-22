@@ -37,6 +37,15 @@ type LedgerTransaction = {
   expirationTime: Date,
 };
 
+type StripePayoutList = {
+  data: Array<{
+    id: string,
+    amount: number,
+    currency: string,
+  }>,
+  has_more: boolean,
+};
+
 type CustomerTransactionEntry = {
   transactionId: string,
   createdAtMillis: number,
@@ -222,11 +231,12 @@ async function main() {
         })
         : null;
 
-      if (!USE_MOCK_STRIPE_API && tenancy && projects[i].stripeAccountId) {
+      const stripeAccountId = projects[i].stripeAccountId;
+      if (!USE_MOCK_STRIPE_API && tenancy && stripeAccountId != null) {
         await verifyStripePayoutIntegrity({
           projectId,
           tenancy,
-          stripeAccountId: projects[i].stripeAccountId,
+          stripeAccountId,
         });
       }
 
@@ -914,7 +924,7 @@ async function fetchStripePayoutTotalUsdMinorUnits(options: {
   let startingAfter: string | undefined = undefined;
 
   do {
-    const payouts = await stripe.payouts.list({
+    const payouts: StripePayoutList = await stripe.payouts.list({
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
