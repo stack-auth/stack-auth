@@ -267,13 +267,13 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
       };
 
       // Build request body from individual fields
-      // Always send a body for POST/PUT/PATCH if the operation has a requestBody defined
-      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && operation.requestBody) {
-        // Filter out empty values and build JSON body
-        const bodyData = Object.fromEntries(
-          Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-        );
-        // Always send at least {} if the operation expects a body
+      // Always send a body for POST/PUT/PATCH - even if empty, some endpoints require it
+      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+        const bodyData = operation.requestBody
+          ? Object.fromEntries(
+              Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+            )
+          : {};
         requestOptions.body = JSON.stringify(bodyData);
         requestOptions.headers = {
           ...filteredHeaders,
@@ -474,12 +474,14 @@ function ModernAPIPlayground({
       }
     });
 
-    // Add body for POST/PUT/PATCH - build from fields
-    // Always include body if the operation expects a requestBody
-    if (['POST', 'PUT', 'PATCH'].includes(method) && operation.requestBody) {
-      const bodyData = Object.fromEntries(
-        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-      );
+    // Add body for POST/PUT/PATCH - always include Content-Type and body
+    // Even if empty, some endpoints require a JSON body to be present
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const bodyData = operation.requestBody
+        ? Object.fromEntries(
+            Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+          )
+        : {};
       curlCommand += ` \\\n  -H "Content-Type: application/json"`;
       curlCommand += ` \\\n  -d '${JSON.stringify(bodyData)}'`;
     }
@@ -519,24 +521,27 @@ function ModernAPIPlayground({
       Object.entries(requestState.headers).filter(([key, value]) => key && value)
     );
 
+    // Add body for POST/PUT/PATCH - always include Content-Type and body
+    // Even if empty, some endpoints require a JSON body to be present
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const bodyData = operation.requestBody
+        ? Object.fromEntries(
+            Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+          )
+        : {};
+      const headersWithContentType = { ...headers, 'Content-Type': 'application/json' };
+
+      let jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
+      jsCode += `,\n  headers: ${JSON.stringify(headersWithContentType, null, 4).replace(/^/gm, '  ')}`;
+      jsCode += `,\n  body: JSON.stringify(${JSON.stringify(bodyData, null, 2)})`;
+      jsCode += `\n});\n\nconst data = await response.json();\nconsole.log(data);`;
+      return jsCode;
+    }
+
     let jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
 
     if (Object.keys(headers).length > 0) {
       jsCode += `,\n  headers: ${JSON.stringify(headers, null, 4).replace(/^/gm, '  ')}`;
-    }
-
-    // Add body for POST/PUT/PATCH - build from fields
-    // Always include body if the operation expects a requestBody
-    if (['POST', 'PUT', 'PATCH'].includes(method) && operation.requestBody) {
-      const bodyData = Object.fromEntries(
-        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-      );
-      // Add Content-Type header for JSON body
-      const headersWithContentType = { ...headers, 'Content-Type': 'application/json' };
-      // Re-add headers with Content-Type
-      jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
-      jsCode += `,\n  headers: ${JSON.stringify(headersWithContentType, null, 4).replace(/^/gm, '  ')}`;
-      jsCode += `,\n  body: JSON.stringify(${JSON.stringify(bodyData, null, 2)})`;
     }
 
     jsCode += `\n});\n\nconst data = await response.json();\nconsole.log(data);`;
@@ -584,12 +589,14 @@ function ModernAPIPlayground({
       pythonCode += `headers = ${JSON.stringify(headers, null, 2).replace(/"/g, "'")}\n`;
     }
 
-    // Add body for POST/PUT/PATCH - build from fields
-    // Always include body if the operation expects a requestBody
-    if (['POST', 'PUT', 'PATCH'].includes(method) && operation.requestBody) {
-      const bodyData = Object.fromEntries(
-        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-      );
+    // Add body for POST/PUT/PATCH - always include json body
+    // Even if empty, some endpoints require a JSON body to be present
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const bodyData = operation.requestBody
+        ? Object.fromEntries(
+            Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+          )
+        : {};
       pythonCode += `data = ${JSON.stringify(bodyData)}\n\n`;
       pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}, json=data)\n`;
     } else {
