@@ -12,7 +12,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add exact domain that matches our redirect URL
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -45,7 +45,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add exact domain that does NOT match
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -90,7 +90,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add exact subdomain
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -135,7 +135,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add domain with specific port
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -180,7 +180,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add HTTPS domain
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -225,7 +225,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add domain with specific handler path
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -257,7 +257,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add multiple domains
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -297,7 +297,7 @@ describe("OAuth with exact domain matching", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add multiple domains, none match localhost:8107
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {

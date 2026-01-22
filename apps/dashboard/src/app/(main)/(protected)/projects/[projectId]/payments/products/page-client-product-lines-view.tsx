@@ -26,6 +26,7 @@ import {
   toast
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { useUpdateConfig } from "@/lib/config-update";
 import { DndContext, DragOverlay, useDraggable, useDroppable, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
 import { CaretUpDownIcon, CircleNotchIcon, CodeIcon, CopyIcon, DotsSixVerticalIcon, DotsThreeVerticalIcon, EyeIcon, FileTextIcon, HardDriveIcon, InfoIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -1785,6 +1786,7 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
   // Use product IDs as a key to ensure re-render when products change
@@ -1886,21 +1888,25 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: product });
-    setShowProductDialog(false);
-    toast({ title: editingProduct ? "Product updated" : "Product created" });
+    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    if (success) {
+      setShowProductDialog(false);
+      toast({ title: editingProduct ? "Product updated" : "Product created" });
+    }
   };
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
-    setShowItemDialog(false);
-    setEditingItem(null);
-    toast({ title: editingItem ? "Item updated" : "Item created" });
-    // Call the callback to auto-select the newly created item
-    if (onItemCreatedCallback && !editingItem) {
-      onItemCreatedCallback(item.id);
-      setOnItemCreatedCallback(undefined);
+    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
+    if (success) {
+      setShowItemDialog(false);
+      setEditingItem(null);
+      toast({ title: editingItem ? "Item updated" : "Item created" });
+      // Call the callback to auto-select the newly created item
+      if (onItemCreatedCallback && !editingItem) {
+        onItemCreatedCallback(item.id);
+        setOnItemCreatedCallback(undefined);
+      }
     }
   };
 
@@ -1920,8 +1926,10 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
   }));
 
   const handleInlineSaveProduct = async (productId: string, product: Product) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: product });
-    toast({ title: "Product updated" });
+    const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
+    if (success) {
+      toast({ title: "Product updated" });
+    }
   };
 
   const handleDeleteProduct = async (productId: string) => {
@@ -1943,24 +1951,31 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
     );
 
     // Delete the product (and productLine if it will be empty)
+    let success: boolean;
     if (isLastProductInProductLine) {
       // Also rebuild productLines without the empty productLine
       const updatedProductLines = typedFromEntries(
         typedEntries(paymentsConfig.productLines)
           .filter(([id]) => id !== productLineId)
       );
-      await project.updateConfig({
+      success = await updateConfig({ adminApp: stackAdminApp, configUpdate: {
         "payments.products": updatedProducts,
         "payments.productLines": updatedProductLines,
-      });
-      toast({ title: "Product and empty product line deleted" });
+      }, pushable: true });
+      if (success) {
+        toast({ title: "Product and empty product line deleted" });
+      }
     } else {
-      await project.updateConfig({ "payments.products": updatedProducts });
-      toast({ title: "Product deleted" });
+      success = await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
+      if (success) {
+        toast({ title: "Product deleted" });
+      }
     }
 
-    // Force a re-render by updating the refresh key
-    setRefreshKey(prev => prev + 1);
+    if (success) {
+      // Force a re-render by updating the refresh key
+      setRefreshKey(prev => prev + 1);
+    }
   };
 
   const innerContent = (
@@ -1977,19 +1992,23 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
           setShowProductDialog(true);
         }}
         onSaveProductWithGroup={async (productLineId, productId, product) => {
-          await project.updateConfig({
+          const success = await updateConfig({ adminApp: stackAdminApp, configUpdate: {
             [`payments.products.${productId}`]: product,
-          });
-          toast({ title: "Product created" });
+          }, pushable: true });
+          if (success) {
+            toast({ title: "Product created" });
+          }
         }}
         onCreateProductLine={async (productLineId, displayName, customerType) => {
-          await project.updateConfig({
+          await updateConfig({ adminApp: stackAdminApp, configUpdate: {
             [`payments.productLines.${productLineId}`]: { displayName, customerType },
-          });
+          }, pushable: true });
         }}
         onUpdateProductLine={async (productLineId, displayName) => {
-          await project.updateConfig({
-            [`payments.productLines.${productLineId}.displayName`]: displayName,
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: { [`payments.productLines.${productLineId}.displayName`]: displayName },
+            pushable: true,
           });
         }}
         onDeleteProductLine={async (productLineId) => {
@@ -2006,16 +2025,20 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
           // Build the update object
           // Using `as any` because we're building a dynamic config update that TypeScript can't statically verify
-          const updateConfig: Record<string, unknown> = {
+          const configUpdateObj: Record<string, unknown> = {
             "payments.productLines": updatedProductLines,
           };
 
           // Update each product to remove productLineId
           for (const [productId, product] of productsToUpdate) {
-            updateConfig[`payments.products.${productId}`] = product;
+            configUpdateObj[`payments.products.${productId}`] = product;
           }
 
-          await project.updateConfig(updateConfig as any);
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: configUpdateObj as any,
+            pushable: true,
+          });
         }}
         createDraftRequestId={createDraftRequestId}
         draftCustomerType={draftCustomerType}
@@ -2026,11 +2049,15 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
 
           // Update the entire product object with the new productLineId
           // Using undefined instead of null to properly clear the value
-          await project.updateConfig({
-            [`payments.products.${productId}`]: {
-              ...currentProduct,
-              productLineId: targetProductLineId ?? undefined,
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: {
+              [`payments.products.${productId}`]: {
+                ...currentProduct,
+                productLineId: targetProductLineId ?? undefined,
+              },
             },
+            pushable: true,
           });
         }}
       />

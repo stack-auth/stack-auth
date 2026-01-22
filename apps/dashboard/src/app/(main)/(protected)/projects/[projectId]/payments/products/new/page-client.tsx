@@ -24,6 +24,7 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -197,6 +198,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
   // Check for duplicate data from sessionStorage
@@ -344,11 +346,15 @@ export default function PageClient() {
 
   const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({
-        [`payments.productLines.${productLine.id}`]: {
-          displayName: productLine.displayName || null,
-          customerType,
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: {
+          [`payments.productLines.${productLine.id}`]: {
+            displayName: productLine.displayName || null,
+            customerType,
+          },
         },
+        pushable: true,
       });
       setProductLineId(productLine.id);
     });
@@ -410,9 +416,15 @@ export default function PageClient() {
         freeTrial,
       };
 
-      await project.updateConfig({ [`payments.products.${productId}`]: product });
-      toast({ title: "Product created" });
-      router.push(`/projects/${projectId}/payments/products`);
+      const success = await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: { [`payments.products.${productId}`]: product },
+        pushable: true,
+      });
+      if (success) {
+        toast({ title: "Product created" });
+        router.push(`/projects/${projectId}/payments/products`);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -1080,8 +1092,25 @@ ${Object.entries(prices).map(([id, price]) => {
         open={showNewItemDialog}
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
-          await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
-          toast({ title: "Item created" });
+          try {
+            const success = await updateConfig({
+              adminApp: stackAdminApp,
+              configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+              pushable: true,
+            });
+            if (success) {
+              toast({ title: "Item created" });
+            } else {
+              // User cancelled the confirmation dialog - throw to keep dialog open
+              throw new Error("Operation cancelled");
+            }
+          } catch (error) {
+            // Show error toast for actual failures (not cancellations)
+            if (error instanceof Error && error.message !== "Operation cancelled") {
+              alert("Failed to create item: " + error.message);
+            }
+            throw error;
+          }
         }}
         existingItemIds={Object.keys(paymentsConfig.items)}
         forceCustomerType={customerType}

@@ -22,6 +22,7 @@ export const configLevels = ['project', 'branch', 'environment', 'organization']
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
@@ -149,7 +150,6 @@ export const branchPaymentsSchema = yupObject({
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  testMode: yupBoolean(),
   productLines: yupRecord(
     userSpecifiedIdSchema("productLineId"),
     yupObject({
@@ -193,9 +193,7 @@ export const branchPaymentsSchema = yupObject({
   }
 );
 
-const branchDomain = yupObject({
-  allowLocalhost: yupBoolean(),
-});
+const branchDomain = yupObject({});
 
 const branchOnboardingSchema = yupObject({
   requireEmailVerification: yupBoolean(),
@@ -276,6 +274,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   })),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
+    allowLocalhost: yupBoolean(),
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
@@ -283,6 +282,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
         handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
+  })),
+
+  payments: branchConfigSchema.getNested("payments").concat(yupObject({
+    testMode: yupBoolean(),
   })),
 }));
 
