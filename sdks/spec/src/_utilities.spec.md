@@ -158,6 +158,9 @@ For unrecognized error codes, create a StackAuthApiError with the code and messa
 Store access_token and refresh_token. The tokenStore constructor option determines storage strategy.
 
 Many functions also accept a tokenStore parameter to override storage for that call.
+When the constructor's tokenStore is non-null, this parameter is optional (defaults to
+the constructor's value). When the constructor's tokenStore is null, this parameter
+becomes REQUIRED for all authenticated functions - see the "null" section below.
 
 ### TokenStoreInit Type
 
@@ -221,8 +224,18 @@ RequestLike object:
   3. Use those tokens for authentication
 
 null:
-  No token storage. SDK methods requiring authentication will fail.
-  Most useful for backends, as you can still specify the token store per-request.
+  No token storage. When the constructor's tokenStore is null, the tokenStore
+  argument becomes REQUIRED (non-optional) for all authenticated function calls.
+  
+  Languages with expressive type systems (like TypeScript) can represent this
+  at the type level - the tokenStore parameter is optional when the constructor
+  has a token store, but required when it's null. For languages that cannot
+  express this in the type system, throw an error/panic at runtime if an
+  authenticated function is called without a tokenStore argument when the
+  constructor's tokenStore was null.
+  
+  This is most useful for backends where you don't have a default token store
+  but want to specify tokens per-request (e.g., from request headers).
 
 
 ### x-stack-auth Header Format

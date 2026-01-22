@@ -231,6 +231,7 @@ Errors:
 
 Arguments:
   options.redirectUrl: string? - where to redirect after sign out
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: void
 
@@ -254,6 +255,7 @@ Arguments:
   options.includeRestricted: bool?
     Default: false
     Whether to return users who haven't completed onboarding
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: CurrentUser | null
 
@@ -340,6 +342,8 @@ Arguments:
   
   For "convex" [JS-ONLY]:
     options.ctx: ConvexQueryContext - the Convex query context
+  
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: TokenPartialUser | null
 
@@ -373,6 +377,7 @@ Cancel an active subscription.
 Arguments:
   options.productId: string - the subscription product to cancel
   options.teamId: string? - if canceling a team subscription
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: void
 
@@ -383,7 +388,10 @@ Request:
 Does not error.
 
 
-## getAccessToken()
+## getAccessToken(options?)
+
+Arguments:
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: string | null
 
@@ -394,7 +402,10 @@ Return token string, or null if not authenticated.
 Does not error.
 
 
-## getRefreshToken()
+## getRefreshToken(options?)
+
+Arguments:
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: string | null
 
@@ -404,7 +415,10 @@ Return token string, or null if not authenticated.
 Does not error.
 
 
-## getAuthHeaders()
+## getAuthHeaders(options?)
+
+Arguments:
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: { "x-stack-auth": string }
 
@@ -608,10 +622,11 @@ Errors:
     message: "The MFA code is incorrect."
 
 
-## verifyEmail(code)
+## verifyEmail(code, options?)
 
 Arguments:
   code: string - from email verification link
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: void
 
@@ -629,10 +644,11 @@ Errors:
     message: "The verification code is invalid or expired."
 
 
-## acceptTeamInvitation(code)
+## acceptTeamInvitation(code, options?)
 
 Arguments:
   code: string - from team invitation email
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: void
 
@@ -646,12 +662,13 @@ Errors:
     message: "The verification code is invalid or expired."
 
 
-## verifyTeamInvitationCode(code)
+## verifyTeamInvitationCode(code, options?)
 
 Verifies a team invitation code is valid before accepting.
 
 Arguments:
   code: string - from team invitation email
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: void
 
@@ -665,10 +682,11 @@ Errors:
     message: "The verification code is invalid or expired."
 
 
-## getTeamInvitationDetails(code)
+## getTeamInvitationDetails(code, options?)
 
 Arguments:
   code: string
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: { teamDisplayName: string }
 
@@ -863,6 +881,7 @@ Arguments:
     options.teamId: string
     options.customCustomerId: string
   options.itemId: string
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: Item
 
@@ -889,6 +908,7 @@ Arguments:
     options.customCustomerId: string
   options.cursor: string? - pagination cursor
   options.limit: number? - max results
+  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: CustomerProductsList
 

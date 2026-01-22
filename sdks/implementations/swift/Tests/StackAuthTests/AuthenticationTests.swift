@@ -171,12 +171,12 @@ struct AuthenticationTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let tokenBefore = await app.getAccessToken()
+        let tokenBefore = try await app.getAccessToken()
         #expect(tokenBefore != nil)
         
         try await app.signOut()
         
-        let tokenAfter = await app.getAccessToken()
+        let tokenAfter = try await app.getAccessToken()
         #expect(tokenAfter == nil)
     }
     
@@ -277,7 +277,7 @@ struct AuthenticationTests {
     func unauthenticatedPartialUserReturnsNil() async throws {
         let app = TestConfig.createClientApp()
         
-        let partialUser = await app.getPartialUser()
+        let partialUser = try await app.getPartialUser()
         
         #expect(partialUser == nil)
     }

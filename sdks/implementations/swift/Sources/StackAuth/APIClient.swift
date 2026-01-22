@@ -50,8 +50,10 @@ actor APIClient {
         method: String = "GET",
         body: [String: Any]? = nil,
         authenticated: Bool = false,
-        serverOnly: Bool = false
+        serverOnly: Bool = false,
+        tokenStoreOverride: (any TokenStoreProtocol)? = nil
     ) async throws -> (Data, HTTPURLResponse) {
+        let effectiveTokenStore = tokenStoreOverride ?? tokenStore
         guard let url = URL(string: "\(baseUrl)/api/v1\(path)") else {
             throw StackAuthError(code: "INVALID_URL", message: "Failed to construct request URL from base: \(baseUrl) and path: \(path)")
         }
@@ -77,10 +79,10 @@ actor APIClient {
         
         // Auth headers
         if authenticated {
-            if let accessToken = await tokenStore.getAccessToken() {
+            if let accessToken = await effectiveTokenStore.getAccessToken() {
                 request.setValue(accessToken, forHTTPHeaderField: "x-stack-access-token")
             }
-            if let refreshToken = await tokenStore.getRefreshToken() {
+            if let refreshToken = await effectiveTokenStore.getRefreshToken() {
                 request.setValue(refreshToken, forHTTPHeaderField: "x-stack-refresh-token")
             }
         }
@@ -96,12 +98,13 @@ actor APIClient {
         }
         
         // Send request with retry logic
-        return try await sendWithRetry(request: request, authenticated: authenticated)
+        return try await sendWithRetry(request: request, authenticated: authenticated, tokenStore: effectiveTokenStore)
     }
     
     private func sendWithRetry(
         request: URLRequest,
         authenticated: Bool,
+        tokenStore: any TokenStoreProtocol,
         attempt: Int = 0
     ) async throws -> (Data, HTTPURLResponse) {
         do {
@@ -126,14 +129,14 @@ actor APIClient {
                 if let errorCode = httpResponse.value(forHTTPHeaderField: "x-stack-known-error"),
                    errorCode == "invalid_access_token" {
                     // Try to refresh token
-                    let refreshed = try await refreshTokenIfNeeded()
+                    let refreshed = try await refreshTokenIfNeeded(tokenStore: tokenStore)
                     if refreshed {
                         // Retry with new token
                         var newRequest = request
                         if let accessToken = await tokenStore.getAccessToken() {
                             newRequest.setValue(accessToken, forHTTPHeaderField: "x-stack-access-token")
                         }
-                        return try await sendWithRetry(request: newRequest, authenticated: authenticated, attempt: 0)
+                        return try await sendWithRetry(request: newRequest, authenticated: authenticated, tokenStore: tokenStore, attempt: 0)
                     }
                 }
             }
@@ -149,7 +152,7 @@ actor APIClient {
                     let delayMs = 1000.0 * pow(2.0, Double(attempt))
                     try await Task.sleep(nanoseconds: UInt64(delayMs * 1_000_000))
                 }
-                return try await sendWithRetry(request: request, authenticated: authenticated, attempt: attempt + 1)
+                return try await sendWithRetry(request: request, authenticated: authenticated, tokenStore: tokenStore, attempt: attempt + 1)
             }
             
             // Rate limit exhausted after max retries
@@ -179,7 +182,7 @@ actor APIClient {
             if idempotent && attempt < 5 {
                 let delay = pow(2.0, Double(attempt)) * 1.0 // Exponential backoff
                 try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                return try await sendWithRetry(request: request, authenticated: authenticated, attempt: attempt + 1)
+                return try await sendWithRetry(request: request, authenticated: authenticated, tokenStore: tokenStore, attempt: attempt + 1)
             }
             throw StackAuthError(code: "network_error", message: error.localizedDescription)
         }
@@ -187,7 +190,7 @@ actor APIClient {
     
     // MARK: - Token Refresh
     
-    private func refreshTokenIfNeeded() async throws -> Bool {
+    private func refreshTokenIfNeeded(tokenStore: any TokenStoreProtocol) async throws -> Bool {
         // Wait if already refreshing
         if isRefreshing {
             await withCheckedContinuation { continuation in
@@ -261,16 +264,32 @@ actor APIClient {
         await tokenStore.setTokens(accessToken: accessToken, refreshToken: refreshToken)
     }
     
+    func setTokens(accessToken: String?, refreshToken: String?, tokenStoreOverride: any TokenStoreProtocol) async {
+        await tokenStoreOverride.setTokens(accessToken: accessToken, refreshToken: refreshToken)
+    }
+    
     func clearTokens() async {
         await tokenStore.clearTokens()
+    }
+    
+    func clearTokens(tokenStoreOverride: any TokenStoreProtocol) async {
+        await tokenStoreOverride.clearTokens()
     }
     
     func getAccessToken() async -> String? {
         return await tokenStore.getAccessToken()
     }
     
+    func getAccessToken(tokenStoreOverride: any TokenStoreProtocol) async -> String? {
+        return await tokenStoreOverride.getAccessToken()
+    }
+    
     func getRefreshToken() async -> String? {
         return await tokenStore.getRefreshToken()
+    }
+    
+    func getRefreshToken(tokenStoreOverride: any TokenStoreProtocol) async -> String? {
+        return await tokenStoreOverride.getRefreshToken()
     }
 }
 
