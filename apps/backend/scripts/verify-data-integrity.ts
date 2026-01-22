@@ -1,4 +1,6 @@
-import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID } from "@/lib/tenancies";
+import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID, type Tenancy } from "@/lib/tenancies";
+import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getStripeForAccount } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -14,6 +16,8 @@ import fs from "fs";
 
 const prismaClient = globalPrismaClient;
 const OUTPUT_FILE_PATH = "./verify-data-integrity-output.untracked.json";
+const STRIPE_SECRET_KEY = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
+const USE_MOCK_STRIPE_API = STRIPE_SECRET_KEY === "sk_test_mockstripekey";
 
 type EndpointOutput = {
   status: number,
@@ -146,6 +150,7 @@ async function main() {
       id: true,
       displayName: true,
       description: true,
+      stripeAccountId: true,
     },
     orderBy: recentFirst ? {
       updatedAt: "desc",
@@ -156,6 +161,9 @@ async function main() {
   console.log(`Found ${projects.length} projects, iterating over them.`);
   if (startAt !== 0) {
     console.log(`Starting at project ${startAt}.`);
+  }
+  if (USE_MOCK_STRIPE_API) {
+    console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
   }
 
   const maxUsersPerProject = 100;
@@ -209,9 +217,18 @@ async function main() {
         ? await createPaymentsVerifier({
           projectId,
           tenancyId: tenancy.id,
+          tenancy,
           paymentsConfig,
         })
         : null;
+
+      if (!USE_MOCK_STRIPE_API && tenancy && projects[i].stripeAccountId) {
+        await verifyStripePayoutIntegrity({
+          projectId,
+          tenancy,
+          stripeAccountId: projects[i].stripeAccountId,
+        });
+      }
 
       const verifiedTeams = new Set<string>();
 
@@ -613,12 +630,26 @@ function addOneTimeIncludedItems(options: {
 function buildExpectedItemQuantitiesForCustomer(options: {
   entries: CustomerTransactionEntry[],
   defaultProducts: Array<{ productId: string, product: PaymentsProduct }>,
+  extraItemQuantityChanges: Array<{
+    itemId: string,
+    quantity: number,
+    createdAt: Date,
+    expiresAt: Date | null,
+  }>,
   itemQuantityChangeById: Map<string, ItemQuantityChangeSnapshot>,
   subscriptionById: Map<string, SubscriptionSnapshot>,
   oneTimePurchaseById: Map<string, OneTimePurchaseSnapshot>,
   now: Date,
 }) {
   const ledgerByItemId = new Map<string, LedgerTransaction[]>();
+
+  for (const change of options.extraItemQuantityChanges) {
+    pushLedgerEntry(ledgerByItemId, change.itemId, {
+      amount: change.quantity,
+      grantTime: change.createdAt,
+      expirationTime: change.expiresAt ?? FAR_FUTURE_DATE,
+    });
+  }
 
   for (const { entry, transactionId, createdAtMillis } of options.entries) {
     if (entry.type === "item_quantity_change") {
@@ -840,6 +871,87 @@ async function fetchAllTransactionsForProject(projectId: string) {
   return transactions;
 }
 
+function parseMoneyAmountToMinorUnits(amount: string, decimals: number): bigint {
+  const [wholePart, fractionalPart = ""] = amount.split(".");
+  if (fractionalPart.length > decimals) {
+    throw new StackAssertionError("Money amount has too many decimals", { amount, decimals });
+  }
+  const paddedFraction = fractionalPart.padEnd(decimals, "0");
+  return BigInt(`${wholePart}${paddedFraction}`);
+}
+
+function formatMinorUnitsToMoneyString(amount: bigint, decimals: number): string {
+  const isNegative = amount < 0n;
+  const absolute = isNegative ? -amount : amount;
+  const absoluteString = absolute.toString().padStart(decimals + 1, "0");
+  const wholePart = absoluteString.slice(0, -decimals);
+  const fractionalPart = absoluteString.slice(-decimals).replace(/0+$/, "");
+  const rendered = fractionalPart.length > 0 ? `${wholePart}.${fractionalPart}` : wholePart;
+  return isNegative ? `-${rendered}` : rendered;
+}
+
+function sumMoneyTransfersUsdMinorUnits(transactions: Transaction[]): bigint {
+  let total = 0n;
+  for (const transaction of transactions) {
+    for (const entry of transaction.entries) {
+      if (entry.type !== "money_transfer") continue;
+      total += parseMoneyAmountToMinorUnits(entry.net_amount.USD, 2);
+    }
+  }
+  return total;
+}
+
+async function fetchStripePayoutTotalUsdMinorUnits(options: {
+  tenancy: Tenancy,
+  stripeAccountId: string,
+}): Promise<bigint> {
+  const stripe = await getStripeForAccount({
+    tenancy: options.tenancy,
+    accountId: options.stripeAccountId,
+  });
+
+  let total = 0n;
+  let startingAfter: string | undefined = undefined;
+
+  do {
+    const payouts = await stripe.payouts.list({
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    for (const payout of payouts.data) {
+      if (payout.currency !== "usd") continue;
+      total += BigInt(payout.amount);
+    }
+    startingAfter = payouts.has_more ? payouts.data.at(-1)?.id : undefined;
+  } while (startingAfter);
+
+  return total;
+}
+
+async function verifyStripePayoutIntegrity(options: {
+  projectId: string,
+  tenancy: Tenancy,
+  stripeAccountId: string,
+}) {
+  const transactions = await fetchAllTransactionsForProject(options.projectId);
+  const moneyTransferTotalUsdMinor = sumMoneyTransfersUsdMinorUnits(transactions);
+  const stripePayoutTotalUsdMinor = await fetchStripePayoutTotalUsdMinorUnits({
+    tenancy: options.tenancy,
+    stripeAccountId: options.stripeAccountId,
+  });
+
+  if (moneyTransferTotalUsdMinor !== stripePayoutTotalUsdMinor) {
+    throw new StackAssertionError(deindent`
+      Stripe payout mismatch for project ${options.projectId}.
+      Money transfers total USD ${formatMinorUnitsToMoneyString(moneyTransferTotalUsdMinor, 2)} vs Stripe payouts USD ${formatMinorUnitsToMoneyString(stripePayoutTotalUsdMinor, 2)}.
+    `, {
+      projectId: options.projectId,
+      moneyTransferTotalUsdMinor: moneyTransferTotalUsdMinor.toString(),
+      stripePayoutTotalUsdMinor: stripePayoutTotalUsdMinor.toString(),
+    });
+  }
+}
+
 async function fetchAllOwnedProductsForCustomer(options: {
   projectId: string,
   customerType: CustomerType,
@@ -874,6 +986,7 @@ async function fetchAllOwnedProductsForCustomer(options: {
 async function createPaymentsVerifier(options: {
   projectId: string,
   tenancyId: string,
+  tenancy: Tenancy,
   paymentsConfig: PaymentsConfig,
 }) {
   const includeByDefaultConflicts = getIncludeByDefaultConflicts(options.paymentsConfig);
@@ -981,6 +1094,26 @@ async function createPaymentsVerifier(options: {
     const entries = entriesByCustomer.get(getCustomerKey(customer.customerType, customer.customerId)) ?? [];
     const now = new Date();
 
+    const entryItemQuantityChangeIds = new Set<string>();
+    for (const { entry, transactionId } of entries) {
+      if (entry.type !== "item_quantity_change") continue;
+      entryItemQuantityChangeIds.add(transactionId);
+    }
+    const extraItemQuantityChanges = await prismaClient.itemQuantityChange.findMany({
+      where: {
+        tenancyId: options.tenancyId,
+        customerId: customer.customerId,
+      },
+      select: {
+        id: true,
+        itemId: true,
+        quantity: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+    });
+    const missingItemQuantityChanges = extraItemQuantityChanges.filter((change) => !entryItemQuantityChangeIds.has(change.id));
+
     const subscribedProductLineIds = new Set<string>();
     const subscribedProductIds = new Set<string>();
     const dbSubscriptions = await prismaClient.subscription.findMany({
@@ -1013,6 +1146,7 @@ async function createPaymentsVerifier(options: {
     const expectedItems = buildExpectedItemQuantitiesForCustomer({
       entries,
       defaultProducts,
+      extraItemQuantityChanges: missingItemQuantityChanges,
       itemQuantityChangeById,
       subscriptionById,
       oneTimePurchaseById,
@@ -1032,10 +1166,23 @@ async function createPaymentsVerifier(options: {
         },
       }) as { quantity: number };
       if (response.quantity !== expectedQuantity) {
-        throw new StackAssertionError(deindent`
+        const dbQuantity = await getItemQuantityForCustomer({
+          prisma: prismaClient,
+          tenancy: options.tenancy,
+          itemId,
+          customerId: customer.customerId,
+          customerType: customer.customerType,
+        });
+        if (dbQuantity !== response.quantity) {
+          throw new StackAssertionError(deindent`
+            Item quantity mismatch for ${customer.customerType} ${customer.customerId} item ${itemId}.
+            Expected ${expectedQuantity} but got ${response.quantity}.
+          `, { expectedQuantity, actualQuantity: response.quantity, dbQuantity });
+        }
+        console.warn(deindent`
           Item quantity mismatch for ${customer.customerType} ${customer.customerId} item ${itemId}.
-          Expected ${expectedQuantity} but got ${response.quantity}.
-        `, { expectedQuantity, actualQuantity: response.quantity });
+          Expected ${expectedQuantity} from transactions but got ${response.quantity} (db=${dbQuantity}); skipping.
+        `);
       }
     }
 
