@@ -183,10 +183,12 @@ function ProductHeader({ productId, product, productLineName }: ProductHeaderPro
               shiftTextToLeft
               inputClassName="text-2xl font-semibold tracking-tight w-full"
               onUpdate={async (newName) => {
-                await updateConfig({ adminApp, configUpdate: {
+                const success = await updateConfig({ adminApp, configUpdate: {
                   [`payments.products.${productId}.displayName`]: newName || null,
                 }, pushable: true });
-                toast({ title: "Product name updated" });
+                if (success) {
+                  toast({ title: "Product name updated" });
+                }
               }}
             />
           </div>
@@ -428,19 +430,21 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   const handleProductLineUpdate = async (productLineId: string) => {
     const actualProductLineId = productLineId === '__none__' ? null : productLineId;
-    await updateConfig({
+    const success = await updateConfig({
       adminApp,
       configUpdate: {
         [`payments.products.${productId}.productLineId`]: actualProductLineId,
       },
       pushable: true,
     });
-    toast({ title: actualProductLineId ? "Product moved to product line" : "Product removed from product line" });
+    if (success) {
+      toast({ title: actualProductLineId ? "Product moved to product line" : "Product removed from product line" });
+    }
   };
 
   const handleCreateProductLine = async (productLine: { id: string, displayName: string }) => {
     // Create the productLine first with the current product's customerType
-    await updateConfig({
+    const success = await updateConfig({
       adminApp,
       configUpdate: {
         [`payments.productLines.${productLine.id}`]: {
@@ -451,8 +455,10 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       },
       pushable: true,
     });
-    setCreateProductLineDialogOpen(false);
-    toast({ title: "Product line created and product moved" });
+    if (success) {
+      setCreateProductLineDialogOpen(false);
+      toast({ title: "Product line created and product moved" });
+    }
   };
 
   const handleStackableChange = (value: boolean) => {

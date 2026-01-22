@@ -416,13 +416,15 @@ export default function PageClient() {
         freeTrial,
       };
 
-      await updateConfig({
+      const success = await updateConfig({
         adminApp: stackAdminApp,
         configUpdate: { [`payments.products.${productId}`]: product },
         pushable: true,
       });
-      toast({ title: "Product created" });
-      router.push(`/projects/${projectId}/payments/products`);
+      if (success) {
+        toast({ title: "Product created" });
+        router.push(`/projects/${projectId}/payments/products`);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -1105,13 +1107,8 @@ ${Object.entries(prices).map(([id, price]) => {
           } catch (error) {
             // Show error toast for actual failures (not cancellations)
             if (error instanceof Error && error.message !== "Operation cancelled") {
-              toast({
-                title: "Failed to create item",
-                description: error.message,
-                variant: "destructive",
-              });
+              alert("Failed to create item: " + error.message);
             }
-            // Re-throw to prevent ItemDialog from closing
             throw error;
           }
         }}

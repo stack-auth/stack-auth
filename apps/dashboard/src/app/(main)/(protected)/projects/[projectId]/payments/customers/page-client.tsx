@@ -105,11 +105,7 @@ export default function PageClient() {
       }
       // If success is false (user cancelled), keep dialog open without error
     } catch (error) {
-      toast({
-        title: "Failed to save item",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
-        variant: "destructive",
-      });
+      alert("Failed to save item: " + (error instanceof Error ? error.message : "An unexpected error occurred"));
       // Keep dialog open so user can retry
     }
   };
