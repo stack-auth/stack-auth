@@ -91,6 +91,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When making config updates, use path notation (`{ "path.to.field": my-value }`) to avoid overwriting sibling properties
 - IMPORTANT: Any assumption you make should either be validated through type system (preferred), assertions, or tests. Optimally, two out of three.
 - If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
+- Whenever you update an SDK implementation in `sdks/implementations`, make sure to update the specs accordingly in `sdks/specs` such that if you reimplemented the entire SDK from the specs again, you would get the same implementation. (For example, if the specs are not precise enough to describe a change you made, make the specs more precise.)
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
