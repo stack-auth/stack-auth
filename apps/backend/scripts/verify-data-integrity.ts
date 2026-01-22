@@ -8,7 +8,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, stringCompare, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import fs from "fs";
 
@@ -983,15 +983,21 @@ async function createPaymentsVerifier(options: {
 
     const subscribedProductLineIds = new Set<string>();
     const subscribedProductIds = new Set<string>();
-    for (const { entry } of entries) {
-      if (entry.type !== "product_grant") continue;
-      if (!entry.subscription_id) continue;
-      if (!entry.product_id) continue;
-      subscribedProductIds.add(entry.product_id);
-      const configProduct = paymentsConfig.products[entry.product_id] as PaymentsProduct | undefined;
-      if (!configProduct) {
-        continue;
-      }
+    const dbSubscriptions = await prismaClient.subscription.findMany({
+      where: {
+        tenancyId: options.tenancyId,
+        customerId: customer.customerId,
+        customerType: typedToUppercase(customer.customerType),
+      },
+      select: {
+        productId: true,
+      },
+    });
+    for (const { productId } of dbSubscriptions) {
+      if (!productId) continue;
+      subscribedProductIds.add(productId);
+      const configProduct = paymentsConfig.products[productId] as PaymentsProduct | undefined;
+      if (!configProduct) continue;
       if (configProduct.productLineId) {
         subscribedProductLineIds.add(configProduct.productLineId);
       }
