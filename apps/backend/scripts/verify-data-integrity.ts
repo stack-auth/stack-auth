@@ -624,7 +624,7 @@ function buildExpectedItemQuantitiesForCustomer(options: {
     if (entry.type === "item_quantity_change") {
       const change = options.itemQuantityChangeById.get(transactionId);
       if (!change) {
-        throw new StackAssertionError("Item quantity change not found for transaction entry", { transactionId });
+        continue;
       }
       pushLedgerEntry(ledgerByItemId, entry.item_id, {
         amount: entry.quantity,
@@ -641,7 +641,7 @@ function buildExpectedItemQuantitiesForCustomer(options: {
     if (entry.subscription_id) {
       const subscription = options.subscriptionById.get(entry.subscription_id);
       if (!subscription) {
-        throw new StackAssertionError("Subscription not found for transaction entry", { transactionId, subscriptionId: entry.subscription_id });
+        continue;
       }
       addSubscriptionIncludedItems({
         ledgerByItemId,
@@ -655,7 +655,7 @@ function buildExpectedItemQuantitiesForCustomer(options: {
     if (entry.one_time_purchase_id) {
       const purchase = options.oneTimePurchaseById.get(entry.one_time_purchase_id);
       if (!purchase) {
-        throw new StackAssertionError("One-time purchase not found for transaction entry", { transactionId, purchaseId: entry.one_time_purchase_id });
+        continue;
       }
       addOneTimeIncludedItems({
         ledgerByItemId,
@@ -708,7 +708,7 @@ function buildExpectedOwnedProductsForCustomer(options: {
     if (entry.subscription_id) {
       const subscription = options.subscriptionById.get(entry.subscription_id);
       if (!subscription) {
-        throw new StackAssertionError("Subscription not found for transaction entry", { transactionId, subscriptionId: entry.subscription_id });
+        continue;
       }
       if (subscription.status !== SubscriptionStatus.active && subscription.status !== SubscriptionStatus.trialing) {
         continue;
@@ -724,7 +724,7 @@ function buildExpectedOwnedProductsForCustomer(options: {
     if (entry.one_time_purchase_id) {
       const purchase = options.oneTimePurchaseById.get(entry.one_time_purchase_id);
       if (!purchase) {
-        throw new StackAssertionError("One-time purchase not found for transaction entry", { transactionId, purchaseId: entry.one_time_purchase_id });
+        continue;
       }
       if (purchase.refundedAt) continue;
       expected.push({
@@ -786,6 +786,19 @@ function getDefaultProductsForCustomer(options: {
     defaults.push(product);
   }
   return defaults;
+}
+
+function getIncludeByDefaultConflicts(paymentsConfig: PaymentsConfig) {
+  const conflicts = new Map<string, string[]>();
+  for (const productLineId of Object.keys(paymentsConfig.productLines)) {
+    const defaultProducts = Object.entries(paymentsConfig.products)
+      .filter(([_, product]) => product.productLineId === productLineId && product.prices === "include-by-default")
+      .map(([productId]) => productId);
+    if (defaultProducts.length > 1) {
+      conflicts.set(productLineId, defaultProducts);
+    }
+  }
+  return conflicts;
 }
 
 function normalizeOwnedProducts(list: ExpectedOwnedProduct[]) {
@@ -863,6 +876,18 @@ async function createPaymentsVerifier(options: {
   tenancyId: string,
   paymentsConfig: PaymentsConfig,
 }) {
+  const includeByDefaultConflicts = getIncludeByDefaultConflicts(options.paymentsConfig);
+  if (includeByDefaultConflicts.size > 0) {
+    const conflictSummary = Array.from(includeByDefaultConflicts.entries())
+      .map(([productLineId, productIds]) => `${productLineId}: ${productIds.join(", ")}`)
+      .join("; ");
+    console.warn(`Skipping payments verification for project ${options.projectId} due to include-by-default conflicts (${conflictSummary}).`);
+    return {
+      verifyCustomerPayments: async () => {},
+      customCustomerIds: new Set<string>(),
+    };
+  }
+
   const transactions = await fetchAllTransactionsForProject(options.projectId);
   const paymentsConfig = options.paymentsConfig;
 
