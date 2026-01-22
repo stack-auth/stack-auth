@@ -165,46 +165,38 @@ export function StackCompanion({ className }: { className?: string }) {
 
   // Fetch changelog data on mount and check for new versions
   useEffect(() => {
-    const fetchChangelogData = async () => {
-      try {
-        const response = await fetch('/api/changelog');
-        if (response.ok) {
-          const payload = await response.json();
-          const entries = payload.entries || [];
-          setChangelogData(entries);
-
-          // Check for new versions
-          const lastSeenRaw = document.cookie
-            .split('; ')
-            .find(row => row.startsWith('stack-last-seen-changelog-version='))
-            ?.split('=')[1] || '';
-
-          const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
-          setLastSeenVersion(lastSeen);
-
-          if (entries.length > 0) {
-            // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
-            if (!lastSeen) {
-              setHasNewVersions(true);
-            } else {
-              const hasNewer = entries.some((entry: ChangelogEntry) => {
-                if (entry.isUnreleased) return false;
-                return isNewerCalVer(entry.version, lastSeen);
-              });
-              setHasNewVersions(hasNewer);
-            }
-          }
-        } else {
-          // If fetch failed, leave changelogData as undefined so widget can try fetching itself
-          console.error('Failed to fetch changelog data: response not OK');
-        }
-      } catch (error) {
-        console.error('Failed to fetch changelog data:', error);
-        // Leave changelogData as undefined so widget can try fetching itself
+    runAsynchronously(async () => {
+      const response = await fetch('/api/changelog');
+      if (!response.ok) {
+        return;
       }
-    };
 
-    runAsynchronously(fetchChangelogData());
+      const payload = await response.json();
+      const entries = payload.entries || [];
+      setChangelogData(entries);
+
+      // Check for new versions
+      const lastSeenRaw = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('stack-last-seen-changelog-version='))
+        ?.split('=')[1] || '';
+
+      const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
+      setLastSeenVersion(lastSeen);
+
+      if (entries.length > 0) {
+        // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
+        if (!lastSeen) {
+          setHasNewVersions(true);
+        } else {
+          const hasNewer = entries.some((entry: ChangelogEntry) => {
+            if (entry.isUnreleased) return false;
+            return isNewerCalVer(entry.version, lastSeen);
+          });
+          setHasNewVersions(hasNewer);
+        }
+      }
+    });
   }, []);
 
   // Re-check for new versions when changelog is opened/closed

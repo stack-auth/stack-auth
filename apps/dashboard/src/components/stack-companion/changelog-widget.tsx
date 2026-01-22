@@ -2,20 +2,12 @@
 
 import { Button } from '@/components/ui';
 import { CalendarIcon, CaretDownIcon, CaretUpIcon, InfoIcon } from '@phosphor-icons/react';
+import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-
-/**
- * Sanitize a string value for use in a cookie
- * Removes or encodes characters that could break cookie parsing
- */
-function sanitizeCookieValue(value: string): string {
-  // Remove or encode special characters that break cookie parsing
-  return encodeURIComponent(value);
-}
 
 type ChangeType = 'major' | 'minor' | 'patch';
 
@@ -38,6 +30,21 @@ type ChangelogWidgetProps = {
   initialData?: ApiChangelogEntry[],
 };
 
+function toChangelogItems(entries: ApiChangelogEntry[]): ChangelogItem[] {
+  return entries.map((entry, index) => ({
+    ...entry,
+    id: `${entry.version}-${entry.releasedAt ?? 'unreleased'}`,
+    expanded: index === 0,
+  }));
+}
+
+function markLatestVersionSeen(entries: ApiChangelogEntry[]) {
+  if (entries.length > 0) {
+    const latestVersion = entries[0].version;
+    document.cookie = `stack-last-seen-changelog-version=${encodeURIComponent(latestVersion)}; path=/; max-age=31536000`;
+  }
+}
+
 
 const formatVersion = (version: string) => {
   // Convert YYYY.MM.DD to YY.MM.DD format for display
@@ -50,41 +57,56 @@ const formatVersion = (version: string) => {
   return version;
 };
 
-const NoteBlockquote = ({ children }: { children?: React.ReactNode }) => {
-  return (
+// Markdown component overrides for changelog rendering
+const markdownComponents = {
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="text-sm font-semibold text-foreground mt-4 mb-2 first:mt-0">
+      {children}
+    </h3>
+  ),
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-muted-foreground leading-relaxed mb-2 last:mb-0">
+      {children}
+    </p>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="list-disc list-outside ml-4 space-y-1 text-muted-foreground">
+      {children}
+    </ul>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="leading-relaxed">
+      {children}
+    </li>
+  ),
+  code: ({ children }: { children?: React.ReactNode }) => (
+    <code className="px-1.5 py-0.5 rounded bg-muted text-foreground text-xs font-mono">
+      {children}
+    </code>
+  ),
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
     <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 my-3 rounded-md">
       <div className="flex items-start gap-2">
         <InfoIcon className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-        <div className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
+        <div className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed [&>p]:mb-0">
           {children}
         </div>
       </div>
     </div>
-  );
-};
-
-const ChangelogListItem = ({ children }: { children?: React.ReactNode }) => {
-  return (
-    <li className="text-muted-foreground leading-relaxed">
-      {children}
-    </li>
-  );
-};
-
-const ChangelogImage = ({ src, alt, title }: { src?: string, alt?: string, title?: string }) => {
-  // Only render if src is provided
-  if (!src) return null;
-
-  return (
-    <Image
-      src={src}
-      alt={alt || ''}
-      title={title}
-      width={800}
-      height={600}
-      className="rounded-lg border border-border max-w-full h-auto my-4"
-    />
-  );
+  ),
+  img: ({ src, alt, title }: { src?: string, alt?: string, title?: string }) => {
+    if (!src) return null;
+    return (
+      <Image
+        src={src}
+        alt={alt || ''}
+        title={title}
+        width={800}
+        height={600}
+        className="rounded-lg border border-border max-w-full h-auto my-4"
+      />
+    );
+  },
 };
 
 export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps) {
@@ -107,22 +129,13 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       const payload = await response.json();
       const entries: ApiChangelogEntry[] = payload.entries || [];
 
-      setChangelog(entries.map((entry, index) => ({
-        ...entry,
-        id: `${entry.version}-${entry.releasedAt ?? 'unreleased'}`,
-        expanded: index === 0, // Only expand the first (latest) entry
-      })));
-
-      // Update last seen version when changelog is fetched
-      if (entries.length > 0) {
-        const latestVersion = entries[0].version;
-        document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
-      }
+      setChangelog(toChangelogItems(entries));
+      markLatestVersionSeen(entries);
     } catch (cause) {
       if (signal?.aborted) {
         return;
       }
-      console.error('Failed to fetch changelog', cause);
+      captureError('changelog-fetching', cause);
       setError('Unable to load the changelog right now.');
       setChangelog([]);
     } finally {
@@ -139,31 +152,14 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
 
     hasFetchedRef.current = true;
 
-    // Check if initialData is explicitly provided (even if empty)
-    // undefined means "not provided", empty array means "provided but no entries"
     if (initialData !== undefined) {
-      // Use provided initial data
-      setChangelog(initialData.map((entry, index) => ({
-        ...entry,
-        id: `${entry.version}-${entry.releasedAt ?? 'unreleased'}`,
-        expanded: index === 0, // Only expand the first (latest) entry
-      })));
+      setChangelog(toChangelogItems(initialData));
       setLoading(false);
-
-      // Update last seen version when changelog is opened
-      if (initialData.length > 0) {
-        const latestVersion = initialData[0].version;
-        document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
-      }
+      markLatestVersionSeen(initialData);
     } else {
-      // Fallback to fetching if no initial data provided
       const abortController = new AbortController();
       runAsynchronously(fetchChangelog(abortController.signal));
-
-      // Cleanup: abort the fetch if component unmounts
-      return () => {
-        abortController.abort();
-      };
+      return () => abortController.abort();
     }
   }, [fetchChangelog, isActive, initialData]);
 
@@ -244,14 +240,10 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
 
             {entry.expanded && (
               <div className="px-4 pb-4">
-                <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
+                <div className="text-sm leading-relaxed space-y-3">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
-                    components={{
-                      blockquote: NoteBlockquote,
-                      li: ChangelogListItem,
-                      img: ChangelogImage,
-                    }}
+                    components={markdownComponents}
                   >
                     {entry.markdown}
                   </ReactMarkdown>
