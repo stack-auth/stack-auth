@@ -140,8 +140,9 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
   }
 }
 
-export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
-  const invoiceSubscriptionIds = invoice.lines.data
+export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: string, invoice: Stripe.Invoice) {
+  const invoiceLines = (invoice as { lines?: { data?: Stripe.InvoiceLineItem[] } }).lines?.data ?? [];
+  const invoiceSubscriptionIds = invoiceLines
     .map((line) => line.parent?.subscription_item_details?.subscription)
     .filter((subscription): subscription is string => !!subscription);
   if (invoiceSubscriptionIds.length === 0 || !invoice.id) {
@@ -169,12 +170,18 @@ export async function handleStripeInvoicePaid(stripe: Stripe, stripeAccountId: s
     update: {
       stripeSubscriptionId,
       isSubscriptionCreationInvoice,
+      status: invoice.status,
+      amountTotal: invoice.total,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
     create: {
       tenancyId: tenancy.id,
       stripeSubscriptionId,
       stripeInvoiceId: invoice.id,
       isSubscriptionCreationInvoice,
+      status: invoice.status,
+      amountTotal: invoice.total,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
 }

@@ -61,7 +61,10 @@ const entryJs = deindent`
       const result = await renderAll();
       return { status: "ok", data: result };
     } catch (e) {
-      return { status: "error", error: String(e) };
+      if (e instanceof Error) {
+        return { status: "error", error: { message: e.message, stack: e.stack, cause: e.cause } };
+      }
+      return { status: "error", error: { message: String(e), stack: undefined, cause: undefined } };
     }
   };
 `;
@@ -69,7 +72,7 @@ const entryJs = deindent`
 type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
 type ExecuteResult =
   | { status: "ok", data: unknown }
-  | { status: "error", error: string };
+  | { status: "error", error: unknown };
 
 async function bundleAndExecute<T>(
   files: Record<string, string> & { '/entry.js': string }
@@ -87,7 +90,7 @@ async function bundleAndExecute<T>(
   if (["development", "test"].includes(getNodeEnvironment())) {
     const executeResult = await executeJavascript(bundle.data, { nodeModules, engine: 'freestyle' }) as ExecuteResult;
     if (executeResult.status === "error") {
-      return Result.error(executeResult.error);
+      return Result.error(JSON.stringify(executeResult.error));
     }
     return Result.ok(executeResult.data as T);
   }
@@ -97,11 +100,23 @@ async function bundleAndExecute<T>(
   if (executeResult.status === "error") {
     const vercelResult = await executeJavascript(bundle.data, { nodeModules, engine: 'vercel-sandbox' }) as ExecuteResult;
     if (vercelResult.status === "error") {
-      return Result.error(executeResult.error);
+      captureError("email-rendering-freestyle-and-vercel-runtime-error", new StackAssertionError(
+        "Email rendering failed with both freestyle and vercel-sandbox engines",
+        {
+          freestyleError: executeResult.error,
+          vercelError: vercelResult.error,
+          innerCode: bundle.data,
+          innerOptions: [
+            { nodeModules, engine: 'freestyle' },
+            { nodeModules, engine: 'vercel-sandbox' },
+          ],
+        },
+      ));
+      return Result.error(JSON.stringify(vercelResult.error));
     }
     captureError("email-rendering-freestyle-runtime-error", new StackAssertionError(
       "Email rendering failed with freestyle but succeeded with vercel-sandbox",
-      { freestyleError: executeResult.error }
+      { freestyleError: executeResult.error, innerCode: bundle.data, innerOptions: { nodeModules, engine: 'freestyle' } }
     ));
     return Result.ok(vercelResult.data as T);
   }
