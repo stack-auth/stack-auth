@@ -66,6 +66,15 @@ function matchesDomain(testUrl: URL, pattern: string): boolean {
          portsMatch(baseUrl, testUrl);
 }
 
+/**
+ * Checks if URL is an accepted native app SDK redirect URL.
+ * These are safe because they can only be handled by native apps,
+ * not web browsers.
+ */
+function isAcceptedNativeAppUrl(url: URL): boolean {
+  return url.protocol === 'stack-auth:';
+}
+
 export function validateRedirectUrl(
   urlOrString: string | URL,
   tenancy: Tenancy,
@@ -75,6 +84,11 @@ export function validateRedirectUrl(
 
   // Check localhost permission
   if (tenancy.config.domains.allowLocalhost && isLocalhost(url)) {
+    return true;
+  }
+
+  // Check if accepted native app SDK redirect URL
+  if (isAcceptedNativeAppUrl(url)) {
     return true;
   }
 

@@ -20,26 +20,6 @@ Optional:
     Default: "cookie" (JS) or "memory" (other SDKs)
     Where to store authentication tokens.
     "cookie" is JS-only due to complexity. See _utilities.spec.md for details.
-    
-  urls: object
-    Override handler URLs. Defaults:
-      home: "/"
-      signIn: "/handler/sign-in"
-      signUp: "/handler/sign-up"
-      signOut: "/handler/sign-out"
-      afterSignIn: "/"
-      afterSignUp: "/"
-      afterSignOut: "/"
-      emailVerification: "/handler/email-verification"
-      passwordReset: "/handler/password-reset"
-      forgotPassword: "/handler/forgot-password"
-      magicLinkCallback: "/handler/magic-link-callback"
-      oauthCallback: "/handler/oauth-callback"
-      accountSettings: "/handler/account-settings"
-      onboarding: "/handler/onboarding"
-      teamInvitation: "/handler/team-invitation"
-      mfa: "/handler/mfa"
-      error: "/handler/error"
       
   oauthScopesOnSignIn: object
     Additional OAuth scopes to request during sign-in for each provider.
@@ -68,7 +48,10 @@ Use an OAuth library (e.g., oauth4webapi) to handle PKCE and state management.
 
 Arguments:
   provider: string - OAuth provider ID (e.g., "google", "github", "microsoft")
-  options.returnTo: string? - URL to return to after OAuth completes (default: urls.oauthCallback)
+  
+  options.presentationContextProvider: platform-specific [NATIVE-ONLY]
+    - iOS/macOS: ASWebAuthenticationPresentationContextProviding
+    - Android: Activity context for Custom Tabs
 
 Returns: 
   - Browser: never (opens browser and redirects)
@@ -77,102 +60,98 @@ Returns:
 Note: Additional provider scopes are configured via oauthScopesOnSignIn constructor option.
 
 Implementation:
-1. Generate PKCE code verifier (43+ character random string)
-2. Compute code challenge: base64url(sha256(code_verifier))
-3. Generate random state string for CSRF protection
-4. Store code verifier for later retrieval, keyed by state
+1. Construct full redirect URLs using a fixed callback scheme:
+   - Native apps: "stack-auth://success" and "stack-auth://error"
+   - Browser: Use window.location to construct full URLs
+
+2. Call getOAuthUrl() with the constructed URLs to get:
+   - Authorization URL
+   - State parameter
+   - PKCE code verifier
+   - Redirect URL
+
+3. Store code verifier for later retrieval, keyed by state
    - Browser: cookie "stack-oauth-outer-{state}" (maxAge: 1 hour)
    - Mobile/other: in-memory (passed directly to callback handler)
 
-5. Build authorization URL using getOAuthUrl():
-   GET /api/v1/auth/oauth/authorize/{provider}
-   Query params:
-     client_id: <projectId>
-     client_secret: <publishableClientKey>
-     redirect_uri: <full URL - see getOAuthUrl for construction>
-     scope: "legacy"
-     state: <generated state>
-     grant_type: "authorization_code"
-     code_challenge: <computed challenge>
-     code_challenge_method: "S256"
-     response_type: "code"
-     type: "authenticate"
-     error_redirect_url: <full error URL - same construction as redirect_uri>
-     token: <access_token if user already logged in> (optional)
-     provider_scope: <options.providerScope> (if provided)
-   
-   Response: HTTP redirect (302) to OAuth provider's authorization page
-
-6. Open the authorization URL:
+4. Open the authorization URL:
    - Browser: window.location.assign(authorization_url)
-   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stackauth-{projectId}"
+   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stack-auth"
    - Android: Custom Tabs with callback URL registered as deep link
    - Desktop: Open system browser with registered URL scheme for callback
 
-7. Handle callback:
+5. Handle callback:
    - Browser: Never returns; user lands on callback page which calls callOAuthCallback()
    - Native apps: ASWebAuthenticationSession/Custom Tabs returns callback URL directly;
-     call callOAuthCallback(url, codeVerifier, redirectUri) to exchange code for tokens
+     call callOAuthCallback(url, codeVerifier, redirectUrl) to exchange code for tokens
 
 Native App Implementation (iOS/macOS example):
 ```
-let callbackScheme = "stackauth-\(projectId)"
-let oauth = try await getOAuthUrl(provider: provider, callbackUrlScheme: callbackScheme)
+let callbackScheme = "stack-auth"
+let oauth = try await getOAuthUrl(
+    provider: provider,
+    redirectUrl: callbackScheme + "://success",
+    errorRedirectUrl: callbackScheme + "://error"
+)
 
 let session = ASWebAuthenticationSession(
     url: oauth.url,
     callbackURLScheme: callbackScheme
 ) { callbackUrl, error in
     if let callbackUrl = callbackUrl {
-        try await callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUri: oauth.redirectUri)
+        try await callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUrl: oauth.redirectUrl)
     }
 }
+session.prefersEphemeralWebBrowserSession = false
 session.start()
 ```
 
-The flow continues when the user is redirected back to urls.oauthCallback.
+The flow continues when the user is redirected back to the callback URL.
 Call callOAuthCallback() on the callback page/handler to complete the flow.
 
-Does not error (redirects before any error can occur).
+Error handling:
+  - User cancellation: StackAuthError(code: "oauth_cancelled", message: "User cancelled OAuth")
+  - Other errors: OAuthError(code: "oauth_error", message: <platform error description>)
 
 
-## getOAuthUrl(provider, options?)
+## getOAuthUrl(provider, redirectUrl, errorRedirectUrl, options?)
 
 Returns the OAuth authorization URL without performing the redirect.
 Useful for non-browser environments or custom OAuth handling.
 
 Arguments:
   provider: string - OAuth provider ID (e.g., "google", "github", "microsoft")
-  options.redirectUrl: string? - custom callback URL (default: urls.oauthCallback)
+  redirectUrl: string - Full URL where the user will be redirected after OAuth (must contain "://")
+  errorRedirectUrl: string - Full URL where the user will be redirected on error (must contain "://")
   options.state: string? - custom state parameter (default: auto-generated)
   options.codeVerifier: string? - custom PKCE verifier (default: auto-generated)
-  options.callbackUrlScheme: string? - custom URL scheme for native app callbacks
-    Default: "stackauth-{projectId}" for native apps
-    Used to construct full redirect URIs from relative paths (e.g., "/handler/oauth-callback"
-    becomes "stackauth-myproject://handler/oauth-callback")
-    Only needed for native apps (iOS, macOS, Android). Browser SDKs use window.location.
 
-Returns: { url: string, state: string, codeVerifier: string, redirectUri: string }
+Returns: { url: string, state: string, codeVerifier: string, redirectUrl: string }
   url: The full authorization URL to open in a browser
   state: The state parameter (for CSRF verification)
   codeVerifier: The PKCE code verifier (store for token exchange)
-  redirectUri: The full redirect URI used (needed for token exchange - must match exactly)
+  redirectUrl: The redirect URL (same as input, needed for token exchange - must match exactly)
 
 Implementation:
-1. Generate or use provided state and codeVerifier
-2. Compute code challenge: base64url(sha256(codeVerifier))
-3. Construct full redirect URI:
-   - If redirectUrl is already a full URL (contains "://"): use as-is
-   - Otherwise: prepend callbackUrlScheme (e.g., "stackauth-{projectId}://") to the path
+1. Validate that redirectUrl and errorRedirectUrl are full URLs (contain "://")
+   - If not, throw error with code "invalid_redirect_url" or "invalid_error_redirect_url"
+2. Generate or use provided state and codeVerifier
+3. Compute code challenge: base64url(sha256(codeVerifier))
 4. Build authorization URL (same as signInWithOAuth step 5)
-5. Return { url, state, codeVerifier, redirectUri } without redirecting
+5. Return { url, state, codeVerifier, redirectUrl } without redirecting
 
 The caller is responsible for:
+- Constructing full URLs before calling (e.g., "stackauth-myapp://oauth-callback")
 - Opening the URL in a browser/webview
-- Storing the state, codeVerifier, and redirectUri
+- Storing the state, codeVerifier, and redirectUrl
 - Calling callOAuthCallback() with the callback URL and these values
 
-Does not error.
+Errors:
+  StackAuthError(invalid_redirect_url)
+    message: "redirectUrl must be a full URL (e.g., 'stackauth-myapp://oauth-callback')"
+    
+  StackAuthError(invalid_error_redirect_url)
+    message: "errorRedirectUrl must be a full URL (e.g., 'stackauth-myapp://error')"
 
 
 ## signInWithCredential(options)
@@ -437,11 +416,11 @@ For cross-origin authenticated requests where cookies can't be sent.
 Does not error.
 
 
-## sendForgotPasswordEmail(email, options?)
+## sendForgotPasswordEmail(email, callbackUrl)
 
 Arguments:
-  email: string
-  options.callbackUrl: string? - URL for password reset link (default: urls.passwordReset)
+  email: string - The user's email address
+  callbackUrl: string - URL where the user will be redirected to reset their password
 
 Returns: void
 
@@ -497,11 +476,11 @@ Errors:
     message: "The password does not meet the project's requirements."
 
 
-## sendMagicLinkEmail(email, options?)
+## sendMagicLinkEmail(email, callbackUrl)
 
 Arguments:
-  email: string
-  options.callbackUrl: string? - (default: urls.magicLinkCallback)
+  email: string - The user's email address
+  callbackUrl: string - URL where the user will be redirected after clicking the magic link
 
 Returns: { nonce: string }
 
@@ -709,7 +688,7 @@ Errors:
 ## callOAuthCallback()  [BROWSER-LIKE]
 
 Completes the OAuth flow after redirect from OAuth provider.
-Call this on the OAuth callback page/handler (urls.oauthCallback).
+Call this on the OAuth callback page/handler.
 
 Returns: bool
   Returns true if OAuth callback was handled and user signed in.
@@ -721,7 +700,7 @@ Implementation:
 2. Check URL for OAuth callback params: "code" and "state"
    If missing: return false (not an OAuth callback)
 
-3. Retrieve code verifier using state key from cookie "stack-oauth-outer-{state}"
+3. Retrieve code verifier and redirect URL using state key from cookie "stack-oauth-outer-{state}"
    If not found: return false (callback not for us, or already consumed)
    Delete cookie after retrieving.
 
@@ -734,7 +713,7 @@ Implementation:
    Grant type: authorization_code
    Parameters:
      - code: <authorization code from URL>
-     - redirect_uri: <urls.oauthCallback>
+     - redirect_url: <stored redirect URL from cookie>
      - code_verifier: <PKCE verifier from cookie>
      - client_id: <projectId>
      - client_secret: <publishableClientKey>
@@ -751,14 +730,14 @@ Implementation:
 7. Store tokens { access_token, refresh_token }
 8. Redirect to:
    - after_callback_redirect_url (if present in response), or
-   - afterSignUp (if is_new_user), or
-   - afterSignIn
+   - afterSignUp URL (if is_new_user), or
+   - afterSignIn URL
 9. Return true
 
 Does not return errors - throws on OAuth errors.
 
 
-## callOAuthCallback(url, codeVerifier, redirectUri)  [NON-BROWSER]
+## callOAuthCallback(url, codeVerifier, redirectUrl)  [NON-BROWSER]
 
 Non-browser variant for native apps (iOS, macOS, Android).
 Called after receiving the callback URL from ASWebAuthenticationSession or similar.
@@ -766,37 +745,63 @@ Called after receiving the callback URL from ASWebAuthenticationSession or simil
 Arguments:
   url: URL - the callback URL received from the OAuth provider
   codeVerifier: string - the PKCE code verifier from getOAuthUrl()
-  redirectUri: string - the redirect URI from getOAuthUrl() (must match exactly)
+  redirectUrl: string - the redirect URL from getOAuthUrl() (must match exactly)
 
 Returns: void
 
 Implementation:
 1. Parse the callback URL to extract "code" and "error" query parameters
 
-2. If "error" present: throw OAuthError with error code and description
+2. If "error" present: throw OAuthError with error code and description from URL
 
 3. If "code" missing: throw OAuthError("missing_code", "No authorization code in callback URL")
 
 4. Exchange authorization code for tokens:
    POST /api/v1/auth/oauth/token
    Content-Type: application/x-www-form-urlencoded
+   Headers:
+     - x-stack-project-id: <projectId>
    Body:
      - grant_type=authorization_code
      - code=<authorization code from URL>
-     - redirect_uri=<redirectUri argument - must match getOAuthUrl exactly>
+     - redirect_uri=<redirectUrl argument - must match getOAuthUrl exactly>
      - code_verifier=<codeVerifier argument>
      - client_id=<projectId>
      - client_secret=<publishableClientKey>
 
    Response on success:
-     { access_token: string, refresh_token: string }
+     { access_token: string, refresh_token?: string }
 
 5. Store tokens { access_token, refresh_token }
+   Note: refresh_token may be optional depending on server configuration
 
-IMPORTANT: The redirect_uri must exactly match the one used in getOAuthUrl().
-This is why getOAuthUrl() returns redirectUri - store it and pass it here.
+IMPORTANT: The redirect_url must exactly match the one used in getOAuthUrl().
+This is why getOAuthUrl() returns redirectUrl - store it and pass it here.
 
-Throws OAuthError on failure.
+Errors:
+  OAuthError(<error from URL>)
+    message: <error_description from URL> or "OAuth error"
+    When: OAuth provider returned an error in the callback URL
+    
+  OAuthError(missing_code)
+    message: "No authorization code in callback URL"
+    When: No "code" query parameter in callback URL
+    
+  OAuthError(invalid_response)
+    message: "Invalid HTTP response"
+    When: Token exchange response is not a valid HTTP response
+    
+  OAuthError(<error from response>)
+    message: <error_description from response> or "Token exchange failed"
+    When: Token exchange endpoint returns an error
+    
+  OAuthError(token_exchange_failed)
+    message: "HTTP <status_code>"
+    When: Token exchange returns non-200 status without error details
+    
+  OAuthError(parse_error)
+    message: "Failed to parse token response"
+    When: Token exchange response is not valid JSON or missing access_token
 
 
 ## promptCliLogin(options)  [CLI-ONLY]

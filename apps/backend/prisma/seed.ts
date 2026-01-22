@@ -91,8 +91,6 @@ export async function seed() {
           ...Object.values(internalTenancy.config.domains.trustedDomains)
             .filter((d) => d.baseUrl !== dashboardDomain && d.baseUrl)
             .map((d) => ({ domain: d.baseUrl || throwErr('Domain base URL is required'), handler_path: d.handlerPath })),
-          // Native app custom URL scheme (for Swift/iOS/macOS SDK development)
-          { domain: 'stackauth-internal://handler', handler_path: '/oauth-callback' },
         ],
       },
     },

@@ -1238,6 +1238,8 @@ class MacOSPresentationContextProvider: NSObject, ASWebAuthenticationPresentatio
 struct OAuthView: View {
     @Bindable var viewModel: SDKTestViewModel
     @State private var provider = "google"
+    @State private var redirectUrl = "stack-auth://success"
+    @State private var errorRedirectUrl = "stack-auth://error"
     @State private var isSigningIn = false
     private let presentationProvider = MacOSPresentationContextProvider()
     
@@ -1271,10 +1273,6 @@ struct OAuthView: View {
                 Button("getOAuthUrl(provider: \"\(provider)\")") {
                     Task { await getOAuthUrl() }
                 }
-                
-                Text("Returns URL, state, and codeVerifier for manual OAuth handling")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -1312,18 +1310,18 @@ struct OAuthView: View {
     }
     
     func getOAuthUrl() async {
-        let params = "provider: \"\(provider)\""
+        let params = "provider: \"\(provider)\"\nredirectUrl: \"\(redirectUrl)\"\nerrorRedirectUrl: \"\(errorRedirectUrl)\""
         viewModel.logInfo("getOAuthUrl()", message: "Calling...", details: params)
         
         do {
-            let result = try await viewModel.clientApp.getOAuthUrl(provider: provider)
+            let result = try await viewModel.clientApp.getOAuthUrl(provider: provider, redirectUrl: redirectUrl, errorRedirectUrl: errorRedirectUrl)
             viewModel.logCall(
-                "getOAuthUrl(provider:)",
+                "getOAuthUrl(provider:redirectUrl:errorRedirectUrl:)",
                 params: params,
-                result: "OAuthUrlResult {\n  url: \"\(result.url)\"\n  state: \"\(result.state)\"\n  codeVerifier: \"\(result.codeVerifier)\"\n}"
+                result: "OAuthUrlResult {\n  url: \"\(result.url)\"\n  state: \"\(result.state)\"\n  codeVerifier: \"\(result.codeVerifier)\"\n  redirectUrl: \"\(result.redirectUrl)\"\n}"
             )
         } catch {
-            viewModel.logCall("getOAuthUrl(provider:)", params: params, error: error)
+            viewModel.logCall("getOAuthUrl(provider:redirectUrl:errorRedirectUrl:)", params: params, error: error)
         }
     }
 }

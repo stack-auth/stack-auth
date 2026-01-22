@@ -7,71 +7,12 @@ import Crypto
 import AuthenticationServices
 #endif
 
-/// Handler URLs configuration
-public struct HandlerUrls: Sendable {
-    public var home: String
-    public var signIn: String
-    public var signUp: String
-    public var signOut: String
-    public var afterSignIn: String
-    public var afterSignUp: String
-    public var afterSignOut: String
-    public var emailVerification: String
-    public var passwordReset: String
-    public var forgotPassword: String
-    public var magicLinkCallback: String
-    public var oauthCallback: String
-    public var accountSettings: String
-    public var onboarding: String
-    public var teamInvitation: String
-    public var mfa: String
-    public var error: String
-    
-    public init(
-        home: String = "/",
-        signIn: String = "/handler/sign-in",
-        signUp: String = "/handler/sign-up",
-        signOut: String = "/handler/sign-out",
-        afterSignIn: String = "/",
-        afterSignUp: String = "/",
-        afterSignOut: String = "/",
-        emailVerification: String = "/handler/email-verification",
-        passwordReset: String = "/handler/password-reset",
-        forgotPassword: String = "/handler/forgot-password",
-        magicLinkCallback: String = "/handler/magic-link-callback",
-        oauthCallback: String = "/handler/oauth-callback",
-        accountSettings: String = "/handler/account-settings",
-        onboarding: String = "/handler/onboarding",
-        teamInvitation: String = "/handler/team-invitation",
-        mfa: String = "/handler/mfa",
-        error: String = "/handler/error"
-    ) {
-        self.home = home
-        self.signIn = signIn
-        self.signUp = signUp
-        self.signOut = signOut
-        self.afterSignIn = afterSignIn
-        self.afterSignUp = afterSignUp
-        self.afterSignOut = afterSignOut
-        self.emailVerification = emailVerification
-        self.passwordReset = passwordReset
-        self.forgotPassword = forgotPassword
-        self.magicLinkCallback = magicLinkCallback
-        self.oauthCallback = oauthCallback
-        self.accountSettings = accountSettings
-        self.onboarding = onboarding
-        self.teamInvitation = teamInvitation
-        self.mfa = mfa
-        self.error = error
-    }
-}
-
 /// OAuth URL result
 public struct OAuthUrlResult: Sendable {
     public let url: URL
     public let state: String
     public let codeVerifier: String
-    public let redirectUri: String
+    public let redirectUrl: String
 }
 
 /// Get user options
@@ -82,18 +23,9 @@ public enum GetUserOr: Sendable {
     case anonymous
 }
 
-private func constructRedirectUrl(redirectUrl: String, callbackUrlScheme: String) -> String {
-    if redirectUrl.contains("://") {
-        return redirectUrl
-    }
-    let path = redirectUrl.hasPrefix("/") ? String(redirectUrl.dropFirst()) : redirectUrl
-    return "\(callbackUrlScheme)://\(path)"
-}
-
 /// The main Stack Auth client
 public actor StackClientApp {
     public let projectId: String
-    public let urls: HandlerUrls
     
     let client: APIClient
     private let baseUrl: String
@@ -104,12 +36,10 @@ public actor StackClientApp {
         publishableClientKey: String,
         baseUrl: String = "https://api.stack-auth.com",
         tokenStore: TokenStore = .keychain,
-        urls: HandlerUrls = HandlerUrls(),
         noAutomaticPrefetch: Bool = false
     ) {
         self.projectId = projectId
         self.baseUrl = baseUrl
-        self.urls = urls
         
         let store: any TokenStoreProtocol
         switch tokenStore {
@@ -145,12 +75,10 @@ public actor StackClientApp {
         publishableClientKey: String,
         baseUrl: String = "https://api.stack-auth.com",
         tokenStore: TokenStore = .memory,
-        urls: HandlerUrls = HandlerUrls(),
         noAutomaticPrefetch: Bool = false
     ) {
         self.projectId = projectId
         self.baseUrl = baseUrl
-        self.urls = urls
         
         let store: any TokenStoreProtocol
         switch tokenStore {
@@ -182,28 +110,33 @@ public actor StackClientApp {
     
     // MARK: - OAuth
     
-    /// Get the OAuth authorization URL without redirecting
+    /// Get the OAuth authorization URL without redirecting.
+    /// Both redirectUrl and errorRedirectUrl must be full URLs (containing "://").
     public func getOAuthUrl(
         provider: String,
-        redirectUrl: String? = nil,
+        redirectUrl: String,
+        errorRedirectUrl: String,
         state: String? = nil,
-        codeVerifier: String? = nil,
-        callbackUrlScheme: String? = nil
+        codeVerifier: String? = nil
     ) async throws -> OAuthUrlResult {
+        // Validate that URLs are full URLs
+        guard redirectUrl.contains("://") else {
+            throw StackAuthError(code: "invalid_redirect_url", message: "redirectUrl must be a full URL (e.g., 'stackauth-myapp://oauth-callback')")
+        }
+        guard errorRedirectUrl.contains("://") else {
+            throw StackAuthError(code: "invalid_error_redirect_url", message: "errorRedirectUrl must be a full URL (e.g., 'stackauth-myapp://error')")
+        }
+        
         let actualState = state ?? generateRandomString(length: 32)
         let actualCodeVerifier = codeVerifier ?? generateCodeVerifier()
         let codeChallenge = generateCodeChallenge(from: actualCodeVerifier)
-        
-        let callbackUrl = redirectUrl ?? urls.oauthCallback
-        let scheme = callbackUrlScheme ?? "stackauth-\(projectId)"
-        let redirectUri = constructRedirectUrl(redirectUrl: callbackUrl, callbackUrlScheme: scheme)
         
         var components = URLComponents(string: "\(baseUrl)/api/v1/auth/oauth/authorize/\(provider.lowercased())")!
         let publishableKey = await client.publishableClientKey
         components.queryItems = [
             URLQueryItem(name: "client_id", value: projectId),
             URLQueryItem(name: "client_secret", value: publishableKey),
-            URLQueryItem(name: "redirect_uri", value: redirectUri),
+            URLQueryItem(name: "redirect_uri", value: redirectUrl),
             URLQueryItem(name: "scope", value: "legacy"),
             URLQueryItem(name: "state", value: actualState),
             URLQueryItem(name: "grant_type", value: "authorization_code"),
@@ -211,10 +144,14 @@ public actor StackClientApp {
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "type", value: "authenticate"),
-            URLQueryItem(name: "error_redirect_url", value: constructRedirectUrl(redirectUrl: urls.error, callbackUrlScheme: scheme))
+            URLQueryItem(name: "error_redirect_uri", value: errorRedirectUrl)
         ]
         
         // Add access token if user is already logged in
+        // TODO: This token may be expired if the user has been logged in for a while.
+        // We should implement token freshness checking similar to JS SDK's getOrFetchLikelyValidTokens()
+        // to ensure the token will be valid for the duration of the OAuth flow (~45+ seconds).
+        // See: packages/stack-shared/src/interface/client-interface.ts:1006-1011
         if let accessToken = await client.getAccessToken() {
             components.queryItems?.append(URLQueryItem(name: "token", value: accessToken))
         }
@@ -223,7 +160,7 @@ public actor StackClientApp {
             throw StackAuthError(code: "invalid_url", message: "Failed to construct OAuth URL")
         }
         
-        return OAuthUrlResult(url: url, state: actualState, codeVerifier: actualCodeVerifier, redirectUri: redirectUri)
+        return OAuthUrlResult(url: url, state: actualState, codeVerifier: actualCodeVerifier, redirectUrl: redirectUrl)
     }
     
     #if canImport(AuthenticationServices) && !os(watchOS)
@@ -233,8 +170,12 @@ public actor StackClientApp {
         provider: String,
         presentationContextProvider: ASWebAuthenticationPresentationContextProviding? = nil
     ) async throws {
-        let callbackScheme = "stackauth-\(projectId)"
-        let oauth = try await getOAuthUrl(provider: provider,callbackUrlScheme: callbackScheme)
+        let callbackScheme = "stack-auth"
+        let oauth = try await getOAuthUrl(
+            provider: provider,
+            redirectUrl: callbackScheme + "://success",
+            errorRedirectUrl: callbackScheme + "://error"
+        )
         
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let session = ASWebAuthenticationSession(
@@ -257,7 +198,7 @@ public actor StackClientApp {
                 
                 Task {
                     do {
-                        try await self.callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUri: oauth.redirectUri)
+                        try await self.callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUrl: oauth.redirectUrl)
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -282,8 +223,8 @@ public actor StackClientApp {
     /// - Parameters:
     ///   - url: The callback URL received from the OAuth provider
     ///   - codeVerifier: The PKCE code verifier used during authorization
-    ///   - redirectUri: The redirect URI used during authorization (must match exactly for token exchange)
-    public func callOAuthCallback(url: URL, codeVerifier: String, redirectUri: String) async throws {
+    ///   - redirectUrl: The redirect URL used during authorization (must match exactly for token exchange)
+    public func callOAuthCallback(url: URL, codeVerifier: String, redirectUrl: String) async throws {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         
         guard let code = components?.queryItems?.first(where: { $0.name == "code" })?.value else {
@@ -305,7 +246,7 @@ public actor StackClientApp {
         let body = [
             "grant_type=authorization_code",
             "code=\(formURLEncode(code))",
-            "redirect_uri=\(formURLEncode(redirectUri))",
+            "redirect_uri=\(formURLEncode(redirectUrl))",
             "code_verifier=\(formURLEncode(codeVerifier))",
             "client_id=\(formURLEncode(projectId))",
             "client_secret=\(formURLEncode(publishableKey))"
@@ -382,13 +323,11 @@ public actor StackClientApp {
     
     // MARK: - Magic Link
     
-    public func sendMagicLinkEmail(email: String, callbackUrl: String? = nil) async throws -> String {
-        var body: [String: Any] = ["email": email]
-        if let callbackUrl = callbackUrl {
-            body["callback_url"] = callbackUrl
-        } else {
-            body["callback_url"] = urls.magicLinkCallback
-        }
+    public func sendMagicLinkEmail(email: String, callbackUrl: String) async throws -> String {
+        let body: [String: Any] = [
+            "email": email,
+            "callback_url": callbackUrl
+        ]
         
         let (data, _) = try await client.sendRequest(
             path: "/auth/otp/send-sign-in-code",
@@ -444,9 +383,11 @@ public actor StackClientApp {
     
     // MARK: - Password Reset
     
-    public func sendForgotPasswordEmail(email: String, callbackUrl: String? = nil) async throws {
-        var body: [String: Any] = ["email": email]
-        body["callback_url"] = callbackUrl ?? urls.passwordReset
+    public func sendForgotPasswordEmail(email: String, callbackUrl: String) async throws {
+        let body: [String: Any] = [
+            "email": email,
+            "callback_url": callbackUrl
+        ]
         
         _ = try await client.sendRequest(
             path: "/auth/password/send-reset-code",

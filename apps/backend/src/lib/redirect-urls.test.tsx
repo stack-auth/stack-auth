@@ -474,56 +474,34 @@ describe('validateRedirectUrl', () => {
     });
   });
 
-  describe('custom URL schemes (native app support)', () => {
-    it('should validate custom URL schemes for native apps', () => {
+  describe('native app SDK URL (stack-auth:// scheme)', () => {
+    it('should accept stack-auth:// URLs without requiring trusted domain config', () => {
       const tenancy = createMockTenancy({
         domains: {
           allowLocalhost: false,
-          trustedDomains: {
-            '1': { baseUrl: 'stackauth-internal://handler', handlerPath: '/oauth-callback' },
-          },
+          trustedDomains: {},
         },
       });
 
-      expect(validateRedirectUrl('stackauth-internal://handler/oauth-callback', tenancy)).toBe(true);
-      expect(validateRedirectUrl('stackauth-internal://handler/any-path', tenancy)).toBe(true);
-      expect(validateRedirectUrl('stackauth-internal://handler', tenancy)).toBe(true);
-
-      expect(validateRedirectUrl('stackauth-other://handler/oauth-callback', tenancy)).toBe(false);
-      expect(validateRedirectUrl('https://handler/oauth-callback', tenancy)).toBe(false);
+      // stack-auth:// is the default scheme used by the Swift SDK
+      expect(validateRedirectUrl('stack-auth://success', tenancy)).toBe(true);
+      expect(validateRedirectUrl('stack-auth://error', tenancy)).toBe(true);
+      expect(validateRedirectUrl('stack-auth://oauth-callback', tenancy)).toBe(true);
+      expect(validateRedirectUrl('stack-auth://any/path/here', tenancy)).toBe(true);
     });
 
-    it('should validate multiple custom URL schemes', () => {
+    it('should not accept other custom schemes without trusted domain config', () => {
       const tenancy = createMockTenancy({
         domains: {
           allowLocalhost: false,
-          trustedDomains: {
-            '1': { baseUrl: 'stackauth-myapp://callback', handlerPath: '/handler' },
-            '2': { baseUrl: 'https://example.com', handlerPath: '/handler' },
-          },
+          trustedDomains: {},
         },
       });
 
-      expect(validateRedirectUrl('stackauth-myapp://callback/handler', tenancy)).toBe(true);
-      expect(validateRedirectUrl('stackauth-myapp://callback/any-path', tenancy)).toBe(true);
-
-      expect(validateRedirectUrl('https://example.com/handler', tenancy)).toBe(true);
-
-      expect(validateRedirectUrl('stackauth-otherapp://callback/handler', tenancy)).toBe(false);
-    });
-
-    it('should not allow arbitrary custom schemes', () => {
-      const tenancy = createMockTenancy({
-        domains: {
-          allowLocalhost: false,
-          trustedDomains: {
-            '1': { baseUrl: 'stackauth-internal://handler', handlerPath: '/oauth-callback' },
-          },
-        },
-      });
-
-      expect(validateRedirectUrl('myapp://handler/oauth-callback', tenancy)).toBe(false);
-      expect(validateRedirectUrl('customscheme://handler/oauth-callback', tenancy)).toBe(false);
+      // Other custom schemes require explicit trusted domain configuration
+      expect(validateRedirectUrl('myapp://callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stackauth-myapp://callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stack-auth-custom://callback', tenancy)).toBe(false);
     });
   });
 });

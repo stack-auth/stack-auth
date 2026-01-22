@@ -88,22 +88,28 @@ Two approaches for OAuth authentication:
 
 ```swift
 // Opens auth session, handles callback automatically
+// Uses fixed callback scheme: stack-auth://
 try await stack.signInWithOAuth(provider: "google")
 ```
 
 **2. Manual URL handling** - For custom implementations:
 
 ```swift
-// Get the OAuth URL
-let oauth = try await stack.getOAuthUrl(provider: "google")
+// Get the OAuth URL (must provide full URLs with scheme)
+let oauth = try await stack.getOAuthUrl(
+    provider: "google",
+    redirectUrl: "stackauth-myapp://oauth-callback",
+    errorRedirectUrl: "stackauth-myapp://error"
+)
 
 // Open oauth.url in your own browser/webview
-// Store oauth.state and oauth.codeVerifier
+// Store oauth.state, oauth.codeVerifier, and oauth.redirectUrl
 
 // When callback received:
 try await stack.callOAuthCallback(
     url: callbackUrl,
-    codeVerifier: oauth.codeVerifier
+    codeVerifier: oauth.codeVerifier,
+    redirectUrl: oauth.redirectUrl
 )
 ```
 

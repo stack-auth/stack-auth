@@ -55,10 +55,9 @@ export const emailConfigSchema = yupObject({
 export const emailConfigWithoutPasswordSchema = emailConfigSchema.pick(['type', 'host', 'port', 'username', 'sender_name', 'sender_email']);
 
 const domainSchema = yupObject({
-  // Allow http://, https://, or stackauth-*:// (for native app custom URL schemes)
   domain: schemaFields.urlSchema.defined()
-    .matches(/^(https?:\/\/|stackauth-[\w-]+:\/\/)/, 'URL must start with http://, https://, or stackauth-{projectId}://')
-    .meta({ openapiField: { description: 'URL. Must start with http://, https://, or stackauth-{projectId}:// for native apps', exampleValue: 'https://example.com' } }),
+    .matches(/^https?:\/\//, 'URL must start with http:// or https://')
+    .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } }),
   handler_path: schemaFields.handlerPathSchema.defined(),
 });
 

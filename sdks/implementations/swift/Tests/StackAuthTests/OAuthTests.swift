@@ -5,13 +5,18 @@ import Foundation
 @Suite("OAuth Tests")
 struct OAuthTests {
     
+    // Default test URLs (must be full URLs with scheme)
+    // Uses the same scheme as signInWithOAuth: stack-auth://
+    let testRedirectUrl = "stack-auth://success"
+    let testErrorRedirectUrl = "stack-auth://error"
+    
     // MARK: - OAuth URL Generation Tests
     
     @Test("Should generate OAuth URL for Google")
     func generateOAuthUrlForGoogle() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "google")
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         #expect(result.url.absoluteString.contains("oauth/authorize/google"))
         #expect(!result.state.isEmpty)
@@ -22,7 +27,7 @@ struct OAuthTests {
     func generateOAuthUrlForGitHub() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "github")
+        let result = try await app.getOAuthUrl(provider: "github", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         #expect(result.url.absoluteString.contains("oauth/authorize/github"))
         #expect(!result.state.isEmpty)
@@ -33,7 +38,7 @@ struct OAuthTests {
     func generateOAuthUrlForMicrosoft() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "microsoft")
+        let result = try await app.getOAuthUrl(provider: "microsoft", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         #expect(result.url.absoluteString.contains("oauth/authorize/microsoft"))
         #expect(!result.state.isEmpty)
@@ -44,7 +49,7 @@ struct OAuthTests {
     func oauthUrlIncludesProjectId() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "google")
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         #expect(result.url.absoluteString.contains("client_id=\(testProjectId)"))
     }
@@ -53,7 +58,7 @@ struct OAuthTests {
     func oauthUrlIncludesState() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "google")
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         // URL should contain the state parameter
         #expect(result.url.absoluteString.contains("state="))
@@ -63,7 +68,7 @@ struct OAuthTests {
     func generatesPkceCodeVerifier() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "google")
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         // Code verifier should be long enough for security (43-128 chars for PKCE)
         #expect(result.codeVerifier.count >= 43)
@@ -73,8 +78,8 @@ struct OAuthTests {
     func generatesUniqueState() async throws {
         let app = TestConfig.createClientApp()
         
-        let result1 = try await app.getOAuthUrl(provider: "google")
-        let result2 = try await app.getOAuthUrl(provider: "google")
+        let result1 = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
+        let result2 = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         #expect(result1.state != result2.state)
     }
@@ -83,8 +88,8 @@ struct OAuthTests {
     func generatesUniqueCodeVerifier() async throws {
         let app = TestConfig.createClientApp()
         
-        let result1 = try await app.getOAuthUrl(provider: "google")
-        let result2 = try await app.getOAuthUrl(provider: "google")
+        let result1 = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
+        let result2 = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         #expect(result1.codeVerifier != result2.codeVerifier)
     }
@@ -93,9 +98,9 @@ struct OAuthTests {
     func caseInsensitiveProvider() async throws {
         let app = TestConfig.createClientApp()
         
-        let result1 = try await app.getOAuthUrl(provider: "Google")
-        let result2 = try await app.getOAuthUrl(provider: "GOOGLE")
-        let result3 = try await app.getOAuthUrl(provider: "google")
+        let result1 = try await app.getOAuthUrl(provider: "Google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
+        let result2 = try await app.getOAuthUrl(provider: "GOOGLE", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
+        let result3 = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         // All should generate valid URLs with google provider
         #expect(result1.url.absoluteString.contains("oauth/authorize/google"))
@@ -107,58 +112,69 @@ struct OAuthTests {
     func includesCodeChallenge() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "google")
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
         // URL should contain PKCE code challenge
         #expect(result.url.absoluteString.contains("code_challenge="))
         #expect(result.url.absoluteString.contains("code_challenge_method=S256"))
     }
     
-    // MARK: - OAuth URL with Custom Options
+    // MARK: - URL Validation Tests
     
-    @Test("Should include custom redirect URL")
-    func customRedirectUrl() async throws {
+    @Test("Should throw error for invalid redirectUrl (no scheme)")
+    func throwsForInvalidRedirectUrl() async throws {
         let app = TestConfig.createClientApp()
-        let customRedirect = "https://myapp.com/oauth/callback"
         
-        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: customRedirect)
-        
-        // URL should contain the encoded redirect URL
-        let encodedRedirect = customRedirect.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? customRedirect
-        #expect(result.url.absoluteString.contains(encodedRedirect) || result.url.absoluteString.contains("redirect_uri="))
+        do {
+            _ = try await app.getOAuthUrl(provider: "google", redirectUrl: "/oauth-callback", errorRedirectUrl: testErrorRedirectUrl)
+            #expect(Bool(false), "Should have thrown an error")
+        } catch let error as StackAuthError {
+            #expect(error.code == "invalid_redirect_url")
+        }
     }
     
-    // MARK: - Redirect URI Consistency Tests
-    // These tests verify the redirect URI is constructed correctly and returned
-    // in OAuthUrlResult so token exchange uses the same value as authorization.
-    
-    @Test("Should return redirect URI for token exchange")
-    func returnsRedirectUriForTokenExchange() async throws {
+    @Test("Should throw error for invalid errorRedirectUrl (no scheme)")
+    func throwsForInvalidErrorRedirectUrl() async throws {
         let app = TestConfig.createClientApp()
         
-        let result = try await app.getOAuthUrl(provider: "google")
-        
-        // redirectUri must be returned so callOAuthCallback can use it
-        #expect(!result.redirectUri.isEmpty)
-        #expect(result.redirectUri.hasPrefix("stackauth-\(testProjectId)://"))
+        do {
+            _ = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: "/error")
+            #expect(Bool(false), "Should have thrown an error")
+        } catch let error as StackAuthError {
+            #expect(error.code == "invalid_error_redirect_url")
+        }
     }
     
-    @Test("Should preserve full URL when provided")
-    func preservesFullUrl() async throws {
+    // MARK: - Redirect URL Tests
+    
+    @Test("Should return the exact redirect URL provided")
+    func returnsExactRedirectUrl() async throws {
         let app = TestConfig.createClientApp()
-        let fullUrl = "https://myapp.com/callback"
         
-        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: fullUrl)
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
         
-        #expect(result.redirectUri == fullUrl)
+        #expect(result.redirectUrl == testRedirectUrl)
     }
     
-    @Test("Should use custom callback scheme when provided")
-    func usesCustomCallbackScheme() async throws {
+    @Test("Should accept https URLs")
+    func acceptsHttpsUrls() async throws {
         let app = TestConfig.createClientApp()
+        let httpsUrl = "https://myapp.com/callback"
+        let httpsErrorUrl = "https://myapp.com/error"
         
-        let result = try await app.getOAuthUrl(provider: "google", callbackUrlScheme: "myapp")
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: httpsUrl, errorRedirectUrl: httpsErrorUrl)
         
-        #expect(result.redirectUri.hasPrefix("myapp://"))
+        #expect(result.redirectUrl == httpsUrl)
+    }
+    
+    @Test("Should accept custom scheme URLs")
+    func acceptsCustomSchemeUrls() async throws {
+        let app = TestConfig.createClientApp()
+        let customUrl = "myapp://oauth/callback"
+        let customErrorUrl = "myapp://error"
+        
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: customUrl, errorRedirectUrl: customErrorUrl)
+        
+        #expect(result.redirectUrl == customUrl)
     }
 }
