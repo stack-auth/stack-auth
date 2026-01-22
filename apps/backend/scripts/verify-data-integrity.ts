@@ -1,7 +1,7 @@
 import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID, type Tenancy } from "@/lib/tenancies";
 import { getItemQuantityForCustomer } from "@/lib/payments";
 import { getStripeForAccount } from "@/lib/stripe";
-import { globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -228,6 +228,7 @@ async function main() {
           tenancyId: tenancy.id,
           tenancy,
           paymentsConfig,
+          prisma: await getPrismaClientForTenancy(tenancy),
         })
         : null;
 
@@ -998,6 +999,7 @@ async function createPaymentsVerifier(options: {
   tenancyId: string,
   tenancy: Tenancy,
   paymentsConfig: PaymentsConfig,
+  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
 }) {
   const includeByDefaultConflicts = getIncludeByDefaultConflicts(options.paymentsConfig);
   if (includeByDefaultConflicts.size > 0) {
@@ -1055,7 +1057,7 @@ async function createPaymentsVerifier(options: {
   const itemQuantityChangeIdList = Array.from(itemQuantityChangeIds);
 
   const [subscriptions, oneTimePurchases, itemQuantityChanges] = await Promise.all([
-    subscriptionIdList.length === 0 ? [] : prismaClient.subscription.findMany({
+    subscriptionIdList.length === 0 ? [] : options.prisma.subscription.findMany({
       where: {
         tenancyId: options.tenancyId,
         id: { in: subscriptionIdList },
@@ -1071,7 +1073,7 @@ async function createPaymentsVerifier(options: {
         refundedAt: true,
       },
     }),
-    oneTimePurchaseIdList.length === 0 ? [] : prismaClient.oneTimePurchase.findMany({
+    oneTimePurchaseIdList.length === 0 ? [] : options.prisma.oneTimePurchase.findMany({
       where: {
         tenancyId: options.tenancyId,
         id: { in: oneTimePurchaseIdList },
@@ -1083,7 +1085,7 @@ async function createPaymentsVerifier(options: {
         refundedAt: true,
       },
     }),
-    itemQuantityChangeIdList.length === 0 ? [] : prismaClient.itemQuantityChange.findMany({
+    itemQuantityChangeIdList.length === 0 ? [] : options.prisma.itemQuantityChange.findMany({
       where: {
         tenancyId: options.tenancyId,
         id: { in: itemQuantityChangeIdList },
@@ -1109,7 +1111,7 @@ async function createPaymentsVerifier(options: {
       if (entry.type !== "item_quantity_change") continue;
       entryItemQuantityChangeIds.add(transactionId);
     }
-    const extraItemQuantityChanges = await prismaClient.itemQuantityChange.findMany({
+    const extraItemQuantityChanges = await options.prisma.itemQuantityChange.findMany({
       where: {
         tenancyId: options.tenancyId,
         customerId: customer.customerId,
@@ -1126,7 +1128,7 @@ async function createPaymentsVerifier(options: {
 
     const subscribedProductLineIds = new Set<string>();
     const subscribedProductIds = new Set<string>();
-    const dbSubscriptions = await prismaClient.subscription.findMany({
+    const dbSubscriptions = await options.prisma.subscription.findMany({
       where: {
         tenancyId: options.tenancyId,
         customerId: customer.customerId,
@@ -1177,7 +1179,7 @@ async function createPaymentsVerifier(options: {
       }) as { quantity: number };
       if (response.quantity !== expectedQuantity) {
         const dbQuantity = await getItemQuantityForCustomer({
-          prisma: prismaClient,
+          prisma: options.prisma,
           tenancy: options.tenancy,
           itemId,
           customerId: customer.customerId,
