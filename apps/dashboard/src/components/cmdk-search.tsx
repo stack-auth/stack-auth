@@ -88,15 +88,16 @@ const CyclingExample = memo(function CyclingExample({
     return () => clearInterval(interval);
   }, [currentIndex]);
 
-  return <>
+  return <div className="relative">
     {EXAMPLE_QUERIES.map((example, index) => {
+      const isActive = index === currentIndex;
       return <button
         key={index}
         type="button"
         onClick={() => onSelectQuery?.(example.query)}
         className={cn(
-          "flex flex-col items-center gap-1 cursor-pointer group",
-          index === currentIndex ? "opacity-100" : "opacity-0",
+          "flex flex-col items-center gap-1 cursor-pointer group w-full",
+          isActive ? "opacity-100 relative" : "opacity-0 absolute inset-0 pointer-events-none",
           "transition-opacity duration-300"
         )}
       >
@@ -108,7 +109,7 @@ const CyclingExample = memo(function CyclingExample({
         </p>
       </button>;
     })}
-  </>;
+  </div>;
 });
 
 // Empty state placeholder component

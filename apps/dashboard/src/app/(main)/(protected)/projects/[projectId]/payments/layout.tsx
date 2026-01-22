@@ -33,8 +33,10 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const paymentsConfig = project.useConfig().payments;
   const updateConfig = useUpdateConfig();
 
-  // Hide banners on the new product page for a cleaner creation experience
+  // Hide banners on the new product page and product-lines onboarding for a cleaner experience
   const isNewProductPage = pathname.endsWith('/products/new');
+  const hasAnyProductsOrItems = Object.keys(paymentsConfig.products).length > 0 || Object.keys(paymentsConfig.items).length > 0;
+  const isProductLinesOnboarding = pathname.endsWith('/product-lines') && !hasAnyProductsOrItems;
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
@@ -97,8 +99,8 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // On the new product page, skip all banners for a cleaner experience
-  if (isNewProductPage) {
+  // On the new product page and product-lines onboarding, skip all banners for a cleaner experience
+  if (isNewProductPage || isProductLinesOnboarding) {
     return (
       <StripeConnectProvider>
         {children}
