@@ -215,13 +215,6 @@ export async function seed() {
     }
   });
 
-  // Set the internal project's branch config source to pushed-from-unknown
-  await setBranchConfigOverrideSource({
-    projectId: 'internal',
-    branchId: DEFAULT_BRANCH_ID,
-    source: { type: "pushed-from-unknown" },
-  });
-
   await ensurePermissionDefinition(
     globalPrismaClient,
     internalPrisma,
