@@ -419,7 +419,7 @@ public actor StackClientApp {
     // MARK: - Email Verification
     
     public func verifyEmail(code: String, tokenStore: TokenStore? = nil) async throws {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/contact-channels/verify",
             method: "POST",
@@ -431,7 +431,7 @@ public actor StackClientApp {
     // MARK: - Team Invitations
     
     public func acceptTeamInvitation(code: String, tokenStore: TokenStore? = nil) async throws {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/team-invitations/accept",
             method: "POST",
@@ -442,7 +442,7 @@ public actor StackClientApp {
     }
     
     public func verifyTeamInvitationCode(_ code: String, tokenStore: TokenStore? = nil) async throws {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/team-invitations/accept/check-code",
             method: "POST",
@@ -453,7 +453,7 @@ public actor StackClientApp {
     }
     
     public func getTeamInvitationDetails(code: String, tokenStore: TokenStore? = nil) async throws -> String {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         let (data, _) = try await client.sendRequest(
             path: "/team-invitations/accept/details",
             method: "POST",
@@ -473,7 +473,7 @@ public actor StackClientApp {
     // MARK: - User
     
     public func getUser(or: GetUserOr = .returnNull, includeRestricted: Bool = false, tokenStore: TokenStore? = nil) async throws -> CurrentUser? {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         
         // Validate mutually exclusive options
         if or == .anonymous && !includeRestricted {
@@ -588,7 +588,7 @@ public actor StackClientApp {
     // MARK: - Partial User
     
     public func getPartialUser(tokenStore: TokenStore? = nil) async -> TokenPartialUser? {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         
         let accessToken: String?
         if let overrideStore = overrideStore {
@@ -639,7 +639,7 @@ public actor StackClientApp {
     // MARK: - Sign Out
     
     public func signOut(tokenStore: TokenStore? = nil) async throws {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         _ = try? await client.sendRequest(
             path: "/auth/sessions/current",
             method: "DELETE",
@@ -656,7 +656,7 @@ public actor StackClientApp {
     // MARK: - Tokens
     
     public func getAccessToken(tokenStore: TokenStore? = nil) async -> String? {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         if let overrideStore = overrideStore {
             return await client.getAccessToken(tokenStoreOverride: overrideStore)
         }
@@ -664,7 +664,7 @@ public actor StackClientApp {
     }
     
     public func getRefreshToken(tokenStore: TokenStore? = nil) async -> String? {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         if let overrideStore = overrideStore {
             return await client.getRefreshToken(tokenStoreOverride: overrideStore)
         }
@@ -672,7 +672,7 @@ public actor StackClientApp {
     }
     
     public func getAuthHeaders(tokenStore: TokenStore? = nil) async -> [String: String] {
-        let overrideStore = resolveTokenStore(tokenStore)
+        let overrideStore = await resolveTokenStore(tokenStore)
         let accessToken: String?
         let refreshToken: String?
         
@@ -706,9 +706,9 @@ public actor StackClientApp {
     
     /// Resolves the effective token store for a function call.
     /// Panics if the constructor's tokenStore was `.none` and no override is provided.
-    private func resolveTokenStore(_ override: TokenStore?) -> (any TokenStoreProtocol)? {
+    private func resolveTokenStore(_ override: TokenStore?) async -> (any TokenStoreProtocol)? {
         if let override = override {
-            return createTokenStoreProtocol(from: override)
+            return await createTokenStoreProtocol(from: override)
         }
         
         if !hasDefaultTokenStore {
@@ -718,15 +718,17 @@ public actor StackClientApp {
         return nil  // Use the default store from client
     }
     
-    /// Creates a TokenStoreProtocol from a TokenStore enum value
-    private func createTokenStoreProtocol(from tokenStore: TokenStore) -> any TokenStoreProtocol {
+    /// Creates a TokenStoreProtocol from a TokenStore enum value.
+    /// Uses singleton instances for keychain and memory stores (keyed by projectId)
+    /// to ensure shared token storage and refresh locks.
+    private func createTokenStoreProtocol(from tokenStore: TokenStore) async -> any TokenStoreProtocol {
         switch tokenStore {
         #if canImport(Security)
         case .keychain:
-            return KeychainTokenStore(projectId: projectId)
+            return await TokenStoreRegistry.shared.getKeychainStore(projectId: projectId)
         #endif
         case .memory:
-            return MemoryTokenStore()
+            return await TokenStoreRegistry.shared.getMemoryStore(projectId: projectId)
         case .explicit(let accessToken, let refreshToken):
             return ExplicitTokenStore(accessToken: accessToken, refreshToken: refreshToken)
         case .none:

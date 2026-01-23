@@ -227,9 +227,15 @@ To refresh an access token from a refresh token, use an OAuth2 token grant:
   Only available on Apple platforms via the Security framework.
   This is the recommended default for iOS/macOS apps.
   
+  Multiple uses of "keychain" with the same projectId must share the same
+  token storage and refresh lock.
+  
 "memory":
   Store tokens in runtime memory. Lost on page refresh or process restart.
   Useful for short-lived sessions, CLI tools, or server-side scripts.
+  
+  Multiple uses of "memory" with the same projectId must share the same
+  token storage and refresh lock.
 
 { accessToken, refreshToken } object:
   Initialize with explicit token values.

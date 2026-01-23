@@ -47,6 +47,40 @@ public enum TokenStore: Sendable {
     case custom(any TokenStoreProtocol)
 }
 
+// MARK: - Token Store Registry
+
+/// Manages singleton instances of token stores keyed by projectId.
+/// Ensures that multiple uses of keychain/memory with the same projectId
+/// share the same token storage and refresh lock.
+actor TokenStoreRegistry {
+    static let shared = TokenStoreRegistry()
+    
+    #if canImport(Security)
+    private var keychainStores: [String: KeychainTokenStore] = [:]
+    #endif
+    private var memoryStores: [String: MemoryTokenStore] = [:]
+    
+    #if canImport(Security)
+    func getKeychainStore(projectId: String) -> KeychainTokenStore {
+        if let existing = keychainStores[projectId] {
+            return existing
+        }
+        let store = KeychainTokenStore(projectId: projectId)
+        keychainStores[projectId] = store
+        return store
+    }
+    #endif
+    
+    func getMemoryStore(projectId: String) -> MemoryTokenStore {
+        if let existing = memoryStores[projectId] {
+            return existing
+        }
+        let store = MemoryTokenStore()
+        memoryStores[projectId] = store
+        return store
+    }
+}
+
 // MARK: - Keychain Token Store (Apple platforms only)
 
 #if canImport(Security)
