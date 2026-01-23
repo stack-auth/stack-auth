@@ -23,7 +23,7 @@ WITH to_update AS (
   FROM "EnvironmentConfigOverride"
   WHERE NOT "config" ? 'payments.testMode'
     AND NOT ("config" ? 'payments' AND ("config" -> 'payments') ? 'testMode')
-  LIMIT 1000
+  LIMIT 10000
 )
 UPDATE "EnvironmentConfigOverride" eco
 SET "config" = jsonb_set(
