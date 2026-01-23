@@ -36,7 +36,7 @@ public actor StackClientApp {
         projectId: String,
         publishableClientKey: String,
         baseUrl: String = "https://api.stack-auth.com",
-        tokenStore: TokenStore = .keychain,
+        tokenStore: TokenStoreInit = .keychain,
         noAutomaticPrefetch: Bool = false
     ) {
         self.projectId = projectId
@@ -78,7 +78,7 @@ public actor StackClientApp {
         projectId: String,
         publishableClientKey: String,
         baseUrl: String = "https://api.stack-auth.com",
-        tokenStore: TokenStore = .memory,
+        tokenStore: TokenStoreInit = .memory,
         noAutomaticPrefetch: Bool = false
     ) {
         self.projectId = projectId
@@ -418,7 +418,7 @@ public actor StackClientApp {
     
     // MARK: - Email Verification
     
-    public func verifyEmail(code: String, tokenStore: TokenStore? = nil) async throws {
+    public func verifyEmail(code: String, tokenStore: TokenStoreInit? = nil) async throws {
         let overrideStore = await resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/contact-channels/verify",
@@ -430,7 +430,7 @@ public actor StackClientApp {
     
     // MARK: - Team Invitations
     
-    public func acceptTeamInvitation(code: String, tokenStore: TokenStore? = nil) async throws {
+    public func acceptTeamInvitation(code: String, tokenStore: TokenStoreInit? = nil) async throws {
         let overrideStore = await resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/team-invitations/accept",
@@ -441,7 +441,7 @@ public actor StackClientApp {
         )
     }
     
-    public func verifyTeamInvitationCode(_ code: String, tokenStore: TokenStore? = nil) async throws {
+    public func verifyTeamInvitationCode(_ code: String, tokenStore: TokenStoreInit? = nil) async throws {
         let overrideStore = await resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/team-invitations/accept/check-code",
@@ -452,7 +452,7 @@ public actor StackClientApp {
         )
     }
     
-    public func getTeamInvitationDetails(code: String, tokenStore: TokenStore? = nil) async throws -> String {
+    public func getTeamInvitationDetails(code: String, tokenStore: TokenStoreInit? = nil) async throws -> String {
         let overrideStore = await resolveTokenStore(tokenStore)
         let (data, _) = try await client.sendRequest(
             path: "/team-invitations/accept/details",
@@ -472,7 +472,7 @@ public actor StackClientApp {
     
     // MARK: - User
     
-    public func getUser(or: GetUserOr = .returnNull, includeRestricted: Bool = false, tokenStore: TokenStore? = nil) async throws -> CurrentUser? {
+    public func getUser(or: GetUserOr = .returnNull, includeRestricted: Bool = false, tokenStore: TokenStoreInit? = nil) async throws -> CurrentUser? {
         let overrideStore = await resolveTokenStore(tokenStore)
         
         // Validate mutually exclusive options
@@ -587,7 +587,7 @@ public actor StackClientApp {
     
     // MARK: - Partial User
     
-    public func getPartialUser(tokenStore: TokenStore? = nil) async -> TokenPartialUser? {
+    public func getPartialUser(tokenStore: TokenStoreInit? = nil) async -> TokenPartialUser? {
         let overrideStore = await resolveTokenStore(tokenStore)
         
         let accessToken: String?
@@ -638,7 +638,7 @@ public actor StackClientApp {
     
     // MARK: - Sign Out
     
-    public func signOut(tokenStore: TokenStore? = nil) async throws {
+    public func signOut(tokenStore: TokenStoreInit? = nil) async throws {
         let overrideStore = await resolveTokenStore(tokenStore)
         _ = try? await client.sendRequest(
             path: "/auth/sessions/current",
@@ -655,7 +655,7 @@ public actor StackClientApp {
     
     // MARK: - Tokens
     
-    public func getAccessToken(tokenStore: TokenStore? = nil) async -> String? {
+    public func getAccessToken(tokenStore: TokenStoreInit? = nil) async -> String? {
         let overrideStore = await resolveTokenStore(tokenStore)
         if let overrideStore = overrideStore {
             return await client.getAccessToken(tokenStoreOverride: overrideStore)
@@ -663,7 +663,7 @@ public actor StackClientApp {
         return await client.getAccessToken()
     }
     
-    public func getRefreshToken(tokenStore: TokenStore? = nil) async -> String? {
+    public func getRefreshToken(tokenStore: TokenStoreInit? = nil) async -> String? {
         let overrideStore = await resolveTokenStore(tokenStore)
         if let overrideStore = overrideStore {
             return await client.getRefreshToken(tokenStoreOverride: overrideStore)
@@ -671,7 +671,7 @@ public actor StackClientApp {
         return await client.getRefreshToken()
     }
     
-    public func getAuthHeaders(tokenStore: TokenStore? = nil) async -> [String: String] {
+    public func getAuthHeaders(tokenStore: TokenStoreInit? = nil) async -> [String: String] {
         let overrideStore = await resolveTokenStore(tokenStore)
         let accessToken: String?
         let refreshToken: String?
@@ -706,7 +706,7 @@ public actor StackClientApp {
     
     /// Resolves the effective token store for a function call.
     /// Panics if the constructor's tokenStore was `.none` and no override is provided.
-    private func resolveTokenStore(_ override: TokenStore?) async -> (any TokenStoreProtocol)? {
+    private func resolveTokenStore(_ override: TokenStoreInit?) async -> (any TokenStoreProtocol)? {
         if let override = override {
             return await createTokenStoreProtocol(from: override)
         }
@@ -721,7 +721,7 @@ public actor StackClientApp {
     /// Creates a TokenStoreProtocol from a TokenStore enum value.
     /// Uses singleton instances for keychain and memory stores (keyed by projectId)
     /// to ensure shared token storage and refresh locks.
-    private func createTokenStoreProtocol(from tokenStore: TokenStore) async -> any TokenStoreProtocol {
+    private func createTokenStoreProtocol(from tokenStore: TokenStoreInit) async -> any TokenStoreProtocol {
         switch tokenStore {
         #if canImport(Security)
         case .keychain:

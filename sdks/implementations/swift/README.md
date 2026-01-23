@@ -62,7 +62,7 @@ do {
 
 - **Default**: Keychain (secure, persists across app launches)
 - **Option**: Memory (for testing or ephemeral sessions)
-- **Option**: Custom `TokenStore` protocol implementation
+- **Option**: Custom `TokenStoreProtocol` implementation
 
 ```swift
 // Memory storage (for testing)

@@ -27,7 +27,7 @@ public protocol TokenStoreProtocol: AnyObject, Sendable {
 }
 
 /// Token storage configuration
-public enum TokenStore: Sendable {
+public enum TokenStoreInit: Sendable {
     #if canImport(Security)
     /// Store tokens in Keychain (default, secure, persists across launches)
     /// Only available on Apple platforms (iOS, macOS, etc.)

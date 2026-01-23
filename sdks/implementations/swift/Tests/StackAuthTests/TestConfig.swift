@@ -47,7 +47,7 @@ struct TestConfig {
     }
     
     /// Create a new client app instance for testing
-    static func createClientApp(tokenStore: TokenStore = .memory) -> StackClientApp {
+    static func createClientApp(tokenStore: TokenStoreInit = .memory) -> StackClientApp {
         StackClientApp(
             projectId: projectId,
             publishableClientKey: publishableClientKey,

@@ -266,7 +266,7 @@ struct TokenStorageTests {
         )
         
         // Should work when providing tokenStore override
-        let overrideStore = TokenStore.explicit(accessToken: accessToken!, refreshToken: refreshToken!)
+        let overrideStore = TokenStoreInit.explicit(accessToken: accessToken!, refreshToken: refreshToken!)
         
         let user = try await app2.getUser(tokenStore: overrideStore)
         #expect(user != nil)
@@ -309,7 +309,7 @@ struct TokenStorageTests {
         #expect(email1Default == email1)
         
         // But with an override, app1 can access user2
-        let overrideStore = TokenStore.explicit(accessToken: tokens2.access, refreshToken: tokens2.refresh)
+        let overrideStore = TokenStoreInit.explicit(accessToken: tokens2.access, refreshToken: tokens2.refresh)
         let user2FromApp1 = try await app1.getUser(tokenStore: overrideStore)
         let email2FromApp1 = await user2FromApp1?.primaryEmail
         #expect(email2FromApp1 == email2)
