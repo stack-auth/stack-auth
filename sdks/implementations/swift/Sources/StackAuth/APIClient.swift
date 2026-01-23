@@ -84,7 +84,7 @@ func isTokenFreshEnough(_ accessToken: String?) -> Bool {
     let expiresInMoreThan20s = payload.expiresInMillis > 20_000
     let issuedLessThan75sAgo = payload.issuedMillisAgo < 75_000
     
-    return expiresInMoreThan20s || issuedLessThan75sAgo
+    return expiresInMoreThan20s && issuedLessThan75sAgo
 }
 
 // MARK: - Refresh Lock Manager
@@ -99,13 +99,12 @@ actor RefreshLockManager {
     
     func acquireLock(for store: any TokenStoreProtocol) async {
         let key = ObjectIdentifier(store)
-        if activeLocks[key] == true {
+        // Use WHILE loop to re-check condition after waking up.
+        // Multiple waiters may be resumed at once, but only one should acquire the lock.
+        while activeLocks[key] == true {
             // Wait for existing refresh to complete
             await withCheckedContinuation { continuation in
-                if waiters[key] == nil {
-                    waiters[key] = []
-                }
-                waiters[key]?.append(continuation)
+                waiters[key, default: []].append(continuation)
             }
         }
         activeLocks[key] = true
@@ -388,7 +387,7 @@ actor APIClient {
         // Case 2: Refresh token exists
         let refreshToken = originalRefreshToken!
         
-        // Check if token is fresh enough (expires in > 20s OR issued < 75s ago)
+        // Check if token is fresh enough (expires in > 20s AND issued < 75s ago)
         if isTokenFreshEnough(originalAccessToken) {
             return TokenPair(refreshToken: refreshToken, accessToken: originalAccessToken)
         }

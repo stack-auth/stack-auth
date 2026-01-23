@@ -127,7 +127,7 @@ struct OAuthTests {
         
         do {
             _ = try await app.getOAuthUrl(provider: "google", redirectUrl: "/oauth-callback", errorRedirectUrl: testErrorRedirectUrl)
-            #expect(Bool(false), "Should have thrown an error")
+            #expect(false, "Should have thrown an error")
         } catch let error as StackAuthError {
             #expect(error.code == "invalid_redirect_url")
         }
@@ -139,7 +139,7 @@ struct OAuthTests {
         
         do {
             _ = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: "/error")
-            #expect(Bool(false), "Should have thrown an error")
+            #expect(false, "Should have thrown an error")
         } catch let error as StackAuthError {
             #expect(error.code == "invalid_error_redirect_url")
         }

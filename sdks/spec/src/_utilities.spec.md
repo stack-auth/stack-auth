@@ -173,7 +173,7 @@ Token stores have some properties and methods. Some are abstract and are impleme
     This is the function that should usually be used to get an access token as it will automatically refresh tokens that are about to expire.
 
     Algorithm:
-      Note: To avoid refreshing more than once at the same time, this should run only once at a time for each token store. There can be some kind of lock or asynchronous semaphore (depending on the language and its concurrency model). Token refresh must be serialized per token store instance. Use a mutex/lock keyed on TS.id to ensure only one refresh request is in-flight at a time for a given token store. If a refresh is already in progress, wait for it to complete rather than starting another.
+      Note: To avoid refreshing more than once at the same time, only one caller can hold the refresh lock for a given token store at once. Use a mutex, semaphore, or equivalent concurrency primitive appropriate for your language to ensure this.
       
       Let originalRefreshToken = TS.getStoredRefreshToken() (capture at start)
       Let originalAccessToken = TS.getStoredAccessToken() (capture at start)
@@ -184,7 +184,7 @@ Token stores have some properties and methods. Some are abstract and are impleme
         Otherwise (originalAccessToken is expired or null):
           Return { refreshToken: null, accessToken: null }
       Otherwise (originalRefreshToken exists):
-        if originalAccessToken expires in > 20 seconds, or was issued < 75 seconds ago:
+        if originalAccessToken expires in > 20 seconds and was issued < 75 seconds ago:
           Return { refreshToken: originalRefreshToken, accessToken: originalAccessToken }
         Otherwise:
           was_refresh_token_valid, newAccessToken = refresh(originalRefreshToken)
