@@ -3,7 +3,7 @@ import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/c
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
-import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
@@ -112,15 +112,16 @@ export async function seed() {
         }
       },
       payments: {
-        catalogs: {
+        productLines: {
           plans: {
             displayName: "Plans",
-          }
+            customerType: "team",
+          },
         },
         products: {
-          team: {
-            catalogId: "plans",
-            displayName: "Team",
+          team_plans: {
+            productLineId: "plans",
+            displayName: "Team Plans",
             customerType: "team",
             serverOnly: false,
             stackable: false,
@@ -140,7 +141,7 @@ export async function seed() {
             }
           },
           growth: {
-            catalogId: "plans",
+            productLineId: "plans",
             displayName: "Growth",
             customerType: "team",
             serverOnly: false,
@@ -161,7 +162,7 @@ export async function seed() {
             }
           },
           free: {
-            catalogId: "plans",
+            productLineId: "plans",
             displayName: "Free",
             customerType: "team",
             serverOnly: false,
@@ -176,7 +177,7 @@ export async function seed() {
             }
           },
           "extra-admins": {
-            catalogId: "plans",
+            productLineId: "plans",
             displayName: "Extra Admins",
             customerType: "team",
             serverOnly: false,
@@ -814,7 +815,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
   const paymentsProducts = {
     'starter': {
       displayName: 'Starter',
-      catalogId: 'workspace',
+      productLineId: 'workspace',
       customerType: 'user',
       serverOnly: false,
       stackable: false,
@@ -842,7 +843,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     },
     'growth': {
       displayName: 'Growth',
-      catalogId: 'workspace',
+      productLineId: 'workspace',
       customerType: 'user',
       serverOnly: false,
       stackable: false,
@@ -878,7 +879,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     },
     'regression-addon': {
       displayName: 'Regression Add-on',
-      catalogId: 'add_ons',
+      productLineId: 'add_ons',
       customerType: 'user',
       serverOnly: false,
       stackable: true,
@@ -905,12 +906,14 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
 
   const paymentsOverride = {
     testMode: true,
-    catalogs: {
+    productLines: {
       workspace: {
         displayName: 'Workspace Plans',
+        customerType: 'team',
       },
       add_ons: {
         displayName: 'Add-ons',
+        customerType: 'team',
       },
     },
     items: {
@@ -1010,6 +1013,20 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
       apps: {
         installed: typedFromEntries(typedEntries(ALL_APPS).map(([key]) => [key, { enabled: true }])),
       },
+    },
+  });
+
+  // Set the dummy project's branch config source to pushed-from-github with dummy values
+  await setBranchConfigOverrideSource({
+    projectId: DUMMY_PROJECT_ID,
+    branchId: DEFAULT_BRANCH_ID,
+    source: {
+      type: "pushed-from-github",
+      owner: "stack-auth",
+      repo: "dummy-config-repo",
+      branch: "main",
+      commit_hash: "abc123def456789",
+      config_file_path: "stack.config.json",
     },
   });
 
@@ -1233,7 +1250,7 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       priceId: undefined,
       product: cloneJson({
         displayName: 'Legacy Enterprise Pilot',
-        catalogId: 'workspace',
+        productLineId: 'workspace',
         customerType: 'user',
         prices: 'include-by-default',
       }),
@@ -1408,7 +1425,7 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       priceId: 'one_time',
       product: cloneJson({
         displayName: 'Design Audit Pass',
-        catalogId: 'add_ons',
+        productLineId: 'add_ons',
         customerType: 'custom',
         prices: {
           one_time: {

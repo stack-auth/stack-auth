@@ -19,6 +19,7 @@ import {
   Typography,
 } from "@/components/ui";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import {
@@ -533,6 +534,7 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
 
   const enabledApps = useMemo(() =>
     typedEntries(config.apps.installed)
@@ -542,10 +544,12 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   );
 
   const handleEnableApp = useCallback(async (appId: AppId) => {
-    await project.updateConfig({
-      [`apps.installed.${appId}.enabled`]: true,
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      pushable: true,
     });
-  }, [project]);
+  }, [stackAdminApp, updateConfig]);
 
   return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
 }

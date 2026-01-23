@@ -5,6 +5,7 @@ import { SelectField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { StripeConnectProvider } from "@/components/payments/stripe-connect-provider";
 import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -30,9 +31,12 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   const stripeAccountInfo = stackAdminApp.useStripeAccountInfo();
   const project = stackAdminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
+  const updateConfig = useUpdateConfig();
 
-  // Hide banners on the new product page for a cleaner creation experience
+  // Hide banners on the new product page and product-lines onboarding for a cleaner experience
   const isNewProductPage = pathname.endsWith('/products/new');
+  const hasAnyProductsOrItems = Object.keys(paymentsConfig.products).length > 0 || Object.keys(paymentsConfig.items).length > 0;
+  const isProductLinesOnboarding = pathname.endsWith('/product-lines') && !hasAnyProductsOrItems;
 
   const setupPayments = async () => {
     const { url } = await stackAdminApp.setupPayments();
@@ -41,11 +45,19 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
   };
 
   const handleDisableTestMode = async () => {
-    await project.updateConfig({ "payments.testMode": false });
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { "payments.testMode": false },
+      pushable: false,
+    });
   };
 
   const handleEnableTestMode = async () => {
-    await project.updateConfig({ "payments.testMode": true });
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { "payments.testMode": true },
+      pushable: false,
+    });
   };
 
   if (!stripeAccountInfo) {
@@ -87,8 +99,8 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // On the new product page, skip all banners for a cleaner experience
-  if (isNewProductPage) {
+  // On the new product page and product-lines onboarding, skip all banners for a cleaner experience
+  if (isNewProductPage || isProductLinesOnboarding) {
     return (
       <StripeConnectProvider>
         {children}

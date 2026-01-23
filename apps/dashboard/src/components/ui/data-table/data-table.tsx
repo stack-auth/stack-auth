@@ -204,7 +204,11 @@ export function DataTableManualPagination<TData, TValue>({
         columnFilters,
         globalFilters: globalFilter,
       });
-      setCursors(c => nextCursor ? { ...c, [pagination.pageIndex + 1]: nextCursor } : c);
+      setCursors(c => {
+        if (!nextCursor) return c;
+        const nextIndex = pagination.pageIndex + 1;
+        return c[nextIndex] === nextCursor ? c : { ...c, [nextIndex]: nextCursor };
+      });
     });
   }, [pagination, sorting, columnFilters, refreshCounter, cursors, globalFilter, onUpdate]);
 
@@ -325,4 +329,3 @@ function DataTableBase<TData, TValue>({
     onRowClick={onRowClick}
   />;
 }
-

@@ -1672,6 +1672,30 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const DefaultPaymentMethodRequired = createKnownErrorConstructor(
+  KnownError,
+  "DEFAULT_PAYMENT_METHOD_REQUIRED",
+  (customerType: "user" | "team", customerId: string) => [
+    400,
+    "No default payment method is set for this customer.",
+    {
+      customer_type: customerType,
+      customer_id: customerId,
+    },
+  ] as const,
+  (json) => [json.customer_type, json.customer_id] as const,
+);
+
+const NewPurchasesBlocked = createKnownErrorConstructor(
+  KnownError,
+  "NEW_PURCHASES_BLOCKED",
+  () => [
+    403,
+    "New purchases are currently blocked for this project. Please contact support for more information.",
+  ] as const,
+  () => [] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1803,6 +1827,8 @@ export const KnownErrors = {
   TestModePurchaseNonRefundable,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
+  DefaultPaymentMethodRequired,
+  NewPurchasesBlocked,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;

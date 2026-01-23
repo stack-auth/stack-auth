@@ -145,15 +145,15 @@ jobs:
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Run tests again, to make sure they are stable (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test
+        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Run tests again, to make sure they are stable (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test
+        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity

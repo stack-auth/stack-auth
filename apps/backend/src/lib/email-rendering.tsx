@@ -1,19 +1,12 @@
-import { Freestyle } from '@/lib/freestyle';
+import { executeJavascript } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
+import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
-import {
-  transpileJsxForEditing,
-  convertSentinelTokensToComments,
-  type EditableMetadata,
-} from '@stackframe/stack-shared/dist/utils/jsx-editable-transpiler';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
-
-export type { EditableMetadata };
 
 export function getActiveEmailTheme(tenancy: Tenancy) {
   const themeList = tenancy.config.emails.themes;
@@ -54,16 +47,82 @@ export function createTemplateComponentFromHtml(html: string) {
   `;
 }
 
-/**
- * Result type for rendering with editable markers.
- */
-export type RenderWithEditableMarkersResult = {
-  html: string,
-  text: string,
-  subject?: string,
-  notificationCategory?: string,
-  editableRegions: Record<string, EditableMetadata>,
+const nodeModules = {
+  "react-dom": "19.1.1",
+  "react": "19.1.1",
+  "@react-email/components": "0.1.1",
+  "arktype": "2.1.20",
 };
+
+const entryJs = deindent`
+  export default async () => {
+    try {
+      const { renderAll } = await import("./render.tsx");
+      const result = await renderAll();
+      return { status: "ok", data: result };
+    } catch (e) {
+      if (e instanceof Error) {
+        return { status: "error", error: { message: e.message, stack: e.stack, cause: e.cause } };
+      }
+      return { status: "error", error: { message: String(e), stack: undefined, cause: undefined } };
+    }
+  };
+`;
+
+type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
+type ExecuteResult =
+  | { status: "ok", data: unknown }
+  | { status: "error", error: unknown };
+
+async function bundleAndExecute<T>(
+  files: Record<string, string> & { '/entry.js': string }
+): Promise<Result<T, string>> {
+  const bundle = await bundleJavaScript(files, {
+    keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
+    externalPackages: { '@stackframe/emails': stackframeEmailsPackage },
+    format: 'esm',
+    sourcemap: false,
+  });
+  if (bundle.status === "error") {
+    return Result.error(bundle.error);
+  }
+
+  if (["development", "test"].includes(getNodeEnvironment())) {
+    const executeResult = await executeJavascript(bundle.data, { nodeModules, engine: 'freestyle' }) as ExecuteResult;
+    if (executeResult.status === "error") {
+      return Result.error(JSON.stringify(executeResult.error));
+    }
+    return Result.ok(executeResult.data as T);
+  }
+
+  const executeResult = await executeJavascript(bundle.data, { nodeModules }) as ExecuteResult;
+
+  if (executeResult.status === "error") {
+    const vercelResult = await executeJavascript(bundle.data, { nodeModules, engine: 'vercel-sandbox' }) as ExecuteResult;
+    if (vercelResult.status === "error") {
+      captureError("email-rendering-freestyle-and-vercel-runtime-error", new StackAssertionError(
+        "Email rendering failed with both freestyle and vercel-sandbox engines",
+        {
+          freestyleError: executeResult.error,
+          vercelError: vercelResult.error,
+          innerCode: bundle.data,
+          innerOptions: [
+            { nodeModules, engine: 'freestyle' },
+            { nodeModules, engine: 'vercel-sandbox' },
+          ],
+        },
+      ));
+      return Result.error(JSON.stringify(vercelResult.error));
+    }
+    captureError("email-rendering-freestyle-runtime-error", new StackAssertionError(
+      "Email rendering failed with freestyle but succeeded with vercel-sandbox",
+      { freestyleError: executeResult.error, innerCode: bundle.data, innerOptions: { nodeModules, engine: 'freestyle' } }
+    ));
+    return Result.ok(vercelResult.data as T);
+  }
+
+  return Result.ok(executeResult.data as T);
+}
 
 export async function renderEmailWithTemplate(
   templateOrDraftComponent: string,
@@ -82,15 +141,10 @@ export async function renderEmailWithTemplate(
       },
     },
     previewMode?: boolean,
-    /** When true, transpiles JSX to include editable markers and returns editableRegions */
-    editableMarkers?: boolean,
-    /** Which source to make editable: 'template' (default), 'theme', or 'both' */
-    editableSource?: 'template' | 'theme' | 'both',
   },
-): Promise<Result<{ html: string, text: string, subject?: string, notificationCategory?: string, editableRegions?: Record<string, EditableMetadata> }, string>> {
+): Promise<Result<EmailRenderResult, string>> {
   const variables = options.variables ?? {};
   const previewMode = options.previewMode ?? false;
-  const editableMarkers = options.editableMarkers ?? false;
   const user = (previewMode && !options.user) ? { displayName: "John Doe" } : options.user;
   const project = (previewMode && !options.project) ? { displayName: "My Project" } : options.project;
   if (!user) {
@@ -100,31 +154,10 @@ export async function renderEmailWithTemplate(
     throw new StackAssertionError("Project is required when not in preview mode", { user, project, variables });
   }
 
-  // Optionally transpile sources to include editable markers
-  let processedTemplate = templateOrDraftComponent;
-  let processedTheme = themeComponent;
-  let allEditableRegions: Record<string, EditableMetadata> = {};
-  const editableSource = options.editableSource ?? 'template';
-
-  if (editableMarkers) {
-    // Only transpile the source that should be editable
-    if (editableSource === 'template' || editableSource === 'both') {
-      const templateTranspiled = transpileJsxForEditing(templateOrDraftComponent, { sourceFile: 'template' });
-      processedTemplate = templateTranspiled.code;
-      allEditableRegions = { ...allEditableRegions, ...templateTranspiled.editableRegions };
-    }
-
-    if (editableSource === 'theme' || editableSource === 'both') {
-      const themeTranspiled = transpileJsxForEditing(themeComponent, { sourceFile: 'theme' });
-      processedTheme = themeTranspiled.code;
-      allEditableRegions = { ...allEditableRegions, ...themeTranspiled.editableRegions };
-    }
-  }
-
-  const result = await bundleJavaScript({
+  const files = {
     "/utils.tsx": findComponentValueUtil,
-    "/theme.tsx": processedTheme,
-    "/template.tsx": processedTemplate,
+    "/theme.tsx": themeComponent,
+    "/template.tsx": templateOrDraftComponent,
     "/render.tsx": deindent`
       import { configure } from "arktype/config"
       configure({ onUndeclaredKey: "delete" })
@@ -159,160 +192,10 @@ export async function renderEmailWithTemplate(
         };
       }
     `,
-    "/entry.js": deindent`
-      import { renderAll } from "./render.tsx";
-      export default renderAll;
-    `,
-  }, {
-    keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
-    externalPackages: { '@stackframe/emails': stackframeEmailsPackage },
-    format: 'esm',
-    sourcemap: false,
-  });
-  if (result.status === "error") {
-    return Result.error(result.error);
-  }
-
-  const freestyle = new Freestyle();
-  const nodeModules = {
-    "react-dom": "19.1.1",
-    "react": "19.1.1",
-    "@react-email/components": "0.1.1",
-    "arktype": "2.1.20",
+    "/entry.js": entryJs,
   };
-  const executeResult = await freestyle.executeScript(result.data, { nodeModules });
-  if (executeResult.status === "error") {
-    return Result.error(`${executeResult.error}`);
-  }
-  if (!executeResult.data.result) {
-    const noResultError = new StackAssertionError("No result from Freestyle", {
-      executeResult,
-      templateOrDraftComponent,
-      themeComponent,
-      options,
-    });
-    captureError("freestyle-no-result", noResultError);
-    throw noResultError;
-  }
 
-  const renderResult = executeResult.data.result as { html: string, text: string, subject: string, notificationCategory: string };
-
-  // Post-process HTML to convert sentinel tokens to comments when editable markers are enabled
-  if (editableMarkers) {
-    return Result.ok({
-      html: convertSentinelTokensToComments(renderResult.html),
-      text: renderResult.text,
-      subject: renderResult.subject,
-      notificationCategory: renderResult.notificationCategory,
-      editableRegions: allEditableRegions,
-    });
-  }
-
-  return Result.ok(renderResult);
-}
-
-// unused, but kept for reference & in case we need it again
-export async function renderEmailsWithTemplateBatched(
-  templateOrDraftComponent: string,
-  themeComponent: string,
-  inputs: Array<{
-    user: { displayName: string | null },
-    project: { displayName: string },
-    variables?: Record<string, any>,
-    unsubscribeLink?: string,
-    themeProps?: {
-      projectLogos: {
-        logoUrl?: string,
-        logoFullUrl?: string,
-        logoDarkModeUrl?: string,
-        logoFullDarkModeUrl?: string,
-      },
-    },
-  }>,
-): Promise<Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>> {
-  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
-
-  const serializedInputs = JSON.stringify(inputs);
-
-  const result = await bundleJavaScript({
-    "/utils.tsx": findComponentValueUtil,
-    "/theme.tsx": themeComponent,
-    "/template.tsx": templateOrDraftComponent,
-    "/render.tsx": deindent`
-      import { configure } from "arktype/config"
-      configure({ onUndeclaredKey: "delete" })
-      import React from 'react';
-      import { render } from '@react-email/components';
-      import { type } from "arktype";
-      import { findComponentValue } from "./utils.tsx";
-      import * as TemplateModule from "./template.tsx";
-      const { variablesSchema, EmailTemplate } = TemplateModule;
-      import { EmailTheme } from "./theme.tsx";
-
-      export const renderAll = async () => {
-        const inputs = ${serializedInputs}
-        const renderOne = async (input: any) => {
-          const variables = variablesSchema ? variablesSchema({
-            ...(input.variables || {}),
-          }) : {};
-          if (variables instanceof type.errors) {
-            throw new Error(variables.summary)
-          }
-          const themeProps = {
-            ...{ projectLogos: input.themeProps?.projectLogos ?? {} },
-            unsubscribeLink: input.unsubscribeLink,
-          }
-          const EmailTemplateWithProps  = <EmailTemplate variables={variables} user={input.user} project={input.project} />;
-          const Email = <EmailTheme {...themeProps}>
-            { EmailTemplateWithProps }
-          </EmailTheme>;
-          return {
-            html: await render(Email),
-            text: await render(Email, { plainText: true }),
-            subject: findComponentValue(EmailTemplateWithProps, "Subject"),
-            notificationCategory: findComponentValue(EmailTemplateWithProps, "NotificationCategory"),
-          };
-        };
-
-        return await Promise.all(inputs.map(renderOne));
-      }
-    `,
-    "/entry.js": deindent`
-      import { renderAll } from "./render.tsx";
-      export default renderAll;
-    `,
-  }, {
-    keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
-    externalPackages: { '@stackframe/emails': stackframeEmailsPackage },
-    format: 'esm',
-    sourcemap: false,
-  });
-  if (result.status === "error") {
-    return Result.error(result.error);
-  }
-
-  const freestyle = new Freestyle({ apiKey });
-  const nodeModules = {
-    "react-dom": "19.1.1",
-    "react": "19.1.1",
-    "@react-email/components": "0.1.1",
-    "arktype": "2.1.20",
-  };
-  const executeResult = await freestyle.executeScript(result.data, { nodeModules });
-  if (executeResult.status === "error") {
-    return Result.error(executeResult.error);
-  }
-  if (!executeResult.data.result) {
-    const noResultError = new StackAssertionError("No result from Freestyle", {
-      executeResult,
-      templateOrDraftComponent,
-      themeComponent,
-      inputs,
-    });
-    captureError("freestyle-no-result", noResultError);
-    throw noResultError;
-  }
-  return Result.ok(executeResult.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
+  return await bundleAndExecute<EmailRenderResult>(files);
 }
 
 export type RenderEmailRequestForTenancy = {
@@ -334,12 +217,11 @@ export type RenderEmailRequestForTenancy = {
   },
 };
 
-export async function renderEmailsForTenancyBatched(requests: RenderEmailRequestForTenancy[]): Promise<Result<Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>, string>> {
+export async function renderEmailsForTenancyBatched(requests: RenderEmailRequestForTenancy[]): Promise<Result<EmailRenderResult[], string>> {
   if (requests.length === 0) {
     return Result.ok([]);
   }
 
-  const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
   const files: Record<string, string> = {
     "/utils.tsx": findComponentValueUtil,
   };
@@ -396,44 +278,9 @@ export async function renderEmailsForTenancyBatched(requests: RenderEmailRequest
     };
   `;
 
-  files["/entry.js"] = deindent`
-    import { renderAll } from "./render.tsx";
-    export default renderAll;
-  `;
+  files["/entry.js"] = entryJs;
 
-  const bundle = await bundleJavaScript(files as Record<string, string> & { '/entry.js': string }, {
-    keepAsImports: ["arktype", "react", "react/jsx-runtime", "@react-email/components"],
-    externalPackages: { "@stackframe/emails": stackframeEmailsPackage },
-    format: "esm",
-    sourcemap: false,
-  });
-
-  if (bundle.status === "error") {
-    return Result.error(bundle.error);
-  }
-
-  const freestyle = new Freestyle({ apiKey });
-  const nodeModules = {
-    "react-dom": "19.1.1",
-    "react": "19.1.1",
-    "@react-email/components": "0.1.1",
-    "arktype": "2.1.20",
-  };
-
-  const execution = await freestyle.executeScript(bundle.data, { nodeModules });
-  if (execution.status === "error") {
-    return Result.error(execution.error);
-  }
-  if (!execution.data.result) {
-    const noResultError = new StackAssertionError("No result from Freestyle", {
-      execution,
-      requests,
-    });
-    captureError("freestyle-no-result", noResultError);
-    throw noResultError;
-  }
-
-  return Result.ok(execution.data.result as Array<{ html: string, text: string, subject?: string, notificationCategory?: string }>);
+  return await bundleAndExecute<EmailRenderResult[]>(files as Record<string, string> & { '/entry.js': string });
 }
 
 const findComponentValueUtil = `import React from 'react';

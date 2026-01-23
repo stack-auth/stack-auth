@@ -2,6 +2,7 @@ import { WebAuthnError, startAuthentication, startRegistration } from "@simplewe
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
 import { OAuthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
@@ -42,7 +43,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
+import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
@@ -269,6 +270,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   );
 
+  private readonly _userInvoicesCache = createCacheBySession<[string, string | null, number | null], CustomerInvoicesListResponse>(
+    async (session, [userId, cursor, limit]) => {
+      return await this._interface.listInvoices({
+        customer_type: "user",
+        customer_id: userId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
+  private readonly _teamInvoicesCache = createCacheBySession<[string, string | null, number | null], CustomerInvoicesListResponse>(
+    async (session, [teamId, cursor, limit]) => {
+      return await this._interface.listInvoices({
+        customer_type: "team",
+        customer_id: teamId,
+        cursor: cursor ?? undefined,
+        limit: limit ?? undefined,
+      }, session);
+    }
+  );
+
   private readonly _customerBillingCache = createCacheBySession<["user" | "team", string], {
     has_customer: boolean,
     default_payment_method: {
@@ -467,7 +490,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _formatAccessCookieValue(refreshToken: string | null, accessToken: string | null): string | null {
     return refreshToken && accessToken ? JSON.stringify([refreshToken, accessToken]) : null;
   }
-  private _parseStructuredRefreshCookie(value: string | null): { refreshToken: string, updatedAt: number | null } | null {
+  private _parseStructuredRefreshCookie(value: string | undefined): { refreshToken: string, updatedAt: number | null } | null {
     if (!value) {
       return null;
     }
@@ -489,7 +512,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
 
   }
-  private _extractRefreshTokenFromCookieMap(cookies: Record<string, string>): { refreshToken: string | null, updatedAt: number | null } {
+  private _extractRefreshTokenFromCookieMap(cookies: cookie.Cookies): { refreshToken: string | null, updatedAt: number | null } {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
     for (const name of legacyNames) {
       const value = cookies[name];
@@ -519,7 +542,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       updatedAt: selected.updatedAt ?? null,
     };
   }
-  protected _getTokensFromCookies(cookies: Record<string, string>): TokenObject {
+  protected _getTokensFromCookies(cookies: cookie.Cookies): TokenObject {
     const { refreshToken } = this._extractRefreshTokenFromCookieMap(cookies);
     const accessTokenCookie = cookies[this._accessTokenCookieName] ?? null;
     let accessToken: string | null = null;
@@ -553,11 +576,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     // the access token on page reload.
     return `stack-access`;
   }
-  private _getAllBrowserCookies(): Record<string, string> {
+  private _getAllBrowserCookies(): cookie.Cookies {
     if (!isBrowserLike()) {
       throw new StackAssertionError("Cannot get browser cookies on the server!");
     }
-    return cookie.parse(document.cookie || "");
+    return cookie.parseCookie(document.cookie || "");
   }
   private _getRefreshTokenCookieNamePatterns(): { legacyNames: string[], structuredPrefixes: string[] } {
     return {
@@ -568,7 +591,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ],
     };
   }
-  private _collectRefreshTokenCookieNames(cookies: Record<string, string>): Set<string> {
+  private _collectRefreshTokenCookieNames(cookies: cookie.Cookies): Set<string> {
     const { legacyNames, structuredPrefixes } = this._getRefreshTokenCookieNamePatterns();
     const names = new Set<string>();
     for (const name of legacyNames) {
@@ -584,7 +607,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return names;
   }
   private _prepareRefreshCookieUpdate(
-    existingCookies: Record<string, string>,
+    existingCookies: cookie.Cookies,
     refreshToken: string | null,
     accessToken: string | null,
     defaultCookieName: string,
@@ -789,7 +812,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
           // read from cookies
           const cookieHeader = tokenStoreInit.headers.get("cookie");
-          const parsed = cookie.parse(cookieHeader || "");
+          const parsed = cookie.parseCookie(cookieHeader || "");
           const res = new Store<TokenObject>(this._getTokensFromCookies(parsed));
           this._requestTokenStores.set(tokenStoreInit, res);
           return res;
@@ -1174,8 +1197,23 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
         isCancelable: item.subscription.is_cancelable,
       } : null,
+      switchOptions: item.switch_options?.map((option) => ({
+        productId: option.product_id,
+        displayName: option.product.display_name,
+        prices: option.product.prices,
+      })),
     }));
     return Object.assign(products, { nextCursor: response.pagination.next_cursor ?? null });
+  }
+
+  protected _customerInvoicesFromResponse(response: CustomerInvoicesListResponse): CustomerInvoicesList {
+    const invoices = response.items.map((item) => ({
+      status: item.status as CustomerInvoiceStatus,
+      amountTotal: item.amount_total,
+      hostedInvoiceUrl: item.hosted_invoice_url,
+      createdAt: new Date(item.created_at_millis),
+    }));
+    return Object.assign(invoices, { nextCursor: response.pagination.next_cursor ?? null });
   }
 
   protected _customerBillingFromResponse(response: {
@@ -1667,8 +1705,32 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return app.useProducts({ ...options, ...customerOptions });
       },
       // END_PLATFORM
+      async listInvoices(options?: CustomerInvoicesListOptions) {
+        return await app.listInvoices({ ...options, ...customerOptions });
+      },
+      // IF_PLATFORM react-like
+      useInvoices(options?: CustomerInvoicesListOptions) {
+        return app.useInvoices({ ...options, ...customerOptions });
+      },
+      // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
         return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl);
+      },
+      async switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) {
+        await app._interface.switchSubscription({
+          customer_type: type,
+          customer_id: userIdOrTeamId,
+          from_product_id: options.fromProductId,
+          to_product_id: options.toProductId,
+          price_id: options.priceId,
+          quantity: options.quantity,
+        }, effectiveSession);
+        await app._customerBillingCache.refresh([effectiveSession, type, userIdOrTeamId]);
+        if (type === "user") {
+          await app._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === effectiveSession && userId === userIdOrTeamId);
+        } else {
+          await app._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === effectiveSession && teamId === userIdOrTeamId);
+        }
       },
     };
   }
@@ -1710,6 +1772,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerProductsFromResponse(response);
   }
 
+  async listInvoices(options: CustomerInvoicesRequestOptions): Promise<CustomerInvoicesList> {
+    const session = await this._getSession();
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._userInvoicesCache.getOrWait([session, options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerInvoicesFromResponse(response);
+    }
+    const response = Result.orThrow(await this._teamInvoicesCache.getOrWait([session, options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerInvoicesFromResponse(response);
+  }
+
   async cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void> {
     const session = await this._getSession();
     const user = await this.getUser();
@@ -1729,7 +1801,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       await this._teamProductsCache.invalidateWhere(([cachedSession, teamId]) => cachedSession === session && teamId === customerId);
     }
   }
-
   // IF_PLATFORM react-like
   useProducts(options: CustomerProductsRequestOptions): CustomerProductsList {
     const session = this._useSession();
@@ -1738,6 +1809,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const customerId = "userId" in options ? options.userId : "teamId" in options ? options.teamId : options.customCustomerId;
     const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
     return this._customerProductsFromResponse(response);
+  }
+  // END_PLATFORM
+  // IF_PLATFORM react-like
+  useInvoices(options: CustomerInvoicesRequestOptions): CustomerInvoicesList {
+    const session = this._useSession();
+    const cache = "userId" in options ? this._userInvoicesCache : this._teamInvoicesCache;
+    const debugLabel = "clientApp.useInvoices()";
+    const customerId = "userId" in options ? options.userId : options.teamId;
+    const response = useAsyncCache(cache, [session, customerId, options.cursor ?? null, options.limit ?? null] as const, debugLabel);
+    return this._customerInvoicesFromResponse(response);
   }
   // END_PLATFORM
 
@@ -2669,12 +2750,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _refreshUser(session: InternalSession) {
     // TODO this should take a user ID instead of a session, and automatically refresh all sessions with that user ID
     await this._refreshSession(session);
-    // Suggest updating the access token so it contains the updated user data
-    session.suggestAccessTokenExpired();
   }
 
   protected async _refreshSession(session: InternalSession) {
     await this._currentUserCache.refresh([session]);
+    // Suggest updating the access token so it contains the updated user/session data
+    session.suggestAccessTokenExpired();
   }
 
   protected async _refreshUsers() {

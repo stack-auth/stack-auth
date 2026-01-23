@@ -1,14 +1,16 @@
 'use client';
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Button, Skeleton, Typography } from "@stackframe/stack-ui";
-import { loadStripe } from "@stripe/stripe-js";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, toast, Typography } from "@stackframe/stack-ui";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
-import React, { useMemo, useState } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/stack-app/customers";
 
 type PaymentMethodSummary = {
   id: string,
@@ -26,6 +28,48 @@ function formatPaymentMethod(pm: NonNullable<PaymentMethodSummary>) {
   ].filter(Boolean);
   return details.join(" · ");
 }
+
+const formatInvoiceStatus = (status: CustomerInvoiceStatus, t: (value: string) => string) => {
+  if (!status) {
+    return t("Unknown");
+  }
+  switch (status) {
+    case "draft": {
+      return t("Draft");
+    }
+    case "open": {
+      return t("Open");
+    }
+    case "paid": {
+      return t("Paid");
+    }
+    case "uncollectible": {
+      return t("Uncollectible");
+    }
+    case "void": {
+      return t("Void");
+    }
+    default: {
+      return t("Unknown");
+    }
+  }
+};
+
+const formatInvoiceAmount = (amountTotal: number | null | undefined, t: (value: string) => string) => {
+  if (typeof amountTotal !== "number" || Number.isNaN(amountTotal)) {
+    return t("Unknown");
+  }
+  const normalized = amountTotal / 100;
+  const formatted = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(normalized);
+  return `$${formatted}`;
+};
+
+const formatInvoiceDate = (date: Date | null | undefined, t: (value: string) => string) => {
+  if (!date || Number.isNaN(date.getTime())) {
+    return t("Unknown");
+  }
+  return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(date);
+};
 
 type CustomerBilling = {
   hasCustomer: boolean,
@@ -46,14 +90,21 @@ type CustomerLike = {
     displayName: string,
     customerType: "user" | "team" | "custom",
     type: "one_time" | "subscription",
+    switchOptions?: Array<{
+      productId: string,
+      displayName: string,
+      prices: Record<string, { interval?: [number, "day" | "week" | "month" | "year"] }>,
+    }>,
     subscription: null | {
       currentPeriodEnd: Date | null,
       cancelAtPeriodEnd: boolean,
       isCancelable: boolean,
     },
   }>,
+  useInvoices: (options?: CustomerInvoicesListOptions) => CustomerInvoicesList,
   createPaymentMethodSetupIntent: () => Promise<CustomerPaymentMethodSetupIntent>,
   setDefaultPaymentMethodFromSetupIntent: (setupIntentId: string) => Promise<PaymentMethodSummary>,
+  switchSubscription: (options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) => Promise<void>,
 };
 
 function SetDefaultPaymentMethodForm(props: {
@@ -180,12 +231,15 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
   const billing = props.customer.useBilling();
   const defaultPaymentMethod = billing.defaultPaymentMethod;
   const products = props.customer.useProducts();
+  const invoices = props.customer.useInvoices({ limit: 10 });
   const productsForCustomerType = products.filter(product => product.customerType === props.customerType);
 
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [setupIntentClientSecret, setSetupIntentClientSecret] = useState<string | null>(null);
   const [setupIntentStripeAccountId, setSetupIntentStripeAccountId] = useState<string | null>(null);
   const [cancelProductId, setCancelProductId] = useState<string | null>(null);
+  const [switchFromProductId, setSwitchFromProductId] = useState<string | null>(null);
+  const [switchToProductId, setSwitchToProductId] = useState<string | null>(null);
 
   const stripePromise = useMemo(() => {
     if (!setupIntentStripeAccountId) return null;
@@ -194,13 +248,25 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
     return loadStripe(publishableKey, { stripeAccount: setupIntentStripeAccountId });
   }, [setupIntentStripeAccountId]);
 
+  const handleAsyncError = (error: unknown) => {
+    if (error instanceof KnownErrors.DefaultPaymentMethodRequired) {
+      toast({
+        title: t("No default payment method"),
+        description: t("Add a payment method before switching plans."),
+        variant: "destructive",
+      });
+      return;
+    }
+    alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? "check the browser console for the full error." : "report this to the developer."}\n\n${error}`);
+  };
+
   const openPaymentDialog = () => {
-    runAsynchronouslyWithAlert(async () => {
+    runAsynchronously(async () => {
       setPaymentDialogOpen(true);
       const res = await props.customer.createPaymentMethodSetupIntent();
       setSetupIntentClientSecret(res.clientSecret);
       setSetupIntentStripeAccountId(res.stripeAccountId);
-    });
+    }, { onError: handleAsyncError });
   };
 
   const closePaymentDialog = () => {
@@ -208,6 +274,23 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
     setSetupIntentClientSecret(null);
     setSetupIntentStripeAccountId(null);
   };
+
+  const openSwitchDialog = (productId: string, firstOptionId: string | null) => {
+    setSwitchFromProductId(productId);
+    setSwitchToProductId(firstOptionId);
+  };
+
+  const closeSwitchDialog = () => {
+    setSwitchFromProductId(null);
+    setSwitchToProductId(null);
+  };
+
+  const switchSourceProduct = switchFromProductId
+    ? productsForCustomerType.find((product) => product.id === switchFromProductId) ?? null
+    : null;
+  const switchOptions = switchSourceProduct?.switchOptions ?? [];
+  const selectedSwitchOption = switchOptions.find((option) => option.productId === switchToProductId) ?? null;
+  const selectedPriceId = selectedSwitchOption ? (Object.keys(selectedSwitchOption.prices)[0] ?? null) : null;
 
   return (
     <div className="space-y-4">
@@ -257,69 +340,198 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
         </Section>
       )}
 
-      {productsForCustomerType.length > 0 && <Section
-        title={t("Active plans")}
-        description={t("View your active plans and purchases.")}
-      >
-        <div className="space-y-3">
-          {productsForCustomerType.map((product, index) => {
-            const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
-            const isSubscription = product.type === "subscription";
-            const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
-            const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
+      {productsForCustomerType.length > 0 && (
+        <Section
+          title={t("Active plans")}
+          description={t("View your active plans and purchases.")}
+        >
+          <div className="space-y-3">
+            {productsForCustomerType.map((product, index) => {
+              const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
+              const isSubscription = product.type === "subscription";
+              const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
+              const canSwitchPlans = isSubscription && defaultPaymentMethod && !!product.id && (product.switchOptions?.length ?? 0) > 0;
+              const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
 
-            const subtitle =
-              product.type === "one_time"
-                ? t("One-time purchase")
-                : renewsAt
-                  ? `${t("Renews on")} ${new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(renewsAt)}`
-                  : t("Subscription");
+              const subtitle =
+                product.type === "one_time"
+                  ? t("One-time purchase")
+                  : renewsAt
+                    ? `${t("Renews on")} ${new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(renewsAt)}`
+                    : t("Subscription");
 
-            return (
-              <div key={product.id ?? `${product.displayName}-${index}`} className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <Typography className="truncate">{product.displayName}{quantitySuffix}</Typography>
-                  <Typography variant="secondary" type="footnote">{subtitle}</Typography>
+              return (
+                <div key={product.id ?? `${product.displayName}-${index}`} className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <Typography className="truncate">{product.displayName}{quantitySuffix}</Typography>
+                    <Typography variant="secondary" type="footnote">{subtitle}</Typography>
+                  </div>
+
+                  <div className="flex flex-col items-end gap-2">
+                    {canSwitchPlans && (
+                      <Button
+                        variant="secondary"
+                        color="neutral"
+                        onClick={() => openSwitchDialog(product.id!, product.switchOptions?.[0]?.productId ?? null)}
+                      >
+                        {t("Change plan")}
+                      </Button>
+                    )}
+                    {isCancelable && (
+                      <Button
+                        variant="secondary"
+                        color="neutral"
+                        onClick={() => setCancelProductId(product.id)}
+                      >
+                        {t("Cancel subscription")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {isCancelable && (
-                  <Button
-                    variant="secondary"
-                    color="neutral"
-                    onClick={() => setCancelProductId(product.id)}
+          <ActionDialog
+            open={cancelProductId !== null}
+            onOpenChange={(open) => {
+              if (!open) setCancelProductId(null);
+            }}
+            title={t("Cancel subscription")}
+            description={t("Canceling will stop future renewals for this subscription.")}
+            danger
+            cancelButton
+            okButton={{
+              label: t("Cancel subscription"),
+              onClick: async () => {
+                const productId = cancelProductId;
+                if (!productId) return;
+                if (props.customerType === "team") {
+                  await stackApp.cancelSubscription({ teamId: props.customer.id, productId });
+                } else {
+                  await stackApp.cancelSubscription({ productId });
+                }
+                setCancelProductId(null);
+              },
+            }}
+          />
+
+          <ActionDialog
+            open={switchFromProductId !== null}
+            onOpenChange={(open) => {
+              if (!open) closeSwitchDialog();
+            }}
+            title={t("Change plan")}
+            description={t("Select a new plan from the same product line.")}
+            cancelButton
+            okButton={{
+              label: t("Switch plan"),
+              onClick: async () => {
+                const fromProductId = switchFromProductId;
+                const toProductId = switchToProductId;
+                if (!fromProductId || !toProductId) return;
+                if (!selectedPriceId) return;
+                const result = await Result.fromThrowingAsync(() => props.customer.switchSubscription({
+                  fromProductId,
+                  toProductId,
+                  priceId: selectedPriceId,
+                }));
+                if (result.status === "error") {
+                  handleAsyncError(result.error);
+                  return "prevent-close";
+                }
+                closeSwitchDialog();
+              },
+              props: {
+                disabled: !switchFromProductId || !switchToProductId || !selectedPriceId,
+              },
+            }}
+          >
+            <div className="space-y-2">
+              {switchOptions.length === 0 ? (
+                <Typography variant="secondary" type="footnote">
+                  {t("No other plans available for this subscription.")}
+                </Typography>
+              ) : (
+                <>
+                  <Typography type="footnote">{t("Choose a plan")}</Typography>
+                  <Select
+                    value={switchToProductId ?? undefined}
+                    onValueChange={(value) => setSwitchToProductId(value || null)}
                   >
-                    {t("Cancel subscription")}
-                  </Button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <ActionDialog
-          open={cancelProductId !== null}
-          onOpenChange={(open) => {
-            if (!open) setCancelProductId(null);
-          }}
-          title={t("Cancel subscription")}
-          description={t("Canceling will stop future renewals for this subscription.")}
-          danger
-          cancelButton
-          okButton={{
-            label: t("Cancel subscription"),
-            onClick: async () => {
-              const productId = cancelProductId;
-              if (!productId) return;
-              if (props.customerType === "team") {
-                await stackApp.cancelSubscription({ teamId: props.customer.id, productId });
-              } else {
-                await stackApp.cancelSubscription({ productId });
-              }
-              setCancelProductId(null);
-            },
-          }}
-        />
-      </Section>}
-    </div>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t("Choose a plan")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {switchOptions.map((option: NonNullable<typeof switchOptions>[number]) => (
+                        <SelectItem key={option.productId} value={option.productId}>
+                          {option.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </div>
+          </ActionDialog>
+        </Section>
+      )
+      }
+      {invoices.length > 0 && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <Typography className="font-medium">{t("Invoices")}</Typography>
+              <Typography variant="secondary" type="footnote">{t("Review past invoices and receipts.")}</Typography>
+            </div>
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[140px]">{t("Date")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Status")}</TableHead>
+                    <TableHead className="w-[120px]">{t("Amount")}</TableHead>
+                    <TableHead className="w-[120px] text-right">{t("Invoice")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice, index) => {
+                    const createdAtTime = invoice.createdAt.getTime();
+                    const invoiceKey = Number.isNaN(createdAtTime) ? `invoice-${index}` : `invoice-${createdAtTime}-${index}`;
+                    return (
+                      <TableRow key={invoiceKey}>
+                        <TableCell>
+                          <Typography>{formatInvoiceDate(invoice.createdAt, t)}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography>{formatInvoiceStatus(invoice.status, t)}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography>{formatInvoiceAmount(invoice.amountTotal, t)}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {invoice.hostedInvoiceUrl ? (
+                            <Button asChild variant="secondary" color="neutral" size="sm">
+                              <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">
+                                {t("View")}
+                              </a>
+                            </Button>
+                          ) : (
+                            <Typography variant="secondary" type="footnote">
+                              {t("Unavailable")}
+                            </Typography>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </>
+      )}
+    </div >
   );
 }

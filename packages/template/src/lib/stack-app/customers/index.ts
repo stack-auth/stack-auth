@@ -45,6 +45,11 @@ export type CustomerProduct = {
     cancelAtPeriodEnd: boolean,
     isCancelable: boolean,
   },
+  switchOptions?: Array<{
+    productId: string,
+    displayName: string,
+    prices: InlineProduct["prices"],
+  }>,
 };
 
 export type CustomerProductsList = CustomerProduct[] & {
@@ -60,6 +65,28 @@ export type CustomerProductsRequestOptions =
   | ({ userId: string } & CustomerProductsListOptions)
   | ({ teamId: string } & CustomerProductsListOptions)
   | ({ customCustomerId: string } & CustomerProductsListOptions);
+
+export type CustomerInvoiceStatus = "draft" | "open" | "paid" | "uncollectible" | "void" | null;
+
+export type CustomerInvoice = {
+  createdAt: Date,
+  status: CustomerInvoiceStatus,
+  amountTotal: number,
+  hostedInvoiceUrl: string | null,
+};
+
+export type CustomerInvoicesList = CustomerInvoice[] & {
+  nextCursor: string | null,
+};
+
+export type CustomerInvoicesListOptions = {
+  cursor?: string,
+  limit?: number,
+};
+
+export type CustomerInvoicesRequestOptions =
+  | ({ userId: string } & CustomerInvoicesListOptions)
+  | ({ teamId: string } & CustomerInvoicesListOptions);
 
 export type CustomerDefaultPaymentMethod = {
   id: string,
@@ -91,6 +118,8 @@ export type Customer<IsServer extends boolean = false> =
     createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>,
 
     setDefaultPaymentMethodFromSetupIntent(setupIntentId: string): Promise<CustomerDefaultPaymentMethod>,
+
+    switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }): Promise<void>,
   }
   & AsyncStoreProperty<
     "billing",
@@ -108,6 +137,12 @@ export type Customer<IsServer extends boolean = false> =
     "products",
     [options?: CustomerProductsListOptions],
     CustomerProductsList,
+    true
+  >
+  & AsyncStoreProperty<
+    "invoices",
+    [options?: CustomerInvoicesListOptions],
+    CustomerInvoicesList,
     true
   >
   & (IsServer extends true ? {

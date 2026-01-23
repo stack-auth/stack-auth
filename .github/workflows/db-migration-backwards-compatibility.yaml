@@ -69,18 +69,12 @@ jobs:
           ref: main
           path: main-branch
 
-      # Replace main's migrations with current branch's migrations
-      - name: Replace migrations with current branch migrations
-        run: |
-          rm -rf main-branch/apps/backend/prisma/migrations/*
-          cp -r saved-migrations/* main-branch/apps/backend/prisma/migrations/
-
-      # Move main-branch to the root for the rest of the workflow
+      # Move main-branch to the root for the rest of the workflow (keep main's migrations for now)
       - name: Setup working directory
         run: |
           shopt -s dotglob
           mv main-branch/* .
-          rm -rf main-branch current-branch saved-migrations
+          rm -rf main-branch current-branch
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -194,8 +188,26 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
-      - name: Run tests
+      # First test run: main branch with main's migrations
+      - name: Run tests (main branch with original migrations)
         run: pnpm test
+
+      # Now copy over current branch's migrations and run migrate
+      - name: Replace migrations with current branch migrations
+        run: |
+          rm -rf apps/backend/prisma/migrations/*
+          cp -r saved-migrations/* apps/backend/prisma/migrations/
+          rm -rf saved-migrations
+
+      - name: Run database migrations
+        run: pnpm run db:migrate
+
+      # Second test run: main branch code with new migrations applied
+      - name: Run tests (main branch with new migrations)
+        run: pnpm test
+
+      - name: Verify data integrity
+        run: pnpm run verify-data-integrity
 
       - name: Print Docker Compose logs
         if: always()

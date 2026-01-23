@@ -39,6 +39,7 @@ model Project {
   projectUsers               ProjectUser[]
   provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
+  branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
@@ -62,6 +63,21 @@ model Tenancy {
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
+}
+
+model BranchConfigOverride {
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  config Json
+  source Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, branchId])
 }
 
 model EnvironmentConfigOverride {
@@ -704,11 +720,6 @@ enum EmailOutboxCreatedWith {
   PROGRAMMATIC_CALL
 }
 
-// In most displays, the way emails in the outbox should be ordered is:
-// - by finishedSendingAt, descending (null comes first)
-// - by scheduledAtIfNotYetQueued, descending (null comes last)
-// - by priority, ascending
-// - by id, ascending
 model EmailOutbox {
   tenancyId String @db.Uuid
 
@@ -1028,6 +1039,9 @@ model SubscriptionInvoice {
   stripeSubscriptionId          String
   stripeInvoiceId               String
   isSubscriptionCreationInvoice Boolean
+  status                        String?
+  amountTotal                   Int?
+  hostedInvoiceUrl              String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

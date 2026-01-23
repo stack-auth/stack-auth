@@ -3,96 +3,23 @@
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableColumnHeader, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { SettingCard, SettingText } from "@/components/settings";
+import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
-import { cn } from "@/lib/utils";
-import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
+import { WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef, Table as TableType } from "@tanstack/react-table";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-// Glassmorphic card component following design guide
-function GlassCard({
-  children,
-  className,
-  gradientColor = "blue"
-}: {
-  children: React.ReactNode,
-  className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate" | "cyan",
-}) {
-  const hoverTints: Record<string, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
-    slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
-  };
-
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
-      <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
-      <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-        {title}
-      </span>
-    </div>
-  );
-}
-
-// Status badge component
-function StatusBadge({ status, error }: { status: 'sent' | 'failed', error?: string | null }) {
-  if (status === 'sent') {
-    return (
-      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20">
-        <CheckCircle className="h-3 w-3" />
-        Sent
-      </div>
-    );
-  }
-  return (
-    <SimpleTooltip tooltip={error || 'Email delivery failed'}>
-      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-red-600 dark:text-red-400 bg-red-500/10 ring-1 ring-red-500/20">
-        <XCircle className="h-3 w-3" />
-        Failed
-      </div>
-    </SimpleTooltip>
-  );
-}
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
@@ -103,280 +30,54 @@ export default function PageClient() {
     <AppEnabledGuard appId="emails">
       <PageLayout
         title="Emails"
-        description="Manage email server configuration and view sending history"
+        description="Manage email server and logs"
         actions={
           <SendEmailDialog
-            trigger={
-              <Button className="gap-2">
-                <Envelope className="h-4 w-4" />
-                Send Email
-              </Button>
-            }
+            trigger={<Button>Send Email</Button>}
             emailConfig={emailConfig}
           />
         }
       >
-        <div className="flex flex-col gap-5">
-          {/* Email Server Card */}
-          {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
-            <EmulatorModeCard />
-          ) : (
-            <EmailServerCard emailConfig={emailConfig} />
-          )}
-
-          {/* Email Log Card */}
-          <EmailLogCard />
-        </div>
+        {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
+          <SettingCard
+            title="Mock Emails"
+            description="View all emails sent through the emulator in Inbucket"
+          >
+            <Button variant='secondary' onClick={() => {
+              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
+            }}>
+              Open Inbox
+            </Button>
+          </SettingCard>
+        ) : (
+          <SettingCard
+            title="Email Server"
+            description="Configure the email server and sender address for outgoing emails"
+            actions={
+              <div className="flex items-center gap-2">
+                {!emailConfig.isShared && <TestSendingDialog trigger={<Button variant='secondary' className="w-full">Send Test Email</Button>} />}
+                <EditEmailServerDialog trigger={<Button variant='secondary' className="w-full">Configure</Button>} />
+              </div>
+            }
+          >
+            <SettingText label="Server">
+              <div className="flex items-center gap-2">
+                {emailConfig.isShared ?
+                  <>Shared <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' /></>
+                  : (emailConfig.provider === 'resend' ? "Resend" : "Custom SMTP server")
+                }
+              </div>
+            </SettingText>
+            <SettingText label="Sender Email">
+              {emailConfig.isShared ? 'noreply@stackframe.co' : emailConfig.senderEmail}
+            </SettingText>
+          </SettingCard>
+        )}
+        <SettingCard title="Email Log" description="Manage email sending history" >
+          <EmailSendDataTable />
+        </SettingCard>
       </PageLayout>
     </AppEnabledGuard>
-  );
-}
-
-function EmulatorModeCard() {
-  return (
-    <GlassCard gradientColor="purple">
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-5">
-          <div className="flex-1 min-w-0">
-            <SectionHeader icon={HardDrive} title="Mock Emails" />
-            <Typography variant="secondary" className="text-sm mt-1">
-              View all emails sent through the emulator in Inbucket
-            </Typography>
-          </div>
-          <Button
-            variant='secondary'
-            size="sm"
-            className="h-8 px-3 text-xs gap-1.5 flex-shrink-0"
-            onClick={() => {
-              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
-            }}
-          >
-            <ArrowSquareOut className="h-3.5 w-3.5" />
-            Open Inbox
-          </Button>
-        </div>
-      </div>
-    </GlassCard>
-  );
-}
-
-function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails']['server'] }) {
-  const serverType = emailConfig.isShared
-    ? 'Shared'
-    : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
-
-  const senderEmail = emailConfig.isShared
-    ? 'noreply@stackframe.co'
-    : emailConfig.senderEmail;
-
-  return (
-    <GlassCard gradientColor="slate">
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-5">
-          <div className="flex-1 min-w-0">
-            <SectionHeader icon={HardDrive} title="Email Server" />
-            <Typography variant="secondary" className="text-sm mt-1">
-              Configure the email server and sender address for outgoing emails
-            </Typography>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {!emailConfig.isShared && (
-              <TestSendingDialog
-                trigger={
-                  <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
-                    <Envelope className="h-3.5 w-3.5" />
-                    Test
-                  </Button>
-                }
-              />
-            )}
-            <EditEmailServerDialog
-              trigger={
-                <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
-                  <Sliders className="h-3.5 w-3.5" />
-                  Configure
-                </Button>
-              }
-            />
-          </div>
-        </div>
-      </div>
-      <div className="border-t border-foreground/[0.05] px-5 pb-5 pt-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {/* Server Type */}
-          <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Server
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground">{serverType}</span>
-              {emailConfig.isShared && (
-                <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' />
-              )}
-            </div>
-          </div>
-
-          {/* Sender Email */}
-          <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Sender Email
-            </span>
-            <span className="text-sm font-medium text-foreground font-mono">{senderEmail}</span>
-          </div>
-        </div>
-      </div>
-    </GlassCard>
-  );
-}
-
-function EmailLogCard() {
-  const stackAdminApp = useAdminApp();
-  const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [table, setTable] = useState<TableType<AdminSentEmail> | null>(null);
-  const [columnVisibilityState, setColumnVisibilityState] = useState({});
-
-  // Fetch email logs when component mounts
-  useEffect(() => {
-    runAsynchronously(async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const emails = await stackAdminApp.listSentEmails();
-        setEmailLogs(emails);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load email logs");
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [stackAdminApp]);
-
-  // Watch for table visibility changes
-  useEffect(() => {
-    if (table) {
-      setColumnVisibilityState(table.getState().columnVisibility);
-    }
-  }, [table]);
-
-  if (loading) {
-    return (
-      <GlassCard gradientColor="slate" className="overflow-hidden">
-        <div className="p-5">
-          <SectionHeader icon={Envelope} title="Email Log" />
-          <Typography variant="secondary" className="text-sm mt-1">
-            View and manage email sending history
-          </Typography>
-        </div>
-        <div className="border-t border-foreground/[0.05] flex items-center justify-center py-12">
-          <div className="flex flex-col items-center gap-3">
-            <div className="p-3 rounded-xl bg-foreground/[0.04]">
-              <Envelope className="h-5 w-5 text-muted-foreground/50 animate-pulse" />
-            </div>
-            <Typography variant="secondary" className="text-sm">
-              Loading email logs...
-            </Typography>
-          </div>
-        </div>
-      </GlassCard>
-    );
-  }
-
-  if (error) {
-    return (
-      <GlassCard gradientColor="slate" className="overflow-hidden">
-        <div className="p-5">
-          <SectionHeader icon={Envelope} title="Email Log" />
-          <Typography variant="secondary" className="text-sm mt-1">
-            View and manage email sending history
-          </Typography>
-        </div>
-        <div className="border-t border-foreground/[0.05] flex items-center justify-center py-12">
-          <div className="flex flex-col items-center gap-3 text-center max-w-sm">
-            <div className="p-3 rounded-xl bg-destructive/10">
-              <Envelope className="h-5 w-5 text-destructive" />
-            </div>
-            <div className="space-y-1">
-              <Typography className="text-sm font-medium text-foreground">Failed to load emails</Typography>
-              <Typography variant="secondary" className="text-sm">
-                {error}
-              </Typography>
-            </div>
-          </div>
-        </div>
-      </GlassCard>
-    );
-  }
-
-  if (emailLogs.length === 0) {
-    return (
-      <GlassCard gradientColor="slate" className="overflow-hidden">
-        <div className="p-5">
-          <SectionHeader icon={Envelope} title="Email Log" />
-          <Typography variant="secondary" className="text-sm mt-1">
-            View and manage email sending history
-          </Typography>
-        </div>
-        <div className="border-t border-foreground/[0.05] flex items-center justify-center py-12">
-          <div className="flex flex-col items-center gap-3 text-center max-w-sm">
-            <div className="p-3 rounded-xl bg-foreground/[0.04]">
-              <Envelope className="h-5 w-5 text-muted-foreground/50" />
-            </div>
-            <div className="space-y-1">
-              <Typography className="text-sm font-medium text-foreground">No emails sent yet</Typography>
-              <Typography variant="secondary" className="text-sm">
-                Emails will appear here once sent
-              </Typography>
-            </div>
-          </div>
-        </div>
-      </GlassCard>
-    );
-  }
-
-  return (
-    <GlassCard gradientColor="slate" className="overflow-hidden">
-      <div className="p-5">
-        <div className="flex w-full items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <SectionHeader icon={Envelope} title="Email Log" />
-            <Typography variant="secondary" className="text-sm mt-1">
-              View and manage email sending history
-            </Typography>
-          </div>
-          {table && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <DataTableViewOptions
-                key={JSON.stringify(columnVisibilityState)}
-                table={table}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="border-t border-foreground/[0.05] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-        <DataTable
-          data={emailLogs}
-          defaultColumnFilters={[]}
-          columns={emailTableColumns}
-          defaultSorting={[{ id: 'sentAt', desc: true }]}
-          showDefaultToolbar={false}
-          showResetFilters={false}
-          toolbarRender={(tableInstance) => {
-            if (table !== tableInstance) {
-              setTable(tableInstance);
-            }
-            // Update visibility state on every render
-            const currentVisibility = tableInstance.getState().columnVisibility;
-            if (JSON.stringify(currentVisibility) !== JSON.stringify(columnVisibilityState)) {
-              setColumnVisibilityState(currentVisibility);
-            }
-            return null;
-          }}
-        />
-      </div>
-    </GlassCard>
   );
 }
 
@@ -423,70 +124,13 @@ const emailServerSchema = yup.object({
   senderName: definedWhenTypeIsOneOf(yup.string(), ["standard", "resend"], "Email sender name is required"),
 });
 
-// Helper component for input with info tooltip
-function InputFieldWithInfo({
-  label,
-  name,
-  control,
-  type,
-  required,
-  infoText,
-  infoLinks,
-}: {
-  label: string,
-  name: string,
-  control: any,
-  type: string,
-  required?: boolean,
-  infoText: string,
-  infoLinks?: Array<{ label: string, url: string }>,
-}) {
-  const tooltipContent = (
-    <div className="space-y-2.5 max-w-xs">
-      <p className="text-xs leading-relaxed text-center">{infoText}</p>
-      {infoLinks && infoLinks.length > 0 && (
-        <div className="pt-2 border-t border-foreground/10 space-y-1.5 flex flex-col items-center">
-          {infoLinks.map((link, idx) => (
-            <a
-              key={idx}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors duration-150 hover:transition-none cursor-pointer"
-            >
-              <span>{link.label}</span>
-              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <InputField
-      label={
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{label}</span>
-          <SimpleTooltip tooltip={tooltipContent} type="info" />
-        </div>
-      }
-      name={name}
-      control={control}
-      type={type}
-      // Don't pass required prop - it adds asterisk which we don't want
-    />
-  );
-}
-
 function EditEmailServerDialog(props: {
   trigger: React.ReactNode,
 }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const [error, setError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<any>(null);
   const defaultValues = useMemo(() => getDefaultValues(config.emails.server, project), [config, project]);
@@ -503,17 +147,22 @@ function EditEmailServerDialog(props: {
       return 'prevent-close-and-prevent-reset';
     }
     setError(null);
-    await project.updateConfig({
-      "emails.server": {
-        isShared: false,
-        host: emailConfig.host,
-        port: emailConfig.port,
-        username: emailConfig.username,
-        password: emailConfig.password,
-        senderEmail: emailConfig.senderEmail,
-        senderName: emailConfig.senderName,
-        provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
-      } satisfies CompleteConfig['emails']['server']
+    // Email server config contains secrets, so it's environment-level only (pushable: false)
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        "emails.server": {
+          isShared: false,
+          host: emailConfig.host,
+          port: emailConfig.port,
+          username: emailConfig.username,
+          password: emailConfig.password,
+          senderEmail: emailConfig.senderEmail,
+          senderName: emailConfig.senderName,
+          provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+        } satisfies CompleteConfig['emails']['server']
+      },
+      pushable: false,
     });
 
     toast({
@@ -531,10 +180,15 @@ function EditEmailServerDialog(props: {
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
       if (values.type === 'shared') {
-        await project.update({
-          config: {
-            emailConfig: { type: 'shared' }
-          }
+        // Email server config contains secrets, so it's environment-level only (pushable: false)
+        await updateConfig({
+          adminApp: stackAdminApp,
+          configUpdate: {
+            "emails.server": {
+              isShared: true,
+            } satisfies Partial<CompleteConfig['emails']['server']>
+          },
+          pushable: false,
         });
       } else if (values.type === 'resend') {
         if (!values.password || !values.senderEmail || !values.senderName) {
@@ -585,93 +239,39 @@ function EditEmailServerDialog(props: {
           ]}
         />
         {form.watch('type') === 'resend' && <>
-          <InputFieldWithInfo
-            label="Resend API Key"
-            name="password"
-            control={form.control}
-            type="password"
-            required
-            infoText="Get your API key from resend.com/api-keys. Create a new key with 'Sending access' permissions."
-          />
-          <InputFieldWithInfo
-            label="Sender Email"
-            name="senderEmail"
-            control={form.control}
-            type="email"
-            required
-            infoText="The email address emails will be sent from. Must be a verified domain in your Resend account."
-          />
-          <InputField
-            label="Sender Name"
-            name="senderName"
-            control={form.control}
-            type="text"
-            required
-          />
-          <Alert className="bg-blue-500/5 border-blue-500/20">
-            <Typography variant="secondary" className="text-sm">
-              <strong>Note:</strong> Your API key will be encrypted and securely stored in the database.
-            </Typography>
-          </Alert>
+          {([
+            { label: "Resend API Key", name: "password", type: 'password' },
+            { label: "Sender Email", name: "senderEmail", type: 'email' },
+            { label: "Sender Name", name: "senderName", type: 'text' },
+          ] as const).map((field) => (
+            <InputField
+              key={field.name}
+              label={field.label}
+              name={field.name}
+              control={form.control}
+              type={field.type}
+              required
+            />
+          ))}
         </>}
         {form.watch('type') === 'standard' && <>
-          <InputFieldWithInfo
-            label="Host"
-            name="host"
-            control={form.control}
-            type="text"
-            required
-            infoText="Your SMTP server hostname (e.g., smtp.gmail.com, smtp-mail.outlook.com, or smtp.your-domain.com)"
-          />
-          <InputFieldWithInfo
-            label="Port"
-            name="port"
-            control={form.control}
-            type="number"
-            required
-            infoText="Common ports: 587 (TLS/STARTTLS recommended), 465 (SSL), or 25 (unencrypted, not recommended)"
-          />
-          <InputFieldWithInfo
-            label="Username"
-            name="username"
-            control={form.control}
-            type="text"
-            required
-            infoText="Your SMTP username, usually your full email address (e.g., user@example.com)"
-          />
-          <InputFieldWithInfo
-            label="Password"
-            name="password"
-            control={form.control}
-            type="password"
-            required
-            infoText="Your SMTP password or app-specific password. Most email providers require app passwords for security."
-            infoLinks={[
-              { label: "Gmail: Create App Password", url: "https://myaccount.google.com/apppasswords" },
-              { label: "Outlook: App Password Guide", url: "https://support.microsoft.com/account-billing/using-app-passwords-with-apps-that-don-t-support-two-step-verification-5896ed9b-4263-e681-128a-a6f2979a7944" },
-              { label: "Yahoo: Generate App Password", url: "https://help.yahoo.com/kb/generate-app-password-sln15241.html" },
-            ]}
-          />
-          <InputFieldWithInfo
-            label="Sender Email"
-            name="senderEmail"
-            control={form.control}
-            type="email"
-            required
-            infoText="The email address that will appear as the sender. Must be authorized by your SMTP server."
-          />
-          <InputField
-            label="Sender Name"
-            name="senderName"
-            control={form.control}
-            type="text"
-            required
-          />
-          <Alert className="bg-blue-500/5 border-blue-500/20">
-            <Typography variant="secondary" className="text-sm">
-              <strong>Note:</strong> Your SMTP credentials will be encrypted and securely stored in the database.
-            </Typography>
-          </Alert>
+          {([
+            { label: "Host", name: "host", type: 'text' },
+            { label: "Port", name: "port", type: 'number' },
+            { label: "Username", name: "username", type: 'text' },
+            { label: "Password", name: "password", type: 'password' },
+            { label: "Sender Email", name: "senderEmail", type: 'email' },
+            { label: "Sender Name", name: "senderName", type: 'text' },
+          ] as const).map((field) => (
+            <InputField
+              key={field.name}
+              label={field.label}
+              name={field.name}
+              control={form.control}
+              type={field.type}
+              required
+            />
+          ))}
         </>}
         {error && <Alert variant="destructive">{error}</Alert>}
       </>
@@ -684,7 +284,6 @@ function TestSendingDialog(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const config = project.useConfig();
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
 
@@ -696,27 +295,8 @@ function TestSendingDialog(props: {
     })}
     okButton={{ label: "Send" }}
     onSubmit={async (values) => {
-      const emailServerConfig = config.emails.server;
-      if (emailServerConfig.isShared) throwErr("Shared email server cannot be used for testing");
-
-      // Convert CompleteConfig email server to AdminEmailConfig format
-      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' ? {
-        type: 'resend',
-        host: emailServerConfig.host || throwErr("Email host is missing"),
-        port: emailServerConfig.port || throwErr("Email port is missing"),
-        username: emailServerConfig.username || throwErr("Email username is missing"),
-        password: emailServerConfig.password || throwErr("Email password is missing"),
-        senderName: emailServerConfig.senderName || throwErr("Email sender name is missing"),
-        senderEmail: emailServerConfig.senderEmail || throwErr("Email sender email is missing"),
-      } : {
-        type: 'standard',
-        host: emailServerConfig.host || throwErr("Email host is missing"),
-        port: emailServerConfig.port || throwErr("Email port is missing"),
-        username: emailServerConfig.username || throwErr("Email username is missing"),
-        password: emailServerConfig.password || throwErr("Email password is missing"),
-        senderName: emailServerConfig.senderName || throwErr("Email sender name is missing"),
-        senderEmail: emailServerConfig.senderEmail || throwErr("Email sender email is missing"),
-      };
+      const emailConfig = project.config.emailConfig || throwErr("Email config is not set");
+      if (emailConfig.type === 'shared') throwErr("Shared email server cannot be used for testing");
 
       const result = await stackAdminApp.sendTestEmail({
         recipientEmail: values.email,
@@ -750,54 +330,58 @@ function TestSendingDialog(props: {
 }
 
 const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
+  { accessorKey: 'recipient', header: 'Recipient' },
+  { accessorKey: 'subject', header: 'Subject' },
   {
-    accessorKey: 'recipient',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
-    cell: ({ row }) => (
-      <span className="text-sm font-medium text-foreground">{row.original.recipient}</span>
-    ),
-  },
-  {
-    accessorKey: 'subject',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground truncate max-w-[300px] block">
-        {row.original.subject}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'sentAt',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
-    cell: ({ row }) => {
+    accessorKey: 'sentAt', header: 'Sent At', cell: ({ row }) => {
       const date = row.original.sentAt;
-      return (
-        <span className="text-sm text-muted-foreground tabular-nums font-mono">
-          {date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          })} {date.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          })}
-        </span>
-      );
-    },
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    }
   },
   {
-    id: 'status',
-    accessorFn: (row) => (row.error ? 'failed' : 'sent'),
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-    cell: ({ row }) => (
-      <StatusBadge
-        status={row.original.error ? 'failed' : 'sent'}
-        error={row.original.error ? String(row.original.error) : null}
-      />
-    ),
+    accessorKey: 'status', header: 'Status', cell: ({ row }) => {
+      return row.original.error ? (
+        <div className="text-red-500">Failed</div>
+      ) : (
+        <div className="text-green-500">Sent</div>
+      );
+    }
   },
 ];
+
+function EmailSendDataTable() {
+  const stackAdminApp = useAdminApp();
+  const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch email logs when component mounts
+  useEffect(() => {
+    runAsynchronously(async () => {
+      setLoading(true);
+      try {
+        const emails = await stackAdminApp.listSentEmails();
+        setEmailLogs(emails);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [stackAdminApp]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-4">
+        <Typography>Loading email logs...</Typography>
+      </div>
+    );
+  }
+
+  return <DataTable
+    data={emailLogs}
+    defaultColumnFilters={[]}
+    columns={emailTableColumns}
+    defaultSorting={[{ id: 'sentAt', desc: true }]}
+  />;
+}
 
 function SendEmailDialog(props: {
   trigger: React.ReactNode,
