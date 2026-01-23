@@ -4,12 +4,13 @@ import { customizationExamples } from './customization';
 import { paymentsExamples } from './payments';
 import { selfHostExamples } from './self-host';
 import { setupExamples } from './setup';
+import { swiftExamples } from './swift';
 import { viteExamples } from './vite-example';
 
 const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>> = {
   'setup': setupExamples,
   'apps': {...apiKeysExamples, ...paymentsExamples },
-  'getting-started': viteExamples,
+  'getting-started': {...viteExamples, ...swiftExamples},
   'others': selfHostExamples,
   'customization': customizationExamples,
 };

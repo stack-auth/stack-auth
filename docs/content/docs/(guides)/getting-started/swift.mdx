@@ -1,0 +1,131 @@
+---
+title: Swift SDK (Preview)
+lastModified: "2026-01-22"
+---
+
+<Info type="warning">
+The Swift SDK is currently in preview. APIs may change before the stable release. We'd love your feedback—join our [Discord](https://discord.stack-auth.com) to share your thoughts.
+</Info>
+
+The Swift SDK provides native authentication for iOS, macOS, watchOS, tvOS, and visionOS apps. It uses async/await, Keychain storage, and system OAuth flows.
+
+## Requirements
+
+- Swift 5.9 or later
+- iOS 15+ / macOS 12+ / watchOS 8+ / tvOS 15+ / visionOS 1+
+
+## Installation
+
+Add the SDK to your project using Swift Package Manager. In your `Package.swift`:
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["installation"]} 
+/>
+
+Or in Xcode:
+1. Go to File → Add Package Dependencies
+2. Enter `https://github.com/stack-auth/swift-sdk-prerelease`
+3. Select your desired version and add to your target
+
+## Quick Start
+
+### Initialize the SDK
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["init-sdk"]} 
+/>
+
+Get your project ID and publishable key from the [Stack Auth dashboard](https://app.stack-auth.com).
+
+### Sign Up and Sign In
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["sign-up-sign-in"]} 
+/>
+
+### Get the Current User
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["get-user"]} 
+/>
+
+### Sign Out
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["sign-out"]} 
+/>
+
+## Token Storage
+
+By default, tokens are stored securely in the system Keychain. You can configure alternative storage:
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["token-storage"]} 
+/>
+
+## Error Handling
+
+SDK methods use Swift's native `throws` mechanism. Errors conform to `StackAuthError`:
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["error-handling"]} 
+/>
+
+## OAuth Authentication
+
+The Swift SDK uses `ASWebAuthenticationSession` for OAuth, providing a secure system browser experience.
+
+### Simple OAuth (Recommended)
+
+For most apps, simply use `signInWithOAuth()` — it handles the entire OAuth flow automatically. It uses the `stack-auth://` callback scheme, which works without any additional configuration:
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["oauth"]} 
+/>
+
+### Manual OAuth Flow
+
+If you need more control, use `getOAuthUrl()` to get the authorization URL and handle the callback yourself. You'll need to provide redirect URLs:
+
+- **`redirectUrl`**: Where the provider redirects on success (e.g., `stack-auth://oauth-callback`)
+- **`errorRedirectUrl`**: Where the provider redirects on error (e.g., `stack-auth://error`)
+
+<Info>
+The `stack-auth://` scheme works out of the box. If you want to use a custom scheme (like `myapp://`), you'll need to add it as a trusted domain in your Stack Auth project settings.
+</Info>
+
+## Server-Side Usage
+
+For server-side operations, use `StackServerApp`:
+
+<PlatformCodeblock 
+  document="getting-started/swift" 
+  examples={["server-side"]} 
+/>
+
+<Info type="warning">
+Never include your secret server key in client-side code. `StackServerApp` should only be used in secure server environments.
+</Info>
+
+## Key Differences from JavaScript SDK
+
+| Feature | JavaScript SDK | Swift SDK |
+|---------|---------------|-----------|
+| Token Storage | Cookies | Keychain |
+| OAuth Flow | Browser redirect | ASWebAuthenticationSession |
+| Redirect Methods | Available | Not available (browser-only) |
+| React Hooks | `useUser()`, etc. | Not applicable |
+
+## Next Steps
+
+- Check out the [REST API documentation](/api/overview) for all available endpoints
+- Join our [Discord community](https://discord.stack-auth.com) to share feedback on the Swift SDK preview
+- See the [example apps](https://github.com/stack-auth/stack-auth/tree/main/sdks/implementations/swift/Examples) for more usage examples

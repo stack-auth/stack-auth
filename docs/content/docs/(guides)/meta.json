@@ -11,6 +11,7 @@
     "getting-started/users",
     "getting-started/production",
     "getting-started/vite-example",
+    "getting-started/swift",
     "---Apps---",
     "apps/api-keys",
     "apps/emails",
