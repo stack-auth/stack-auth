@@ -94,12 +94,15 @@ try await stack.signInWithOAuth(provider: "google")
 
 **2. Manual URL handling** - For custom implementations:
 
+> **Note:** The `stack-auth://` scheme is automatically accepted. Custom schemes (e.g., `myapp://`) 
+> require adding the scheme to the project's trusted domains in the Stack Auth dashboard.
+
 ```swift
 // Get the OAuth URL (must provide full URLs with scheme)
 let oauth = try await stack.getOAuthUrl(
     provider: "google",
-    redirectUrl: "stackauth-myapp://oauth-callback",
-    errorRedirectUrl: "stackauth-myapp://error"
+    redirectUrl: "stack-auth://success",
+    errorRedirectUrl: "stack-auth://error"
 )
 
 // Open oauth.url in your own browser/webview

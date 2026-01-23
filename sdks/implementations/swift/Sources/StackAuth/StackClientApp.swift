@@ -128,10 +128,10 @@ public actor StackClientApp {
     ) async throws -> OAuthUrlResult {
         // Validate that URLs are full URLs
         guard redirectUrl.contains("://") else {
-            throw StackAuthError(code: "invalid_redirect_url", message: "redirectUrl must be a full URL (e.g., 'stackauth-myapp://oauth-callback')")
+            throw StackAuthError(code: "invalid_redirect_url", message: "redirectUrl must be a full URL (e.g., 'stack-auth://success')")
         }
         guard errorRedirectUrl.contains("://") else {
-            throw StackAuthError(code: "invalid_error_redirect_url", message: "errorRedirectUrl must be a full URL (e.g., 'stackauth-myapp://error')")
+            throw StackAuthError(code: "invalid_error_redirect_url", message: "errorRedirectUrl must be a full URL (e.g., 'stack-auth://error')")
         }
         
         let actualState = state ?? generateRandomString(length: 32)

@@ -86,7 +86,7 @@ Implementation:
      call callOAuthCallback(url, codeVerifier, redirectUrl) to exchange code for tokens
 
 Native App Implementation (iOS/macOS example):
-```
+```swift
 let callbackScheme = "stack-auth"
 let oauth = try await getOAuthUrl(
     provider: provider,
@@ -132,6 +132,11 @@ Returns: { url: string, state: string, codeVerifier: string, redirectUrl: string
   codeVerifier: The PKCE code verifier (store for token exchange)
   redirectUrl: The redirect URL (same as input, needed for token exchange - must match exactly)
 
+Note on URL schemes:
+- The "stack-auth://" scheme is automatically accepted by the backend without any configuration.
+- Custom schemes (e.g., "myapp://") require adding the scheme to the project's trusted domains
+  in the Stack Auth dashboard before use, or the OAuth flow will fail with REDIRECT_URL_NOT_WHITELISTED.
+
 Implementation:
 1. Validate that redirectUrl and errorRedirectUrl are full URLs (contain "://")
    - If not, throw error with code "invalid_redirect_url" or "invalid_error_redirect_url"
@@ -141,17 +146,17 @@ Implementation:
 5. Return { url, state, codeVerifier, redirectUrl } without redirecting
 
 The caller is responsible for:
-- Constructing full URLs before calling (e.g., "stackauth-myapp://oauth-callback")
+- Constructing full URLs before calling (e.g., "stack-auth://success")
 - Opening the URL in a browser/webview
 - Storing the state, codeVerifier, and redirectUrl
 - Calling callOAuthCallback() with the callback URL and these values
 
 Errors:
   StackAuthError(invalid_redirect_url)
-    message: "redirectUrl must be a full URL (e.g., 'stackauth-myapp://oauth-callback')"
+    message: "redirectUrl must be a full URL (e.g., 'stack-auth://success')"
     
   StackAuthError(invalid_error_redirect_url)
-    message: "errorRedirectUrl must be a full URL (e.g., 'stackauth-myapp://error')"
+    message: "errorRedirectUrl must be a full URL (e.g., 'stack-auth://error')"
 
 
 ## signInWithCredential(options)
