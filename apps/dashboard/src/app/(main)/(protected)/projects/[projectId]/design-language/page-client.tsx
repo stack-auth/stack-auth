@@ -34,6 +34,7 @@ import {
   Envelope,
   FileText,
   HardDrive,
+  Info,
   MagnifyingGlassIcon,
   Palette,
   PencilSimple,
@@ -835,13 +836,6 @@ export default function PageClient() {
             />
           </ComponentDemo>
 
-          <ComponentDemo
-            title="Underline Tabs"
-            description="Use for lightweight view switches."
-          >
-            <UnderlineTabsDemo />
-          </ComponentDemo>
-
           <div className="pt-4 border-t border-foreground/[0.05]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
@@ -892,26 +886,6 @@ export default function PageClient() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </ComponentDemo>
-
-          <ComponentDemo
-            title="Selector Dropdown"
-            description="Use select triggers for compact yes/no or single-choice menus."
-          >
-            <div className="max-w-xs">
-              <Select value={selectedSelectorValue} onValueChange={setSelectedSelectorValue}>
-                <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectorOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </ComponentDemo>
 
           <ComponentDemo
@@ -979,12 +953,53 @@ export default function PageClient() {
           <div className="pt-4 border-t border-foreground/[0.05]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, select trigger, or checkbox settings menu." },
+              { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, radio selector menu, or checkbox settings menu." },
               { name: "trigger", type: "'button' | 'icon'", default: "'button'", description: "Trigger presentation for the menu." },
               { name: "label", type: "string", description: "Optional section label for grouped items." },
               { name: "itemVariant", type: "'default' | 'destructive' | 'checkbox'", default: "'default'", description: "Item style for actions or toggles." },
               { name: "withIcons", type: "boolean", default: "false", description: "Adds leading icons for action menus." },
               { name: "onClick", type: "(event) => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* SELECTS */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="selects"
+          icon={Tag}
+          title="Selects"
+          description="Use for compact, single-choice selection."
+        >
+          <ComponentDemo
+            title="Selector Dropdown"
+            description="Use select triggers for compact yes/no or single-choice menus."
+          >
+            <div className="max-w-xs">
+              <Select value={selectedSelectorValue} onValueChange={setSelectedSelectorValue}>
+                <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectorOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-foreground/[0.05]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "value", type: "string", description: "Currently selected value." },
+              { name: "onValueChange", type: "(value: string) => void", description: "Selection handler for the dropdown." },
+              { name: "trigger", type: "ReactElement", description: "Select trigger element (e.g., SelectTrigger)." },
+              { name: "options", type: "Array<{ value: string, label: string }>", description: "Selectable options rendered inside SelectContent." },
+              { name: "disabled", type: "boolean", default: "false", description: "Disables the select and its trigger." },
             ]} />
           </div>
         </DesignSection>
@@ -1322,8 +1337,12 @@ export default function PageClient() {
             title="Info Alert"
             description="Use for informational messages without a title"
           >
-            <Alert className="bg-amber-500/5 border-amber-500/20">
-              <AlertDescription>Configure a custom SMTP server to send manual emails. You can still create and edit drafts.</AlertDescription>
+            <Alert className="bg-blue-500/5 border-blue-500/20">
+              <Info className="h-4 w-4 text-blue-500" />
+              <AlertTitle className="text-blue-600 dark:text-blue-400">Info</AlertTitle>
+              <AlertDescription>
+                Configure a custom SMTP server to send manual emails. You can still create and edit drafts.
+              </AlertDescription>
             </Alert>
           </ComponentDemo>
 

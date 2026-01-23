@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue, SimpleTooltip
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue, SimpleTooltip
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -100,7 +100,7 @@ type EditableGridProps = {
 // Reusable label component
 function GridLabel({ icon, name, tooltip }: { icon: React.ReactNode, name: string, tooltip?: string }) {
   const label = (
-    <span className="flex gap-2 items-center text-xs font-semibold text-foreground">
+    <span className="flex h-8 items-center gap-2 text-xs font-semibold text-foreground">
       <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-foreground/[0.04] text-muted-foreground">
         {icon}
       </span>
@@ -400,7 +400,7 @@ export function EditableGrid({ items, columns = 2, className }: EditableGridProp
 
   return (
     <div className={cn(
-      "grid gap-x-6 gap-y-3 text-sm items-start",
+      "grid gap-x-6 gap-y-3 text-sm items-center",
       gridCols,
       className
     )}>
@@ -415,7 +415,7 @@ function GridItemContent({ item }: { item: EditableGridItem }) {
   return (
     <>
       <GridLabel icon={item.icon} name={item.name} tooltip={item.tooltip} />
-      <div className="min-w-0">
+      <div className="min-w-0 min-h-8 flex items-center">
         <GridItemValue item={item} />
       </div>
     </>
