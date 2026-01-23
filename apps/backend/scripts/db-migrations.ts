@@ -1,13 +1,13 @@
 import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
-import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
+import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
