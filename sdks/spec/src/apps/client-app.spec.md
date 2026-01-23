@@ -631,11 +631,10 @@ Errors:
     message: "The MFA code is incorrect."
 
 
-## verifyEmail(code, options?)
+## verifyEmail(code)
 
 Arguments:
   code: string - from email verification link
-  options.tokenStore: TokenStoreInit? - override token storage for this call
 
 Returns: void
 

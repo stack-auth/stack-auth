@@ -418,13 +418,11 @@ public actor StackClientApp {
     
     // MARK: - Email Verification
     
-    public func verifyEmail(code: String, tokenStore: TokenStoreInit? = nil) async throws {
-        let overrideStore = await resolveTokenStore(tokenStore)
+    public func verifyEmail(code: String) async throws {
         _ = try await client.sendRequest(
             path: "/contact-channels/verify",
             method: "POST",
-            body: ["code": code],
-            tokenStoreOverride: overrideStore
+            body: ["code": code]
         )
     }
     
