@@ -17,6 +17,118 @@ func formURLEncode(_ string: String) -> String {
     return string.addingPercentEncoding(withAllowedCharacters: formURLEncodedAllowedCharacters) ?? string
 }
 
+// MARK: - JWT Payload
+
+/// Decoded JWT payload for access tokens
+struct JWTPayload {
+    let exp: TimeInterval?  // Expiration time (Unix timestamp in seconds)
+    let iat: TimeInterval?  // Issued at time (Unix timestamp in seconds)
+    
+    /// Milliseconds until token expires (Int.max if no exp claim, 0 if expired)
+    var expiresInMillis: Int {
+        guard let exp = exp else { return Int.max }
+        let expiresIn = (exp * 1000) - (Date().timeIntervalSince1970 * 1000)
+        return max(0, Int(expiresIn))
+    }
+    
+    /// Milliseconds since token was issued (0 if no iat claim)
+    var issuedMillisAgo: Int {
+        guard let iat = iat else { return 0 }
+        let issuedAgo = (Date().timeIntervalSince1970 * 1000) - (iat * 1000)
+        return max(0, Int(issuedAgo))
+    }
+}
+
+/// Decode a JWT token's payload (second segment)
+func decodeJWTPayload(_ token: String) -> JWTPayload? {
+    let segments = token.split(separator: ".")
+    guard segments.count >= 2 else { return nil }
+    
+    var base64 = String(segments[1])
+    // Convert base64url to base64
+    base64 = base64.replacingOccurrences(of: "-", with: "+")
+    base64 = base64.replacingOccurrences(of: "_", with: "/")
+    // Add padding if needed
+    let remainder = base64.count % 4
+    if remainder > 0 {
+        base64 += String(repeating: "=", count: 4 - remainder)
+    }
+    
+    guard let data = Data(base64Encoded: base64),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+    
+    let exp = json["exp"] as? TimeInterval
+    let iat = json["iat"] as? TimeInterval
+    return JWTPayload(exp: exp, iat: iat)
+}
+
+/// Check if a token is expired (expiresIn <= 0)
+func isTokenExpired(_ accessToken: String?) -> Bool {
+    guard let token = accessToken,
+          let payload = decodeJWTPayload(token) else {
+        return true  // Can't decode, treat as expired
+    }
+    return payload.expiresInMillis <= 0
+}
+
+/// Check if token should NOT be refreshed (is "fresh enough").
+/// Returns TRUE if token expires in > 20 seconds AND was issued < 75 seconds ago.
+func isTokenFreshEnough(_ accessToken: String?) -> Bool {
+    guard let token = accessToken,
+          let payload = decodeJWTPayload(token) else {
+        return false  // Can't decode, should refresh
+    }
+    
+    let expiresInMoreThan20s = payload.expiresInMillis > 20_000
+    let issuedLessThan75sAgo = payload.issuedMillisAgo < 75_000
+    
+    return expiresInMoreThan20s || issuedLessThan75sAgo
+}
+
+// MARK: - Refresh Lock Manager
+
+/// Manages per-token-store refresh locks to ensure only one refresh per store at a time.
+/// Uses ObjectIdentifier to key locks since token stores no longer have an id property.
+actor RefreshLockManager {
+    static let shared = RefreshLockManager()
+    
+    private var activeLocks: [ObjectIdentifier: Bool] = [:]
+    private var waiters: [ObjectIdentifier: [CheckedContinuation<Void, Never>]] = [:]
+    
+    func acquireLock(for store: any TokenStoreProtocol) async {
+        let key = ObjectIdentifier(store)
+        if activeLocks[key] == true {
+            // Wait for existing refresh to complete
+            await withCheckedContinuation { continuation in
+                if waiters[key] == nil {
+                    waiters[key] = []
+                }
+                waiters[key]?.append(continuation)
+            }
+        }
+        activeLocks[key] = true
+    }
+    
+    func releaseLock(for store: any TokenStoreProtocol) {
+        let key = ObjectIdentifier(store)
+        activeLocks[key] = false
+        if let storeWaiters = waiters[key] {
+            for waiter in storeWaiters {
+                waiter.resume()
+            }
+            waiters[key] = nil
+        }
+    }
+}
+
+/// Result of getOrFetchLikelyValidTokens
+public struct TokenPair: Sendable {
+    public let refreshToken: String?
+    public let accessToken: String?
+}
+
 /// Internal API client for making HTTP requests to Stack Auth
 actor APIClient {
     let baseUrl: String
@@ -24,8 +136,6 @@ actor APIClient {
     let publishableClientKey: String
     let secretServerKey: String?
     private let tokenStore: any TokenStoreProtocol
-    private var isRefreshing = false
-    private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
     
     private static let sdkVersion = "1.0.0"
     
@@ -79,10 +189,10 @@ actor APIClient {
         
         // Auth headers
         if authenticated {
-            if let accessToken = await effectiveTokenStore.getAccessToken() {
+            if let accessToken = await effectiveTokenStore.getStoredAccessToken() {
                 request.setValue(accessToken, forHTTPHeaderField: "x-stack-access-token")
             }
-            if let refreshToken = await effectiveTokenStore.getRefreshToken() {
+            if let refreshToken = await effectiveTokenStore.getStoredRefreshToken() {
                 request.setValue(refreshToken, forHTTPHeaderField: "x-stack-refresh-token")
             }
         }
@@ -129,13 +239,11 @@ actor APIClient {
                 if let errorCode = httpResponse.value(forHTTPHeaderField: "x-stack-known-error"),
                    errorCode == "invalid_access_token" {
                     // Try to refresh token
-                    let refreshed = try await refreshTokenIfNeeded(tokenStore: tokenStore)
-                    if refreshed {
+                    let tokens = await fetchNewAccessToken(tokenStore: tokenStore)
+                    if tokens.accessToken != nil {
                         // Retry with new token
                         var newRequest = request
-                        if let accessToken = await tokenStore.getAccessToken() {
-                            newRequest.setValue(accessToken, forHTTPHeaderField: "x-stack-access-token")
-                        }
+                        newRequest.setValue(tokens.accessToken, forHTTPHeaderField: "x-stack-access-token")
                         return try await sendWithRetry(request: newRequest, authenticated: authenticated, tokenStore: tokenStore, attempt: 0)
                     }
                 }
@@ -190,29 +298,9 @@ actor APIClient {
     
     // MARK: - Token Refresh
     
-    private func refreshTokenIfNeeded(tokenStore: any TokenStoreProtocol) async throws -> Bool {
-        // Wait if already refreshing
-        if isRefreshing {
-            await withCheckedContinuation { continuation in
-                refreshWaiters.append(continuation)
-            }
-            return await tokenStore.getAccessToken() != nil
-        }
-        
-        guard let refreshToken = await tokenStore.getRefreshToken() else {
-            return false
-        }
-        
-        isRefreshing = true
-        defer {
-            isRefreshing = false
-            for waiter in refreshWaiters {
-                waiter.resume()
-            }
-            refreshWaiters.removeAll()
-        }
-        
-        // Build token refresh request
+    /// Performs the actual token refresh request.
+    /// Returns (wasValid, newAccessToken) where wasValid indicates if the refresh token was valid.
+    private func refresh(refreshToken: String) async -> (wasValid: Bool, accessToken: String?) {
         let url = URL(string: "\(baseUrl)/api/v1/auth/oauth/token")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -234,27 +322,17 @@ actor APIClient {
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
-                // Refresh failed - clear tokens
-                await tokenStore.clearTokens()
-                return false
+                return (wasValid: false, accessToken: nil)
             }
             
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let newAccessToken = json["access_token"] as? String else {
-                await tokenStore.clearTokens()
-                return false
+                return (wasValid: false, accessToken: nil)
             }
             
-            let newRefreshToken = json["refresh_token"] as? String
-            await tokenStore.setTokens(
-                accessToken: newAccessToken,
-                refreshToken: newRefreshToken ?? refreshToken
-            )
-            
-            return true
+            return (wasValid: true, accessToken: newAccessToken)
         } catch {
-            await tokenStore.clearTokens()
-            return false
+            return (wasValid: false, accessToken: nil)
         }
     }
     
@@ -276,20 +354,124 @@ actor APIClient {
         await tokenStoreOverride.clearTokens()
     }
     
+    /// Gets tokens, refreshing if needed. See spec for algorithm.
+    /// This is the main function to use for getting an access token.
+    func getOrFetchLikelyValidTokens() async -> TokenPair {
+        return await getOrFetchLikelyValidTokensFromStore(tokenStore)
+    }
+    
+    func getOrFetchLikelyValidTokens(tokenStoreOverride: any TokenStoreProtocol) async -> TokenPair {
+        return await getOrFetchLikelyValidTokensFromStore(tokenStoreOverride)
+    }
+    
+    /// Internal implementation of getOrFetchLikelyValidTokens algorithm.
+    private func getOrFetchLikelyValidTokensFromStore(_ ts: any TokenStoreProtocol) async -> TokenPair {
+        // Acquire lock to ensure only one refresh per token store
+        await RefreshLockManager.shared.acquireLock(for: ts)
+        defer {
+            Task { await RefreshLockManager.shared.releaseLock(for: ts) }
+        }
+        
+        let originalRefreshToken = await ts.getStoredRefreshToken()
+        let originalAccessToken = await ts.getStoredAccessToken()
+        
+        // Case 1: No refresh token
+        if originalRefreshToken == nil {
+            // If access token expires in > 0 seconds, return it
+            if let token = originalAccessToken, !isTokenExpired(token) {
+                return TokenPair(refreshToken: nil, accessToken: token)
+            }
+            // Access token is expired or nil
+            return TokenPair(refreshToken: nil, accessToken: nil)
+        }
+        
+        // Case 2: Refresh token exists
+        let refreshToken = originalRefreshToken!
+        
+        // Check if token is fresh enough (expires in > 20s OR issued < 75s ago)
+        if isTokenFreshEnough(originalAccessToken) {
+            return TokenPair(refreshToken: refreshToken, accessToken: originalAccessToken)
+        }
+        
+        // Need to refresh
+        let (wasValid, newAccessToken) = await refresh(refreshToken: refreshToken)
+        
+        if wasValid, let newToken = newAccessToken {
+            // Refresh succeeded - update tokens atomically
+            await ts.compareAndSet(
+                compareRefreshToken: refreshToken,
+                newRefreshToken: refreshToken,
+                newAccessToken: newToken
+            )
+            return TokenPair(refreshToken: refreshToken, accessToken: newToken)
+        } else {
+            // Refresh failed - clear tokens atomically
+            await ts.compareAndSet(
+                compareRefreshToken: refreshToken,
+                newRefreshToken: nil,
+                newAccessToken: nil
+            )
+            return TokenPair(refreshToken: nil, accessToken: nil)
+        }
+    }
+    
+    /// Forcefully fetches a new access token from the server if possible.
+    func fetchNewAccessToken() async -> TokenPair {
+        return await fetchNewAccessToken(tokenStore: tokenStore)
+    }
+    
+    func fetchNewAccessToken(tokenStoreOverride: any TokenStoreProtocol) async -> TokenPair {
+        return await fetchNewAccessToken(tokenStore: tokenStoreOverride)
+    }
+    
+    private func fetchNewAccessToken(tokenStore ts: any TokenStoreProtocol) async -> TokenPair {
+        // Acquire lock to ensure only one refresh per token store
+        await RefreshLockManager.shared.acquireLock(for: ts)
+        defer {
+            Task { await RefreshLockManager.shared.releaseLock(for: ts) }
+        }
+        
+        guard let refreshToken = await ts.getStoredRefreshToken() else {
+            return TokenPair(refreshToken: nil, accessToken: nil)
+        }
+        
+        let (wasValid, newAccessToken) = await refresh(refreshToken: refreshToken)
+        
+        if wasValid, let newToken = newAccessToken {
+            await ts.compareAndSet(
+                compareRefreshToken: refreshToken,
+                newRefreshToken: refreshToken,
+                newAccessToken: newToken
+            )
+            return TokenPair(refreshToken: refreshToken, accessToken: newToken)
+        } else {
+            await ts.compareAndSet(
+                compareRefreshToken: refreshToken,
+                newRefreshToken: nil,
+                newAccessToken: nil
+            )
+            return TokenPair(refreshToken: nil, accessToken: nil)
+        }
+    }
+    
+    /// Get access token, refreshing if needed. Convenience wrapper around getOrFetchLikelyValidTokens.
     func getAccessToken() async -> String? {
-        return await tokenStore.getAccessToken()
+        let tokens = await getOrFetchLikelyValidTokens()
+        return tokens.accessToken
     }
     
     func getAccessToken(tokenStoreOverride: any TokenStoreProtocol) async -> String? {
-        return await tokenStoreOverride.getAccessToken()
+        let tokens = await getOrFetchLikelyValidTokens(tokenStoreOverride: tokenStoreOverride)
+        return tokens.accessToken
     }
     
+    /// Get refresh token (simple getter from store).
     func getRefreshToken() async -> String? {
-        return await tokenStore.getRefreshToken()
+        return await tokenStore.getStoredRefreshToken()
     }
     
     func getRefreshToken(tokenStoreOverride: any TokenStoreProtocol) async -> String? {
-        return await tokenStoreOverride.getRefreshToken()
+        return await tokenStoreOverride.getStoredRefreshToken()
     }
 }
 

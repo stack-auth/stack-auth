@@ -96,7 +96,7 @@ struct ClientUserTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let partialUser = try await app.getPartialUser()
+        let partialUser = await app.getPartialUser()
         #expect(partialUser != nil)
         #expect(partialUser?.primaryEmail == email)
         #expect(partialUser?.id != nil)
@@ -107,14 +107,14 @@ struct ClientUserTests {
         let app = TestConfig.createClientApp()
         
         // No token before sign in
-        let tokenBefore = try await app.getAccessToken()
+        let tokenBefore = await app.getAccessToken()
         #expect(tokenBefore == nil)
         
         let email = TestConfig.uniqueEmail()
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
         // Token after sign in
-        let tokenAfter = try await app.getAccessToken()
+        let tokenAfter = await app.getAccessToken()
         #expect(tokenAfter != nil)
         #expect(!tokenAfter!.isEmpty)
     }
@@ -126,7 +126,7 @@ struct ClientUserTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let headers = try await app.getAuthHeaders()
+        let headers = await app.getAuthHeaders()
         #expect(headers["x-stack-auth"] != nil)
         #expect(!headers["x-stack-auth"]!.isEmpty)
     }

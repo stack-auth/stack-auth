@@ -44,34 +44,6 @@ On 401 response with code="invalid_access_token":
 2. Fetch new access token using refresh token (see Token Refresh below)
 3. Retry the request with the new token
 4. If still 401 after retry: treat as unauthenticated
-
-
-### Token Refresh
-
-Use OAuth2 refresh_token grant to get new access token.
-
-Concurrency: Token refresh must be serialized. Only one refresh request should be in-flight at a time.
-If a refresh is already in progress, wait for it to complete rather than starting another.
-Use a mutex/lock to ensure this (or, if preferred in that framework, some kind of asynchronous mechanism that doesn't block the main thread).
-
-POST /api/v1/auth/oauth/token
-Content-Type: application/x-www-form-urlencoded
-
-Body (form-encoded):
-  grant_type: refresh_token
-  refresh_token: <refresh_token>
-  client_id: <projectId>
-  client_secret: <publishableClientKey>
-
-Response on success:
-  { access_token: string, refresh_token?: string, ... }
-
-On success: store new access_token. If refresh_token is returned, store it too.
-On error (e.g., refresh_token_error): clear all tokens, user is signed out.
-
-Use an OAuth library (e.g., oauth4webapi) for proper OAuth2 handling.
-
-
 ### [server-only] - Server Key Required
 
 Include header: x-stack-secret-server-key: <secretServerKey>
@@ -153,14 +125,14 @@ should extend or be instances of StackAuthApiError.
 For unrecognized error codes, create a StackAuthApiError with the code and message from the response.
 
 
-## Token Storage
+## Token Store
 
-Store access_token and refresh_token. The tokenStore constructor option determines storage strategy.
+Stores access_token and refresh_token. The tokenStore constructor option determines storage strategy.
 
 Many functions also accept a tokenStore parameter to override storage for that call.
 When the constructor's tokenStore is non-null, this parameter is optional (defaults to
 the constructor's value). When the constructor's tokenStore is null, this parameter
-becomes REQUIRED for all authenticated functions - see the "null" section below.
+becomes REQUIRED for all authenticated functions - see the "null" section below. (If possible in a language, this should be represented in its type system, but otherwise you can also panic.)
 
 ### TokenStoreInit Type
 
@@ -176,20 +148,70 @@ TokenStoreInit =
   | null                                  // No storage
 ```
 
-### Token Store Refresh Behavior
+This is the "token store" that developers interface with with the SDK, so this is the value that's passed to the constructor or any functions that require a token store. The SDK implementation then converts this to a concrete token store implementation as detailed below.
 
-IMPORTANT: ALL token stores (except "memory" and "cookie" which handle this naturally)
-MUST save refreshed tokens in memory after initialization. When the access token expires
-and gets refreshed, the new tokens must be stored and returned on subsequent calls.
-Otherwise, the old expired token would still be returned, causing an infinite refresh loop.
+### Token Store Interface
 
-This applies to:
-- Explicit tokens ({ accessToken, refreshToken })
-- RequestLike objects
-- null (if tokens are set via refresh)
+Token stores have some properties and methods. Some are abstract and are implemented by the token store itself.
 
-These stores should behave like "memory" after initialization, just with pre-populated
-(or empty) initial values.
+
+```
+  abstract getStoredAccessToken(): string | null (getter)
+    Currently stored access token, or null if not set. This is internal and shouldn't be used outside the token store; the getOrFetchLikelyValidAccessToken function as described below is preferred, as it automatically refreshes its tokens.
+    
+  abstract getStoredRefreshToken(): string | null (getter)
+    Currently stored refresh token, or null if not set.
+
+  abstract compareAndSet(compareRefreshToken, newRefreshToken, newAccessToken)
+    Atomically compare-and-set the refresh and access token.
+    Compares compareRefreshToken to current refreshToken.
+    If they match: set the tokens accordingly. Otherwise, do nothing.
+  
+  getOrFetchLikelyValidTokens(): { refreshToken: string | null, accessToken: string | null }
+    Gets the access token if it's likely to remain valid, and returns the associated refresh token with it. The function may refresh the tokens according to the algorithm below.
+
+    This is the function that should usually be used to get an access token as it will automatically refresh tokens that are about to expire.
+
+    Algorithm:
+      Note: To avoid refreshing more than once at the same time, this should run only once at a time for each token store. There can be some kind of lock or asynchronous semaphore (depending on the language and its concurrency model). Token refresh must be serialized per token store instance. Use a mutex/lock keyed on TS.id to ensure only one refresh request is in-flight at a time for a given token store. If a refresh is already in progress, wait for it to complete rather than starting another.
+      
+      Let originalRefreshToken = TS.getStoredRefreshToken() (capture at start)
+      Let originalAccessToken = TS.getStoredAccessToken() (capture at start)
+      If originalRefreshToken does not exist:
+        If originalAccessToken expires in >0 seconds:
+          Return { refreshToken: null, accessToken: originalAccessToken }
+          - NOTE: The returned token might be invalid by the time it's used due to timing delays. This is okay, the documentation should just explain that.
+        Otherwise (originalAccessToken is expired or null):
+          Return { refreshToken: null, accessToken: null }
+      Otherwise (originalRefreshToken exists):
+        if originalAccessToken expires in > 20 seconds, or was issued < 75 seconds ago:
+          Return { refreshToken: originalRefreshToken, accessToken: originalAccessToken }
+        Otherwise:
+          was_refresh_token_valid, newAccessToken = refresh(originalRefreshToken)
+          If was_refresh_token_valid is TRUE:
+            Call TS.compareAndSet(compare: originalRefreshToken, newRefreshToken: originalRefreshToken, newAccessToken: newAccessToken)
+            return { refreshToken: originalRefreshToken, accessToken: newAccessToken }
+          Otherwise (was_refresh_token_valid is FALSE):
+            Call TS.compareAndSet(compare: originalRefreshToken, newRefreshToken: null, newAccessToken: null)
+            return { refreshToken: null, accessToken: null }
+
+  fetchNewAccessToken(): { refreshToken: string | null, accessToken: string | null }
+    Forcefully fetches a new access token from the server if possible, returning a new access token or null if there was no refresh token, or the refresh token was invalid/expired. Returns the associated refresh token with the new access token.
+```
+
+To refresh an access token from a refresh token, use an OAuth2 token grant:
+  POST /api/v1/auth/oauth/token
+  Content-Type: application/x-www-form-urlencoded
+
+  Body (form-encoded):
+    grant_type: refresh_token
+    refresh_token: <refresh_token>
+    client_id: <projectId>
+    client_secret: <publishableClientKey>
+
+  Response on success (200 OK):
+    { access_token: string, refresh_token?: string, ... }
+
 
 ### Token Store Types
 
@@ -230,9 +252,9 @@ null:
   Languages with expressive type systems (like TypeScript) can represent this
   at the type level - the tokenStore parameter is optional when the constructor
   has a token store, but required when it's null. For languages that cannot
-  express this in the type system, throw an error/panic at runtime if an
+  express this in the type system, panic at runtime if an
   authenticated function is called without a tokenStore argument when the
-  constructor's tokenStore was null.
+  constructor's tokenStore was null, with a descriptive error message that explains what to do.
   
   This is most useful for backends where you don't have a default token store
   but want to specify tokens per-request (e.g., from request headers).

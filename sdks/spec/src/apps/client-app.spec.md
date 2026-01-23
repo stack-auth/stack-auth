@@ -367,7 +367,9 @@ Implementation for "convex" [JS-ONLY]:
 2. If null: return null
 3. Map: subject→id, name→displayName, email, email_verified, is_anonymous, is_restricted, restricted_reason
 
-Does not error.
+Panics:
+  If constructor tokenStore was null and no tokenStore override is provided (for "token" mode).
+  This is a programmer error - the code should be fixed to provide a tokenStore.
 
 
 ## cancelSubscription(options)
@@ -395,11 +397,14 @@ Arguments:
 
 Returns: string | null
 
-Get access token from storage.
-If expired or expiring soon: perform token refresh (see _utilities.spec.md).
-Return token string, or null if not authenticated.
+Get access token, refreshing if needed. See _utilities.spec.md getOrFetchLikelyValidTokens().
 
-Does not error.
+NOTE: When no refresh token exists, the returned access token might be invalid
+by the time it's used due to timing delays between retrieval and use.
+
+Panics:
+  If constructor tokenStore was null and no tokenStore override is provided.
+  This is a programmer error - the code should be fixed to provide a tokenStore.
 
 
 ## getRefreshToken(options?)
@@ -412,7 +417,9 @@ Returns: string | null
 Get refresh token from storage.
 Return token string, or null if not authenticated.
 
-Does not error.
+Panics:
+  If constructor tokenStore was null and no tokenStore override is provided.
+  This is a programmer error - the code should be fixed to provide a tokenStore.
 
 
 ## getAuthHeaders(options?)
@@ -427,7 +434,9 @@ Get current tokens and JSON-encode as header value:
 
 For cross-origin authenticated requests where cookies can't be sent.
 
-Does not error.
+Panics:
+  If constructor tokenStore was null and no tokenStore override is provided.
+  This is a programmer error - the code should be fixed to provide a tokenStore.
 
 
 ## sendForgotPasswordEmail(email, callbackUrl)

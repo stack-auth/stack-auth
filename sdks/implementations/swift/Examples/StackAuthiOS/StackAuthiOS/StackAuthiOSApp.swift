@@ -1466,7 +1466,7 @@ struct TokensView: View {
                 )
             }
         } catch {
-            viewModel.logCall("StackClientApp(tokenStore: .explicit(...))", error: error)
+            viewModel.logCall("testExplicitStore()", error: error)
         }
     }
 }

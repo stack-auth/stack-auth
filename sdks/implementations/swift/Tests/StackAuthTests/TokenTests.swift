@@ -14,8 +14,8 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let accessToken = try await app.getAccessToken()
-        let refreshToken = try await app.getRefreshToken()
+        let accessToken = await app.getAccessToken()
+        let refreshToken = await app.getRefreshToken()
         
         #expect(accessToken != nil)
         #expect(refreshToken != nil)
@@ -30,12 +30,12 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let tokenBefore = try await app.getAccessToken()
+        let tokenBefore = await app.getAccessToken()
         #expect(tokenBefore != nil)
         
         try await app.signOut()
         
-        let tokenAfter = try await app.getAccessToken()
+        let tokenAfter = await app.getAccessToken()
         #expect(tokenAfter == nil)
     }
     
@@ -49,8 +49,8 @@ struct TokenStorageTests {
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let accessToken = try await app1.getAccessToken()
-        let refreshToken = try await app1.getRefreshToken()
+        let accessToken = await app1.getAccessToken()
+        let refreshToken = await app1.getRefreshToken()
         
         #expect(accessToken != nil)
         #expect(refreshToken != nil)
@@ -79,8 +79,8 @@ struct TokenStorageTests {
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let accessToken = try await app1.getAccessToken()
-        let refreshToken = try await app1.getRefreshToken()
+        let accessToken = await app1.getAccessToken()
+        let refreshToken = await app1.getRefreshToken()
         #expect(accessToken != nil)
         #expect(refreshToken != nil)
         
@@ -107,7 +107,7 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let accessToken = try await app.getAccessToken()
+        let accessToken = await app.getAccessToken()
         #expect(accessToken != nil)
         
         // JWT has three parts separated by dots
@@ -122,7 +122,7 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let refreshToken = try await app.getRefreshToken()
+        let refreshToken = await app.getRefreshToken()
         #expect(refreshToken != nil)
         #expect(!refreshToken!.isEmpty)
         // Refresh token should be a reasonable length
@@ -138,7 +138,7 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let headers = try await app.getAuthHeaders()
+        let headers = await app.getAuthHeaders()
         
         #expect(headers["x-stack-auth"] != nil)
         #expect(!headers["x-stack-auth"]!.isEmpty)
@@ -151,7 +151,7 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let headers = try await app.getAuthHeaders()
+        let headers = await app.getAuthHeaders()
         
         // When authenticated, x-stack-auth should be present and contain the token
         let authHeader = headers["x-stack-auth"]
@@ -168,7 +168,7 @@ struct TokenStorageTests {
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let partialUser = try await app.getPartialUser()
+        let partialUser = await app.getPartialUser()
         
         #expect(partialUser != nil)
         #expect(partialUser?.id != nil)
@@ -179,7 +179,7 @@ struct TokenStorageTests {
     func partialUserWhenNotAuthenticated() async throws {
         let app = TestConfig.createClientApp()
         
-        let partialUser = try await app.getPartialUser()
+        let partialUser = await app.getPartialUser()
         
         #expect(partialUser == nil)
     }
@@ -194,8 +194,8 @@ struct TokenStorageTests {
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let accessToken = try await app1.getAccessToken()
-        let refreshToken = try await app1.getRefreshToken()
+        let accessToken = await app1.getAccessToken()
+        let refreshToken = await app1.getRefreshToken()
         
         // Create second app with explicit tokens
         let app2 = StackClientApp(
@@ -239,48 +239,9 @@ struct TokenStorageTests {
     
     // MARK: - Token Store Override Tests
     
-    @Test("Should require tokenStore when constructor has none")
-    func tokenStoreRequiredWhenConstructorHasNone() async throws {
-        let app = StackClientApp(
-            projectId: testProjectId,
-            publishableClientKey: testPublishableClientKey,
-            baseUrl: baseUrl,
-            tokenStore: .none,
-            noAutomaticPrefetch: true
-        )
-        
-        // Calling getAccessToken without tokenStore should throw
-        do {
-            _ = try await app.getAccessToken()
-            #expect(Bool(false), "Should have thrown an error")
-        } catch let error as StackAuthError {
-            #expect(error.code == "TOKEN_STORE_REQUIRED")
-        }
-        
-        // Calling getRefreshToken without tokenStore should throw
-        do {
-            _ = try await app.getRefreshToken()
-            #expect(Bool(false), "Should have thrown an error")
-        } catch let error as StackAuthError {
-            #expect(error.code == "TOKEN_STORE_REQUIRED")
-        }
-        
-        // Calling getAuthHeaders without tokenStore should throw
-        do {
-            _ = try await app.getAuthHeaders()
-            #expect(Bool(false), "Should have thrown an error")
-        } catch let error as StackAuthError {
-            #expect(error.code == "TOKEN_STORE_REQUIRED")
-        }
-        
-        // Calling getPartialUser without tokenStore should throw
-        do {
-            _ = try await app.getPartialUser()
-            #expect(Bool(false), "Should have thrown an error")
-        } catch let error as StackAuthError {
-            #expect(error.code == "TOKEN_STORE_REQUIRED")
-        }
-    }
+    // Note: Calling getAccessToken/getRefreshToken/getAuthHeaders/getPartialUser without tokenStore
+    // when constructor tokenStore is .none will cause a fatalError (panic).
+    // This is a programmer error and cannot be tested via normal test assertions.
     
     @Test("Should use tokenStore override when provided")
     func tokenStoreOverride() async throws {
@@ -290,8 +251,8 @@ struct TokenStorageTests {
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
         
-        let accessToken = try await app1.getAccessToken()
-        let refreshToken = try await app1.getRefreshToken()
+        let accessToken = await app1.getAccessToken()
+        let refreshToken = await app1.getRefreshToken()
         #expect(accessToken != nil)
         #expect(refreshToken != nil)
         
@@ -314,11 +275,11 @@ struct TokenStorageTests {
         #expect(userEmail == email)
         
         // getAccessToken with override should also work
-        let token = try await app2.getAccessToken(tokenStore: overrideStore)
+        let token = await app2.getAccessToken(tokenStore: overrideStore)
         #expect(token == accessToken)
         
         // getPartialUser with override should also work
-        let partialUser = try await app2.getPartialUser(tokenStore: overrideStore)
+        let partialUser = await app2.getPartialUser(tokenStore: overrideStore)
         #expect(partialUser != nil)
         #expect(partialUser?.primaryEmail == email)
     }
@@ -330,16 +291,16 @@ struct TokenStorageTests {
         let email1 = TestConfig.uniqueEmail()
         try await app1.signUpWithCredential(email: email1, password: TestConfig.testPassword)
         let tokens1 = (
-            access: try await app1.getAccessToken()!,
-            refresh: try await app1.getRefreshToken()!
+            access: await app1.getAccessToken()!,
+            refresh: await app1.getRefreshToken()!
         )
         
         let app2 = TestConfig.createClientApp(tokenStore: .memory)
         let email2 = TestConfig.uniqueEmail()
         try await app2.signUpWithCredential(email: email2, password: TestConfig.testPassword)
         let tokens2 = (
-            access: try await app2.getAccessToken()!,
-            refresh: try await app2.getRefreshToken()!
+            access: await app2.getAccessToken()!,
+            refresh: await app2.getRefreshToken()!
         )
         
         // app1's default store should return user1

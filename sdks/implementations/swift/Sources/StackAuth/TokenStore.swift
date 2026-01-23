@@ -3,12 +3,27 @@ import Foundation
 import Security
 #endif
 
-/// Protocol for custom token storage implementations
-public protocol TokenStoreProtocol: Sendable {
-    func getAccessToken() async -> String?
-    func getRefreshToken() async -> String?
+/// Protocol for custom token storage implementations.
+/// Constrained to AnyObject (classes/actors) to enable identity-based locking.
+public protocol TokenStoreProtocol: AnyObject, Sendable {
+    /// Get the currently stored access token, or null if not set.
+    /// This is internal - use getOrFetchLikelyValidTokens() instead for automatic refresh.
+    func getStoredAccessToken() async -> String?
+    
+    /// Get the currently stored refresh token, or null if not set.
+    func getStoredRefreshToken() async -> String?
+    
+    /// Set both tokens at once
     func setTokens(accessToken: String?, refreshToken: String?) async
+    
+    /// Clear both tokens
     func clearTokens() async
+    
+    /// Atomically compare-and-set tokens.
+    /// Compares compareRefreshToken to current refreshToken.
+    /// If they match: set refreshToken to newRefreshToken and accessToken to newAccessToken.
+    /// If they don't match: do nothing (another thread updated the refresh token).
+    func compareAndSet(compareRefreshToken: String, newRefreshToken: String?, newAccessToken: String?) async
 }
 
 /// Token storage configuration
@@ -36,21 +51,19 @@ public enum TokenStore: Sendable {
 
 #if canImport(Security)
 actor KeychainTokenStore: TokenStoreProtocol {
-    private let projectId: String
     private let accessTokenKey: String
     private let refreshTokenKey: String
     
     init(projectId: String) {
-        self.projectId = projectId
         self.accessTokenKey = "stack-auth-access-\(projectId)"
         self.refreshTokenKey = "stack-auth-refresh-\(projectId)"
     }
     
-    func getAccessToken() async -> String? {
+    func getStoredAccessToken() async -> String? {
         return getKeychainItem(key: accessTokenKey)
     }
     
-    func getRefreshToken() async -> String? {
+    func getStoredRefreshToken() async -> String? {
         return getKeychainItem(key: refreshTokenKey)
     }
     
@@ -71,6 +84,22 @@ actor KeychainTokenStore: TokenStoreProtocol {
     func clearTokens() async {
         deleteKeychainItem(key: accessTokenKey)
         deleteKeychainItem(key: refreshTokenKey)
+    }
+    
+    func compareAndSet(compareRefreshToken: String, newRefreshToken: String?, newAccessToken: String?) async {
+        let currentRefreshToken = getKeychainItem(key: refreshTokenKey)
+        if currentRefreshToken == compareRefreshToken {
+            if let newRefreshToken = newRefreshToken {
+                setKeychainItem(key: refreshTokenKey, value: newRefreshToken)
+            } else {
+                deleteKeychainItem(key: refreshTokenKey)
+            }
+            if let newAccessToken = newAccessToken {
+                setKeychainItem(key: accessTokenKey, value: newAccessToken)
+            } else {
+                deleteKeychainItem(key: accessTokenKey)
+            }
+        }
     }
     
     // MARK: - Keychain Helpers
@@ -140,11 +169,11 @@ actor MemoryTokenStore: TokenStoreProtocol {
     private var accessToken: String?
     private var refreshToken: String?
     
-    func getAccessToken() async -> String? {
+    func getStoredAccessToken() async -> String? {
         return accessToken
     }
     
-    func getRefreshToken() async -> String? {
+    func getStoredRefreshToken() async -> String? {
         return refreshToken
     }
     
@@ -156,6 +185,13 @@ actor MemoryTokenStore: TokenStoreProtocol {
     func clearTokens() async {
         self.accessToken = nil
         self.refreshToken = nil
+    }
+    
+    func compareAndSet(compareRefreshToken: String, newRefreshToken: String?, newAccessToken: String?) async {
+        if self.refreshToken == compareRefreshToken {
+            self.refreshToken = newRefreshToken
+            self.accessToken = newAccessToken
+        }
     }
 }
 
@@ -173,11 +209,11 @@ actor ExplicitTokenStore: TokenStoreProtocol {
         self.refreshToken = refreshToken
     }
     
-    func getAccessToken() async -> String? {
+    func getStoredAccessToken() async -> String? {
         return accessToken
     }
     
-    func getRefreshToken() async -> String? {
+    func getStoredRefreshToken() async -> String? {
         return refreshToken
     }
     
@@ -194,6 +230,13 @@ actor ExplicitTokenStore: TokenStoreProtocol {
     func clearTokens() async {
         self.accessToken = nil
         self.refreshToken = nil
+    }
+    
+    func compareAndSet(compareRefreshToken: String, newRefreshToken: String?, newAccessToken: String?) async {
+        if self.refreshToken == compareRefreshToken {
+            self.refreshToken = newRefreshToken
+            self.accessToken = newAccessToken
+        }
     }
 }
 
@@ -205,11 +248,11 @@ actor NullTokenStore: TokenStoreProtocol {
     private var accessToken: String?
     private var refreshToken: String?
     
-    func getAccessToken() async -> String? {
+    func getStoredAccessToken() async -> String? {
         return accessToken
     }
     
-    func getRefreshToken() async -> String? {
+    func getStoredRefreshToken() async -> String? {
         return refreshToken
     }
     
@@ -226,5 +269,12 @@ actor NullTokenStore: TokenStoreProtocol {
     func clearTokens() async {
         self.accessToken = nil
         self.refreshToken = nil
+    }
+    
+    func compareAndSet(compareRefreshToken: String, newRefreshToken: String?, newAccessToken: String?) async {
+        if self.refreshToken == compareRefreshToken {
+            self.refreshToken = newRefreshToken
+            self.accessToken = newAccessToken
+        }
     }
 }
