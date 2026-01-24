@@ -367,51 +367,55 @@ actor APIClient {
     private func getOrFetchLikelyValidTokensFromStore(_ ts: any TokenStoreProtocol) async -> TokenPair {
         // Acquire lock to ensure only one refresh per token store
         await RefreshLockManager.shared.acquireLock(for: ts)
-        defer {
-            Task { await RefreshLockManager.shared.releaseLock(for: ts) }
-        }
         
         let originalRefreshToken = await ts.getStoredRefreshToken()
         let originalAccessToken = await ts.getStoredAccessToken()
+        
+        let result: TokenPair
         
         // Case 1: No refresh token
         if originalRefreshToken == nil {
             // If access token expires in > 0 seconds, return it
             if let token = originalAccessToken, !isTokenExpired(token) {
-                return TokenPair(refreshToken: nil, accessToken: token)
+                result = TokenPair(refreshToken: nil, accessToken: token)
+            } else {
+                // Access token is expired or nil
+                result = TokenPair(refreshToken: nil, accessToken: nil)
             }
-            // Access token is expired or nil
-            return TokenPair(refreshToken: nil, accessToken: nil)
-        }
-        
-        // Case 2: Refresh token exists
-        let refreshToken = originalRefreshToken!
-        
-        // Check if token is fresh enough (expires in > 20s AND issued < 75s ago)
-        if isTokenFreshEnough(originalAccessToken) {
-            return TokenPair(refreshToken: refreshToken, accessToken: originalAccessToken)
-        }
-        
-        // Need to refresh
-        let (wasValid, newAccessToken) = await refresh(refreshToken: refreshToken)
-        
-        if wasValid, let newToken = newAccessToken {
-            // Refresh succeeded - update tokens atomically
-            await ts.compareAndSet(
-                compareRefreshToken: refreshToken,
-                newRefreshToken: refreshToken,
-                newAccessToken: newToken
-            )
-            return TokenPair(refreshToken: refreshToken, accessToken: newToken)
         } else {
-            // Refresh failed - clear tokens atomically
-            await ts.compareAndSet(
-                compareRefreshToken: refreshToken,
-                newRefreshToken: nil,
-                newAccessToken: nil
-            )
-            return TokenPair(refreshToken: nil, accessToken: nil)
+            // Case 2: Refresh token exists
+            let refreshToken = originalRefreshToken!
+            
+            // Check if token is fresh enough (expires in > 20s AND issued < 75s ago)
+            if isTokenFreshEnough(originalAccessToken) {
+                result = TokenPair(refreshToken: refreshToken, accessToken: originalAccessToken)
+            } else {
+                // Need to refresh
+                let (wasValid, newAccessToken) = await refresh(refreshToken: refreshToken)
+                
+                if wasValid, let newToken = newAccessToken {
+                    // Refresh succeeded - update tokens atomically
+                    await ts.compareAndSet(
+                        compareRefreshToken: refreshToken,
+                        newRefreshToken: refreshToken,
+                        newAccessToken: newToken
+                    )
+                    result = TokenPair(refreshToken: refreshToken, accessToken: newToken)
+                } else {
+                    // Refresh failed - clear tokens atomically
+                    await ts.compareAndSet(
+                        compareRefreshToken: refreshToken,
+                        newRefreshToken: nil,
+                        newAccessToken: nil
+                    )
+                    result = TokenPair(refreshToken: nil, accessToken: nil)
+                }
+            }
         }
+        
+        // Release lock synchronously before returning
+        await RefreshLockManager.shared.releaseLock(for: ts)
+        return result
     }
     
     /// Forcefully fetches a new access token from the server if possible.
@@ -426,31 +430,34 @@ actor APIClient {
     private func fetchNewAccessToken(tokenStore ts: any TokenStoreProtocol) async -> TokenPair {
         // Acquire lock to ensure only one refresh per token store
         await RefreshLockManager.shared.acquireLock(for: ts)
-        defer {
-            Task { await RefreshLockManager.shared.releaseLock(for: ts) }
-        }
         
-        guard let refreshToken = await ts.getStoredRefreshToken() else {
-            return TokenPair(refreshToken: nil, accessToken: nil)
-        }
+        let result: TokenPair
         
-        let (wasValid, newAccessToken) = await refresh(refreshToken: refreshToken)
-        
-        if wasValid, let newToken = newAccessToken {
-            await ts.compareAndSet(
-                compareRefreshToken: refreshToken,
-                newRefreshToken: refreshToken,
-                newAccessToken: newToken
-            )
-            return TokenPair(refreshToken: refreshToken, accessToken: newToken)
+        if let refreshToken = await ts.getStoredRefreshToken() {
+            let (wasValid, newAccessToken) = await refresh(refreshToken: refreshToken)
+            
+            if wasValid, let newToken = newAccessToken {
+                await ts.compareAndSet(
+                    compareRefreshToken: refreshToken,
+                    newRefreshToken: refreshToken,
+                    newAccessToken: newToken
+                )
+                result = TokenPair(refreshToken: refreshToken, accessToken: newToken)
+            } else {
+                await ts.compareAndSet(
+                    compareRefreshToken: refreshToken,
+                    newRefreshToken: nil,
+                    newAccessToken: nil
+                )
+                result = TokenPair(refreshToken: nil, accessToken: nil)
+            }
         } else {
-            await ts.compareAndSet(
-                compareRefreshToken: refreshToken,
-                newRefreshToken: nil,
-                newAccessToken: nil
-            )
-            return TokenPair(refreshToken: nil, accessToken: nil)
+            result = TokenPair(refreshToken: nil, accessToken: nil)
         }
+        
+        // Release lock synchronously before returning
+        await RefreshLockManager.shared.releaseLock(for: ts)
+        return result
     }
     
     /// Get access token, refreshing if needed. Convenience wrapper around getOrFetchLikelyValidTokens.
