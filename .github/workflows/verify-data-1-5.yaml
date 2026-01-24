@@ -1,0 +1,77 @@
+version: 0.2
+
+env:
+  variables:
+    NODE_ENV: test
+    CI: "true"
+    STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: "yes"
+    STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+    # disable read replica: replication is slow because we're restoring the whole prod db
+    STACK_DATABASE_REPLICA_CONNECTION_STRING: ""
+    STACK_DATABASE_REPLICATION_WAIT_STRATEGY: "none"
+    STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING: "true"
+    DB_USER: rds_iam_user
+    DB_PORT: 5432
+    DB_NAME: stackframe
+    AWS_REGION: us-east-1
+    
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - npm install -g pnpm
+      - yum -y install jq postgresql15
+
+  pre_build:
+    commands:
+      - export PGPASSWORD="$(aws rds generate-db-auth-token --region "$AWS_REGION" --hostname "$RDS_HOST" --port "$DB_PORT" --username "$DB_USER")"
+      - echo "${PGPASSWORD:0:10}***"
+      - echo "Using RDS host - $RDS_HOST"
+      - psql "host=$RDS_HOST port=$DB_PORT dbname=$DB_NAME user=$DB_USER sslmode=require" -c "select now();"
+
+      - echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+      - docker compose -f docker/dependencies/docker.compose.yaml up --pull always -d
+      - pnpm install --frozen-lockfile
+
+      - cp apps/backend/.env.development apps/backend/.env.test.local
+      - cp apps/dashboard/.env.development apps/dashboard/.env.test.local
+      - cp apps/e2e/.env.development apps/e2e/.env.test.local
+      - cp docs/.env.development docs/.env.test.local
+      - cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
+      - cp examples/demo/.env.development examples/demo/.env.test.local
+      - cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local
+      - cp examples/e-commerce/.env.development examples/e-commerce/.env.test.local
+      - cp examples/middleware/.env.development examples/middleware/.env.test.local
+      - cp examples/supabase/.env.development examples/supabase/.env.test.local
+      - cp examples/convex/.env.development examples/convex/.env.test.local
+
+  build:
+    commands:
+      - export DUMP_DIR=/tmp/pg_dump
+      - mkdir -p "$DUMP_DIR"
+      - pg_dump --format=custom --no-owner --no-acl --host="$RDS_HOST" --port="$DB_PORT" --username="$DB_USER" --dbname="$DB_NAME" -Fd -j 4 -f "$DUMP_DIR"
+      - du -sh "$DUMP_DIR"
+      - export PGPASSWORD="PASSWORD-PLACEHOLDER--uqfEC1hmmv"
+      - pnpm run wait-until-postgres-is-ready:pg_isready
+      - pg_restore --no-owner --host=localhost --port=8128 --username="postgres" --dbname="stackframe" -j 4 "$DUMP_DIR"
+
+      - pnpm build
+      - pnpx wait-on tcp:localhost:8129
+      - pnpx wait-on tcp:localhost:8113
+      - pnpx wait-on tcp:localhost:8134
+      - pnpm run db:migrate
+      - |
+        psql "host=localhost port=8128 dbname=stackframe user=postgres" -c \
+        "INSERT INTO \"ApiKeySet\" (\"projectId\", \"id\", \"description\", \"expiresAt\", \"superSecretAdminKey\", \"createdAt\", \"updatedAt\") \
+        VALUES ('internal', '3142e763-b230-44b5-8636-aa62f7489c26', 'Internal API key set (dev override)', '2099-12-31T23:59:59Z', 'this-super-secret-admin-key-is-for-local-development-only', now(), now()) \
+        ON CONFLICT (\"projectId\", \"id\") DO UPDATE SET \"superSecretAdminKey\" = EXCLUDED.\"superSecretAdminKey\", \"updatedAt\" = now();"
+      - pnpm run start:backend --log-order=stream > /dev/null 2>&1 &
+      - pnpx wait-on http://localhost:8102
+      - pnpm run start:dashboard --log-order=stream &
+      - pnpx wait-on http://localhost:8101
+      - pnpm run start:mock-oauth-server --log-order=stream &
+      - pnpx wait-on tcp:localhost:8105
+      - sleep 10
+
+      - pnpm run verify-data-integrity --skip-neon

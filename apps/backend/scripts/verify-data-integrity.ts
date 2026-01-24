@@ -37,11 +37,12 @@ type LedgerTransaction = {
   expirationTime: Date,
 };
 
-type StripePayoutList = {
+type StripeBalanceTransactionList = {
   data: Array<{
     id: string,
     amount: number,
     currency: string,
+    reporting_category?: string | null,
   }>,
   has_more: boolean,
 };
@@ -912,7 +913,7 @@ function sumMoneyTransfersUsdMinorUnits(transactions: Transaction[]): bigint {
   return total;
 }
 
-async function fetchStripePayoutTotalUsdMinorUnits(options: {
+async function fetchStripeBalanceTransactionTotalUsdMinorUnits(options: {
   tenancy: Tenancy,
   stripeAccountId: string,
 }): Promise<bigint> {
@@ -922,18 +923,27 @@ async function fetchStripePayoutTotalUsdMinorUnits(options: {
   });
 
   let total = 0n;
+  const includeCategories = new Set([
+    "charge",
+    "refund",
+    "dispute",
+    "dispute_reversal",
+    "partial_capture_reversal",
+  ]);
   let startingAfter: string | undefined = undefined;
 
   do {
-    const payouts: StripePayoutList = await stripe.payouts.list({
+    const page: StripeBalanceTransactionList = await stripe.balanceTransactions.list({
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
-    for (const payout of payouts.data) {
-      if (payout.currency !== "usd") continue;
-      total += BigInt(payout.amount);
+    for (const balanceTransaction of page.data) {
+      if (balanceTransaction.currency !== "usd") continue;
+      if (!balanceTransaction.reporting_category) continue;
+      if (!includeCategories.has(balanceTransaction.reporting_category)) continue;
+      total += BigInt(balanceTransaction.amount);
     }
-    startingAfter = payouts.has_more ? payouts.data.at(-1)?.id : undefined;
+    startingAfter = page.has_more ? page.data.at(-1)?.id : undefined;
   } while (startingAfter);
 
   return total;
@@ -944,21 +954,24 @@ async function verifyStripePayoutIntegrity(options: {
   tenancy: Tenancy,
   stripeAccountId: string,
 }) {
+  if (options.projectId === '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063') {
+    // Dummy project doesn't have a real stripe account, so we skip the verification.
+    return;
+  }
   const transactions = await fetchAllTransactionsForProject(options.projectId);
   const moneyTransferTotalUsdMinor = sumMoneyTransfersUsdMinorUnits(transactions);
-  const stripePayoutTotalUsdMinor = await fetchStripePayoutTotalUsdMinorUnits({
+  const stripeBalanceTransactionTotalUsdMinor = await fetchStripeBalanceTransactionTotalUsdMinorUnits({
     tenancy: options.tenancy,
     stripeAccountId: options.stripeAccountId,
   });
-
-  if (moneyTransferTotalUsdMinor !== stripePayoutTotalUsdMinor) {
+  if (moneyTransferTotalUsdMinor !== stripeBalanceTransactionTotalUsdMinor) {
     throw new StackAssertionError(deindent`
-      Stripe payout mismatch for project ${options.projectId}.
-      Money transfers total USD ${formatMinorUnitsToMoneyString(moneyTransferTotalUsdMinor, 2)} vs Stripe payouts USD ${formatMinorUnitsToMoneyString(stripePayoutTotalUsdMinor, 2)}.
+      Stripe balance transaction mismatch for project ${options.projectId}.
+      Money transfers total USD ${formatMinorUnitsToMoneyString(moneyTransferTotalUsdMinor, 2)} vs Stripe balance transactions USD ${formatMinorUnitsToMoneyString(stripeBalanceTransactionTotalUsdMinor, 2)}.
     `, {
       projectId: options.projectId,
       moneyTransferTotalUsdMinor: moneyTransferTotalUsdMinor.toString(),
-      stripePayoutTotalUsdMinor: stripePayoutTotalUsdMinor.toString(),
+      stripeBalanceTransactionTotalUsdMinor: stripeBalanceTransactionTotalUsdMinor.toString(),
     });
   }
 }
@@ -1008,7 +1021,7 @@ async function createPaymentsVerifier(options: {
       .join("; ");
     console.warn(`Skipping payments verification for project ${options.projectId} due to include-by-default conflicts (${conflictSummary}).`);
     return {
-      verifyCustomerPayments: async () => {},
+      verifyCustomerPayments: async () => { },
       customCustomerIds: new Set<string>(),
     };
   }
