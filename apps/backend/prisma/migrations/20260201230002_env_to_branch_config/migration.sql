@@ -229,6 +229,43 @@ SELECT COUNT(*) > 0 AS should_repeat_migration FROM inserted;
 -- Clean up temporary index
 DROP INDEX IF EXISTS "temp_eco_branch_transfer_idx";
 
+-- Safety net: find any env configs that still have branch-level fields (like apps.installed.authentication.enabled)
+-- and process them. This should only affect projects that were modified during the migration.
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+WITH leftover_configs AS (
+  SELECT eco."projectId", eco."branchId", eco."config", eco."createdAt"
+  FROM "EnvironmentConfigOverride" eco
+  WHERE eco."config" ? 'apps.installed.authentication.enabled'
+),
+upserted_branch AS (
+  INSERT INTO "BranchConfigOverride" ("projectId", "branchId", "createdAt", "updatedAt", "config", "source")
+  SELECT 
+    lc."projectId",
+    lc."branchId",
+    lc."createdAt",
+    CURRENT_TIMESTAMP,
+    -- Merge with existing branch config if present
+    COALESCE(
+      (SELECT bco."config" FROM "BranchConfigOverride" bco 
+       WHERE bco."projectId" = lc."projectId" AND bco."branchId" = lc."branchId"),
+      '{}'::jsonb
+    ) || temp_filter_branch_config(lc."config"),
+    '{"type": "unlinked"}'::jsonb
+  FROM leftover_configs lc
+  ON CONFLICT ("projectId", "branchId") DO UPDATE
+  SET "config" = "BranchConfigOverride"."config" || temp_filter_branch_config(EXCLUDED."config"),
+      "updatedAt" = CURRENT_TIMESTAMP
+  RETURNING "projectId", "branchId"
+)
+UPDATE "EnvironmentConfigOverride" eco
+SET "config" = temp_filter_env_only_config(eco."config"),
+    "updatedAt" = CURRENT_TIMESTAMP
+FROM leftover_configs lc
+WHERE eco."projectId" = lc."projectId"
+  AND eco."branchId" = lc."branchId";
+-- SPLIT_STATEMENT_SENTINEL
+
 -- Clean up temporary functions
 DROP FUNCTION IF EXISTS temp_filter_env_only_config(JSONB);
 DROP FUNCTION IF EXISTS temp_filter_branch_config(JSONB);
