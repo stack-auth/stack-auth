@@ -1,15 +1,14 @@
-name: DB migrations are backwards-compatible with main branch
+name: DB migrations are backwards-compatible
 
 on:
   push:
-    branches:
+    branches-ignore:
       - main
-      - dev
   pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
 jobs:
   check-migrations-changed:
@@ -17,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       migrations_changed: ${{ steps.check-diff.outputs.migrations_changed }}
+      base_branch: ${{ steps.check-diff.outputs.base_branch }}
     steps:
       - name: Checkout current branch
         uses: actions/checkout@v6
@@ -26,9 +26,17 @@ jobs:
       - name: Check for migration changes
         id: check-diff
         run: |
-          # Get the merge base with main
-          git fetch origin main
-          MERGE_BASE=$(git merge-base HEAD origin/main)
+          # Determine base branch: dev compares to main, all others compare to dev
+          if [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            BASE_BRANCH="main"
+          else
+            BASE_BRANCH="dev"
+          fi
+          echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+          
+          # Get the merge base with the base branch
+          git fetch origin $BASE_BRANCH
+          MERGE_BASE=$(git merge-base HEAD origin/$BASE_BRANCH)
           
           # Check if there are any changes in the migrations folder
           if git diff --quiet "$MERGE_BASE" HEAD -- apps/backend/prisma/migrations/; then
@@ -40,7 +48,7 @@ jobs:
           fi
 
   backwards-compatibility:
-    name: Test migrations with main branch code
+    name: Test migrations with ${{ needs.check-migrations-changed.outputs.base_branch }} branch code
     needs: check-migrations-changed
     if: needs.check-migrations-changed.outputs.migrations_changed == 'true'
     runs-on: ubicloud-standard-8
@@ -62,19 +70,19 @@ jobs:
           mkdir -p saved-migrations
           cp -r current-branch/apps/backend/prisma/migrations/* saved-migrations/
 
-      # Now checkout main branch
-      - name: Checkout main branch
+      # Now checkout base branch (main for dev, dev for all others)
+      - name: Checkout base branch
         uses: actions/checkout@v6
         with:
-          ref: main
-          path: main-branch
+          ref: ${{ needs.check-migrations-changed.outputs.base_branch }}
+          path: base-branch
 
-      # Move main-branch to the root for the rest of the workflow (keep main's migrations for now)
+      # Move base-branch to the root for the rest of the workflow (keep base's migrations for now)
       - name: Setup working directory
         run: |
           shopt -s dotglob
-          mv main-branch/* .
-          rm -rf main-branch current-branch
+          mv base-branch/* .
+          rm -rf base-branch current-branch
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -188,8 +196,8 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
-      # First test run: main branch with main's migrations
-      - name: Run tests (main branch with original migrations)
+      # First test run: base branch with base's migrations
+      - name: Run tests (base branch with original migrations)
         run: pnpm test
 
       # Now copy over current branch's migrations and run migrate
@@ -202,8 +210,8 @@ jobs:
       - name: Run database migrations
         run: pnpm run db:migrate
 
-      # Second test run: main branch code with new migrations applied
-      - name: Run tests (main branch with new migrations)
+      # Second test run: base branch code with new migrations applied
+      - name: Run tests (base branch with new migrations)
         run: pnpm test
 
       - name: Verify data integrity

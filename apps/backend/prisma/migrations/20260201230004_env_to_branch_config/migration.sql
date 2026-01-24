@@ -178,6 +178,52 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 -- SPLIT_STATEMENT_SENTINEL
 
+-- Create function to flatten nested JSONB into dot-notation
+-- e.g., {"auth": {"oauth": {"providers": {"github": {"isShared": true}}}}}
+-- becomes {"auth.oauth.providers.github.isShared": true}
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+CREATE OR REPLACE FUNCTION temp_flatten_config(config JSONB, path_prefix TEXT DEFAULT '')
+RETURNS JSONB AS $$
+DECLARE
+  result JSONB := '{}'::jsonb;
+  key TEXT;
+  value JSONB;
+  full_path TEXT;
+  flattened_child JSONB;
+  child_key TEXT;
+  child_value JSONB;
+BEGIN
+  IF config IS NULL THEN
+    RETURN '{}'::jsonb;
+  END IF;
+
+  FOR key, value IN SELECT * FROM jsonb_each(config) LOOP
+    -- Build the full path for this key
+    IF path_prefix = '' THEN
+      full_path := key;
+    ELSE
+      full_path := path_prefix || '.' || key;
+    END IF;
+    
+    -- If value is an object, recurse and flatten
+    IF jsonb_typeof(value) = 'object' THEN
+      flattened_child := temp_flatten_config(value, full_path);
+      -- Merge all flattened child keys into result
+      FOR child_key, child_value IN SELECT * FROM jsonb_each(flattened_child) LOOP
+        result := result || jsonb_build_object(child_key, child_value);
+      END LOOP;
+    ELSE
+      -- Non-object values: add with full dot-notation path
+      result := result || jsonb_build_object(full_path, value);
+    END IF;
+  END LOOP;
+  
+  RETURN result;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+-- SPLIT_STATEMENT_SENTINEL
+
 -- Create temporary index to speed up the migration
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
@@ -216,7 +262,7 @@ inserted AS (
 ),
 updated AS (
   UPDATE "EnvironmentConfigOverride" eco
-  SET "config" = temp_filter_env_only_config(eco."config"),
+  SET "config" = temp_flatten_config(temp_filter_env_only_config(eco."config")),
       "updatedAt" = CURRENT_TIMESTAMP
   FROM inserted i
   WHERE eco."projectId" = i."projectId"
@@ -229,7 +275,45 @@ SELECT COUNT(*) > 0 AS should_repeat_migration FROM inserted;
 -- Clean up temporary index
 DROP INDEX IF EXISTS "temp_eco_branch_transfer_idx";
 
+-- Safety net: find any env configs that still have branch-level fields (like apps.installed.authentication.enabled)
+-- and process them. This should only affect projects that were modified during the migration.
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+WITH leftover_configs AS (
+  SELECT eco."projectId", eco."branchId", eco."config", eco."createdAt"
+  FROM "EnvironmentConfigOverride" eco
+  WHERE eco."config" ? 'apps.installed.authentication.enabled'
+),
+upserted_branch AS (
+  INSERT INTO "BranchConfigOverride" ("projectId", "branchId", "createdAt", "updatedAt", "config", "source")
+  SELECT 
+    lc."projectId",
+    lc."branchId",
+    lc."createdAt",
+    CURRENT_TIMESTAMP,
+    -- Merge with existing branch config if present
+    COALESCE(
+      (SELECT bco."config" FROM "BranchConfigOverride" bco 
+       WHERE bco."projectId" = lc."projectId" AND bco."branchId" = lc."branchId"),
+      '{}'::jsonb
+    ) || temp_filter_branch_config(lc."config"),
+    '{"type": "unlinked"}'::jsonb
+  FROM leftover_configs lc
+  ON CONFLICT ("projectId", "branchId") DO UPDATE
+  SET "config" = "BranchConfigOverride"."config" || temp_filter_branch_config(EXCLUDED."config"),
+      "updatedAt" = CURRENT_TIMESTAMP
+  RETURNING "projectId", "branchId"
+)
+UPDATE "EnvironmentConfigOverride" eco
+SET "config" = temp_flatten_config(temp_filter_env_only_config(eco."config")),
+    "updatedAt" = CURRENT_TIMESTAMP
+FROM leftover_configs lc
+WHERE eco."projectId" = lc."projectId"
+  AND eco."branchId" = lc."branchId";
+-- SPLIT_STATEMENT_SENTINEL
+
 -- Clean up temporary functions
+DROP FUNCTION IF EXISTS temp_flatten_config(JSONB, TEXT);
 DROP FUNCTION IF EXISTS temp_filter_env_only_config(JSONB);
 DROP FUNCTION IF EXISTS temp_filter_branch_config(JSONB);
 DROP FUNCTION IF EXISTS temp_filter_config(JSONB, BOOLEAN, TEXT);
