@@ -334,13 +334,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // END
 
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
-  if (type === "environment") {
+  if (isBranchOrHigher) {
     res = removeProperty(res, p => p.join(".") === "sourceOfTruth");
   }
   // END
 
   // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
-  if (type === "environment") {
+  if (isBranchOrHigher) {
     res = removeProperty(res, p => p.join(".") === "payments.stripeAccountId");
     res = removeProperty(res, p => p.join(".") === "payments.stripeAccountSetupComplete");
   }
