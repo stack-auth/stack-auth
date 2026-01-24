@@ -277,10 +277,11 @@ const handler = createSmartRouteHandler({
                   // ========================== sign up user ==========================
 
                   let primaryEmailAuthEnabled = false;
+                  let oldContactChannel = null;
                   if (userInfo.email) {
                     primaryEmailAuthEnabled = true;
 
-                    const oldContactChannel = await getAuthContactChannelWithEmailNormalization(
+                    oldContactChannel = await getAuthContactChannelWithEmailNormalization(
                       prisma,
                       {
                         tenancyId: outerInfo.tenancyId,
@@ -350,6 +351,44 @@ const handler = createSmartRouteHandler({
 
 
                   if (!tenancy.config.auth.allowSignUp) {
+                    // Before rejecting as a new sign-up, check if a user with this email already exists
+                    // (reuse oldContactChannel from above to avoid duplicate database lookup)
+                    // If a user with this email exists (even if email is not used for auth), link the OAuth account
+                    if (oldContactChannel) {
+                      const existingUser = oldContactChannel.projectUser;
+
+                      // Create the OAuth account linked to the existing user
+                      const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
+                        tenancyId: outerInfo.tenancyId,
+                        providerId: provider.id,
+                        providerAccountId: userInfo.accountId,
+                        email: userInfo.email,
+                        projectUserId: existingUser.projectUserId,
+                      });
+
+                      await prisma.authMethod.create({
+                        data: {
+                          tenancyId: outerInfo.tenancyId,
+                          projectUserId: existingUser.projectUserId,
+                          oauthAuthMethod: {
+                            create: {
+                              projectUserId: existingUser.projectUserId,
+                              configOAuthProviderId: provider.id,
+                              providerAccountId: userInfo.accountId,
+                            }
+                          }
+                        }
+                      });
+
+                      await storeTokens(newOAuthAccount.id);
+                      return {
+                        id: existingUser.projectUserId,
+                        newUser: false,
+                        afterCallbackRedirectUrl,
+                      };
+                    }
+
+                    // No existing user with this email, so throw SIGN_UP_NOT_ENABLED as expected
                     throw new KnownErrors.SignUpNotEnabled();
                   }
 
