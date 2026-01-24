@@ -178,6 +178,52 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 -- SPLIT_STATEMENT_SENTINEL
 
+-- Create function to flatten nested JSONB into dot-notation
+-- e.g., {"auth": {"oauth": {"providers": {"github": {"isShared": true}}}}}
+-- becomes {"auth.oauth.providers.github.isShared": true}
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+CREATE OR REPLACE FUNCTION temp_flatten_config(config JSONB, path_prefix TEXT DEFAULT '')
+RETURNS JSONB AS $$
+DECLARE
+  result JSONB := '{}'::jsonb;
+  key TEXT;
+  value JSONB;
+  full_path TEXT;
+  flattened_child JSONB;
+  child_key TEXT;
+  child_value JSONB;
+BEGIN
+  IF config IS NULL THEN
+    RETURN '{}'::jsonb;
+  END IF;
+
+  FOR key, value IN SELECT * FROM jsonb_each(config) LOOP
+    -- Build the full path for this key
+    IF path_prefix = '' THEN
+      full_path := key;
+    ELSE
+      full_path := path_prefix || '.' || key;
+    END IF;
+    
+    -- If value is an object, recurse and flatten
+    IF jsonb_typeof(value) = 'object' THEN
+      flattened_child := temp_flatten_config(value, full_path);
+      -- Merge all flattened child keys into result
+      FOR child_key, child_value IN SELECT * FROM jsonb_each(flattened_child) LOOP
+        result := result || jsonb_build_object(child_key, child_value);
+      END LOOP;
+    ELSE
+      -- Non-object values: add with full dot-notation path
+      result := result || jsonb_build_object(full_path, value);
+    END IF;
+  END LOOP;
+  
+  RETURN result;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+-- SPLIT_STATEMENT_SENTINEL
+
 -- Create temporary index to speed up the migration
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
@@ -216,7 +262,7 @@ inserted AS (
 ),
 updated AS (
   UPDATE "EnvironmentConfigOverride" eco
-  SET "config" = temp_filter_env_only_config(eco."config"),
+  SET "config" = temp_flatten_config(temp_filter_env_only_config(eco."config")),
       "updatedAt" = CURRENT_TIMESTAMP
   FROM inserted i
   WHERE eco."projectId" = i."projectId"
@@ -259,7 +305,7 @@ upserted_branch AS (
   RETURNING "projectId", "branchId"
 )
 UPDATE "EnvironmentConfigOverride" eco
-SET "config" = temp_filter_env_only_config(eco."config"),
+SET "config" = temp_flatten_config(temp_filter_env_only_config(eco."config")),
     "updatedAt" = CURRENT_TIMESTAMP
 FROM leftover_configs lc
 WHERE eco."projectId" = lc."projectId"
@@ -267,6 +313,7 @@ WHERE eco."projectId" = lc."projectId"
 -- SPLIT_STATEMENT_SENTINEL
 
 -- Clean up temporary functions
+DROP FUNCTION IF EXISTS temp_flatten_config(JSONB, TEXT);
 DROP FUNCTION IF EXISTS temp_filter_env_only_config(JSONB);
 DROP FUNCTION IF EXISTS temp_filter_branch_config(JSONB);
 DROP FUNCTION IF EXISTS temp_filter_config(JSONB, BOOLEAN, TEXT);
