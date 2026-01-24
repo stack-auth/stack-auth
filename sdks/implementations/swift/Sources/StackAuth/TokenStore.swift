@@ -52,16 +52,28 @@ public enum TokenStoreInit: Sendable {
 /// Manages singleton instances of token stores keyed by projectId.
 /// Ensures that multiple uses of keychain/memory with the same projectId
 /// share the same token storage and refresh lock.
-actor TokenStoreRegistry {
-    static let shared = TokenStoreRegistry()
+///
+/// Uses NSLock for thread safety so it can be called synchronously from
+/// non-async contexts (like init). The lock is only held briefly during
+/// dictionary lookup/insert - actual token operations use the store's
+/// own actor serialization.
+public final class TokenStoreRegistry: @unchecked Sendable {
+    public static let shared = TokenStoreRegistry()
+    
+    private let lock = NSLock()
     
     #if canImport(Security)
     private var keychainStores: [String: KeychainTokenStore] = [:]
     #endif
     private var memoryStores: [String: MemoryTokenStore] = [:]
     
+    private init() {}
+    
     #if canImport(Security)
     func getKeychainStore(projectId: String) -> KeychainTokenStore {
+        lock.lock()
+        defer { lock.unlock() }
+        
         if let existing = keychainStores[projectId] {
             return existing
         }
@@ -72,12 +84,26 @@ actor TokenStoreRegistry {
     #endif
     
     func getMemoryStore(projectId: String) -> MemoryTokenStore {
+        lock.lock()
+        defer { lock.unlock() }
+        
         if let existing = memoryStores[projectId] {
             return existing
         }
         let store = MemoryTokenStore()
         memoryStores[projectId] = store
         return store
+    }
+    
+    /// Reset all cached stores. Only for testing purposes.
+    public func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        #if canImport(Security)
+        keychainStores.removeAll()
+        #endif
+        memoryStores.removeAll()
     }
 }
 

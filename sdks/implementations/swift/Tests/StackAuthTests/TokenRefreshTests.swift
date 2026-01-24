@@ -254,7 +254,7 @@ struct TokenRefreshAlgorithmTests {
     
     @Test("Should refresh token and return new access token")
     func refreshTokenIntegration() async throws {
-        let app = TestConfig.createClientApp(tokenStore: .memory)
+        let app = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -279,7 +279,7 @@ struct TokenRefreshAlgorithmTests {
     
     @Test("Should return nil when no tokens exist")
     func noTokensReturnsNil() async {
-        let app = TestConfig.createClientApp(tokenStore: .memory)
+        let app = TestConfig.createClientApp()
         
         // Not signed in, should return nil
         let accessToken = await app.getAccessToken()
@@ -291,7 +291,7 @@ struct TokenRefreshAlgorithmTests {
     
     @Test("Should handle concurrent getAccessToken calls")
     func concurrentGetAccessToken() async throws {
-        let app = TestConfig.createClientApp(tokenStore: .memory)
+        let app = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)

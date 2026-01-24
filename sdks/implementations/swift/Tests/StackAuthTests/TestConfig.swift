@@ -46,13 +46,17 @@ struct TestConfig {
         "Test Team \(UUID().uuidString.prefix(8))"
     }
     
-    /// Create a new client app instance for testing
-    static func createClientApp(tokenStore: TokenStoreInit = .memory) -> StackClientApp {
-        StackClientApp(
+    /// Create a new client app instance for testing.
+    /// By default uses a fresh isolated MemoryTokenStore (not from the registry)
+    /// to avoid interference between parallel tests.
+    static func createClientApp(tokenStore: TokenStoreInit? = nil) -> StackClientApp {
+        // Default to a fresh isolated memory store, not the shared registry singleton
+        let store = tokenStore ?? .custom(MemoryTokenStore())
+        return StackClientApp(
             projectId: projectId,
             publishableClientKey: publishableClientKey,
             baseUrl: baseUrl,
-            tokenStore: tokenStore,
+            tokenStore: store,
             noAutomaticPrefetch: true
         )
     }

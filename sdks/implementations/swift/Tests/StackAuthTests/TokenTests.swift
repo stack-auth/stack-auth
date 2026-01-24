@@ -7,9 +7,9 @@ struct TokenStorageTests {
     
     // MARK: - Memory Token Store Tests
     
-    @Test("Should store tokens in memory")
-    func memoryTokenStore() async throws {
-        let app = TestConfig.createClientApp(tokenStore: .memory)
+    @Test("Should store and retrieve tokens")
+    func tokenStorage() async throws {
+        let app = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -23,9 +23,9 @@ struct TokenStorageTests {
         #expect(!refreshToken!.isEmpty)
     }
     
-    @Test("Should clear memory tokens on sign out")
-    func memoryTokensClearedOnSignOut() async throws {
-        let app = TestConfig.createClientApp(tokenStore: .memory)
+    @Test("Should clear tokens on sign out")
+    func tokensClearedOnSignOut() async throws {
+        let app = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -44,7 +44,7 @@ struct TokenStorageTests {
     @Test("Should use explicitly provided tokens")
     func explicitTokenStore() async throws {
         // First, get real tokens
-        let app1 = TestConfig.createClientApp(tokenStore: .memory)
+        let app1 = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -74,7 +74,7 @@ struct TokenStorageTests {
     @Test("Should work with both tokens provided")
     func explicitBothTokens() async throws {
         // Get real tokens
-        let app1 = TestConfig.createClientApp(tokenStore: .memory)
+        let app1 = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -186,10 +186,10 @@ struct TokenStorageTests {
     
     // MARK: - Token Persistence Between Apps
     
-    @Test("Should share tokens between app instances with same store")
+    @Test("Should share tokens between app instances with explicit store")
     func shareTokensBetweenApps() async throws {
         // Get tokens from first app
-        let app1 = TestConfig.createClientApp(tokenStore: .memory)
+        let app1 = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -216,6 +216,40 @@ struct TokenStorageTests {
         #expect(id1 == id2)
     }
     
+    @Test("Should share memory store between app instances via registry")
+    func memoryStoreRegistrySingleton() async throws {
+        // Reset registry to ensure clean state for this test
+        TokenStoreRegistry.shared.reset()
+        
+        // Create first app and sign in
+        let app1 = TestConfig.createClientApp(tokenStore: .memory)
+        let email = TestConfig.uniqueEmail()
+        try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
+        
+        // Capture the token immediately after sign-up
+        let token1 = await app1.getAccessToken()
+        #expect(token1 != nil, "Should have token after sign-up")
+        
+        // Create second app with same projectId and .memory
+        // Thanks to the registry, this should share the same underlying MemoryTokenStore
+        let app2 = TestConfig.createClientApp(tokenStore: .memory)
+        
+        // app2 should see the same tokens as app1 (no sign-in needed)
+        let token2 = await app2.getAccessToken()
+        
+        #expect(token1 == token2, "Memory stores with same projectId should share tokens via registry")
+        
+        // Both should return the same user
+        let user1 = try await app1.getUser()
+        let user2 = try await app2.getUser()
+        
+        let email1 = await user1?.primaryEmail
+        let email2 = await user2?.primaryEmail
+        
+        #expect(email1 == email)
+        #expect(email2 == email)
+    }
+    
     // MARK: - Null Token Store Tests
     
     @Test("Should work with null token store for anonymous requests")
@@ -228,13 +262,9 @@ struct TokenStorageTests {
             noAutomaticPrefetch: true
         )
         
-        // Should be able to get project without authentication
+        // Should be able to make unauthenticated requests (like getProject)
         let project = try await app.getProject()
         #expect(project.id == testProjectId)
-        
-        // getUser with tokenStore override should work
-        let user = try await app.getUser(tokenStore: .memory)
-        #expect(user == nil)
     }
     
     // MARK: - Token Store Override Tests
@@ -246,7 +276,7 @@ struct TokenStorageTests {
     @Test("Should use tokenStore override when provided")
     func tokenStoreOverride() async throws {
         // Create an app with tokens
-        let app1 = TestConfig.createClientApp(tokenStore: .memory)
+        let app1 = TestConfig.createClientApp()
         let email = TestConfig.uniqueEmail()
         
         try await app1.signUpWithCredential(email: email, password: TestConfig.testPassword)
@@ -286,36 +316,42 @@ struct TokenStorageTests {
     
     @Test("Should allow tokenStore override even when constructor has token store")
     func tokenStoreOverrideWithDefaultStore() async throws {
-        // Create two users
-        let app1 = TestConfig.createClientApp(tokenStore: .memory)
+        // Create two users with explicit token stores to keep them separate
+        
+        // Create user1 and capture their tokens
+        let setupApp1 = TestConfig.createClientApp()
         let email1 = TestConfig.uniqueEmail()
-        try await app1.signUpWithCredential(email: email1, password: TestConfig.testPassword)
+        try await setupApp1.signUpWithCredential(email: email1, password: TestConfig.testPassword)
         let tokens1 = (
-            access: await app1.getAccessToken()!,
-            refresh: await app1.getRefreshToken()!
+            access: await setupApp1.getAccessToken()!,
+            refresh: await setupApp1.getRefreshToken()!
         )
         
-        let app2 = TestConfig.createClientApp(tokenStore: .memory)
+        // Create user2 and capture their tokens (this overwrites the shared memory store, but we have tokens1 saved)
         let email2 = TestConfig.uniqueEmail()
-        try await app2.signUpWithCredential(email: email2, password: TestConfig.testPassword)
+        try await setupApp1.signOut()
+        try await setupApp1.signUpWithCredential(email: email2, password: TestConfig.testPassword)
         let tokens2 = (
-            access: await app2.getAccessToken()!,
-            refresh: await app2.getRefreshToken()!
+            access: await setupApp1.getAccessToken()!,
+            refresh: await setupApp1.getRefreshToken()!
         )
         
-        // app1's default store should return user1
-        let user1Default = try await app1.getUser()
+        // Now create an app with user1's tokens as default
+        let app = TestConfig.createClientApp(tokenStore: .explicit(accessToken: tokens1.access, refreshToken: tokens1.refresh))
+        
+        // Default store should return user1
+        let user1Default = try await app.getUser()
         let email1Default = await user1Default?.primaryEmail
         #expect(email1Default == email1)
         
-        // But with an override, app1 can access user2
+        // With an override, can access user2
         let overrideStore = TokenStoreInit.explicit(accessToken: tokens2.access, refreshToken: tokens2.refresh)
-        let user2FromApp1 = try await app1.getUser(tokenStore: overrideStore)
-        let email2FromApp1 = await user2FromApp1?.primaryEmail
-        #expect(email2FromApp1 == email2)
+        let user2FromApp = try await app.getUser(tokenStore: overrideStore)
+        let email2FromApp = await user2FromApp?.primaryEmail
+        #expect(email2FromApp == email2)
         
-        // And app1's default should still be user1
-        let user1Again = try await app1.getUser()
+        // Default should still be user1
+        let user1Again = try await app.getUser()
         let email1Again = await user1Again?.primaryEmail
         #expect(email1Again == email1)
     }

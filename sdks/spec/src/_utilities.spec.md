@@ -228,14 +228,16 @@ To refresh an access token from a refresh token, use an OAuth2 token grant:
   This is the recommended default for iOS/macOS apps.
   
   Multiple uses of "keychain" with the same projectId must share the same
-  token storage and refresh lock.
+  underlying token store instance (and therefore the same refresh lock).
+  See "Token Store Registry" below.
   
 "memory":
   Store tokens in runtime memory. Lost on page refresh or process restart.
   Useful for short-lived sessions, CLI tools, or server-side scripts.
   
   Multiple uses of "memory" with the same projectId must share the same
-  token storage and refresh lock.
+  underlying token store instance (and therefore the same refresh lock).
+  See "Token Store Registry" below.
 
 { accessToken, refreshToken } object:
   Initialize with explicit token values.
@@ -264,6 +266,25 @@ null:
   
   This is most useful for backends where you don't have a default token store
   but want to specify tokens per-request (e.g., from request headers).
+
+
+### Token Store Registry
+
+For "keychain" and "memory" token stores, SDKs must ensure that all uses with the
+same projectId share the same underlying token store instance. This is important
+because:
+
+1. Multiple StackClientApp instances for the same project should share tokens
+2. Token store overrides (e.g., `getUser(tokenStore: .keychain)`) must use the
+   same instance as the constructor's default store
+3. The refresh lock must be shared to prevent concurrent refresh operations
+
+To achieve this, maintain a registry that maps projectId to token store instances.
+When a "keychain" or "memory" store is requested, return the existing instance
+for that projectId if one exists, or create and store a new one if not.
+
+This does NOT apply to explicit token stores (`{ accessToken, refreshToken }`),
+custom stores, or null stores - those are always created fresh per use.
 
 
 ### x-stack-auth Header Format

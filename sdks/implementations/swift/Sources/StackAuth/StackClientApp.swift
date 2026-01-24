@@ -46,9 +46,11 @@ public actor StackClientApp {
         var hasDefault = true
         switch tokenStore {
         case .keychain:
-            store = KeychainTokenStore(projectId: projectId)
+            // Use registry to ensure singleton per projectId
+            store = TokenStoreRegistry.shared.getKeychainStore(projectId: projectId)
         case .memory:
-            store = MemoryTokenStore()
+            // Use registry to ensure singleton per projectId
+            store = TokenStoreRegistry.shared.getMemoryStore(projectId: projectId)
         case .explicit(let accessToken, let refreshToken):
             store = ExplicitTokenStore(accessToken: accessToken, refreshToken: refreshToken)
         case .none:
@@ -88,7 +90,8 @@ public actor StackClientApp {
         var hasDefault = true
         switch tokenStore {
         case .memory:
-            store = MemoryTokenStore()
+            // Use registry to ensure singleton per projectId
+            store = TokenStoreRegistry.shared.getMemoryStore(projectId: projectId)
         case .explicit(let accessToken, let refreshToken):
             store = ExplicitTokenStore(accessToken: accessToken, refreshToken: refreshToken)
         case .none:
@@ -429,7 +432,7 @@ public actor StackClientApp {
     // MARK: - Team Invitations
     
     public func acceptTeamInvitation(code: String, tokenStore: TokenStoreInit? = nil) async throws {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/team-invitations/accept",
             method: "POST",
@@ -440,7 +443,7 @@ public actor StackClientApp {
     }
     
     public func verifyTeamInvitationCode(_ code: String, tokenStore: TokenStoreInit? = nil) async throws {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         _ = try await client.sendRequest(
             path: "/team-invitations/accept/check-code",
             method: "POST",
@@ -451,7 +454,7 @@ public actor StackClientApp {
     }
     
     public func getTeamInvitationDetails(code: String, tokenStore: TokenStoreInit? = nil) async throws -> String {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         let (data, _) = try await client.sendRequest(
             path: "/team-invitations/accept/details",
             method: "POST",
@@ -471,7 +474,7 @@ public actor StackClientApp {
     // MARK: - User
     
     public func getUser(or: GetUserOr = .returnNull, includeRestricted: Bool = false, tokenStore: TokenStoreInit? = nil) async throws -> CurrentUser? {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         
         // Validate mutually exclusive options
         if or == .anonymous && !includeRestricted {
@@ -586,7 +589,7 @@ public actor StackClientApp {
     // MARK: - Partial User
     
     public func getPartialUser(tokenStore: TokenStoreInit? = nil) async -> TokenPartialUser? {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         
         let accessToken: String?
         if let overrideStore = overrideStore {
@@ -637,7 +640,7 @@ public actor StackClientApp {
     // MARK: - Sign Out
     
     public func signOut(tokenStore: TokenStoreInit? = nil) async throws {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         _ = try? await client.sendRequest(
             path: "/auth/sessions/current",
             method: "DELETE",
@@ -654,7 +657,7 @@ public actor StackClientApp {
     // MARK: - Tokens
     
     public func getAccessToken(tokenStore: TokenStoreInit? = nil) async -> String? {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         if let overrideStore = overrideStore {
             return await client.getAccessToken(tokenStoreOverride: overrideStore)
         }
@@ -662,7 +665,7 @@ public actor StackClientApp {
     }
     
     public func getRefreshToken(tokenStore: TokenStoreInit? = nil) async -> String? {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         if let overrideStore = overrideStore {
             return await client.getRefreshToken(tokenStoreOverride: overrideStore)
         }
@@ -670,7 +673,7 @@ public actor StackClientApp {
     }
     
     public func getAuthHeaders(tokenStore: TokenStoreInit? = nil) async -> [String: String] {
-        let overrideStore = await resolveTokenStore(tokenStore)
+        let overrideStore = resolveTokenStore(tokenStore)
         let accessToken: String?
         let refreshToken: String?
         
@@ -704,9 +707,9 @@ public actor StackClientApp {
     
     /// Resolves the effective token store for a function call.
     /// Panics if the constructor's tokenStore was `.none` and no override is provided.
-    private func resolveTokenStore(_ override: TokenStoreInit?) async -> (any TokenStoreProtocol)? {
+    private func resolveTokenStore(_ override: TokenStoreInit?) -> (any TokenStoreProtocol)? {
         if let override = override {
-            return await createTokenStoreProtocol(from: override)
+            return createTokenStoreProtocol(from: override)
         }
         
         if !hasDefaultTokenStore {
@@ -719,14 +722,14 @@ public actor StackClientApp {
     /// Creates a TokenStoreProtocol from a TokenStore enum value.
     /// Uses singleton instances for keychain and memory stores (keyed by projectId)
     /// to ensure shared token storage and refresh locks.
-    private func createTokenStoreProtocol(from tokenStore: TokenStoreInit) async -> any TokenStoreProtocol {
+    private func createTokenStoreProtocol(from tokenStore: TokenStoreInit) -> any TokenStoreProtocol {
         switch tokenStore {
         #if canImport(Security)
         case .keychain:
-            return await TokenStoreRegistry.shared.getKeychainStore(projectId: projectId)
+            return TokenStoreRegistry.shared.getKeychainStore(projectId: projectId)
         #endif
         case .memory:
-            return await TokenStoreRegistry.shared.getMemoryStore(projectId: projectId)
+            return TokenStoreRegistry.shared.getMemoryStore(projectId: projectId)
         case .explicit(let accessToken, let refreshToken):
             return ExplicitTokenStore(accessToken: accessToken, refreshToken: refreshToken)
         case .none:
