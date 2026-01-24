@@ -4,6 +4,7 @@ import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
@@ -69,7 +70,13 @@ const entryJs = deindent`
   };
 `;
 
-type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
+type EmailRenderResult = {
+  html: string,
+  text: string,
+  subject?: string,
+  notificationCategory?: string,
+  editableRegions?: Record<string, EditableMetadata>,
+};
 type ExecuteResult =
   | { status: "ok", data: unknown }
   | { status: "error", error: unknown };
@@ -131,6 +138,8 @@ export async function renderEmailWithTemplate(
     user?: { displayName: string | null },
     project?: { displayName: string },
     variables?: Record<string, any>,
+    editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
     themeProps?: {
       unsubscribeLink?: string,
       projectLogos: {

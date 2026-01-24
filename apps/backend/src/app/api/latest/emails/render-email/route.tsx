@@ -1,8 +1,9 @@
-import { getEmailThemeForThemeId, renderEmailWithTemplate, type EditableMetadata } from "@/lib/email-rendering";
+import { getEmailThemeForThemeId, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 
 export const POST = createSmartRouteHandler({
   metadata: {
