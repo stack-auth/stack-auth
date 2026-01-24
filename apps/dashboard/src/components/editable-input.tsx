@@ -2,6 +2,7 @@ import { Button, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Check, X } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { useRef, useState } from "react";
 
@@ -130,7 +131,7 @@ export function EditableInput({
               ? "bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 hover:bg-emerald-500/[0.15] hover:ring-emerald-500/30" 
               : "bg-red-500/[0.08] text-red-600 dark:text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/[0.15] hover:ring-red-500/30"
           )}
-          onClick={async () => {
+          onClick={() => runAsynchronouslyWithAlert(async () => {
             try {
               forceAllowBlur.current = true;
               inputRef.current?.blur();
@@ -142,7 +143,7 @@ export function EditableInput({
             } finally {
               forceAllowBlur.current = false;
             }
-          }}
+          })}
         >
           {action === "accept" ?
             <Check weight="bold" className="h-3.5 w-3.5" /> :

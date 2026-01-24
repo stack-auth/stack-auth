@@ -8,6 +8,7 @@ import {
   SelectValue,
   SimpleTooltip,
 } from "@/components/ui";
+import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import { EditableInput } from "./editable-input";
 
 // Base item props shared by all types
 type BaseItemProps = {
+  itemKey?: string,
   icon: React.ReactNode,
   name: string,
   tooltip?: string,
@@ -96,16 +98,34 @@ type EditableGridProps = {
   items: EditableGridItem[],
   columns?: 1 | 2,
   className?: string,
+  deferredSave?: boolean,
+  hasChanges?: boolean,
+  onSave?: () => Promise<void>,
+  onDiscard?: () => void,
+  externalModifiedKeys?: Set<string>,
 };
 
 // Reusable label component
-function GridLabel({ icon, name, tooltip }: { icon: React.ReactNode, name: string, tooltip?: string }) {
+function GridLabel({
+  icon,
+  name,
+  tooltip,
+  isModified,
+}: {
+  icon: React.ReactNode,
+  name: string,
+  tooltip?: string,
+  isModified?: boolean,
+}) {
   const label = (
     <span className="flex h-8 items-center gap-2 text-xs font-semibold text-foreground">
       <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-foreground/[0.04] text-muted-foreground">
         {icon}
       </span>
       <span className="whitespace-nowrap mr-2">{name}</span>
+      {isModified && (
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      )}
     </span>
   );
 
@@ -394,28 +414,50 @@ function GridItemValue({ item }: { item: EditableGridItem }) {
   }
 }
 
-export function EditableGrid({ items, columns = 2, className }: EditableGridProps) {
+export function EditableGrid({
+  items,
+  columns = 2,
+  className,
+  deferredSave,
+  hasChanges,
+  onSave,
+  onDiscard,
+  externalModifiedKeys,
+}: EditableGridProps) {
   const gridCols = columns === 1
     ? "grid-cols-[min-content_1fr]"
     : "grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr]";
 
   return (
-    <div className={cn(
-      "grid gap-x-6 gap-y-3 text-sm items-center",
-      gridCols,
-      className
-    )}>
-      {items.map((item, index) => (
-        <GridItemContent key={index} item={item} />
-      ))}
+    <div className="space-y-2">
+      <div className={cn(
+        "grid gap-x-6 gap-y-3 text-sm items-center",
+        gridCols,
+        className
+      )}>
+        {items.map((item, index) => (
+          <GridItemContent
+            key={index}
+            item={item}
+            isModified={item.itemKey ? externalModifiedKeys?.has(item.itemKey) : false}
+          />
+        ))}
+      </div>
+      {deferredSave && onSave && onDiscard && (
+        <InlineSaveDiscard
+          hasChanges={!!hasChanges}
+          onSave={onSave}
+          onDiscard={onDiscard}
+        />
+      )}
     </div>
   );
 }
 
-function GridItemContent({ item }: { item: EditableGridItem }) {
+function GridItemContent({ item, isModified }: { item: EditableGridItem, isModified?: boolean }) {
   return (
     <>
-      <GridLabel icon={item.icon} name={item.name} tooltip={item.tooltip} />
+      <GridLabel icon={item.icon} name={item.name} tooltip={item.tooltip} isModified={isModified} />
       <div className="min-w-0 min-h-8 flex items-center">
         <GridItemValue item={item} />
       </div>
