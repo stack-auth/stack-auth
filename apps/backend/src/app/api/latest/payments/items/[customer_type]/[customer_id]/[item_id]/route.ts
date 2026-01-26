@@ -1,4 +1,4 @@
-import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -64,7 +64,16 @@ export const GET = createSmartRouteHandler({
       }),
     }).defined(),
   }),
-  handler: async (req) => {
+  handler: async (req, fullReq) => {
+    if (req.auth.type === "client") {
+      await ensureClientCanAccessCustomer({
+        customerType: req.params.customer_type,
+        customerId: req.params.customer_id,
+        user: fullReq.auth?.user,
+        tenancy: req.auth.tenancy,
+        forbiddenMessage: "Clients can only access their own user or team items.",
+      });
+    }
     const { tenancy } = req.auth;
     const paymentsConfig = tenancy.config.payments;
 
@@ -100,5 +109,3 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
-
-
