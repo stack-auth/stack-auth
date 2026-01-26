@@ -381,10 +381,11 @@ it("creates subscription in test mode and increases included item quantity", asy
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
     body: {
       customer_type: "user",
       customer_id: userId,
@@ -399,6 +400,7 @@ it("creates subscription in test mode and increases included item quantity", asy
 
   const getBefore = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getBefore.status).toBe(200);
   expect(getBefore.body.quantity).toBe(0);
@@ -416,6 +418,7 @@ it("creates subscription in test mode and increases included item quantity", asy
 
   const getAfter = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(2);
@@ -502,10 +505,11 @@ it("allows stackable quantity in test mode and multiplies included items", async
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
     body: {
       customer_type: "user",
       customer_id: userId,
@@ -520,6 +524,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
 
   const getBefore = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getBefore.status).toBe(200);
   expect(getBefore.body.quantity).toBe(0);
@@ -538,6 +543,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
 
   const getAfter = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(6);
