@@ -61,8 +61,8 @@ Note: Additional provider scopes are configured via oauthScopesOnSignIn construc
 
 Implementation:
 1. Construct full redirect URLs using a fixed callback scheme:
-   - Native apps: "stack-auth://success" and "stack-auth://error"
-   - Browser: Use window.location to construct full URLs
+   - Native apps: "stack-auth-mobile-oauth-url://success" and "stack-auth-mobile-oauth-url://error"
+   - Browser: Use window.location to construct absolute URLs
 
 2. Call getOAuthUrl() with the constructed URLs to get:
    - Authorization URL
@@ -87,7 +87,7 @@ Implementation:
 
 Native App Implementation (iOS/macOS example):
 ```swift
-let callbackScheme = "stack-auth"
+let callbackScheme = "stack-auth-mobile-oauth-url"
 let oauth = try await getOAuthUrl(
     provider: provider,
     redirectUrl: callbackScheme + "://success",
@@ -121,8 +121,8 @@ Useful for non-browser environments or custom OAuth handling.
 
 Arguments:
   provider: string - OAuth provider ID (e.g., "google", "github", "microsoft")
-  redirectUrl: string - Full URL where the user will be redirected after OAuth (must contain "://")
-  errorRedirectUrl: string - Full URL where the user will be redirected on error (must contain "://")
+  redirectUrl: string - Full URL where the user will be redirected after OAuth (when not in a browser, must be an absolute URL)
+  errorRedirectUrl: string - Full URL where the user will be redirected on error (when not in a browser, must be an absolute URL)
   options.state: string? - custom state parameter (default: auto-generated)
   options.codeVerifier: string? - custom PKCE verifier (default: auto-generated)
 
@@ -133,30 +133,20 @@ Returns: { url: string, state: string, codeVerifier: string, redirectUrl: string
   redirectUrl: The redirect URL (same as input, needed for token exchange - must match exactly)
 
 Note on URL schemes:
-- The "stack-auth://" scheme is automatically accepted by the backend without any configuration.
-- Custom schemes (e.g., "myapp://") require adding the scheme to the project's trusted domains
-  in the Stack Auth dashboard before use, or the OAuth flow will fail with REDIRECT_URL_NOT_WHITELISTED.
+- The "stack-auth-mobile-oauth-url://" scheme is automatically accepted by the backend without any configuration.
 
 Implementation:
-1. Validate that redirectUrl and errorRedirectUrl are full URLs (contain "://")
-   - If not, throw error with code "invalid_redirect_url" or "invalid_error_redirect_url"
+1. Validate that redirectUrl and errorRedirectUrl are absolute URLs
+   - If not, panic
 2. Generate or use provided state and codeVerifier
 3. Compute code challenge: base64url(sha256(codeVerifier))
 4. Build authorization URL (same as signInWithOAuth step 5)
 5. Return { url, state, codeVerifier, redirectUrl } without redirecting
 
 The caller is responsible for:
-- Constructing full URLs before calling (e.g., "stack-auth://success")
 - Opening the URL in a browser/webview
 - Storing the state, codeVerifier, and redirectUrl
 - Calling callOAuthCallback() with the callback URL and these values
-
-Errors:
-  StackAuthError(invalid_redirect_url)
-    message: "redirectUrl must be a full URL (e.g., 'stack-auth://success')"
-    
-  StackAuthError(invalid_error_redirect_url)
-    message: "errorRedirectUrl must be a full URL (e.g., 'stack-auth://error')"
 
 
 ## signInWithCredential(options)

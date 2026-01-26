@@ -1,6 +1,6 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
-import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
 import { createOrUpgradeAnonymousUser } from "@/lib/users";
@@ -44,7 +44,7 @@ async function createProjectUserOAuthAccount(prisma: PrismaClientTransaction, pa
 }
 
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
-  if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy)) {
+  if (!errorRedirectUrl || (!validateRedirectUrl(errorRedirectUrl, tenancy) && !isAcceptedNativeAppUrl(errorRedirectUrl))) {
     throw error;
   }
 

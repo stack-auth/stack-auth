@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateRedirectUrl } from './redirect-urls';
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
 describe('validateRedirectUrl', () => {
@@ -474,8 +474,8 @@ describe('validateRedirectUrl', () => {
     });
   });
 
-  describe('native app SDK URL (stack-auth:// scheme)', () => {
-    it('should accept stack-auth:// URLs without requiring trusted domain config', () => {
+  describe('native app SDK URLs', () => {
+    it('should not accept native app URLs in validateRedirectUrl (handled separately in OAuth model)', () => {
       const tenancy = createMockTenancy({
         domains: {
           allowLocalhost: false,
@@ -483,11 +483,11 @@ describe('validateRedirectUrl', () => {
         },
       });
 
-      // stack-auth:// is the default scheme used by the Swift SDK
-      expect(validateRedirectUrl('stack-auth://success', tenancy)).toBe(true);
-      expect(validateRedirectUrl('stack-auth://error', tenancy)).toBe(true);
-      expect(validateRedirectUrl('stack-auth://oauth-callback', tenancy)).toBe(true);
-      expect(validateRedirectUrl('stack-auth://any/path/here', tenancy)).toBe(true);
+      // Native app URLs are handled by isAcceptedNativeAppUrl in the OAuth model,
+      // not by validateRedirectUrl. This keeps native app URL acceptance scoped to OAuth only.
+      expect(validateRedirectUrl('stack-auth-mobile-oauth-url://success', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stack-auth-mobile-oauth-url://error', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stack-auth-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
     });
 
     it('should not accept other custom schemes without trusted domain config', () => {
@@ -503,5 +503,25 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('stackauth-myapp://callback', tenancy)).toBe(false);
       expect(validateRedirectUrl('stack-auth-custom://callback', tenancy)).toBe(false);
     });
+  });
+});
+
+describe('isAcceptedNativeAppUrl', () => {
+  it('should accept the native app OAuth URL scheme', () => {
+    expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://success')).toBe(true);
+    expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://error')).toBe(true);
+  });
+
+  it('should reject other custom schemes', () => {
+    expect(isAcceptedNativeAppUrl('myapp://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('stackauth-myapp://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('stack-auth://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('https://example.com/callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('http://localhost:3000/callback')).toBe(false);
+  });
+
+  it('should reject invalid URLs', () => {
+    expect(isAcceptedNativeAppUrl('not-a-url')).toBe(false);
+    expect(isAcceptedNativeAppUrl('')).toBe(false);
   });
 });

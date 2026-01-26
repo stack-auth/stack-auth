@@ -1238,8 +1238,8 @@ class MacOSPresentationContextProvider: NSObject, ASWebAuthenticationPresentatio
 struct OAuthView: View {
     @Bindable var viewModel: SDKTestViewModel
     @State private var provider = "google"
-    @State private var redirectUrl = "stack-auth://success"
-    @State private var errorRedirectUrl = "stack-auth://error"
+    @State private var redirectUrl = "stack-auth-mobile-oauth-url://success"
+    @State private var errorRedirectUrl = "stack-auth-mobile-oauth-url://error"
     @State private var isSigningIn = false
     private let presentationProvider = MacOSPresentationContextProvider()
     

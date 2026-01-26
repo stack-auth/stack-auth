@@ -71,8 +71,11 @@ function matchesDomain(testUrl: URL, pattern: string): boolean {
  * These are safe because they can only be handled by native apps,
  * not web browsers.
  */
-function isAcceptedNativeAppUrl(url: URL): boolean {
-  return url.protocol === 'stack-auth:';
+export function isAcceptedNativeAppUrl(urlOrString: string): boolean {
+  const url = createUrlIfValid(urlOrString);
+  if (!url) return false;
+
+  return url.protocol === 'stack-auth-mobile-oauth-url:';
 }
 
 export function validateRedirectUrl(
@@ -84,11 +87,6 @@ export function validateRedirectUrl(
 
   // Check localhost permission
   if (tenancy.config.domains.allowLocalhost && isLocalhost(url)) {
-    return true;
-  }
-
-  // Check if accepted native app SDK redirect URL
-  if (isAcceptedNativeAppUrl(url)) {
     return true;
   }
 

@@ -121,7 +121,7 @@ public actor StackClientApp {
     // MARK: - OAuth
     
     /// Get the OAuth authorization URL without redirecting.
-    /// Both redirectUrl and errorRedirectUrl must be full URLs (containing "://").
+    /// Both redirectUrl and errorRedirectUrl must be absolute URLs.
     public func getOAuthUrl(
         provider: String,
         redirectUrl: String,
@@ -129,12 +129,12 @@ public actor StackClientApp {
         state: String? = nil,
         codeVerifier: String? = nil
     ) async throws -> OAuthUrlResult {
-        // Validate that URLs are full URLs
+        // Validate that URLs are absolute URLs (panic if not - these are programmer errors)
         guard redirectUrl.contains("://") else {
-            throw StackAuthError(code: "invalid_redirect_url", message: "redirectUrl must be a full URL (e.g., 'stack-auth://success')")
+            fatalError("redirectUrl must be an absolute URL (e.g., 'stack-auth-mobile-oauth-url://success')")
         }
         guard errorRedirectUrl.contains("://") else {
-            throw StackAuthError(code: "invalid_error_redirect_url", message: "errorRedirectUrl must be a full URL (e.g., 'stack-auth://error')")
+            fatalError("errorRedirectUrl must be an absolute URL (e.g., 'stack-auth-mobile-oauth-url://error')")
         }
         
         let actualState = state ?? generateRandomString(length: 32)
@@ -177,7 +177,7 @@ public actor StackClientApp {
         provider: String,
         presentationContextProvider: ASWebAuthenticationPresentationContextProviding? = nil
     ) async throws {
-        let callbackScheme = "stack-auth"
+        let callbackScheme = "stack-auth-mobile-oauth-url"
         let oauth = try await getOAuthUrl(
             provider: provider,
             redirectUrl: callbackScheme + "://success",

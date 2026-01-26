@@ -5,10 +5,9 @@ import Foundation
 @Suite("OAuth Tests")
 struct OAuthTests {
     
-    // Default test URLs (must be full URLs with scheme)
-    // Uses the same scheme as signInWithOAuth: stack-auth://
-    let testRedirectUrl = "stack-auth://success"
-    let testErrorRedirectUrl = "stack-auth://error"
+    // Default test URLs (must be absolute URLs)
+    let testRedirectUrl = "stack-auth-mobile-oauth-url://success"
+    let testErrorRedirectUrl = "stack-auth-mobile-oauth-url://error"
     
     // MARK: - OAuth URL Generation Tests
     
@@ -119,33 +118,8 @@ struct OAuthTests {
         #expect(result.url.absoluteString.contains("code_challenge_method=S256"))
     }
     
-    // MARK: - URL Validation Tests
-    
-    @Test("Should throw error for invalid redirectUrl (no scheme)")
-    func throwsForInvalidRedirectUrl() async throws {
-        let app = TestConfig.createClientApp()
-        
-        do {
-            _ = try await app.getOAuthUrl(provider: "google", redirectUrl: "/oauth-callback", errorRedirectUrl: testErrorRedirectUrl)
-            #expect(false, "Should have thrown an error")
-        } catch let error as StackAuthError {
-            #expect(error.code == "invalid_redirect_url")
-        }
-    }
-    
-    @Test("Should throw error for invalid errorRedirectUrl (no scheme)")
-    func throwsForInvalidErrorRedirectUrl() async throws {
-        let app = TestConfig.createClientApp()
-        
-        do {
-            _ = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: "/error")
-            #expect(false, "Should have thrown an error")
-        } catch let error as StackAuthError {
-            #expect(error.code == "invalid_error_redirect_url")
-        }
-    }
-    
     // MARK: - Redirect URL Tests
+    // Note: Invalid URL validation (missing scheme) now panics and cannot be tested
     
     @Test("Should return the exact redirect URL provided")
     func returnsExactRedirectUrl() async throws {
