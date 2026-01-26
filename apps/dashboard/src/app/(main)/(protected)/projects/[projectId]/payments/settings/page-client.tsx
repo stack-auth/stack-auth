@@ -1,16 +1,18 @@
 "use client";
 
+import { SettingSwitch } from "@/components/settings";
+import { useUpdateConfig } from "@/lib/config-update";
 import { PageLayout } from "../../page-layout";
+import { useAdminApp } from "../../use-admin-app";
 import { PaymentMethods } from "./payment-methods";
 import { StripeConnectionCheck } from "./stripe-connection-check";
 import { TestModeToggle } from "./test-mode-toggle";
-import { SettingSwitch } from "@/components/settings";
-import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
+  const updateConfig = useUpdateConfig();
 
   return (
     <PageLayout
@@ -25,7 +27,11 @@ export default function PageClient() {
       <SettingSwitch
         label="Block new purchases"
         checked={paymentsConfig.blockNewPurchases}
-        onCheckedChange={(checked) => project.updateConfig({ "payments.blockNewPurchases": checked })}
+        onCheckedChange={async (checked) => void await updateConfig({
+          adminApp,
+          configUpdate: { "payments.blockNewPurchases": checked },
+          pushable: true,
+        })}
         hint="Stops new checkouts while keeping existing subscriptions active."
       />
     </PageLayout>

@@ -1,4 +1,6 @@
+import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
+import { branchConfigSourceSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -10,6 +12,8 @@ import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 
 export type ChatContent = Array<
@@ -521,16 +525,60 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateConfig(data: { configOverride: any }): Promise<void> {
+  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
-      `/internal/config/override`,
+      `/internal/config/override/${level}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async setConfigOverride(level: "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          config_string: JSON.stringify(configOverride),
+          ...(source && { source }),
+        }),
+      },
+      null,
+    );
+  }
+
+  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
       {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
+        body: JSON.stringify({ config_override_string: JSON.stringify(configOverrideOverride) }),
       },
+      null,
+    );
+  }
+
+  async getPushedConfigSource(): Promise<BranchConfigSourceApi> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/source`,
+      { method: "GET" },
+      null,
+    );
+    const data = await response.json();
+    return data.source;
+  }
+
+  async unlinkPushedConfigSource(): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/source`,
+      { method: "DELETE" },
       null,
     );
   }
