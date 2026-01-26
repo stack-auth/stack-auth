@@ -1,8 +1,7 @@
 import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
-import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
+import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
@@ -10,6 +9,7 @@ import * as readline from "readline";
 import { seed } from "../prisma/seed";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 
 const getClickhouseClient = () => getClickhouseAdminClient();
 
@@ -122,7 +122,18 @@ const generateMigrationFile = async () => {
   }
 };
 
-const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: string }[]) => {
+const promptContinueMigration = async (migrationName: string) => {
+  const answer = (await askQuestion(
+    `\n🔄 Ready to apply migration: ${migrationName}\nPress Enter to continue or 'q' to quit: `,
+  )).trim();
+
+  if (answer.toLowerCase() === 'q') {
+    console.log('Migration cancelled by user');
+    process.exit(0);
+  }
+};
+
+const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: string }[], options?: { interactive?: boolean }) => {
   const startTime = performance.now();
   const migrationFiles = selectedMigrationFiles ?? getMigrationFiles(MIGRATION_FILES_DIR);
   const totalMigrations = migrationFiles.length;
@@ -132,6 +143,7 @@ const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: st
     migrationFiles,
     logging: true,
     schema: globalPrismaSchema,
+    onBeforeMigration: options?.interactive ? promptContinueMigration : undefined,
   });
 
   const endTime = performance.now();
@@ -166,7 +178,7 @@ const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: st
 const showHelp = () => {
   console.log(`Database Migration Script
 
-Usage: pnpm db-migrations <command>
+Usage: pnpm db-migrations <command> [options]
 
 Commands:
   reset                    Drop all data and recreate the database, then apply migrations and seed
@@ -175,25 +187,29 @@ Commands:
   init                     Apply migrations and seed the database
   migrate                  Apply migrations
   help                     Show this help message
+
+Options:
+  --interactive            Prompt before each new migration (not on conditional repeats)
 `);
 };
 
 const main = async () => {
   const args = process.argv.slice(2);
   const command = args[0];
+  const interactive = args.includes('--interactive');
 
   switch (command) {
     case 'reset': {
       await promptDropDb();
       await dropSchema();
-      await migrate();
+      await migrate(undefined, { interactive });
       await seed();
       break;
     }
     case 'generate-migration-file': {
       await promptDropDb();
       await dropSchema();
-      await migrate();
+      await migrate(undefined, { interactive });
       await generateMigrationFile();
       await seed();
       break;
@@ -203,12 +219,12 @@ const main = async () => {
       break;
     }
     case 'init': {
-      await migrate();
+      await migrate(undefined, { interactive });
       await seed();
       break;
     }
     case 'migrate': {
-      await migrate();
+      await migrate(undefined, { interactive });
       break;
     }
     case 'help': {

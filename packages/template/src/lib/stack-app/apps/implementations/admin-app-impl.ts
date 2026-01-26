@@ -15,14 +15,53 @@ import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
-import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
+import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import * as yup from "yup";
+import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
+
+/**
+ * Converts a PushedConfigSource (SDK camelCase) to BranchConfigSourceApi (API snake_case).
+ */
+function pushedConfigSourceToApi(source: PushedConfigSource): BranchConfigSourceApi {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commit_hash: source.commitHash,
+      config_file_path: source.configFilePath,
+    };
+  }
+  return source;
+}
+
+/**
+ * Converts a BranchConfigSourceApi (API snake_case) to PushedConfigSource (SDK camelCase).
+ */
+function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSource {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commitHash: source.commit_hash,
+      configFilePath: source.config_file_path,
+    };
+  }
+  return source;
+}
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
   declare protected _interface: StackAdminInterface;
@@ -183,7 +222,23 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
-        await app._interface.updateConfig({ configOverride });
+        await app._interface.updateConfigOverride("environment", configOverride);
+        await app._configOverridesCache.refresh([]);
+      },
+      async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
+        await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
+        await app._configOverridesCache.refresh([]);
+      },
+      async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
+        await app._interface.updateConfigOverride("branch", config);
+        await app._configOverridesCache.refresh([]);
+      },
+      async getPushedConfigSource(): Promise<PushedConfigSource> {
+        const apiSource = await app._interface.getPushedConfigSource();
+        return apiToPushedConfigSource(apiSource);
+      },
+      async unlinkPushedConfigSource(): Promise<void> {
+        await app._interface.unlinkPushedConfigSource();
         await app._configOverridesCache.refresh([]);
       },
       async update(update: AdminProjectUpdateOptions) {
