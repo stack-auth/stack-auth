@@ -443,11 +443,11 @@ import.meta.vitest?.test("split", ({ expect }) => {
   expect(split({} as Record<string, unknown>, ["a"])).toEqual([{}, {}]);
 });
 
-export function mapValues<T extends object, U>(obj: T, fn: (value: T extends (infer E)[] ? E : T[keyof T]) => U): Record<keyof T, U> {
+export function mapValues<T extends object, U>(obj: T, fn: (value: T extends (infer E)[] ? E : T[keyof T], key: keyof T) => U): Record<keyof T, U> {
   if (Array.isArray(obj)) {
-    return obj.map(v => fn(v)) as any;
+    return obj.map((v, i) => fn(v, i as keyof T)) as any;
   }
-  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, fn(v)])) as any;
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, fn(v, k as keyof T)])) as any;
 }
 import.meta.vitest?.test("mapValues", ({ expect }) => {
   expect(mapValues({ a: 1, b: 2 }, v => v * 2)).toEqual({ a: 2, b: 4 });

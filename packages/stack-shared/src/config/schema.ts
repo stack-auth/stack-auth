@@ -472,6 +472,7 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
 // To make sure you don't accidentally forget setting a default value, you must explicitly set fields with no default value to `undefined`.
 // NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
+// NOTE: If an config's default value is a function, then the rendered config object {} MUST have the exact same behavior as { <some-key>: defaultFunc(<some-key>) }; in other words, the implementation may evaluate the default function for whatever additional keys it pleases. Note that it is guaranteed that the implementation will always evaluate the function for config keys that are present in the config overrides. // TODO write some tests/fuzzes to ensure this
 const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
@@ -642,19 +643,31 @@ type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends strin
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
 
-function deepReplaceFunctionsWithObjects(obj: any): any {
-  return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
+function deepReplaceFunctionsWithObjects(obj: any, paths: string[] = []): any {
+  const subPaths = (key: string) => {
+    return paths.filter(p => p.split(".").length > 1 && p.split(".")[0] === key)
+      .map(p => p.split(".").slice(1).join("."));
+  };
+  const currentPaths = [...new Set(paths.map(p => p.split(".")[0]))];
+  const nonDeepReplaced = {
+    ...obj,
+    ...typeof obj === "function" ? filterUndefined(Object.fromEntries(currentPaths.map(k => [k, obj(k)]))) : {},
+  };
+  return mapValues(nonDeepReplaced, (v, k) => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any, subPaths(k as string)) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
   expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
+  expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) }, ["a.c.d"])).toEqual({ a: { c: { b: 1 } } });
+  expect(deepReplaceFunctionsWithObjects(() => ({ b: 1 }), ["a"])).toEqual({ a: { b: 1 } });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });
 });
 
 type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
-function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = deepReplaceFunctionsWithObjects(defaults);
+function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C, parentPaths: string[] = []): ApplyDefaults<D, C> {
+  const paths = [...parentPaths, ...Object.keys(config)];
+  const res: any = deepReplaceFunctionsWithObjects(defaults, paths);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
     if (mergeValue == null) continue;
@@ -670,7 +683,8 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
           continue outer;
         }
       }
-      set(res, key, applyDefaults(baseValue, mergeValue));
+      const newPaths = paths.filter(p => p.startsWith(key + ".")).map(p => p.slice(key.length + 1));
+      set(res, key, applyDefaults(baseValue, mergeValue, newPaths));
     }
   }
   return res as any;
@@ -686,7 +700,7 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
-  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({});
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({ a: { b: "a" } });
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
@@ -703,9 +717,14 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: {}, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: {}, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: {} }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: { b: {} } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2 })).toEqual({ a: { b: { c: 1 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, "a.e.d": 3 })).toEqual({ a: { b: { c: 1 }, e: { c: 1 } }, "a.b.d": 2, "a.e.d": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { b: { d: 3 } } })).toEqual({ a: { b: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { e: { d: 3 } } })).toEqual({ a: { b: { c: 1 }, e: { c: 1, d: 3 } }, "a.b.d": 2 });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
