@@ -1,28 +1,46 @@
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
-import { NextRequest, NextResponse } from "next/server";
-import { validateSupportAuth } from "../../../support-auth";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { supportAuthSchema, validateSupportTeamMembership } from "../../../support-auth";
 
-// Internal support endpoint for listing teams in a project
-// Protected by Stack Auth session - requires @stack-auth.com email
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+    summary: "List teams in a project (Support)",
+    description: "Internal support endpoint for listing teams in a project. Requires support team membership.",
+    tags: ["Internal", "Support"],
+  },
+  request: yupObject({
+    auth: supportAuthSchema,
+    params: yupObject({
+      projectId: yupString().defined(),
+    }).defined(),
+    query: yupObject({
+      search: yupString().optional(),
+      teamId: yupString().optional(),
+      limit: yupString().optional(),
+      offset: yupString().optional(),
+    }),
+    method: yupString().oneOf(["GET"]).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      items: yupMixed().defined(),
+      total: yupNumber().defined(),
+    }).defined(),
+  }),
+  handler: async (req, fullReq) => {
+    await validateSupportTeamMembership(fullReq.auth!);
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
-  const auth = await validateSupportAuth(request);
-  if (!auth.success) {
-    return auth.response;
-  }
+    const { projectId } = req.params;
+    const search = req.query.search;
+    const teamId = req.query.teamId;
+    const limit = Math.min(100, parseInt(req.query.limit ?? "25", 10));
+    const offset = parseInt(req.query.offset ?? "0", 10);
 
-  const { projectId } = await params;
-  const searchParams = request.nextUrl.searchParams;
-  const search = searchParams.get("search") ?? undefined;
-  const teamId = searchParams.get("teamId") ?? undefined; // Exact team ID lookup
-  const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "25", 10));
-  const offset = parseInt(searchParams.get("offset") ?? "0", 10);
-
-  try {
     const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID);
     const prisma = await getPrismaClientForTenancy(tenancy);
 
@@ -56,7 +74,7 @@ export async function GET(
                   contactChannels: {
                     where: {
                       type: "EMAIL",
-                      isPrimary: "TRUE",  // This is a special enum value in Prisma
+                      isPrimary: "TRUE",
                     },
                   },
                 },
@@ -86,12 +104,10 @@ export async function GET(
       serverMetadata: team.serverMetadata,
     }));
 
-    return NextResponse.json({ items, total });
-  } catch (error) {
-    console.error("Support API error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: { items, total },
+    };
+  },
+});

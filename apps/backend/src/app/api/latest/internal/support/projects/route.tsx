@@ -1,25 +1,43 @@
 import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { NextRequest, NextResponse } from "next/server";
-import { validateSupportAuth } from "../support-auth";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { supportAuthSchema, validateSupportTeamMembership } from "../support-auth";
 
-// Internal support endpoint for listing all projects
-// Protected by Stack Auth session - requires support team membership
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+    summary: "List all projects (Support)",
+    description: "Internal support endpoint for listing all projects. Requires support team membership.",
+    tags: ["Internal", "Support"],
+  },
+  request: yupObject({
+    auth: supportAuthSchema,
+    query: yupObject({
+      search: yupString().optional(),
+      projectId: yupString().optional(),
+      limit: yupString().optional(),
+      offset: yupString().optional(),
+    }),
+    method: yupString().oneOf(["GET"]).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      items: yupMixed().defined(),
+      total: yupNumber().defined(),
+    }).defined(),
+  }),
+  handler: async (req, fullReq) => {
+    await validateSupportTeamMembership(fullReq.auth!);
 
-export async function GET(request: NextRequest) {
-  const auth = await validateSupportAuth(request);
-  if (!auth.success) {
-    return auth.response;
-  }
+    const search = req.query.search;
+    const projectId = req.query.projectId;
+    const limit = Math.min(100, parseInt(req.query.limit ?? "25", 10));
+    const offset = parseInt(req.query.offset ?? "0", 10);
 
-  const searchParams = request.nextUrl.searchParams;
-  const search = searchParams.get("search") ?? undefined;
-  const projectId = searchParams.get("projectId") ?? undefined; // Exact project ID lookup
-  const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "25", 10));
-  const offset = parseInt(searchParams.get("offset") ?? "0", 10);
-
-  try {
     // Build search filter - exact projectId takes priority
     const searchFilter = projectId
       ? { id: projectId }
@@ -127,13 +145,11 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ items, total });
-  } catch (error) {
-    console.error("[Support API] Error listing projects:", error);
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 }
-    );
-  }
-}
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: { items, total },
+    };
+  },
+});
 

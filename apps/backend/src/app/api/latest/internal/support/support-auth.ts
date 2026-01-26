@@ -1,10 +1,11 @@
-import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { decodeAccessToken } from "@/lib/tokens";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
+import { SmartRequestAuth } from "@/route-handlers/smart-request";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { adaptSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "../../users/crud";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
  * The team ID for Stack Auth support team members.
@@ -12,161 +13,69 @@ import { getUser } from "../../users/crud";
  * This team should be created in the "internal" project and only
  * Stack Auth team members who need support access should be added.
  *
- * Can be configured via STACK_INTERNAL_SUPPORT_TEAM_ID environment variable,
- * defaults to 'stack-auth-support'.
+ * Can be configured via STACK_INTERNAL_SUPPORT_TEAM_ID environment variable.
  */
-const SUPPORT_TEAM_ID = getEnvVariable("STACK_INTERNAL_SUPPORT_TEAM_ID", "stack-auth-support");
-
-type SupportAuthResult =
-  | { success: true, userId: string, userEmail: string | null, teamId: string }
-  | { success: false, response: NextResponse };
+export const SUPPORT_TEAM_ID = getEnvVariable("STACK_INTERNAL_SUPPORT_TEAM_ID");
 
 /**
- * Validates that the request is from an authenticated Stack Auth support team member.
+ * Schema for support API authentication.
  *
- * Authorization is based on **team membership**, not email domain. This ensures:
- * 1. Proper access control using Stack Auth's own authorization model
- * 2. Easy management through the dashboard (add/remove team members)
- * 3. Auditable access via team membership history
+ * Requires:
+ * 1. Authentication with the "internal" project
+ * 2. A valid user session
  *
- * Requirements:
- * 1. Valid access token for the "internal" project
- * 2. Valid publishable client key for the "internal" project
- * 3. User must be a member of the support team (STACK_INTERNAL_SUPPORT_TEAM_ID)
+ * Note: Team membership is validated separately in `validateSupportTeamMembership`
  */
-export async function validateSupportAuth(request: NextRequest): Promise<SupportAuthResult> {
-  const projectId = request.headers.get("x-stack-project-id");
-  const accessToken = request.headers.get("x-stack-access-token");
-  const publishableClientKey = request.headers.get("x-stack-publishable-client-key");
+export const supportAuthSchema = yupObject({
+  type: adaptSchema.defined(),
+  user: adaptSchema.defined(),
+  tenancy: adaptSchema.defined(),
+  project: yupObject({
+    id: yupString().oneOf(["internal"]).defined(),
+  }).defined(),
+}).defined();
 
-  // Must be requesting the internal project
-  if (projectId !== "internal") {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Support API requires internal project authentication" },
-        { status: 401 }
-      ),
-    };
+export type SupportAuth = {
+  user: UsersCrud["Admin"]["Read"],
+  tenancy: Tenancy,
+};
+
+/**
+ * Validates that the authenticated user is a member of the support team.
+ *
+ * This should be called at the start of every support API handler after
+ * schema validation to ensure proper authorization.
+ *
+ * @throws StatusError 403 if user is not a support team member
+ */
+export async function validateSupportTeamMembership(auth: SmartRequestAuth): Promise<SupportAuth> {
+  if (!auth.user) {
+    throw new KnownErrors.UserAuthenticationRequired();
   }
 
-  // Validate publishable client key
-  if (!publishableClientKey) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Missing publishable client key" },
-        { status: 401 }
-      ),
-    };
+  if (!SUPPORT_TEAM_ID) {
+    throw new StatusError(403, "Support API is not configured. STACK_INTERNAL_SUPPORT_TEAM_ID is not set.");
   }
 
-  const isKeyValid = await checkApiKeySet("internal", { publishableClientKey });
-  if (!isKeyValid) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Invalid publishable client key" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  // Validate access token
-  if (!accessToken) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Missing access token" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  const tokenResult = await decodeAccessToken(accessToken, {
-    allowAnonymous: false,
-    allowRestricted: false,
-  });
-
-  if (tokenResult.status === "error") {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Invalid or expired access token" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  if (tokenResult.data.projectId !== "internal") {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Access token is not for the internal project" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  // Fetch the user
-  const user = await getUser({
-    projectId: "internal",
-    branchId: DEFAULT_BRANCH_ID,
-    userId: tokenResult.data.userId,
-  });
-
-  if (!user) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "User not found" },
-        { status: 401 }
-      ),
-    };
-  }
-
-  // Check team membership - this is the PROPER authorization check
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
-
-  // Get user's teams for logging (not exposed to client)
-  const userTeams = await internalPrisma.teamMember.findMany({
-    where: {
-      tenancyId: internalTenancy.id,
-      projectUserId: user.id,
-    },
-    include: {
-      team: true,
-    },
-  });
 
   const supportTeamMembership = await internalPrisma.teamMember.findFirst({
     where: {
       tenancyId: internalTenancy.id,
-      projectUserId: user.id,
+      projectUserId: auth.user.id,
       team: {
         teamId: SUPPORT_TEAM_ID,
       },
     },
-    include: {
-      team: true,
-    },
   });
 
   if (!supportTeamMembership) {
-    return {
-      success: false,
-      response: NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      ),
-    };
+    throw new StatusError(403, "Access denied. User is not a member of the support team.");
   }
 
   return {
-    success: true,
-    userId: user.id,
-    userEmail: user.primary_email,
-    teamId: SUPPORT_TEAM_ID,
+    user: auth.user,
+    tenancy: auth.tenancy,
   };
 }

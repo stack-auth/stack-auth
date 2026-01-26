@@ -1,37 +1,62 @@
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
-import { NextRequest, NextResponse } from "next/server";
-import { validateSupportAuth } from "../../../support-auth";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { supportAuthSchema, validateSupportTeamMembership } from "../../../support-auth";
 
-// Internal support endpoint for listing events in a project
-// Protected by Stack Auth session - requires @stack-auth.com email
+export const GET = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+    summary: "List events in a project (Support)",
+    description: "Internal support endpoint for listing events in a project. Requires support team membership.",
+    tags: ["Internal", "Support"],
+  },
+  request: yupObject({
+    auth: supportAuthSchema,
+    params: yupObject({
+      projectId: yupString().defined(),
+    }).defined(),
+    query: yupObject({
+      limit: yupString().optional(),
+      offset: yupString().optional(),
+    }),
+    method: yupString().oneOf(["GET"]).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({
+      items: yupMixed().defined(),
+      total: yupNumber().defined(),
+    }).defined(),
+  }),
+  handler: async (req, fullReq) => {
+    await validateSupportTeamMembership(fullReq.auth!);
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
-  const auth = await validateSupportAuth(request);
-  if (!auth.success) {
-    return auth.response;
-  }
+    const { projectId } = req.params;
+    const limit = Math.min(100, parseInt(req.query.limit ?? "30", 10));
+    const offset = parseInt(req.query.offset ?? "0", 10);
 
-  const { projectId } = await params;
-  const searchParams = request.nextUrl.searchParams;
-  const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "30", 10));
-  const offset = parseInt(searchParams.get("offset") ?? "0", 10);
-
-  try {
-    const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID);
-
-    // Events are stored in the global prisma client with a data filter by tenancy
-    // We need to query by the data field's tenancyId
-    const events = await globalPrismaClient.event.findMany({
-      where: {
-        data: {
-          path: ["tenancyId"],
-          equals: tenancy.id,
+    // Events are stored with projectId in the data field
+    const whereClause = {
+      AND: [
+        {
+          data: {
+            path: ["projectId"],
+            equals: projectId,
+          },
         },
-      },
+        {
+          data: {
+            path: ["branchId"],
+            equals: DEFAULT_BRANCH_ID,
+          },
+        },
+      ],
+    };
+
+    const events = await globalPrismaClient.event.findMany({
+      where: whereClause,
       orderBy: { eventStartedAt: "desc" },
       take: limit,
       skip: offset,
@@ -41,12 +66,7 @@ export async function GET(
     });
 
     const total = await globalPrismaClient.event.count({
-      where: {
-        data: {
-          path: ["tenancyId"],
-          equals: tenancy.id,
-        },
-      },
+      where: whereClause,
     });
 
     const items = events.map((event) => ({
@@ -64,12 +84,10 @@ export async function GET(
       } : null,
     }));
 
-    return NextResponse.json({ items, total });
-  } catch (error) {
-    console.error("[Support API] Error fetching events:", error);
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 }
-    );
-  }
-}
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: { items, total },
+    };
+  },
+});
