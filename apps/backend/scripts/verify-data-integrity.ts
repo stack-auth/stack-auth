@@ -1128,6 +1128,7 @@ async function createPaymentsVerifier(options: {
       where: {
         tenancyId: options.tenancyId,
         customerId: customer.customerId,
+        customerType: typedToUppercase(customer.customerType),
       },
       select: {
         id: true,
