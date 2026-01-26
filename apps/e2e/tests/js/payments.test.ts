@@ -352,7 +352,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   } as const;
   await serverApp.grantProduct({ userId: user.id, product: inlineUserProduct });
 
-  const allUserProducts = await clientApp.listProducts({ userId: user.id });
+  const allUserProducts = await serverApp.listProducts({ userId: user.id });
   expect(allUserProducts).toHaveLength(2);
   expect(allUserProducts.nextCursor).toBeNull();
   const configGrant = allUserProducts.find((product) => product.displayName === "Config Offer");
@@ -367,7 +367,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   expect(nextPage).toHaveLength(1);
   expect(nextPage.nextCursor).toBeNull();
 
-  const userProductsFromCustomer = await user.listProducts();
+  const userProductsFromCustomer = await serverApp.listProducts({ userId: user.id });
   expect(userProductsFromCustomer).toHaveLength(2);
 
   const team = await user.createTeam({ displayName: "Products Team" });
@@ -388,7 +388,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   expect(teamProducts[0].quantity).toBe(1);
   expect(teamProducts[0].displayName).toBe(inlineTeamProduct.display_name);
 
-  const teamProductsFromCustomer = await team.listProducts();
+  const teamProductsFromCustomer = await serverApp.listProducts({ teamId: team.id });
   expect(teamProductsFromCustomer).toHaveLength(1);
   expect(teamProductsFromCustomer[0].displayName).toBe(inlineTeamProduct.display_name);
 
