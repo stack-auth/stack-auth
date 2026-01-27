@@ -59,7 +59,7 @@ services:
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
       POSTGRES_DB: stackframe
     ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}36:8080"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}38:8080"
     depends_on:
       - db
       - db-replica
