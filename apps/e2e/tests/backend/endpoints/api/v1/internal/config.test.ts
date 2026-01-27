@@ -363,7 +363,6 @@ describe("oauth config", () => {
       headers: adminHeaders(adminAccessToken),
     });
     const configWithoutGithub = JSON.parse(configResponse3.body.config_string);
-    console.log(configWithoutGithub.auth.oauth.providers);
     expect(configWithoutGithub.auth.oauth.providers.github).toBeUndefined();
     // Google should still be there
     expect(configWithoutGithub.auth.oauth.providers.google).toBeDefined();
