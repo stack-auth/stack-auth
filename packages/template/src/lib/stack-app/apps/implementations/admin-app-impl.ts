@@ -601,8 +601,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string, amountUsd?: MoneyAmount }): Promise<void> {
-    await this._interface.refundTransaction({ type: options.type, id: options.id, amountUsd: options.amountUsd });
+  async refundTransaction(options: {
+    type: "subscription" | "one-time-purchase",
+    id: string,
+    amountUsd: MoneyAmount,
+    refundEntries: Array<{ entryIndex: number, quantity: number }>,
+  }): Promise<void> {
+    await this._interface.refundTransaction({
+      type: options.type,
+      id: options.id,
+      amountUsd: options.amountUsd,
+      refundEntries: options.refundEntries,
+    });
     await this._transactionsCache.invalidateWhere(() => true);
   }
 

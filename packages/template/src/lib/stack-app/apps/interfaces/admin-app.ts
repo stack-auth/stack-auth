@@ -108,7 +108,12 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
-    refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string, amountUsd?: MoneyAmount }): Promise<void>,
+    refundTransaction(options: {
+      type: "subscription" | "one-time-purchase",
+      id: string,
+      amountUsd: MoneyAmount,
+      refundEntries: Array<{ entryIndex: number, quantity: number }>,
+    }): Promise<void>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
