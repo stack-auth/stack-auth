@@ -63,11 +63,20 @@ export function AuthPanel() {
   const [activeTab, setActiveTab] = useState<AuthTab>('select-project');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const isOutsideDesktop = dropdownRef.current && !dropdownRef.current.contains(target);
+      const isOutsideMobile = mobileDropdownRef.current && !mobileDropdownRef.current.contains(target);
+
+      // Only close if click is outside both dropdowns (or if the ref doesn't exist for that viewport)
+      if (
+        (!dropdownRef.current || isOutsideDesktop) &&
+        (!mobileDropdownRef.current || isOutsideMobile)
+      ) {
         setIsDropdownOpen(false);
       }
     };
@@ -158,7 +167,6 @@ export function AuthPanel() {
 
   // Calculate position based on homepage and scroll state (same as AIChatDrawer)
   const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
 
   const missingRequiredHeaders = stackAuthHeaders.filter(
     header => header.required && !(headers[header.key] ?? '').trim()
@@ -225,7 +233,10 @@ export function AuthPanel() {
         {/* Tabs */}
         <div className="flex border-b border-fd-border">
           <button
-            onClick={() => { setActiveTab('select-project'); setIsDropdownOpen(false); }}
+            onClick={() => {
+              setActiveTab('select-project');
+              setIsDropdownOpen(false);
+            }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'select-project'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -235,7 +246,10 @@ export function AuthPanel() {
             Select Project
           </button>
           <button
-            onClick={() => { setActiveTab('manual'); setIsDropdownOpen(false); }}
+            onClick={() => {
+              setActiveTab('manual');
+              setIsDropdownOpen(false);
+            }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'manual'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -320,7 +334,7 @@ export function AuthPanel() {
                         </span>
                       </div>
                       <p className="text-xs text-green-600 dark:text-green-400 mt-1.5">
-                        Because you're signed in, requests are automatically authenticated with your account.
+                        Because you&apos;re signed in, requests are automatically authenticated with your account.
                       </p>
                     </div>
                   )}
@@ -420,7 +434,10 @@ export function AuthPanel() {
         {/* Mobile Tabs */}
         <div className="flex border-b border-fd-border">
           <button
-            onClick={() => { setActiveTab('select-project'); setIsDropdownOpen(false); }}
+            onClick={() => {
+              setActiveTab('select-project');
+              setIsDropdownOpen(false);
+            }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'select-project'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -430,7 +447,10 @@ export function AuthPanel() {
             Select Project
           </button>
           <button
-            onClick={() => { setActiveTab('manual'); setIsDropdownOpen(false); }}
+            onClick={() => {
+              setActiveTab('manual');
+              setIsDropdownOpen(false);
+            }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors hover:transition-none ${
               activeTab === 'manual'
                 ? 'text-fd-foreground border-b-2 border-fd-foreground'
@@ -464,7 +484,7 @@ export function AuthPanel() {
             <div className="p-4 space-y-4">
               {hasOwnedProjects && projects.length > 0 ? (
                 <>
-                  <div className="space-y-2">
+                  <div className="space-y-2" ref={mobileDropdownRef}>
                     <label className="text-sm font-medium text-fd-foreground">
                       Select Project
                     </label>
@@ -515,7 +535,7 @@ export function AuthPanel() {
                         </span>
                       </div>
                       <p className="text-sm text-green-600 dark:text-green-400 mt-2">
-                        Because you're signed in, requests are automatically authenticated with your account.
+                        Because you&apos;re signed in, requests are automatically authenticated with your account.
                       </p>
                     </div>
                   )}
