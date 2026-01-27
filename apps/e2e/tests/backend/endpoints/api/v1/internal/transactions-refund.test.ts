@@ -354,6 +354,18 @@ it("refunds partial amounts for non-test mode one-time purchases", async () => {
     accessType: "client",
   });
   expect(productsAfterRes.body.items).toHaveLength(0);
+
+  const secondRefundAttempt = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "1250",
+      refund_entries: [{ entry_index: 0, quantity: 1 }],
+    },
+  });
+  expect(secondRefundAttempt.body.code).toBe("ONE_TIME_PURCHASE_ALREADY_REFUNDED");
 });
 
 it("refunds selected quantities for non-test mode one-time purchases", async () => {
@@ -387,4 +399,351 @@ it("refunds selected quantities for non-test mode one-time purchases", async () 
     accessType: "client",
   });
   expect(productsAfterRes.body.items).toHaveLength(0);
+});
+
+it("returns SCHEMA_ERROR when amount_usd is negative", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "-1",
+      refund_entries: [{ entry_index: 0, quantity: 1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/latest/internal/payments/transactions/refund:
+              - Money amount must be in the format of <number> or <number>.<number>
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/latest/internal/payments/transactions/refund:
+            - Money amount must be in the format of <number> or <number>.<number>
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("allows amount_usd of zero", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "0",
+      refund_entries: [{ entry_index: 0, quantity: 1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("allows empty refund_entries (money-only refund)", async () => {
+  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [],
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body).toEqual({ success: true });
+
+  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
+  expect(refundedTransaction?.adjusted_by).toEqual([
+    {
+      entry_index: 0,
+      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
+    },
+  ]);
+
+  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfterRes.body.items).toHaveLength(0);
+});
+
+it("returns SCHEMA_ERROR when refund_entries contains bad entry_index", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: 999, quantity: 1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund entry index is invalid." },
+        "error": "Refund entry index is invalid.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns SCHEMA_ERROR when refund_entries contains negative quantity", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: 0, quantity: -1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund quantity cannot be negative." },
+        "error": "Refund quantity cannot be negative.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("allows refund_entries with zero quantity", async () => {
+  const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: 0, quantity: 0 }],
+    },
+  });
+  expect(refundRes.status).toBe(200);
+  expect(refundRes.body).toEqual({ success: true });
+
+  const transactionsAfterRefund = await niceBackendFetch("/api/latest/internal/payments/transactions", {
+    accessType: "admin",
+  });
+  const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
+  expect(refundedTransaction?.adjusted_by).toEqual([
+    {
+      entry_index: 0,
+      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
+    },
+  ]);
+
+  const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(productsAfterRes.body.items).toHaveLength(0);
+});
+
+it("returns SCHEMA_ERROR when refund_entries contains quantity past limit", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction({ quantity: 1 });
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: 0, quantity: 2 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund quantity cannot exceed purchased quantity." },
+        "error": "Refund quantity cannot exceed purchased quantity.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns SCHEMA_ERROR when amount_usd exceeds charged amount", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5001",
+      refund_entries: [{ entry_index: 0, quantity: 1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund amount cannot exceed the charged amount." },
+        "error": "Refund amount cannot exceed the charged amount.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns SCHEMA_ERROR when refund_entries contains negative entry_index", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: -1, quantity: 1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund entry index is invalid." },
+        "error": "Refund entry index is invalid.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns SCHEMA_ERROR when refund_entries quantity is not an integer", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: 0, quantity: 1.5 }],
+    },
+  });
+  expect(refundRes.body.code).toBe("SCHEMA_ERROR");
+});
+
+it("returns SCHEMA_ERROR when refund_entries references non-product_grant entries", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [{ entry_index: 1, quantity: 1 }],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund entries must reference product grant entries." },
+        "error": "Refund entries must reference product grant entries.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns SCHEMA_ERROR when refund_entries contains duplicate entry indexes", async () => {
+  const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction({ quantity: 2 });
+
+  const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
+    accessType: "admin",
+    method: "POST",
+    body: {
+      type: "one-time-purchase",
+      id: purchaseTransaction.id,
+      amount_usd: "5000",
+      refund_entries: [
+        { entry_index: 0, quantity: 1 },
+        { entry_index: 0, quantity: 1 },
+      ],
+    },
+  });
+  expect(refundRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": { "message": "Refund entries cannot contain duplicate entry indexes." },
+        "error": "Refund entries cannot contain duplicate entry indexes.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
