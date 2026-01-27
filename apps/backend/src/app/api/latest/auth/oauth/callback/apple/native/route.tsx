@@ -14,9 +14,10 @@ const appleJWKS = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/key
 
 /**
  * Verifies an Apple identity token and extracts user info.
- * For native apps, the audience is the app's Bundle ID.
+ * For native apps, the audience must be one of the configured Bundle IDs.
+ * jwtVerify's audience option accepts an array and validates that the token's aud claim matches any of them.
  */
-async function verifyAppleIdToken(idToken: string, bundleId: string): Promise<{
+async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): Promise<{
   sub: string,
   email?: string,
   emailVerified: boolean,
@@ -24,7 +25,7 @@ async function verifyAppleIdToken(idToken: string, bundleId: string): Promise<{
   try {
     const { payload } = await jwtVerify(idToken, appleJWKS, {
       issuer: "https://appleid.apple.com",
-      audience: bundleId,
+      audience: allowedBundleIds,
     });
 
     return {
@@ -71,19 +72,27 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
     const appleProvider = { id: providerRaw[0], ...providerRaw[1] };
+    console.log("[Apple Native Sign In] appleProvider config:", JSON.stringify(appleProvider, null, 2));
     if (!appleProvider.allowSignIn) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
-    // Get Apple Bundle ID from provider config
-    // For native Apple Sign In, we need the app's Bundle ID (not the web Services ID)
-    if (!appleProvider.appleBundleId) {
+    // Get Apple Bundle IDs from provider config (comma-separated string)
+    // For native Apple Sign In, we need the app's Bundle ID(s) (not the web Services ID)
+    if (!appleProvider.appleBundleIds) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
-    const appleBundleId = appleProvider.appleBundleId;
+    const appleBundleIds = appleProvider.appleBundleIds
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
 
-    // Verify the identity token against the Bundle ID
-    const appleUser = await verifyAppleIdToken(body.id_token, appleBundleId);
+    if (appleBundleIds.length === 0) {
+      throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
+    }
+
+    // Verify the identity token against the Bundle IDs
+    const appleUser = await verifyAppleIdToken(body.id_token, appleBundleIds);
 
     // Check if user already exists with this Apple account
     const existingAccounts = await prisma.projectUserOAuthAccount.findMany({

@@ -38,7 +38,7 @@ describe("Native Apple Sign In", () => {
           type: "standard",
           client_id: "com.example.web.service", // Services ID for web
           client_secret: "test-secret",
-          // Note: No apple_bundle_id configured
+          // Note: No apple_bundle_ids configured
         }],
       }
     });
@@ -52,7 +52,7 @@ describe("Native Apple Sign In", () => {
       },
     });
 
-    // Should fail because appleBundleId is not configured (provider not properly configured for native)
+    // Should fail because appleBundleIds is not configured (provider not properly configured for native)
     expect(response.status).toBe(400);
     expect(response.body).toMatchInlineSnapshot(`
       {
@@ -71,7 +71,7 @@ describe("Native Apple Sign In", () => {
           type: "standard",
           client_id: "com.example.web.service",
           client_secret: "test-secret",
-          apple_bundle_id: "com.example.ios.app",
+          apple_bundle_ids: "com.example.ios.app",
         }],
       }
     });
@@ -98,7 +98,7 @@ describe("Native Apple Sign In", () => {
           type: "standard",
           client_id: "com.example.web.service",
           client_secret: "test-secret",
-          apple_bundle_id: "com.example.ios.app",
+          apple_bundle_ids: "com.example.ios.app",
         }],
       }
     });

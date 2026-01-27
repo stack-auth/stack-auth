@@ -22,7 +22,7 @@ const oauthProviderReadSchema = yupObject({
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
-  apple_bundle_id: schemaFields.oauthAppleBundleIdSchema.optional(),
+  apple_bundle_ids: schemaFields.oauthAppleBundleIdsSchema.optional(),
 });
 
 const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);

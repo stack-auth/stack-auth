@@ -178,7 +178,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'auth.otp.allowSignIn': dataOptions.magic_link_enabled,
     'auth.passkey.allowSignIn': dataOptions.passkey_enabled,
     'auth.oauth.accountMergeStrategy': dataOptions.oauth_account_merge_strategy,
-    'auth.oauth.providers': dataOptions.oauth_providers ? typedFromEntries(dataOptions.oauth_providers
+    'auth.oauth.providers': dataOptions.oauth_providers ? (console.log("[Project Update] oauth_providers received:", JSON.stringify(dataOptions.oauth_providers, null, 2)), typedFromEntries(dataOptions.oauth_providers
       .map((provider) => {
         return [
           provider.id,
@@ -189,12 +189,12 @@ export async function createOrUpdateProjectWithLegacyConfig(
             clientSecret: provider.client_secret,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
-            appleBundleId: provider.apple_bundle_id,
+            appleBundleIds: provider.apple_bundle_ids,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies CompleteConfig['auth']['oauth']['providers'][string]
         ];
-      })) : undefined,
+      }))) : undefined,
     // ======================= users =======================
     'users.allowClientUserDeletion': dataOptions.client_user_deletion_enabled,
     // ======================= teams =======================

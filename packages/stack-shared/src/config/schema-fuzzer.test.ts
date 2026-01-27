@@ -191,7 +191,7 @@ const environmentSchemaFuzzerConfig = [{
         clientSecret: ["some-client-secret"],
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
-        appleBundleId: ["com.example.app"],
+        appleBundleIds: ["com.example.app"],
       }]]))] as const,
     }],
   }],

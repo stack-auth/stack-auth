@@ -63,7 +63,7 @@ export const providerFormSchema = yupObject({
     }),
   facebookConfigId: yupString().optional(),
   microsoftTenantId: yupString().optional(),
-  appleBundleId: yupString().optional(),
+  appleBundleIds: yupString().optional(),
 });
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
@@ -76,7 +76,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
-    appleBundleId: (props.provider as any)?.appleBundleId ?? "",
+    appleBundleIds: (props.provider as any)?.appleBundleIds ?? "",
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
@@ -90,7 +90,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
-        appleBundleId: values.appleBundleId,
+        appleBundleIds: values.appleBundleIds || "",
       });
     }
   };
@@ -174,12 +174,13 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                 <>
                   <InputField
                     control={form.control}
-                    name="appleBundleId"
-                    label="Bundle ID (for native iOS/macOS apps)"
-                    placeholder="com.example.myapp"
+                    name="appleBundleIds"
+                    label="Bundle IDs"
+                    placeholder="com.example.ios,com.example.macos"
+                    required
                   />
                   <Typography variant="secondary" type="footnote">
-                    The Bundle ID is required for native Sign In with Apple on iOS/macOS apps. The Client ID above (Services ID) is used for web OAuth.
+                    Comma-separated list of Bundle IDs. Without it, native sign-in with Apple may not function correctly.
                   </Typography>
                 </>
               )}

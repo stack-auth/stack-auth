@@ -70,7 +70,7 @@ export type AdminOAuthProviderConfig = {
       clientSecret: string,
       facebookConfigId?: string,
       microsoftTenantId?: string,
-      appleBundleId?: string,
+      appleBundleIds?: string,
     }
   ) & OAuthProviderConfig;
 
