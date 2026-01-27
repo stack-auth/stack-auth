@@ -670,21 +670,25 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
   const res: any = deepReplaceFunctionsWithObjects(defaults, paths);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
-    if (mergeValue == null) continue;
-    if (!isObjectLike(mergeValue)) {
+    if (!isObjectLike(mergeValue) && mergeValue !== null) {
       set(res, key, mergeValue);
     } else {
       const keyParts = key.split(".");
       let baseValue: any = defaults;
       for (const [index, part] of keyParts.entries()) {
-        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-        if (baseValue === undefined || !isObjectLike(baseValue)) {
-          set(res, key, mergeValue);
+        if (!isObjectLike(baseValue)) {
+          set(res, key, mergeValue ?? null);
           continue outer;
         }
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
       }
-      const newPaths = paths.filter(p => p.startsWith(key + ".")).map(p => p.slice(key.length + 1));
-      set(res, key, applyDefaults(baseValue, mergeValue, newPaths));
+      if (!isObjectLike(baseValue)) {
+        set(res, key, mergeValue ?? baseValue ?? null);
+        continue outer;
+      } else {
+        const newPaths = paths.filter(p => p.startsWith(key + ".")).map(p => p.slice(key.length + 1));
+        set(res, key, applyDefaults(baseValue, mergeValue ?? {}, newPaths));
+      }
     }
   }
   return res as any;
@@ -711,20 +715,26 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
-  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 } });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 }, "a.c": null });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.b": null })).toEqual({ a: { b: 1 }, "a.b": 1 });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
+  expect(applyDefaults({ a: {} }, { "a.b": null })).toEqual({ a: {}, "a.b": null });
+  expect(applyDefaults({ a: {} }, { "a": { b: 1 }, "a.b": null })).toEqual({ a: { b: 1 }, "a.b": null });
+  expect(applyDefaults({ a: 1 }, { "a.b": null })).toEqual({ a: 1, "a.b": null });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: { b: {} } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: { b: {} }, "a.b": {} });
   expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2 })).toEqual({ a: { b: { c: 1 } }, "a.b.d": 2 });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, "a.e.d": 3 })).toEqual({ a: { b: { c: 1 }, e: { c: 1 } }, "a.b.d": 2, "a.e.d": 3 });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { b: { d: 3 } } })).toEqual({ a: { b: { c: 1, d: 3 } }, "a.b.d": 2 });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { e: { d: 3 } } })).toEqual({ a: { b: { c: 1 }, e: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: { e: 2 } }, "a.b.d": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: { e: 2 } }, "a.b.d": null });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
