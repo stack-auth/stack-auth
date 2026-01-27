@@ -3,7 +3,7 @@
 import { ArrowRight, Check, Code, Copy, Sparkles, Webhook } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { codeToHtml } from 'shiki';
-import { Button } from './button';
+import { Button } from '../mdx/button';
 
 // Types for OpenAPI specification (focused on webhooks)
 type OpenAPISchema = {

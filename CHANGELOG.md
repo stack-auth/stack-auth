@@ -2,6 +2,11 @@
 
 ---
 
+## 2026.01.23
+
+### Payments
+Introduced a redesigned payments onboarding flow
+
 ## 2026.01.21
 
 ### Payments
