@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui';
+import { getPublicEnvVar } from '@/lib/env';
 import { CalendarIcon, CaretDownIcon, CaretUpIcon, InfoIcon } from '@phosphor-icons/react';
 import { captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
@@ -120,7 +121,8 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
       setLoading(true);
       setError(null);
 
-      const response = await fetch('/api/changelog', { signal });
+      const baseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || '';
+      const response = await fetch(`${baseUrl}/api/latest/internal/changelog`, { signal });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch changelog: ${response.status}`);

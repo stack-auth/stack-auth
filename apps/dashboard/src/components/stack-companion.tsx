@@ -2,6 +2,7 @@
 
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import { ChangelogEntry } from '@/lib/changelog';
+import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
 import { BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
@@ -166,7 +167,8 @@ export function StackCompanion({ className }: { className?: string }) {
   // Fetch changelog data on mount and check for new versions
   useEffect(() => {
     runAsynchronously(async () => {
-      const response = await fetch('/api/changelog');
+      const baseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || '';
+      const response = await fetch(`${baseUrl}/api/latest/internal/changelog`);
       if (!response.ok) {
         return;
       }

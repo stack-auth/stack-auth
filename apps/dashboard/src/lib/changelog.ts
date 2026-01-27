@@ -9,7 +9,6 @@ export type ChangelogEntry = {
   releasedAt?: string,
   isUnreleased?: boolean,
 };
-
 type TaggedBullet = { text: string, tags: string[] };
 
 function parseTaggedBullet(line: string): TaggedBullet {
