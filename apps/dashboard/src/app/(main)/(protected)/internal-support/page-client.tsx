@@ -1039,12 +1039,6 @@ function ConfigViewer({ project }: { project: SupportProject }) {
 
       {viewMode === 'visual' ? (
         <div className="space-y-4">
-          {/* Debug: Show raw config data */}
-          <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-            <div><strong>Debug - project.id:</strong> {project.id}</div>
-            <div><strong>Debug - config:</strong> {config ? `has ${Object.keys(config).length} keys: ${Object.keys(config).slice(0, 5).join(', ')}...` : 'null'}</div>
-          </div>
-
           {/* Project Metadata */}
           <ConfigSection title="Project Metadata">
             <ConfigItem label="Project ID" value={project.id} />

@@ -3,6 +3,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { supportAuthSchema, validateSupportTeamMembership } from "../support-auth";
 
 export const GET = createSmartRouteHandler({
@@ -31,12 +32,23 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req, fullReq) => {
-    await validateSupportTeamMembership(fullReq.auth!);
+    const auth = fullReq.auth ?? throwErr("Missing auth in support projects route");
+    await validateSupportTeamMembership(auth);
 
     const search = req.query.search;
     const projectId = req.query.projectId;
-    const limit = Math.min(100, parseInt(req.query.limit ?? "25", 10));
-    const offset = parseInt(req.query.offset ?? "0", 10);
+
+    // Parse and validate limit: must be finite, positive, capped at 100, default 25
+    const parsedLimit = parseInt(req.query.limit ?? "", 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 100)
+      : 25;
+
+    // Parse and validate offset: must be finite, non-negative, default 0
+    const parsedOffset = parseInt(req.query.offset ?? "", 10);
+    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0
+      ? parsedOffset
+      : 0;
 
     // Build search filter - exact projectId takes priority
     const searchFilter = projectId
@@ -79,8 +91,9 @@ export const GET = createSmartRouteHandler({
         let fullConfig: ReturnType<typeof renderedOrganizationConfigToProjectCrud> | null = null;
         let userCount = 0;
         let teamCount = 0;
-        try {
-          const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID);
+
+        const tenancy = await getSoleTenancyFromProjectBranch(project.id, DEFAULT_BRANCH_ID, true);
+        if (tenancy) {
           // Convert to the same format used by the public API
           fullConfig = renderedOrganizationConfigToProjectCrud(tenancy.config);
 
@@ -92,16 +105,14 @@ export const GET = createSmartRouteHandler({
           teamCount = await prisma.team.count({
             where: { tenancyId: tenancy.id },
           });
-        } catch {
-          // Ignore errors, config will be null
         }
 
         // Try to get owner team info if this project has an ownerTeamId
         // Owner teams are in the "internal" project
         let ownerTeam = null;
         if (project.ownerTeamId) {
-          try {
-            const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
+          const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
+          if (internalTenancy) {
             const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
             const team = await internalPrisma.team.findFirst({
               where: {
@@ -115,8 +126,6 @@ export const GET = createSmartRouteHandler({
                 displayName: team.displayName,
               };
             }
-          } catch {
-            // Ignore errors
           }
         }
 
