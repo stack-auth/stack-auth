@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/e-commerce-demo",
-  "version": "2.8.60",
+  "version": "2.8.61",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@stackframe/stack": "workspace:*",
-    "next": "14.2.34",
+    "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18"
   },

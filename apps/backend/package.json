@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-backend",
-  "version": "2.8.60",
+  "version": "2.8.61",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "type": "module",
@@ -89,7 +89,7 @@
     "freestyle-sandboxes": "^0.1.6",
     "jose": "^6.1.3",
     "json-diff": "^1.0.6",
-    "next": "16.1.1",
+    "next": "16.1.5",
     "nodemailer": "^6.9.10",
     "oidc-provider": "^8.5.1",
     "openid-client": "5.6.4",

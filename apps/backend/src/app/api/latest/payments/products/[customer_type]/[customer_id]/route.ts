@@ -1,4 +1,4 @@
-import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -32,7 +32,16 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: customerProductsListResponseSchema,
   }),
-  handler: async ({ auth, params, query }) => {
+  handler: async ({ auth, params, query }, fullReq) => {
+    if (auth.type === "client") {
+      await ensureClientCanAccessCustomer({
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+        user: fullReq.auth?.user,
+        tenancy: auth.tenancy,
+        forbiddenMessage: "Clients can only access their own user or team products.",
+      });
+    }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const ownedProducts = await getOwnedProductsForCustomer({
       prisma,
@@ -191,4 +200,3 @@ export const POST = createSmartRouteHandler({
     };
   },
 });
-

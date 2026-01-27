@@ -46,6 +46,24 @@ services:
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}16:8080"
 
+  # ================= WAL Info =================
+
+  wal-info:
+    build: ./wal-info
+    environment:
+      PRIMARY_HOST: db
+      PRIMARY_PORT: 5432
+      REPLICA_HOST: db-replica
+      REPLICA_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
+      POSTGRES_DB: stackframe
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}36:8080"
+    depends_on:
+      - db
+      - db-replica
+
   # ================= PgHero (Replica) =================
 
   pghero-replica:

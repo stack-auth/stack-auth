@@ -189,14 +189,3 @@ export function SignInPasswordFirstTab() {
     </StackContainer>
   );
 }
-
-export function SignInExtraInfo() {
-  return (
-    <StackContainer color="blue">
-      <SignIn
-        extraInfo={<>By signing in, you agree to our <a href="#" className="text-fd-primary hover:underline">Terms of Service</a></>}
-        mockProject={mockProject}
-      />
-    </StackContainer>
-  );
-}
