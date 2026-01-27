@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -14,6 +15,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const router = useRouter();
+  const updateConfig = useUpdateConfig();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newStoreId, setNewStoreId] = useState("");
   const [newStoreDisplayName, setNewStoreDisplayName] = useState("");
@@ -41,10 +43,14 @@ export default function PageClient() {
 
     setIsCreating(true);
     try {
-      await project.updateConfig({
-        [`dataVault.stores.${newStoreId}`]: {
-          displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: {
+          [`dataVault.stores.${newStoreId}`]: {
+            displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,
+          },
         },
+        pushable: true,
       });
 
       toast({ title: "Data vault store created successfully" });

@@ -24,8 +24,7 @@ const getEmbeddedUrl = (href: string, currentPath: string): string => {
   // Already an embedded URL?
   if (
     cleanPath.startsWith('/docs-embed') ||
-    cleanPath.startsWith('/api-embed') ||
-    cleanPath.startsWith('/dashboard-embed')
+    cleanPath.startsWith('/api-embed')
   ) {
     return withSuffix(cleanPath);
   }
@@ -36,9 +35,6 @@ const getEmbeddedUrl = (href: string, currentPath: string): string => {
   }
   if (cleanPath === '/api' || cleanPath.startsWith('/api/')) {
     return withSuffix(cleanPath.replace(/^\/api(?=\/|$)/, '/api-embed'));
-  }
-  if (cleanPath === '/dashboard' || cleanPath.startsWith('/dashboard/')) {
-    return withSuffix(cleanPath.replace(/^\/dashboard(?=\/|$)/, '/dashboard-embed'));
   }
 
   // Relative paths -> resolve against current embedded section (if present)
@@ -125,7 +121,6 @@ export function EmbeddedLinkInterceptor() {
       if (
         href.startsWith('/docs/') ||
         href.startsWith('/api/') ||
-        href.startsWith('/dashboard/') ||
         (!/^[a-zA-Z][a-zA-Z+\-.]*:/.test(href) && !href.startsWith('#'))
       ) {
         event.preventDefault();

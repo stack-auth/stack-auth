@@ -12,15 +12,17 @@ import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yu
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
+import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
@@ -144,16 +146,17 @@ const branchAuthSchema = yupObject({
 });
 
 export const branchPaymentsSchema = yupObject({
+  blockNewPurchases: yupBoolean(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  testMode: yupBoolean(),
-  catalogs: yupRecord(
-    userSpecifiedIdSchema("catalogId"),
+  productLines: yupRecord(
+    userSpecifiedIdSchema("productLineId"),
     yupObject({
       displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
     }),
-  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
+  ).meta({ openapiField: { description: 'The product lines that products can be in. All products in a product line (besides add-ons) are mutually exclusive.', exampleValue: { "product-line-id": { displayName: "My Product Line", customerType: "user" } } } }),
   products: yupRecord(
     userSpecifiedIdSchema("productId"),
     productSchema,
@@ -165,11 +168,32 @@ export const branchPaymentsSchema = yupObject({
       customerType: schemaFields.customerTypeSchema,
     }),
   ),
-});
+}).optional().test(
+  'product-customer-type-matches-product-line',
+  'Product customer type must match its product line customer type',
+  function(this: yup.TestContext<yup.AnyObject>, value) {
+    if (!value) return true;
+    for (const [productId, product] of Object.entries(value.products)) {
+      if (!product.productLineId) continue;
+      const productLine = getOrUndefined(value.productLines, product.productLineId);
+      if (productLine === undefined) {
+        return this.createError({
+          message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
+          path: `${this.path}.products.${productId}.productLineId`,
+        });
+      }
+      if (product.customerType !== productLine.customerType) {
+        return this.createError({
+          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
+          path: `${this.path}.products.${productId}.customerType`,
+        });
+      }
+    }
+    return true;
+  }
+);
 
-const branchDomain = yupObject({
-  allowLocalhost: yupBoolean(),
-});
+const branchDomain = yupObject({});
 
 const branchOnboardingSchema = yupObject({
   requireEmailVerification: yupBoolean(),
@@ -250,6 +274,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   })),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
+    allowLocalhost: yupBoolean(),
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
@@ -257,6 +282,10 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
         handlerPath: schemaFields.handlerPathSchema.max(300),
       }),
     ),
+  })),
+
+  payments: branchConfigSchema.getNested("payments").concat(yupObject({
+    testMode: yupBoolean(),
   })),
 }));
 
@@ -305,13 +334,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // END
 
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
-  if (type === "environment") {
+  if (isBranchOrHigher) {
     res = removeProperty(res, p => p.join(".") === "sourceOfTruth");
   }
   // END
 
   // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
-  if (type === "environment") {
+  if (isBranchOrHigher) {
     res = removeProperty(res, p => p.join(".") === "payments.stripeAccountId");
     res = removeProperty(res, p => p.join(".") === "payments.stripeAccountSetupComplete");
   }
@@ -345,6 +374,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "workflows");
     res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
+  }
+  // END
+
+  // BEGIN 2026-01-14: payments.catalogs is now payments.productLines (with customerType inferred from products) and payments.products.*.catalogId is now payments.products.*.productLineId
+  if (isBranchOrHigher) {
+    res = migrateCatalogsToProductLines(res);
   }
   // END
 
@@ -437,6 +472,7 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
 // To make sure you don't accidentally forget setting a default value, you must explicitly set fields with no default value to `undefined`.
 // NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
+// NOTE: If an config's default value is a function, then the rendered config object {} MUST have the exact same behavior as { <some-key>: defaultFunc(<some-key>) }; in other words, the implementation may evaluate the default function for whatever additional keys it pleases. Note that it is guaranteed that the implementation will always evaluate the function for config keys that are present in the config overrides. // TODO write some tests/fuzzes to ensure this
 const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
@@ -545,14 +581,16 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    blockNewPurchases: false,
     testMode: true,
     autoPay: undefined,
-    catalogs: (key: string) => ({
+    productLines: (key: string) => ({
       displayName: undefined,
+      customerType: undefined,
     }),
     products: (key: string) => ({
       displayName: key,
-      catalogId: undefined,
+      productLineId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,
@@ -605,35 +643,52 @@ type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends strin
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
 
-function deepReplaceFunctionsWithObjects(obj: any): any {
-  return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
+function deepReplaceFunctionsWithObjects(obj: any, paths: string[] = []): any {
+  const subPaths = (key: string) => {
+    return paths.filter(p => p.split(".").length > 1 && p.split(".")[0] === key)
+      .map(p => p.split(".").slice(1).join("."));
+  };
+  const currentPaths = [...new Set(paths.map(p => p.split(".")[0]))];
+  const nonDeepReplaced = {
+    ...typeof obj === "function" ? filterUndefined(Object.fromEntries(currentPaths.map(k => [k, obj(k)]))) : {},
+    ...obj,
+  };
+  return mapValues(nonDeepReplaced, (v, k) => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any, subPaths(k as string)) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
   expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
+  expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) }, ["a.c.d"])).toEqual({ a: { c: { b: 1 } } });
+  expect(deepReplaceFunctionsWithObjects(() => ({ b: 1 }), ["a"])).toEqual({ a: { b: 1 } });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });
 });
 
 type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
-function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
-  const res: any = deepReplaceFunctionsWithObjects(defaults);
+function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C, parentPaths: string[] = []): ApplyDefaults<D, C> {
+  const paths = [...parentPaths, ...Object.keys(config)];
+  const res: any = deepReplaceFunctionsWithObjects(defaults, paths);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
-    if (mergeValue == null) continue;
-    if (!isObjectLike(mergeValue)) {
+    if (!isObjectLike(mergeValue) && mergeValue !== null) {
       set(res, key, mergeValue);
     } else {
       const keyParts = key.split(".");
       let baseValue: any = defaults;
       for (const [index, part] of keyParts.entries()) {
-        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-        if (baseValue === undefined || !isObjectLike(baseValue)) {
-          set(res, key, mergeValue);
+        if (!isObjectLike(baseValue)) {
+          set(res, key, mergeValue ?? null);
           continue outer;
         }
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
       }
-      set(res, key, applyDefaults(baseValue, mergeValue));
+      if (!isObjectLike(baseValue)) {
+        set(res, key, mergeValue ?? baseValue ?? null);
+        continue outer;
+      } else {
+        const newPaths = paths.filter(p => p.startsWith(key + ".")).map(p => p.slice(key.length + 1));
+        set(res, key, applyDefaults(baseValue, mergeValue ?? {}, newPaths));
+      }
     }
   }
   return res as any;
@@ -649,7 +704,7 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
-  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({});
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({ a: { b: "a" } });
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
@@ -660,15 +715,26 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
-  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 } });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 }, "a.c": null });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.b": null })).toEqual({ a: { b: 1 }, "a.b": 1 });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
+  expect(applyDefaults({ a: {} }, { "a.b": null })).toEqual({ a: {}, "a.b": null });
+  expect(applyDefaults({ a: {} }, { "a": { b: 1 }, "a.b": null })).toEqual({ a: { b: 1 }, "a.b": null });
+  expect(applyDefaults({ a: 1 }, { "a.b": null })).toEqual({ a: 1, "a.b": null });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: {}, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: {}, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: {} }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: { b: {} }, "a.b": {} });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2 })).toEqual({ a: { b: { c: 1 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, "a.e.d": 3 })).toEqual({ a: { b: { c: 1 }, e: { c: 1 } }, "a.b.d": 2, "a.e.d": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { b: { d: 3 } } })).toEqual({ a: { b: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { e: { d: 3 } } })).toEqual({ a: { b: { c: 1 }, e: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: { e: 2 } }, "a.b.d": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: { e: 2 } }, "a.b.d": null });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -756,14 +822,8 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
-  const themes: typeof prepared.emails.themes = {
-    ...DEFAULT_EMAIL_THEMES,
-    ...prepared.emails.themes,
-  };
-  const templates: typeof prepared.emails.templates = {
-    ...DEFAULT_EMAIL_TEMPLATES,
-    ...(config.emails.server.isShared ? {} : prepared.emails.templates),
-  };
+  const themes: typeof prepared.emails.themes = prepared.emails.themes;
+  const templates: typeof prepared.emails.templates = config.emails.server.isShared ? DEFAULT_EMAIL_TEMPLATES : prepared.emails.templates;
   const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :

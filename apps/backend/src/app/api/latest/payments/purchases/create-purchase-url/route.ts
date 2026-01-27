@@ -68,6 +68,9 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const { tenancy } = req.auth;
+    if (tenancy.config.payments.blockNewPurchases) {
+      throw new KnownErrors.NewPurchasesBlocked();
+    }
     const stripe = await getStripeForAccount({ tenancy });
     const productConfig = await ensureProductIdOrInlineProduct(tenancy, req.auth.type, req.body.product_id, req.body.product_inline);
     const customerType = productConfig.customerType;
