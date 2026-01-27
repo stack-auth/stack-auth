@@ -38,6 +38,12 @@ export const PATCH = createSmartRouteHandler({
     if (!Object.keys(templateList).includes(templateId)) {
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
+
+    // Validate theme_id to prevent object injection
+    if (body.theme_id !== undefined && body.theme_id !== null && body.theme_id !== false && typeof body.theme_id !== 'string') {
+      throw new StatusError(StatusError.BadRequest, "theme_id must be a string, null, or false");
+    }
+
     const theme = getActiveEmailTheme(tenancy);
     const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, {
       variables: { projectDisplayName: tenancy.project.display_name },
@@ -61,13 +67,19 @@ export const PATCH = createSmartRouteHandler({
       throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @stackframe/emails");
     }
 
+    const configOverride: Record<string, any> = {
+      [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
+    };
+
+    // Only add themeId if it's explicitly provided
+    if (body.theme_id !== undefined) {
+      configOverride[`emails.templates.${templateId}.themeId`] = body.theme_id;
+    }
+
     await overrideEnvironmentConfigOverride({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
-      environmentConfigOverrideOverride: {
-        [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
-        ...(body.theme_id ? { [`emails.templates.${templateId}.themeId`]: body.theme_id } : {}),
-      },
+      environmentConfigOverrideOverride: configOverride,
     });
 
     return {
@@ -76,6 +88,49 @@ export const PATCH = createSmartRouteHandler({
       body: {
         rendered_html: result.data.html,
       },
+    };
+  },
+});
+
+export const DELETE = createSmartRouteHandler({
+  metadata: {
+    hidden: true,
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["admin"]).defined(),
+      tenancy: adaptSchema.defined(),
+    }).defined(),
+    params: yupObject({
+      templateId: yupString().uuid().defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({}).defined(),
+  }),
+  async handler({ auth: { tenancy }, params: { templateId } }) {
+    if (tenancy.config.emails.server.isShared) {
+      throw new KnownErrors.RequiresCustomEmailServer();
+    }
+    const templateList = tenancy.config.emails.templates;
+    if (!Object.keys(templateList).includes(templateId)) {
+      throw new StatusError(StatusError.NotFound, "No template found with given id");
+    }
+
+    await overrideEnvironmentConfigOverride({
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      environmentConfigOverrideOverride: {
+        [`emails.templates.${templateId}`]: null as any,
+      },
+    });
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {},
     };
   },
 });

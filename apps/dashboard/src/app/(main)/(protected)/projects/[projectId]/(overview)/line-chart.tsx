@@ -1,11 +1,11 @@
 import { useRouter } from "@/components/router";
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { UserAvatar } from '@stackframe/stack';
-import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import {
   cn,
   Typography
 } from "@/components/ui";
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { UserAvatar } from '@stackframe/stack';
+import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
@@ -41,7 +41,7 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
     : data.date;
 
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]">
+    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
           {formattedDate}
@@ -115,7 +115,7 @@ function ActivityBarChart({
           }}
           offset={20}
           allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 9999 }}
+          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
         <Bar
           dataKey="activity"
@@ -191,23 +191,36 @@ export function ChartCard({
   };
 
   return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md hover:z-10",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
+    <>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .chart-card-tooltip-escape .recharts-tooltip-wrapper {
+            z-index: 9999 !important;
+            overflow: visible !important;
+          }
+          .chart-card-tooltip-escape .recharts-tooltip-wrapper > * {
+            overflow: visible !important;
+          }
+        `
+      }} />
       <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative h-full flex flex-col">
-        {children}
+        "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
+        "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+        "shadow-sm hover:shadow-md hover:z-10",
+        className
+      )}>
+        {/* Subtle glassmorphic background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+        {/* Accent hover tint */}
+        <div className={cn(
+          "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
+          hoverTints[gradientColor]
+        )} />
+        <div className="relative h-full flex flex-col">
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -225,7 +238,7 @@ export function TimeRangeToggle({
   ];
 
   return (
-    <div className="flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
+    <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
       {options.map((option) => (
         <button
           key={option.value}
@@ -559,7 +572,7 @@ export function DonutChartDisplay({
                   cursor={false}
                   offset={20}
                   allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ zIndex: 9999 }}
+                  wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
                   content={
                     <ChartTooltipContent
                       className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"

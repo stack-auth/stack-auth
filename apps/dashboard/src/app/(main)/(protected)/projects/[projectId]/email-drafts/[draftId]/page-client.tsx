@@ -1,15 +1,16 @@
 "use client";
 
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
-import EmailPreview from "@/components/email-preview";
+import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
-import { AssistantChat, CodeEditor, VibeCodeLayout } from "@/components/vibe-coding";
+import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@/components/ui";
+import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
+import { type WysiwygDebugInfo as EmailDebugInfo } from "@/components/email-preview";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@/components/ui";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
@@ -24,6 +25,8 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
   const [stage, setStage] = useState<"edit" | "send">("edit");
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(draft?.themeId);
+  const [viewport, setViewport] = useState<ViewportMode>('edit');
+  const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
 
   useEffect(() => {
     if (!draft) return;
@@ -36,6 +39,19 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
   const handleToolUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
+  };
+
+  const handleSave = async () => {
+    try {
+      await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
+      toast({ title: "Draft saved", variant: "success" });
+    } catch (error) {
+      if (error instanceof KnownErrors.EmailRenderingError) {
+        toast({ title: "Failed to save draft", variant: "destructive", description: error.message });
+        return;
+      }
+      toast({ title: "Failed to save draft", variant: "destructive", description: "Unknown error" });
+    }
   };
 
   const handleNext = async () => {
@@ -51,27 +67,70 @@ export default function PageClient({ draftId }: { draftId: string }) {
     }
   };
 
+  const handleUndo = () => {
+    if (draft) {
+      setCurrentCode(draft.tsxSource);
+      setSelectedThemeId(draft.themeId);
+    }
+  };
+
+  const previewActions = null;
+  const isDirty = currentCode !== draft?.tsxSource || selectedThemeId !== draft.themeId;
+
+  // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
+  const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
+    const result = await stackAdminApp.applyWysiwygEdit({
+      sourceType: 'draft',
+      sourceCode: currentCode,
+      oldText: data.oldText,
+      newText: data.newText,
+      metadata: data.metadata,
+      domPath: data.domPath,
+      htmlContext: data.htmlContext,
+    });
+    setCurrentCode(result.updatedSource);
+    return result.updatedSource;
+  }, [stackAdminApp, currentCode]);
+
   return (
     <AppEnabledGuard appId="emails">
       {stage === "edit" ? (
         <VibeCodeLayout
+          viewport={viewport}
+          onViewportChange={setViewport}
+          onSave={handleSave}
+          saveLabel="Save draft"
+          onUndo={handleUndo}
+          isDirty={isDirty}
+          previewActions={previewActions}
+          editorTitle="Draft Source Code"
+          editModeEnabled
+          wysiwygDebugInfo={wysiwygDebugInfo}
+          headerAction={
+            <EmailThemeSelector
+              selectedThemeId={selectedThemeId}
+              onThemeChange={setSelectedThemeId}
+            />
+          }
+          primaryAction={{
+            label: "Next: Recipients",
+            onClick: handleNext,
+          }}
           previewComponent={
-            <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
+            <EmailPreview
+              themeId={selectedThemeId}
+              templateTsxSource={currentCode}
+              editMode={viewport === 'edit'}
+              viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+              emailSubject={draft?.displayName}
+              onDebugInfoChange={setWysiwygDebugInfo}
+              onWysiwygEditCommit={handleWysiwygEditCommit}
+            />
           }
           editorComponent={
             <CodeEditor
               code={currentCode}
               onCodeChange={setCurrentCode}
-              action={
-                <div className="flex gap-2">
-                  <EmailThemeSelector
-                    selectedThemeId={selectedThemeId}
-                    onThemeChange={setSelectedThemeId}
-                    className="w-48"
-                  />
-                  <Button onClick={handleNext}>Next</Button>
-                </div>
-              }
             />
           }
           chatComponent={

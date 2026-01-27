@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, SimpleTooltip } from "@/components/ui";
+import { Button, Input, SimpleTooltip } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { MagnifyingGlassIcon, PlusIcon } from "@phosphor-icons/react";
 import React, { ReactNode, useState } from "react";
@@ -53,18 +53,17 @@ export function ListSection({
                 "relative flex items-center transition-all duration-150 hover:transition-none",
                 isSearchFocused ? "w-[160px]" : "w-[140px]"
               )}>
-                <div className="absolute left-2.5 flex items-center justify-center pointer-events-none z-10">
-                  <MagnifyingGlassIcon className="h-3 w-3 text-foreground/50" />
-                </div>
-                <input
+                <Input
                   type="text"
+                  size="sm"
+                  leadingIcon={<MagnifyingGlassIcon className="h-3 w-3" />}
                   placeholder={searchPlaceholder}
                   value={searchValue || ''}
                   onChange={(e) => onSearchChange(e.target.value)}
                   onFocus={() => setIsSearchFocused(true)}
                   onBlur={() => setIsSearchFocused(false)}
                   className={cn(
-                    "w-full h-7 pl-7 pr-2 text-xs rounded-lg",
+                    "w-full rounded-lg",
                     "bg-background dark:bg-foreground/[0.04] border border-border/50 dark:border-foreground/[0.08]",
                     "focus:bg-background dark:focus:bg-foreground/[0.06] focus:outline-none focus:ring-1 focus:ring-foreground/[0.1] focus:border-border dark:focus:border-foreground/[0.12]",
                     "placeholder:text-muted-foreground/50",

@@ -200,6 +200,16 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
   async listEmailThemes(): Promise<{ id: string, display_name: string }[]> {
     const response = await this.sendAdminRequest(`/internal/email-themes`, {}, null);
     const result = await response.json() as { themes: { id: string, display_name: string }[] };
@@ -443,7 +453,46 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async applyWysiwygEdit(options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: any,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+  }): Promise<{ updatedSource: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/wysiwyg-edit`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          source_type: options.sourceType,
+          source_code: options.sourceCode,
+          old_text: options.oldText,
+          new_text: options.newText,
+          metadata: options.metadata,
+          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
+          html_context: options.htmlContext,
+        }),
+      },
+      null,
+    );
+    const result = await response.json();
+    return { updatedSource: result.updated_source };
+  }
+
+  async renderEmailPreview(options: {
+    themeId?: string | null | false,
+    themeTsxSource?: string,
+    templateId?: string,
+    templateTsxSource?: string,
+    editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
+  }): Promise<{ html: string, editable_regions?: Record<string, unknown> }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -454,6 +503,8 @@ export class StackAdminInterface extends StackServerInterface {
         theme_tsx_source: options.themeTsxSource,
         template_id: options.templateId,
         template_tsx_source: options.templateTsxSource,
+        editable_markers: options.editableMarkers,
+        editable_source: options.editableSource,
       }),
     }, null);
     return await response.json();
@@ -496,6 +547,16 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           tsx_source: tsxSource,
         }),
+      },
+      null,
+    );
+  }
+
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "DELETE",
       },
       null,
     );
@@ -597,6 +658,16 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-templates/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
   }
 
   async setupPayments(): Promise<{ url: string }> {

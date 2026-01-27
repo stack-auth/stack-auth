@@ -1,20 +1,23 @@
 "use client";
 
-import EmailPreview from "@/components/email-preview";
+import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
+import { Button, Skeleton, toast } from "@/components/ui";
 import {
   AssistantChat,
   CodeEditor,
   createChatAdapter,
   createHistoryAdapter,
   EmailTemplateUI,
-  VibeCodeLayout
+  VibeCodeLayout,
+  type ViewportMode,
+  type WysiwygDebugInfo,
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Button, toast } from "@/components/ui";
-import { useEffect, useState } from "react";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { useCallback, useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -23,10 +26,65 @@ export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
   const templates = stackAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
-  const template = templates.find((t) => t.id === props.templateId);
+  const templateFromHook = templates.find((t) => t.id === props.templateId);
+
+  // State for loading and template data
+  const [isLoading, setIsLoading] = useState(!templateFromHook);
+  const [fetchError, setFetchError] = useState<Error | null>(null);
+  const [fetchedTemplate, setFetchedTemplate] = useState<{ id: string, displayName: string, themeId?: string, tsxSource: string } | null>(null);
+
+  // Use either the template from the hook or the manually fetched one
+  const template = templateFromHook ?? fetchedTemplate;
+
   const [currentCode, setCurrentCode] = useState(template?.tsxSource ?? "");
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(template?.themeId);
 
+  // If template not found in hook data, try to fetch it directly
+  useEffect(() => {
+    // Skip if we already have the template
+    if (templateFromHook) {
+      setIsLoading(false);
+      return;
+    }
+    // Skip if we already fetched it
+    if (fetchedTemplate) {
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+
+    const fetchTemplate = async () => {
+      const allTemplates = await stackAdminApp.listEmailTemplates();
+
+      if (cancelled) return;
+
+      const found = allTemplates.find((t) => t.id === props.templateId);
+
+      if (found) {
+        setFetchedTemplate(found);
+        setCurrentCode(found.tsxSource);
+        setSelectedThemeId(found.themeId);
+      }
+
+      setIsLoading(false);
+    };
+
+    runAsynchronously(fetchTemplate);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [templateFromHook, fetchedTemplate, stackAdminApp, props.templateId]);
+
+  // When the template appears in the hook (e.g., after cache updates), sync state
+  useEffect(() => {
+    if (templateFromHook && !currentCode) {
+      setCurrentCode(templateFromHook.tsxSource);
+      setSelectedThemeId(templateFromHook.themeId);
+    }
+  }, [templateFromHook, currentCode]);
 
   useEffect(() => {
     if (!template) return;
@@ -52,8 +110,81 @@ export default function PageClient(props: { templateId: string }) {
     }
   };
 
+  const handleUndo = () => {
+    if (template) {
+      setCurrentCode(template.tsxSource);
+      setSelectedThemeId(template.themeId);
+    }
+  };
+
+  const [viewport, setViewport] = useState<ViewportMode>('edit');
+  const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
+
+  // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
+  const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
+    const result = await stackAdminApp.applyWysiwygEdit({
+      sourceType: 'template',
+      sourceCode: currentCode,
+      oldText: data.oldText,
+      newText: data.newText,
+      metadata: data.metadata,
+      domPath: data.domPath,
+      htmlContext: data.htmlContext,
+    });
+    setCurrentCode(result.updatedSource);
+    return result.updatedSource;
+  }, [stackAdminApp, currentCode]);
 
   if (!template) {
+    // Show loading state while waiting for the template (either from hook or direct fetch)
+    if (isLoading) {
+      return (
+        <AppEnabledGuard appId="emails">
+          <PageLayout title="Loading Template...">
+            <div className="flex flex-col gap-4">
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-[400px] w-full" />
+            </div>
+          </PageLayout>
+        </AppEnabledGuard>
+      );
+    }
+    // Show error state with retry option
+    if (fetchError) {
+      return (
+        <AppEnabledGuard appId="emails">
+          <PageLayout title="Failed to Load Template">
+            <div className="flex flex-col gap-4">
+              <p className="text-destructive">Failed to load template: {fetchError.message}</p>
+              <Button
+                onClick={() => {
+                  setFetchError(null);
+                  setIsLoading(true);
+                  const fetchTemplate = async () => {
+                    try {
+                      const allTemplates = await stackAdminApp.listEmailTemplates();
+                      const found = allTemplates.find((t) => t.id === props.templateId);
+                      if (found) {
+                        setFetchedTemplate(found);
+                        setCurrentCode(found.tsxSource);
+                        setSelectedThemeId(found.themeId);
+                      }
+                    } catch (error) {
+                      setFetchError(error instanceof Error ? error : new Error(String(error)));
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  };
+                  runAsynchronously(fetchTemplate);
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          </PageLayout>
+        </AppEnabledGuard>
+      );
+    }
     return (
       <AppEnabledGuard appId="emails">
         <PageLayout title="Email Template Not Found">
@@ -63,31 +194,42 @@ export default function PageClient(props: { templateId: string }) {
     );
   }
 
+  const previewActions = null;
+  const isDirty = currentCode !== template.tsxSource || selectedThemeId !== template.themeId;
+
   return (
     <AppEnabledGuard appId="emails">
       <VibeCodeLayout
+        viewport={viewport}
+        onViewportChange={setViewport}
+        onSave={handleSaveTemplate}
+        saveLabel="Save template"
+        onUndo={handleUndo}
+        isDirty={isDirty}
+        previewActions={previewActions}
+        editorTitle="Template Source Code"
+        editModeEnabled
+        wysiwygDebugInfo={wysiwygDebugInfo}
+        headerAction={
+          <EmailThemeSelector
+            selectedThemeId={selectedThemeId}
+            onThemeChange={setSelectedThemeId}
+          />
+        }
         previewComponent={
-          <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
+          <EmailPreview
+            themeId={selectedThemeId}
+            templateTsxSource={currentCode}
+            editMode={viewport === 'edit'}
+            viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+            onDebugInfoChange={setWysiwygDebugInfo}
+            onWysiwygEditCommit={handleWysiwygEditCommit}
+          />
         }
         editorComponent={
           <CodeEditor
             code={currentCode}
             onCodeChange={setCurrentCode}
-            action={
-              <div className="flex gap-2">
-                <EmailThemeSelector
-                  selectedThemeId={selectedThemeId}
-                  onThemeChange={setSelectedThemeId}
-                  className="w-48"
-                />
-                <Button
-                  disabled={currentCode === template.tsxSource && selectedThemeId === template.themeId}
-                  onClick={handleSaveTemplate}
-                >
-                  Save
-                </Button>
-              </div>
-            }
           />
         }
         chatComponent={

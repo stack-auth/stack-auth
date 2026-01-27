@@ -22,7 +22,18 @@ const toolCallContentSchema = yupObject({
 });
 
 const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
-const openai = createOpenAI({ apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY") });
+
+const messageSchema = yupObject({
+  role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
+  content: yupMixed().defined(),
+});
+
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key");
+const isMockMode = apiKey === "mock-openrouter-api-key";
+const openai = createOpenAI({
+  apiKey,
+  baseURL: "https://openrouter.ai/api/v1",
+});
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -38,10 +49,7 @@ export const POST = createSmartRouteHandler({
     }),
     body: yupObject({
       context_type: yupString().oneOf(["email-theme", "email-template", "email-draft"]).defined(),
-      messages: yupArray(yupObject({
-        role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
-        content: yupMixed().defined(),
-      })).defined().min(1),
+      messages: yupArray(messageSchema).defined().min(1),
     }),
   }),
   response: yupObject({
@@ -52,11 +60,33 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, params, auth: { tenancy } }) {
+    // Mock mode: return a simple text response without calling AI
+    if (isMockMode) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          content: [{
+            type: "text",
+            text: "This is a mock AI response. Configure a real API key to enable AI features.",
+          }],
+        },
+      };
+    }
+
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
+    const modelName = "google/gemini-3-flash-preview";
+
+    // Validate messages structure before passing to AI
+    const validatedMessages = body.messages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })) as any; // Cast to bypass strict typing since content is mixed
+
     const result = await generateText({
-      model: openai("gpt-4o"),
+      model: openai(modelName),
       system: adapter.systemPrompt,
-      messages: body.messages as any,
+      messages: validatedMessages,
       tools: adapter.tools,
     });
 
