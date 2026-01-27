@@ -149,6 +149,15 @@ export function AuthPanel() {
 
   // Handle project selection
   const handleProjectSelect = (projectId: string) => {
+    // Handle deselection (empty string)
+    if (projectId === '') {
+      setSelectedProjectId('');
+      // Clear all headers when deselecting
+      updateSharedHeaders(defaultHeaders);
+      return;
+    }
+
+    // Validate project exists
     if (!projects.some((projectItem) => projectItem.id === projectId)) {
       return;
     }

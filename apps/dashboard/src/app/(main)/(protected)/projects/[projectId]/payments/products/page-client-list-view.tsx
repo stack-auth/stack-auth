@@ -4,6 +4,7 @@ import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, toast } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { useUpdateConfig } from "@/lib/config-update";
 import { DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useHover } from "@stackframe/stack-shared/dist/hooks/use-hover";
@@ -341,6 +342,7 @@ function ProductsList({
 }: ProductsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const updateConfig = useUpdateConfig();
   const projectId = useProjectId();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -354,7 +356,7 @@ function ProductsList({
 
     const filtered = new Map<string | undefined, Array<{ id: string, product: any }>>();
 
-    groupedProducts.forEach((products, catalogId) => {
+    groupedProducts.forEach((products, productLineId) => {
       const filteredProducts = products.filter(({ id, product }) => {
         const query = searchQuery.toLowerCase();
         return (
@@ -365,7 +367,7 @@ function ProductsList({
       });
 
       if (filteredProducts.length > 0) {
-        filtered.set(catalogId, filteredProducts);
+        filtered.set(productLineId, filteredProducts);
       }
     });
 
@@ -385,12 +387,12 @@ function ProductsList({
       searchPlaceholder="Search products..."
     >
       <GroupedList>
-        {[...filteredGroupedProducts.entries()].map(([catalogId, products]) => {
-          const group = catalogId ? paymentsGroups[catalogId] : undefined;
+        {[...filteredGroupedProducts.entries()].map(([productLineId, products]) => {
+          const group = productLineId ? paymentsGroups[productLineId] : undefined;
           const groupName = group?.displayName;
 
           return (
-            <ListGroup key={catalogId || 'ungrouped'} title={catalogId ? (groupName || catalogId) : "Other"}>
+            <ListGroup key={productLineId || 'ungrouped'} title={productLineId ? (groupName || productLineId) : "Other"}>
               {products.map(({ id, product }) => {
                 const isEven = globalIndex % 2 === 0;
                 globalIndex++;
@@ -451,7 +453,7 @@ function ProductsList({
               typedEntries(config.payments.products)
                 .filter(([productId]) => productId !== productToDelete.id)
             );
-            await project.updateConfig({ "payments.products": updatedProducts });
+            await updateConfig({ adminApp: stackAdminApp, configUpdate: { "payments.products": updatedProducts }, pushable: true });
             toast({ title: "Product deleted" });
             setProductToDelete(null);
           }
@@ -489,6 +491,7 @@ function ItemsList({
 }: ItemsListProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const updateConfig = useUpdateConfig();
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, displayName: string } | null>(null);
@@ -583,7 +586,7 @@ function ItemsList({
           label: "Delete",
           onClick: async () => {
             if (!itemToDelete) return;
-            await project.updateConfig({ [`payments.items.${itemToDelete.id}`]: null });
+            await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${itemToDelete.id}`]: null }, pushable: true });
             toast({ title: "Item deleted" });
             setItemToDelete(null);
           }
@@ -608,6 +611,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig = config.payments;
 
   // Refs for products and items
@@ -630,18 +634,18 @@ export default function PageClient() {
     return refs;
   }, [paymentsConfig.items]);
 
-  // Group products by catalogId and sort by customer type priority
+  // Group products by productLineId and sort by customer type priority
   const groupedProducts = useMemo(() => {
     const groups = new Map<string | undefined, Array<{ id: string, product: typeof paymentsConfig.products[keyof typeof paymentsConfig.products] }>>();
 
     // Group products (filter out null/undefined products that may occur during deletion)
     Object.entries(paymentsConfig.products).forEach(([id, product]: [string, any]) => {
       if (!product) return; // Skip deleted/null products
-      const catalogId = product.catalogId;
-      if (!groups.has(catalogId)) {
-        groups.set(catalogId, []);
+      const productLineId = product.productLineId;
+      if (!groups.has(productLineId)) {
+        groups.set(productLineId, []);
       }
-      groups.get(catalogId)!.push({ id, product });
+      groups.get(productLineId)!.push({ id, product });
     });
 
     // Sort products within each group by customer type, then by ID
@@ -677,10 +681,10 @@ export default function PageClient() {
     const sortedGroups = new Map<string | undefined, Array<{ id: string, product: Product }>>();
 
     // Helper to get group priority
-    const getGroupPriority = (catalogId: string | undefined) => {
-      if (!catalogId) return 999; // Ungrouped always last
+    const getGroupPriority = (productLineId: string | undefined) => {
+      if (!productLineId) return 999; // Ungrouped always last
 
-      const products = groups.get(catalogId) || [];
+      const products = groups.get(productLineId) || [];
       if (products.length === 0) return 999;
 
       // Get the most common customer type in the group
@@ -705,8 +709,8 @@ export default function PageClient() {
     });
 
     // Rebuild map in sorted order
-    sortedEntries.forEach(([catalogId, products]) => {
-      sortedGroups.set(catalogId, products);
+    sortedEntries.forEach(([productLineId, products]) => {
+      sortedGroups.set(productLineId, products);
     });
 
     return sortedGroups;
@@ -745,14 +749,14 @@ export default function PageClient() {
 
   // Handler for saving product
   const handleSaveProduct = async (productId: string, product: Product) => {
-    await project.updateConfig({ [`payments.products.${productId}`]: product });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.products.${productId}`]: product }, pushable: true });
     setShowProductDialog(false);
     toast({ title: editingProduct ? "Product updated" : "Product created" });
   };
 
   // Handler for saving item
   const handleSaveItem = async (item: { id: string, displayName: string, customerType: 'user' | 'team' | 'custom' }) => {
-    await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
+    await updateConfig({ adminApp: stackAdminApp, configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } }, pushable: true });
     setShowItemDialog(false);
     setEditingItem(null);
     toast({ title: editingItem ? "Item updated" : "Item created" });
@@ -762,7 +766,7 @@ export default function PageClient() {
   const existingProductsList = Object.entries(paymentsConfig.products).map(([id, product]: [string, any]) => ({
     id,
     displayName: product.displayName,
-    catalogId: product.catalogId,
+    productLineId: product.productLineId,
     customerType: product.customerType
   }));
 
@@ -817,7 +821,7 @@ export default function PageClient() {
           <div className="flex-1 min-w-0">
             <ProductsList
               groupedProducts={groupedProducts}
-              paymentsGroups={paymentsConfig.catalogs}
+              paymentsGroups={paymentsConfig.productLines}
               hoveredItemId={hoveredItemId}
               getConnectedProducts={getConnectedProducts}
               productRefs={productRefs}
@@ -879,7 +883,7 @@ export default function PageClient() {
           {activeTab === "products" ? (
             <ProductsList
               groupedProducts={groupedProducts}
-              paymentsGroups={paymentsConfig.catalogs}
+              paymentsGroups={paymentsConfig.productLines}
               hoveredItemId={hoveredItemId}
               getConnectedProducts={getConnectedProducts}
               onProductMouseEnter={setHoveredProductId}
@@ -921,7 +925,7 @@ export default function PageClient() {
         onSave={async (productId, product) => await handleSaveProduct(productId, product)}
         editingProduct={editingProduct}
         existingProducts={existingProductsList}
-        existingCatalogs={paymentsConfig.catalogs}
+        existingProductLines={paymentsConfig.productLines}
         existingItems={existingItemsList}
         onCreateNewItem={handleCreateItem}
       />

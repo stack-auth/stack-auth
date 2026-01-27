@@ -68,6 +68,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
 
+    // TODO this should actually be on ServerUser
     createOAuthProvider(options: {
       userId: string,
       accountId: string,

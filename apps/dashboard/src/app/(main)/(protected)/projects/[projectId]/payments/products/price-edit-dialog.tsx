@@ -222,7 +222,7 @@ export function PriceEditDialog({
                   name: "Server Only",
                   tooltip: "Server-only prices can only be assigned through server-side API calls.",
                   value: editingPrice.serverOnly,
-                  onUpdate: async (value: boolean) => {
+                  onChange: (value: boolean) => {
                     onEditingPriceChange({ ...editingPrice, serverOnly: value });
                   },
                 },

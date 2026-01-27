@@ -70,20 +70,20 @@ export const POST = createSmartRouteHandler({
 
     const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.productId === verificationCode.data.productId) && product.stackable !== true);
 
-    const catalogs = tenancy.config.payments.catalogs;
-    const catalogId = Object.keys(catalogs).find((g) => product.catalogId === g);
-    let conflictingCatalogProducts: { product_id: string, display_name: string }[] = [];
-    if (catalogId) {
+    const productLines = tenancy.config.payments.productLines;
+    const productLineId = Object.keys(productLines).find((g) => product.productLineId === g);
+    let conflictingProductLineProducts: { product_id: string, display_name: string }[] = [];
+    if (productLineId) {
       const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
       if (isSubscribable) {
         const conflicts = subscriptions.filter((subscription) => (
           subscription.productId &&
-          subscription.product.catalogId === catalogId &&
+          subscription.product.productLineId === productLineId &&
           isActiveSubscription(subscription) &&
           subscription.product.prices !== "include-by-default" &&
           (!product.isAddOnTo || !Object.keys(product.isAddOnTo).includes(subscription.productId))
         ));
-        conflictingCatalogProducts = conflicts.map((s) => ({
+        conflictingProductLineProducts = conflicts.map((s) => ({
           product_id: s.productId!,
           display_name: s.product.displayName ?? s.productId!,
         }));
@@ -99,7 +99,7 @@ export const POST = createSmartRouteHandler({
         project_id: tenancy.project.id,
         project_logo_url: tenancy.project.logo_url ?? null,
         already_bought_non_stackable: alreadyBoughtNonStackable,
-        conflicting_products: conflictingCatalogProducts,
+        conflicting_products: conflictingProductLineProducts,
         test_mode: tenancy.config.payments.testMode === true,
         charges_enabled: verificationCode.data.chargesEnabled,
       },
