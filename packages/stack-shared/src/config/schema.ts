@@ -650,8 +650,8 @@ function deepReplaceFunctionsWithObjects(obj: any, paths: string[] = []): any {
   };
   const currentPaths = [...new Set(paths.map(p => p.split(".")[0]))];
   const nonDeepReplaced = {
-    ...obj,
     ...typeof obj === "function" ? filterUndefined(Object.fromEntries(currentPaths.map(k => [k, obj(k)]))) : {},
+    ...obj,
   };
   return mapValues(nonDeepReplaced, (v, k) => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any, subPaths(k as string)) : v));
 }
@@ -812,14 +812,6 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
-  const themes: typeof prepared.emails.themes = {
-    ...DEFAULT_EMAIL_THEMES,
-    ...prepared.emails.themes,
-  };
-  const templates: typeof prepared.emails.templates = {
-    ...DEFAULT_EMAIL_TEMPLATES,
-    ...(config.emails.server.isShared ? {} : prepared.emails.templates),
-  };
   const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :
@@ -843,9 +835,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     ...prepared,
     emails: {
       ...prepared.emails,
-      selectedThemeId: has(themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
-      themes,
-      templates,
+      selectedThemeId: has(prepared.emails.themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
     },
     payments: {
       ...prepared.payments,
