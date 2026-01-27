@@ -61,7 +61,6 @@ const branchSchemaFuzzerConfig = [{
   }],
   payments: [{
     blockNewPurchases: [false, true],
-    testMode: [false, true],
     autoPay: [{
       interval: [[[0, 1, -3, 100, 0.333, Infinity], ["day", "week", "month", "year"]]] as const,
     }],
@@ -165,9 +164,7 @@ const branchSchemaFuzzerConfig = [{
       }] as const,
     }],
   }],
-  domains: [{
-    allowLocalhost: [true, false],
-  }],
+  domains: [{}],
   apps: [{
     installed: [typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, [{
       enabled: [true, false],
@@ -195,7 +192,7 @@ const environmentSchemaFuzzerConfig = [{
     }],
   }],
   domains: [{
-    ...branchSchemaFuzzerConfig[0].domains[0],
+    allowLocalhost: [true, false],
     trustedDomains: [{
       "some-domain-id": [{
         baseUrl: ["https://example.com/something-here"],
@@ -215,6 +212,10 @@ const environmentSchemaFuzzerConfig = [{
       senderName: ["Some Sender"],
       senderEmail: ["some-sender@example.com", "some invalid email"],
     }],
+  }],
+  payments: [{
+    ...branchSchemaFuzzerConfig[0].payments[0],
+    testMode: [false, true],
   }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 

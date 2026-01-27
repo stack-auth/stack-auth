@@ -6,8 +6,8 @@ import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
 import { AlertTriangle, Check, ChevronDown, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
+import { Button } from '../mdx/button';
 import { useAPIPageContext } from './api-page-wrapper';
-import { Button } from './button';
 
 type AuthTab = 'select-project' | 'manual';
 

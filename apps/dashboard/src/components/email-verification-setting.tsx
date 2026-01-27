@@ -3,6 +3,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { SettingSwitch } from "@/components/settings";
 import { ActionDialog, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { EnvelopeSimpleIcon } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
@@ -29,6 +30,7 @@ export function EmailVerificationSetting(props: {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const projectConfig = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
 
   const handleEmailVerificationChange = async (checked: boolean) => {
@@ -47,8 +49,10 @@ export function EmailVerificationSetting(props: {
           affectedUsers: preview.affectedUsers,
           totalAffectedCount: preview.totalAffectedCount,
           onConfirm: async () => {
-            await project.updateConfig({
-              "onboarding.requireEmailVerification": true,
+            await updateConfig({
+              adminApp: stackAdminApp,
+              configUpdate: { "onboarding.requireEmailVerification": true },
+              pushable: true,
             });
             setPendingChange(null);
           },
@@ -58,8 +62,10 @@ export function EmailVerificationSetting(props: {
     }
 
     // No affected users or disabling the feature - apply directly
-    await project.updateConfig({
-      "onboarding.requireEmailVerification": checked,
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { "onboarding.requireEmailVerification": checked },
+      pushable: true,
     });
   };
 

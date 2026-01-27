@@ -2,8 +2,8 @@ import { describe, expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectKeys, Project, User, backendContext, createMailbox, niceBackendFetch } from "../../../../backend-helpers";
 
-async function updateConfig(config: any) {
-  const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
+async function updateEnvironmentConfig(config: any) {
+  const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
     accessType: "admin",
     method: "PATCH",
     body: { config_override_string: JSON.stringify(config) },
@@ -38,7 +38,7 @@ describe("without authentication", () => {
 
 it("should be able to get item information with valid customer and item IDs", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -68,7 +68,7 @@ it("should be able to get item information with valid customer and item IDs", as
 
 it("should return ItemNotFound error for non-existent item", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -101,7 +101,7 @@ it("should return ItemNotFound error for non-existent item", async ({ expect }) 
 
 it("should return ItemCustomerTypeDoesNotMatch error for user accessing team item", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -139,7 +139,7 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
 
 it("creates an item quantity change successfully", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -167,7 +167,7 @@ it("creates an item quantity change successfully", async ({ expect }) => {
 
 it("aggregates item quantity changes in item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -196,7 +196,7 @@ it("aggregates item quantity changes in item quantity", async ({ expect }) => {
 
 it("ignores expired changes", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -225,7 +225,7 @@ it("ignores expired changes", async ({ expect }) => {
 
 it("sums multiple non-expired changes", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -256,7 +256,7 @@ it("sums multiple non-expired changes", async ({ expect }) => {
 
 it("validates item and customer type", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "team-item": {
@@ -296,7 +296,7 @@ it("validates item and customer type", async ({ expect }) => {
 
 it("should error when deducting more quantity than available", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -393,7 +393,7 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
 
 it("should allow negative quantity changes when allow_negative is true", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -439,7 +439,7 @@ it("should allow negative quantity changes when allow_negative is true", async (
 
 it("supports custom customer type for items (GET and update-quantity)", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "custom-item": {
