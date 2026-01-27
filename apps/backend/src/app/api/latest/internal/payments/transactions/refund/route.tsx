@@ -32,9 +32,6 @@ type RefundEntrySelection = {
 };
 
 function validateRefundEntries(options: { entries: TransactionEntry[], refundEntries: RefundEntrySelection[] }) {
-  if (options.refundEntries.length === 0) {
-    throw new KnownErrors.SchemaError("Refund entries cannot be empty.");
-  }
   const seenEntryIndexes = new Set<number>();
   const entryByIndex = new Map<number, TransactionEntry>(
     options.entries.map((entry, index) => [index, entry]),
@@ -44,8 +41,8 @@ function validateRefundEntries(options: { entries: TransactionEntry[], refundEnt
     if (!Number.isFinite(refundEntry.quantity) || Math.trunc(refundEntry.quantity) !== refundEntry.quantity) {
       throw new KnownErrors.SchemaError("Refund quantity must be an integer.");
     }
-    if (refundEntry.quantity <= 0) {
-      throw new KnownErrors.SchemaError("Refund quantity must be greater than zero.");
+    if (refundEntry.quantity < 0) {
+      throw new KnownErrors.SchemaError("Refund quantity cannot be negative.");
     }
     if (seenEntryIndexes.has(refundEntry.entry_index)) {
       throw new KnownErrors.SchemaError("Refund entries cannot contain duplicate entry indexes.");

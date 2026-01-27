@@ -270,8 +270,8 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     }
     const refundUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
     const maxChargedUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
-    if (refundUnits <= 0) {
-      return { canSubmit: false, error: "Refund amount must be greater than zero.", refundEntries: undefined, amountUsd: undefined };
+    if (refundUnits < 0) {
+      return { canSubmit: false, error: "Refund amount cannot be negative.", refundEntries: undefined, amountUsd: undefined };
     }
     if (refundUnits > maxChargedUnits) {
       return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined, amountUsd: undefined };
@@ -279,8 +279,8 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     if (!canComputeRefundEntries) {
       return { canSubmit: false, error: "Refund entries are only supported for USD-priced products.", refundEntries: undefined, amountUsd: undefined };
     }
-    if (totalSelectedQuantity <= 0) {
-      return { canSubmit: false, error: "Select at least one product to refund.", refundEntries: undefined, amountUsd: undefined };
+    if (totalSelectedQuantity < 0) {
+      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined, amountUsd: undefined };
     }
     const maxUnits = maxChargedUnits;
     const selectedUnits = selectedEntries.reduce((sum, entry) => {
@@ -288,8 +288,8 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
       const entryUnits = moneyAmountToStripeUnits(entry.unitPriceUsd, USD_CURRENCY) * entry.selectedQuantity;
       return sum + entryUnits;
     }, 0);
-    if (selectedUnits <= 0) {
-      return { canSubmit: false, error: "Refund amount must be greater than zero.", refundEntries: undefined, amountUsd: undefined };
+    if (selectedUnits < 0) {
+      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined, amountUsd: undefined };
     }
     if (selectedUnits > maxUnits) {
       return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined, amountUsd: undefined };
@@ -323,7 +323,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
             },
             props: chargedAmountUsd ? { disabled: !refundValidation.canSubmit } : undefined,
           }}
-          confirmText="Refunds cannot be undone and will revoke access to the purchased product."
+          confirmText="Refunds cannot be undone"
         >
           <div className="space-y-4">
             <p>{`Refund this ${target.type === 'subscription' ? 'subscription' : 'one-time purchase'} transaction?`}</p>

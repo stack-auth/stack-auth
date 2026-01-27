@@ -233,7 +233,7 @@ describe("update email theme", () => {
       NiceResponse {
         "status": 200,
         "body": {
-          "display_name": "Default Light",
+          "display_name": "Unnamed Theme",
           "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
