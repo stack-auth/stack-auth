@@ -87,7 +87,7 @@ describe("Native Apple Sign In", () => {
 
     // Should fail JWT verification
     expect(response.status).toBe(400);
-    expect(response.body.code).toBe("INVALID_ID_TOKEN");
+    expect(response.body.code).toBe("INVALID_APPLE_CREDENTIALS");
   });
 
   it("should reject requests with missing id_token", async ({ expect }) => {

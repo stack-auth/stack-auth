@@ -34,7 +34,7 @@ async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): 
     };
   } catch (error) {
     captureError("apple-native-sign-in-token-verification-failed", error);
-    throw new KnownErrors.InvalidIdToken("apple");
+    throw new KnownErrors.InvalidAppleCredentials();
   }
 }
 

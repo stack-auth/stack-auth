@@ -1330,18 +1330,14 @@ const InvalidAuthorizationCode = createKnownErrorConstructor(
   () => [] as const,
 );
 
-const InvalidIdToken = createKnownErrorConstructor(
+const InvalidAppleCredentials = createKnownErrorConstructor(
   KnownError,
-  "INVALID_ID_TOKEN",
-  (provider: string, reason?: string) => [
+  "INVALID_APPLE_CREDENTIALS",
+  () => [
     400,
-    `The identity token from ${provider} is invalid.${reason ? ` Reason: ${reason}` : ""}`,
-    {
-      provider,
-      reason: reason ?? null,
-    },
+    "The Apple Sign In credentials could not be verified. Please try signing in again.",
   ] as const,
-  (json: any) => [json.provider, json.reason ?? undefined] as const,
+  () => [] as const,
 );
 
 const OAuthProviderAccessDenied = createKnownErrorConstructor(
@@ -1828,7 +1824,7 @@ export const KnownErrors = {
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,
-  InvalidIdToken,
+  InvalidAppleCredentials,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
