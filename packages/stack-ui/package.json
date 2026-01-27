@@ -6,10 +6,10 @@
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "scripts": {
-    "build": "tsc",
+    "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsc -w --preserveWatchOutput --declarationMap",
+    "dev": "tsup-node --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -21,7 +21,12 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
     }
   },
   "peerDependencies": {

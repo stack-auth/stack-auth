@@ -5,23 +5,39 @@
   "exports": {
     "./force-react-server": {
       "types": "./dist/index.react-server.d.ts",
-      "default": "./dist/index.react-server.js"
+      "import": {
+        "default": "./dist/esm/index.react-server.js"
+      },
+      "require": {
+        "default": "./dist/index.react-server.js"
+      }
     },
     "./force-default": {
       "types": "./dist/index.default.d.ts",
-      "default": "./dist/index.default.js"
+      "import": {
+        "default": "./dist/esm/index.default.js"
+      },
+      "require": {
+        "default": "./dist/index.default.js"
+      }
     },
     ".": {
       "types": "./dist/index.combined.d.ts",
-      "react-server": "./dist/index.react-server.js",
-      "default": "./dist/index.default.js"
+      "import": {
+        "react-server": "./dist/esm/index.react-server.js",
+        "default": "./dist/esm/index.default.js"
+      },
+      "require": {
+        "react-server": "./dist/index.react-server.js",
+        "default": "./dist/index.default.js"
+      }
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsc -w --preserveWatchOutput --declarationMap",
+    "dev": "tsup-node --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
