@@ -90,27 +90,6 @@ Implementation:
    - Native apps: ASWebAuthenticationSession/Custom Tabs returns callback URL directly;
      call callOAuthCallback(url, codeVerifier, redirectUrl) to exchange code for tokens
 
-Native App Implementation (iOS/macOS example):
-```swift
-let callbackScheme = "stack-auth-mobile-oauth-url"
-let oauth = try await getOAuthUrl(
-    provider: provider,
-    redirectUrl: callbackScheme + "://success",
-    errorRedirectUrl: callbackScheme + "://error"
-)
-
-let session = ASWebAuthenticationSession(
-    url: oauth.url,
-    callbackURLScheme: callbackScheme
-) { callbackUrl, error in
-    if let callbackUrl = callbackUrl {
-        try await callOAuthCallback(url: callbackUrl, codeVerifier: oauth.codeVerifier, redirectUrl: oauth.redirectUrl)
-    }
-}
-session.prefersEphemeralWebBrowserSession = false
-session.start()
-```
-
 The flow continues when the user is redirected back to the callback URL.
 Call callOAuthCallback() on the callback page/handler to complete the flow.
 
@@ -181,12 +160,10 @@ Note on URL schemes:
 - The "stack-auth-mobile-oauth-url://" scheme is automatically accepted by the backend without any configuration.
 
 Implementation:
-1. Validate that redirectUrl and errorRedirectUrl are absolute URLs
-   - If not, panic
-2. Generate or use provided state and codeVerifier
-3. Compute code challenge: base64url(sha256(codeVerifier))
-4. Build authorization URL (same as signInWithOAuth step 5)
-5. Return { url, state, codeVerifier, redirectUrl } without redirecting
+1. Generate or use provided state and codeVerifier
+2. Compute code challenge: base64url(sha256(codeVerifier))
+3. Build authorization URL (same as signInWithOAuth step 5)
+4. Return { url, state, codeVerifier, redirectUrl } without redirecting
 
 The caller is responsible for:
 - Opening the URL in a browser/webview
@@ -751,76 +728,36 @@ Errors:
     message: "The verification code is invalid or expired."
 
 
-## callOAuthCallback()  [BROWSER-LIKE]
+## callOAuthCallback(url?, codeVerifier?, redirectUrl?)
 
 Completes the OAuth flow after redirect from OAuth provider.
-Call this on the OAuth callback page/handler.
+Call this on the OAuth callback page (browser) or after receiving the callback URL (native apps).
 
-Returns: bool
-  Returns true if OAuth callback was handled and user signed in.
-  Returns false if no OAuth callback params present (not an OAuth callback).
-
-Implementation:
-1. Get the callback URL from window.location.href
-
-2. Check URL for OAuth callback params: "code" and "state"
-   If missing: return false (not an OAuth callback)
-
-3. Retrieve code verifier and redirect URL using state key from cookie "stack-oauth-outer-{state}"
-   If not found: return false (callback not for us, or already consumed)
-   Delete cookie after retrieving.
-
-4. Remove OAuth params from URL (history.replaceState to hide code)
-
-5. Exchange authorization code for tokens using OAuth2 authorization_code grant:
-   Use OAuth library (e.g., oauth4webapi) for proper handling.
-   
-   Token endpoint: /api/v1/auth/oauth/token
-   Grant type: authorization_code
-   Parameters:
-     - code: <authorization code from URL>
-     - redirect_url: <stored redirect URL from cookie>
-     - code_verifier: <PKCE verifier from cookie>
-     - client_id: <projectId>
-     - client_secret: <publishableClientKey>
-
-   Response on success:
-     { 
-       access_token: string, 
-       refresh_token: string,
-       is_new_user: bool,
-       after_callback_redirect_url?: string
-     }
-
-6. On MFA required: redirect to MFA page, return false
-7. Store tokens { access_token, refresh_token }
-8. Redirect to:
-   - after_callback_redirect_url (if present in response), or
-   - afterSignUp URL (if is_new_user), or
-   - afterSignIn URL
-9. Return true
-
-Does not return errors - throws on OAuth errors.
-
-
-## callOAuthCallback(url, codeVerifier, redirectUrl)  [NON-BROWSER]
-
-Non-browser variant for native apps (iOS, macOS, Android).
-Called after receiving the callback URL from ASWebAuthenticationSession or similar.
-
-Arguments:
-  url: URL - the callback URL received from the OAuth provider
+Arguments (all optional in browser, required in non-browser):
+  url: URL - the callback URL containing the authorization code
+    - Browser: inferred from window.location.href
   codeVerifier: string - the PKCE code verifier from getOAuthUrl()
+    - Browser: retrieved from cookie "stack-oauth-outer-{state}"
   redirectUrl: string - the redirect URL from getOAuthUrl() (must match exactly)
+    - Browser: retrieved from cookie "stack-oauth-outer-{state}"
 
-Returns: void
+Returns:
+  - Browser: bool (true if handled, false if not an OAuth callback)
+  - Non-browser: void
 
 Implementation:
-1. Parse the callback URL to extract "code" and "error" query parameters
+1. Get callback URL, codeVerifier, and redirectUrl:
+   - Browser: Extract from window.location.href and cookie using state parameter
+     - If "code" or "state" missing from URL: return false (not an OAuth callback)
+     - If cookie not found: return false (callback not for us, or already consumed)
+     - Delete cookie after retrieving
+   - Non-browser: Use provided arguments
 
-2. If "error" present: throw OAuthError with error code and description from URL
+2. Parse callback URL for "code" and "error" query parameters
+   - If "error" present: throw OAuthError with error code and description from URL
+   - If "code" missing: throw OAuthError("missing_code", "No authorization code in callback URL")
 
-3. If "code" missing: throw OAuthError("missing_code", "No authorization code in callback URL")
+3. [BROWSER-ONLY] Remove OAuth params from URL (history.replaceState to hide code)
 
 4. Exchange authorization code for tokens:
    POST /api/v1/auth/oauth/token
@@ -830,18 +767,28 @@ Implementation:
    Body:
      - grant_type=authorization_code
      - code=<authorization code from URL>
-     - redirect_uri=<redirectUrl argument - must match getOAuthUrl exactly>
-     - code_verifier=<codeVerifier argument>
+     - redirect_uri=<redirectUrl - must match getOAuthUrl exactly>
+     - code_verifier=<codeVerifier>
      - client_id=<projectId>
      - client_secret=<publishableClientKey>
 
    Response on success:
-     { access_token: string, refresh_token?: string }
+     { 
+       access_token: string, 
+       refresh_token: string,
+       is_new_user: bool,
+       after_callback_redirect_url?: string
+     }
 
 5. Store tokens { access_token, refresh_token }
-   Note: refresh_token may be optional depending on server configuration
 
-IMPORTANT: The redirect_url must exactly match the one used in getOAuthUrl().
+6. [BROWSER-ONLY] Redirect to:
+   - after_callback_redirect_url (if present in response), or
+   - afterSignUp URL (if is_new_user), or
+   - afterSignIn URL
+   Then return true
+
+IMPORTANT: The redirectUrl must exactly match the one used in getOAuthUrl().
 This is why getOAuthUrl() returns redirectUrl - store it and pass it here.
 
 Errors:
