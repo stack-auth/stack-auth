@@ -156,8 +156,8 @@ export const POST = createSmartRouteHandler({
         quantity: subscription.quantity,
       });
       refundAmountStripeUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
-      if (refundAmountStripeUnits <= 0) {
-        throw new KnownErrors.SchemaError("Refund amount must be greater than zero.");
+      if (refundAmountStripeUnits < 0) {
+        throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
       }
       if (refundAmountStripeUnits > totalStripeUnits) {
         throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
@@ -239,8 +239,8 @@ export const POST = createSmartRouteHandler({
         quantity: purchase.quantity,
       });
       refundAmountStripeUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
-      if (refundAmountStripeUnits <= 0) {
-        throw new KnownErrors.SchemaError("Refund amount must be greater than zero.");
+      if (refundAmountStripeUnits < 0) {
+        throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
       }
       if (refundAmountStripeUnits > totalStripeUnits) {
         throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
