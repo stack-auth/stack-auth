@@ -136,11 +136,7 @@ export const GET = createSmartRouteHandler({
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
-    bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({
-      status: yupString().oneOf(["ok"]).defined(),
-      message: yupString().defined(),
-    }).defined(),
+    bodyType: yupString().oneOf(["success"]).defined(),
   }),
   handler: async ({ headers }) => {
     const authHeader = headers.authorization[0];
@@ -158,11 +154,7 @@ export const GET = createSmartRouteHandler({
 
     return {
       statusCode: 200,
-      bodyType: "json",
-      body: {
-        status: "ok",
-        message: "Sign-up and sending of verification email successful",
-      },
+      bodyType: "success",
     };
   },
 });

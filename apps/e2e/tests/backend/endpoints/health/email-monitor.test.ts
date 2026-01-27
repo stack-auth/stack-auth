@@ -11,10 +11,7 @@ it("should return ok when email health check succeeds", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "message": "Sign-up and sending of verification email successful",
-        "status": "ok",
-      },
+      "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
