@@ -41,7 +41,7 @@
     "codegen-docs:watch": "pnpm run with-env tsx watch --exclude '**/node_modules/**' --clear-screen=false scripts/generate-openapi-fumadocs.ts",
     "generate-keys": "pnpm run with-env tsx scripts/generate-keys.ts",
     "db-seed-script": "pnpm run db:seed",
-    "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity.ts",
+    "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity/index.ts",
     "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts"
   },
   "prisma": {

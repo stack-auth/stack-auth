@@ -1,32 +1,20 @@
-import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID, type Tenancy } from "@/lib/tenancies";
+import type { Tenancy } from "@/lib/tenancies";
 import { getItemQuantityForCustomer } from "@/lib/payments";
-import { getStripeForAccount } from "@/lib/stripe";
-import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { SubscriptionStatus } from "@/generated/prisma/client";
+import type { getPrismaClientForTenancy } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
-import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed, type DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent, stringCompare, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
-import fs from "fs";
 
-const prismaClient = globalPrismaClient;
-const OUTPUT_FILE_PATH = "./verify-data-integrity-output.untracked.json";
-const STRIPE_SECRET_KEY = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
-const USE_MOCK_STRIPE_API = STRIPE_SECRET_KEY === "sk_test_mockstripekey";
+import type { ExpectStatusCode } from "./api";
+import { fetchAllTransactionsForProject } from "./stripe-payout-integrity";
 
-type EndpointOutput = {
-  status: number,
-  responseJson: any,
-};
-
-type OutputData = Record<string, EndpointOutput[]>;
-
-type CustomerType = "user" | "team" | "custom";
+export type CustomerType = "user" | "team" | "custom";
 
 type PaymentsConfig = OrganizationRenderedConfig["payments"];
 type PaymentsProduct = PaymentsConfig["products"][string];
@@ -35,16 +23,6 @@ type LedgerTransaction = {
   amount: number,
   grantTime: Date,
   expirationTime: Date,
-};
-
-type StripeBalanceTransactionList = {
-  data: Array<{
-    id: string,
-    amount: number,
-    currency: string,
-    reporting_category?: string | null,
-  }>,
-  has_more: boolean,
 };
 
 type CustomerTransactionEntry = {
@@ -58,379 +36,6 @@ type ExpectedOwnedProduct = {
   type: "one_time" | "subscription",
   quantity: number,
 };
-
-let targetOutputData: OutputData | undefined = undefined;
-const currentOutputData: OutputData = {};
-
-
-async function main() {
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log("===================================================");
-  console.log("Welcome to verify-data-integrity.ts.");
-  console.log();
-  console.log("This script will ensure that the data in the");
-  console.log("database is not corrupted.");
-  console.log();
-  console.log("It will call the most important endpoints for");
-  console.log("each project and every user, and ensure that");
-  console.log("the status codes are what they should be.");
-  console.log();
-  console.log("It's a good idea to run this script on REPLICAS");
-  console.log("of the production database regularly (not the actual");
-  console.log("prod db!); it should never fail at any point in time.");
-  console.log();
-  console.log("");
-  console.log("\x1b[41mIMPORTANT\x1b[0m: This script may modify");
-  console.log("the database during its execution in all sorts of");
-  console.log("ways, so don't run it on production!");
-  console.log();
-  console.log("===================================================");
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log("Starting in 3 seconds...");
-  await wait(1000);
-  console.log("2...");
-  await wait(1000);
-  console.log("1...");
-  await wait(1000);
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-
-  const numericArgs = process.argv.filter(arg => arg.match(/^[0-9]+$/)).map(arg => +arg);
-  const startAt = Math.max(0, (numericArgs[0] ?? 1) - 1);
-  const count = numericArgs[1] ?? Infinity;
-  const flags = process.argv.slice(1);
-  const skipUsers = flags.includes("--skip-users");
-  const shouldSaveOutput = flags.includes("--save-output");
-  const shouldVerifyOutput = flags.includes("--verify-output");
-  const shouldSkipNeon = flags.includes("--skip-neon");
-  const recentFirst = flags.includes("--recent-first");
-
-
-  if (shouldSaveOutput) {
-    console.log(`Will save output to ${OUTPUT_FILE_PATH}`);
-  }
-  if (shouldSkipNeon) {
-    console.log(`Will skip Neon projects.`);
-  }
-
-  if (shouldVerifyOutput) {
-    if (!fs.existsSync(OUTPUT_FILE_PATH)) {
-      throw new Error(`Cannot verify output: ${OUTPUT_FILE_PATH} does not exist`);
-    }
-    try {
-      targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, 'utf8'));
-
-      // TODO next-release these are hacks for the migration, delete them
-      if (targetOutputData) {
-        targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
-          if ("config" in output.responseJson) {
-            delete output.responseJson.config.id;
-            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
-              .filter((provider: any) => provider.enabled)
-              .map((provider: any) => omit(provider, ["enabled"]));
-          }
-          return output;
-        });
-      }
-
-      console.log(`Loaded previous output data for verification`);
-    } catch (error) {
-      throw new Error(`Failed to parse output file: ${error}`);
-    }
-  }
-
-  const projects = await prismaClient.project.findMany({
-    select: {
-      id: true,
-      displayName: true,
-      description: true,
-      stripeAccountId: true,
-    },
-    orderBy: recentFirst ? {
-      updatedAt: "desc",
-    } : {
-      id: "asc",
-    },
-  });
-  console.log(`Found ${projects.length} projects, iterating over them.`);
-  if (startAt !== 0) {
-    console.log(`Starting at project ${startAt}.`);
-  }
-  if (USE_MOCK_STRIPE_API) {
-    console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
-  }
-
-  const maxUsersPerProject = 100;
-
-  const endAt = Math.min(startAt + count, projects.length);
-  for (let i = startAt; i < endAt; i++) {
-    const projectId = projects[i].id;
-    await recurse(`[project ${(i + 1) - startAt}/${endAt - startAt}] ${projectId} ${projects[i].displayName}`, async (recurse) => {
-      if (shouldSkipNeon && projects[i].description.includes("Neon")) {
-        return;
-      }
-
-      const [currentProject, users, projectPermissionDefinitions, teamPermissionDefinitions] = await Promise.all([
-        expectStatusCode(200, `/api/v1/internal/projects/current`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        }),
-        expectStatusCode(200, `/api/v1/users?limit=${maxUsersPerProject}`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        }),
-        expectStatusCode(200, `/api/v1/project-permission-definitions`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        }),
-        expectStatusCode(200, `/api/v1/team-permission-definitions`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        }),
-      ]);
-
-      const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
-      const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
-      const paymentsVerifier = tenancy && paymentsConfig
-        ? await createPaymentsVerifier({
-          projectId,
-          tenancyId: tenancy.id,
-          tenancy,
-          paymentsConfig,
-          prisma: await getPrismaClientForTenancy(tenancy),
-        })
-        : null;
-
-      const stripeAccountId = projects[i].stripeAccountId;
-      if (!USE_MOCK_STRIPE_API && tenancy && stripeAccountId != null) {
-        await verifyStripePayoutIntegrity({
-          projectId,
-          tenancy,
-          stripeAccountId,
-        });
-      }
-
-      const verifiedTeams = new Set<string>();
-
-      if (!skipUsers) {
-        for (let j = 0; j < users.items.length; j++) {
-          const user = users.items[j];
-          await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
-            // get user individually
-            await expectStatusCode(200, `/api/v1/users/${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-
-            // list project permissions
-            const projectPermissions = await expectStatusCode(200, `/api/v1/project-permissions?user_id=${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-            for (const projectPermission of projectPermissions.items) {
-              if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
-                throw new StackAssertionError(deindent`
-                  Project permission ${projectPermission.id} not found in project permission definitions.
-                `);
-              }
-            }
-
-            // list teams
-            const teams = await expectStatusCode(200, `/api/v1/teams?user_id=${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-
-            for (const team of teams.items) {
-              await recurse(`[team ${team.id}] ${team.name}`, async (recurse) => {
-                // list team permissions
-                const teamPermissions = await expectStatusCode(200, `/api/v1/team-permissions?team_id=${team.id}`, {
-                  method: "GET",
-                  headers: {
-                    "x-stack-project-id": projectId,
-                    "x-stack-access-type": "admin",
-                    "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-                  },
-                });
-                for (const teamPermission of teamPermissions.items) {
-                  if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
-                    throw new StackAssertionError(deindent`
-                      Team permission ${teamPermission.id} not found in team permission definitions.
-                    `);
-                  }
-                }
-              });
-
-              if (paymentsVerifier && !verifiedTeams.has(team.id)) {
-                await paymentsVerifier.verifyCustomerPayments({
-                  customerType: "team",
-                  customerId: team.id,
-                });
-                verifiedTeams.add(team.id);
-              }
-            }
-
-            if (paymentsVerifier) {
-              await paymentsVerifier.verifyCustomerPayments({
-                customerType: "user",
-                customerId: user.id,
-              });
-            }
-          });
-        }
-
-        if (paymentsVerifier) {
-          for (const customCustomerId of paymentsVerifier.customCustomerIds) {
-            await paymentsVerifier.verifyCustomerPayments({
-              customerType: "custom",
-              customerId: customCustomerId,
-            });
-          }
-        }
-      }
-    });
-  }
-
-  if (targetOutputData && !deepPlainEquals(currentOutputData, targetOutputData)) {
-    throw new StackAssertionError(deindent`
-      Output data mismatch between final and target output data.
-    `);
-  }
-  if (shouldSaveOutput) {
-    fs.writeFileSync(OUTPUT_FILE_PATH, JSON.stringify(currentOutputData, null, 2));
-    console.log(`Output saved to ${OUTPUT_FILE_PATH}`);
-  }
-
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log();
-  console.log("===================================================");
-  console.log("All good!");
-  console.log();
-  console.log("Goodbye.");
-  console.log("===================================================");
-  console.log();
-  console.log();
-}
-// eslint-disable-next-line no-restricted-syntax
-main().catch((...args) => {
-  console.error();
-  console.error();
-  console.error(`\x1b[41mERROR\x1b[0m! Could not verify data integrity. See the error message for more details.`);
-  console.error(...args);
-  process.exit(1);
-});
-
-async function expectStatusCode(expectedStatusCode: number, endpoint: string, request: RequestInit) {
-  const apiUrl = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
-  const response = await fetch(new URL(endpoint, apiUrl), {
-    ...request,
-    headers: {
-      "x-stack-disable-artificial-development-delay": "yes",
-      "x-stack-development-disable-extended-logging": "yes",
-      ...filterUndefined(request.headers ?? {}),
-    },
-  });
-
-  const responseText = await response.text();
-
-  if (response.status !== expectedStatusCode) {
-    throw new StackAssertionError(deindent`
-      Expected status code ${expectedStatusCode} but got ${response.status} for ${endpoint}:
-
-          ${responseText}
-    `, { request, response });
-  }
-
-  const responseJson = JSON.parse(responseText);
-  const currentOutput: EndpointOutput = {
-    status: response.status,
-    responseJson,
-  };
-
-  appendOutputData(endpoint, currentOutput);
-
-  return responseJson;
-}
-
-function appendOutputData(endpoint: string, output: EndpointOutput) {
-  if (!(endpoint in currentOutputData)) {
-    currentOutputData[endpoint] = [];
-  }
-  const newLength = currentOutputData[endpoint].push(output);
-  if (targetOutputData) {
-    if (!(endpoint in targetOutputData)) {
-      throw new StackAssertionError(deindent`
-        Output data mismatch for endpoint ${endpoint}:
-          Expected ${endpoint} to be in targetOutputData, but it is not.
-      `, { endpoint });
-    }
-    if (targetOutputData[endpoint].length < newLength) {
-      throw new StackAssertionError(deindent`
-        Output data mismatch for endpoint ${endpoint}:
-          Expected ${targetOutputData[endpoint].length} outputs but got at least ${newLength}.
-      `, { endpoint });
-    }
-    if (!(deepPlainEquals(targetOutputData[endpoint][newLength - 1], output))) {
-      throw new StackAssertionError(deindent`
-        Output data mismatch for endpoint ${endpoint}:
-          Expected output[${JSON.stringify(endpoint)}][${newLength - 1}] to be:
-            ${JSON.stringify(targetOutputData[endpoint][newLength - 1], null, 2)}
-          but got:
-            ${JSON.stringify(output, null, 2)}.
-      `, { endpoint });
-    }
-  }
-}
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z");
 
@@ -460,6 +65,16 @@ type OneTimePurchaseSnapshot = {
 
 type ItemQuantityChangeSnapshot = {
   id: string,
+  createdAt: Date,
+  expiresAt: Date | null,
+};
+
+type PrismaForTenancy = Awaited<ReturnType<typeof getPrismaClientForTenancy>>;
+
+type ExtraItemQuantityChangeRow = {
+  id: string,
+  itemId: string,
+  quantity: number,
   createdAt: Date,
   expiresAt: Date | null,
 };
@@ -745,7 +360,7 @@ function buildExpectedOwnedProductsForCustomer(options: {
   oneTimePurchaseById: Map<string, OneTimePurchaseSnapshot>,
 }) {
   const expected: ExpectedOwnedProduct[] = [];
-  for (const { entry, transactionId } of options.entries) {
+  for (const { entry } of options.entries) {
     if (entry.type !== "product_grant") continue;
 
     if (entry.subscription_id) {
@@ -860,126 +475,11 @@ function normalizeOwnedProducts(list: ExpectedOwnedProduct[]) {
     });
 }
 
-async function fetchAllTransactionsForProject(projectId: string) {
-  const transactions: Transaction[] = [];
-  let cursor: string | null = null;
-
-  do {
-    const params = new URLSearchParams({ limit: "200" });
-    if (cursor) params.set("cursor", cursor);
-    const endpoint = urlString`/api/v1/internal/payments/transactions` + (params.toString() ? `?${params.toString()}` : "");
-    const response = await expectStatusCode(200, endpoint, {
-      method: "GET",
-      headers: {
-        "x-stack-project-id": projectId,
-        "x-stack-access-type": "admin",
-        "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-      },
-    }) as { transactions: Transaction[], next_cursor: string | null };
-    transactions.push(...response.transactions);
-    cursor = response.next_cursor;
-  } while (cursor);
-
-  return transactions;
-}
-
-function parseMoneyAmountToMinorUnits(amount: string, decimals: number): bigint {
-  const [wholePart, fractionalPart = ""] = amount.split(".");
-  if (fractionalPart.length > decimals) {
-    throw new StackAssertionError("Money amount has too many decimals", { amount, decimals });
-  }
-  const paddedFraction = fractionalPart.padEnd(decimals, "0");
-  return BigInt(`${wholePart}${paddedFraction}`);
-}
-
-function formatMinorUnitsToMoneyString(amount: bigint, decimals: number): string {
-  const isNegative = amount < 0n;
-  const absolute = isNegative ? -amount : amount;
-  const absoluteString = absolute.toString().padStart(decimals + 1, "0");
-  const wholePart = absoluteString.slice(0, -decimals);
-  const fractionalPart = absoluteString.slice(-decimals).replace(/0+$/, "");
-  const rendered = fractionalPart.length > 0 ? `${wholePart}.${fractionalPart}` : wholePart;
-  return isNegative ? `-${rendered}` : rendered;
-}
-
-function sumMoneyTransfersUsdMinorUnits(transactions: Transaction[]): bigint {
-  let total = 0n;
-  for (const transaction of transactions) {
-    for (const entry of transaction.entries) {
-      if (entry.type !== "money_transfer") continue;
-      total += parseMoneyAmountToMinorUnits(entry.net_amount.USD, 2);
-    }
-  }
-  return total;
-}
-
-async function fetchStripeBalanceTransactionTotalUsdMinorUnits(options: {
-  tenancy: Tenancy,
-  stripeAccountId: string,
-}): Promise<bigint> {
-  const stripe = await getStripeForAccount({
-    tenancy: options.tenancy,
-    accountId: options.stripeAccountId,
-  });
-
-  let total = 0n;
-  const includeCategories = new Set([
-    "charge",
-    "refund",
-    "dispute",
-    "dispute_reversal",
-    "partial_capture_reversal",
-  ]);
-  let startingAfter: string | undefined = undefined;
-
-  do {
-    const page: StripeBalanceTransactionList = await stripe.balanceTransactions.list({
-      limit: 100,
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    });
-    for (const balanceTransaction of page.data) {
-      if (balanceTransaction.currency !== "usd") continue;
-      if (!balanceTransaction.reporting_category) continue;
-      if (!includeCategories.has(balanceTransaction.reporting_category)) continue;
-      total += BigInt(balanceTransaction.amount);
-    }
-    startingAfter = page.has_more ? page.data.at(-1)?.id : undefined;
-  } while (startingAfter);
-
-  return total;
-}
-
-async function verifyStripePayoutIntegrity(options: {
-  projectId: string,
-  tenancy: Tenancy,
-  stripeAccountId: string,
-}) {
-  if (options.projectId === '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063') {
-    // Dummy project doesn't have a real stripe account, so we skip the verification.
-    return;
-  }
-  const transactions = await fetchAllTransactionsForProject(options.projectId);
-  const moneyTransferTotalUsdMinor = sumMoneyTransfersUsdMinorUnits(transactions);
-  const stripeBalanceTransactionTotalUsdMinor = await fetchStripeBalanceTransactionTotalUsdMinorUnits({
-    tenancy: options.tenancy,
-    stripeAccountId: options.stripeAccountId,
-  });
-  if (moneyTransferTotalUsdMinor !== stripeBalanceTransactionTotalUsdMinor) {
-    throw new StackAssertionError(deindent`
-      Stripe balance transaction mismatch for project ${options.projectId}.
-      Money transfers total USD ${formatMinorUnitsToMoneyString(moneyTransferTotalUsdMinor, 2)} vs Stripe balance transactions USD ${formatMinorUnitsToMoneyString(stripeBalanceTransactionTotalUsdMinor, 2)}.
-    `, {
-      projectId: options.projectId,
-      moneyTransferTotalUsdMinor: moneyTransferTotalUsdMinor.toString(),
-      stripeBalanceTransactionTotalUsdMinor: stripeBalanceTransactionTotalUsdMinor.toString(),
-    });
-  }
-}
-
 async function fetchAllOwnedProductsForCustomer(options: {
   projectId: string,
   customerType: CustomerType,
   customerId: string,
+  expectStatusCode: ExpectStatusCode,
 }) {
   const items: Array<ExpectedOwnedProduct> = [];
   let cursor: string | null = null;
@@ -988,7 +488,7 @@ async function fetchAllOwnedProductsForCustomer(options: {
     const params = new URLSearchParams({ limit: "100" });
     if (cursor) params.set("cursor", cursor);
     const endpoint = urlString`/api/v1/payments/products/${options.customerType}/${options.customerId}` + (params.toString() ? `?${params.toString()}` : "");
-    const response = await expectStatusCode(200, endpoint, {
+    const response = await options.expectStatusCode(200, endpoint, {
       method: "GET",
       headers: {
         "x-stack-project-id": options.projectId,
@@ -1007,12 +507,13 @@ async function fetchAllOwnedProductsForCustomer(options: {
   return items;
 }
 
-async function createPaymentsVerifier(options: {
+export async function createPaymentsVerifier(options: {
   projectId: string,
   tenancyId: string,
   tenancy: Tenancy,
   paymentsConfig: PaymentsConfig,
-  prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
+  prisma: PrismaForTenancy,
+  expectStatusCode: ExpectStatusCode,
 }) {
   const includeByDefaultConflicts = getIncludeByDefaultConflicts(options.paymentsConfig);
   if (includeByDefaultConflicts.size > 0) {
@@ -1026,7 +527,10 @@ async function createPaymentsVerifier(options: {
     };
   }
 
-  const transactions = await fetchAllTransactionsForProject(options.projectId);
+  const transactions = await fetchAllTransactionsForProject({
+    projectId: options.projectId,
+    expectStatusCode: options.expectStatusCode,
+  });
   const paymentsConfig = options.paymentsConfig;
 
   const entriesByCustomer = new Map<string, CustomerTransactionEntry[]>();
@@ -1070,7 +574,7 @@ async function createPaymentsVerifier(options: {
   const itemQuantityChangeIdList = Array.from(itemQuantityChangeIds);
 
   const [subscriptions, oneTimePurchases, itemQuantityChanges] = await Promise.all([
-    subscriptionIdList.length === 0 ? [] : options.prisma.subscription.findMany({
+    subscriptionIdList.length === 0 ? Promise.resolve([] as SubscriptionSnapshot[]) : options.prisma.subscription.findMany({
       where: {
         tenancyId: options.tenancyId,
         id: { in: subscriptionIdList },
@@ -1086,7 +590,7 @@ async function createPaymentsVerifier(options: {
         refundedAt: true,
       },
     }),
-    oneTimePurchaseIdList.length === 0 ? [] : options.prisma.oneTimePurchase.findMany({
+    oneTimePurchaseIdList.length === 0 ? Promise.resolve([] as OneTimePurchaseSnapshot[]) : options.prisma.oneTimePurchase.findMany({
       where: {
         tenancyId: options.tenancyId,
         id: { in: oneTimePurchaseIdList },
@@ -1098,7 +602,7 @@ async function createPaymentsVerifier(options: {
         refundedAt: true,
       },
     }),
-    itemQuantityChangeIdList.length === 0 ? [] : options.prisma.itemQuantityChange.findMany({
+    itemQuantityChangeIdList.length === 0 ? Promise.resolve([] as ItemQuantityChangeSnapshot[]) : options.prisma.itemQuantityChange.findMany({
       where: {
         tenancyId: options.tenancyId,
         id: { in: itemQuantityChangeIdList },
@@ -1124,7 +628,7 @@ async function createPaymentsVerifier(options: {
       if (entry.type !== "item_quantity_change") continue;
       entryItemQuantityChangeIds.add(transactionId);
     }
-    const extraItemQuantityChanges = await options.prisma.itemQuantityChange.findMany({
+    const extraItemQuantityChanges: ExtraItemQuantityChangeRow[] = await options.prisma.itemQuantityChange.findMany({
       where: {
         tenancyId: options.tenancyId,
         customerId: customer.customerId,
@@ -1183,7 +687,7 @@ async function createPaymentsVerifier(options: {
       if (item.customerType !== customer.customerType) continue;
       const expectedQuantity = expectedItems.get(itemId) ?? 0;
       const endpoint = urlString`/api/v1/payments/items/${customer.customerType}/${customer.customerId}/${itemId}`;
-      const response = await expectStatusCode(200, endpoint, {
+      const response = await options.expectStatusCode(200, endpoint, {
         method: "GET",
         headers: {
           "x-stack-project-id": options.projectId,
@@ -1222,6 +726,7 @@ async function createPaymentsVerifier(options: {
       projectId: options.projectId,
       customerType: customer.customerType,
       customerId: customer.customerId,
+      expectStatusCode: options.expectStatusCode,
     });
 
     const normalizedExpected = normalizeOwnedProducts(expectedProducts);
@@ -1244,28 +749,3 @@ async function createPaymentsVerifier(options: {
   };
 }
 
-let lastProgress = performance.now() - 9999999999;
-
-type RecurseFunction = (progressPrefix: string, inner: (recurse: RecurseFunction) => Promise<void>) => Promise<void>;
-
-const _recurse = async (progressPrefix: string | ((...args: any[]) => void), inner: Parameters<RecurseFunction>[1]): Promise<void> => {
-  const progressFunc = typeof progressPrefix === "function" ? progressPrefix : (...args: any[]) => {
-    console.log(`${progressPrefix}`, ...args);
-  };
-  if (performance.now() - lastProgress > 1000) {
-    progressFunc();
-    lastProgress = performance.now();
-  }
-  try {
-    return await inner(
-      (progressPrefix, inner) => _recurse(
-        (...args) => progressFunc(progressPrefix, ...args),
-        inner,
-      ),
-    );
-  } catch (error) {
-    progressFunc(`\x1b[41mERROR\x1b[0m!`);
-    throw error;
-  }
-};
-const recurse: RecurseFunction = _recurse;
