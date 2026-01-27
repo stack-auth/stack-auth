@@ -5,7 +5,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 // Apple's JWKS endpoint for verifying identity tokens
@@ -34,7 +34,8 @@ async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): 
       emailVerified: payload.email_verified === true || payload.email_verified === "true",
     };
   } catch (error) {
-    throw new KnownErrors.InvalidIdToken("apple", error instanceof Error ? error.message : "Unknown error");
+    captureError("apple-native-sign-in-token-verification-failed", error);
+    throw new KnownErrors.InvalidIdToken("apple");
   }
 }
 
@@ -76,16 +77,14 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
-    // Get Apple Bundle IDs from provider config (stored as Record<id, { bundleId: string }>)
+    // Get Apple Bundle IDs from provider config (stored as Record<uuid, { bundleId: string }>)
     // For native Apple Sign In, we need the app's Bundle ID(s) (not the web Services ID)
-    if (!appleProvider.appleBundles) {
-      throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
-    }
-    const appleBundleIds = Object.values(appleProvider.appleBundles)
-      .flatMap(b => b?.bundleId ? [b.bundleId] : []);
+    const appleBundleIds = appleProvider.appleBundles
+      ? Object.values(appleProvider.appleBundles).flatMap(b => b?.bundleId ? [b.bundleId] : [])
+      : [];
 
     if (appleBundleIds.length === 0) {
-      throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
+      throw new KnownErrors.AppleBundleIdNotConfigured();
     }
 
     // Verify the identity token against the Bundle IDs

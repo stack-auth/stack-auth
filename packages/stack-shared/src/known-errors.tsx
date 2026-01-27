@@ -1187,6 +1187,16 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AppleBundleIdNotConfigured = createKnownErrorConstructor(
+  KnownError,
+  "APPLE_BUNDLE_ID_NOT_CONFIGURED",
+  () => [
+    400,
+    "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
+  ] as const,
+  () => [] as const,
+);
+
 const OAuthProviderAccountIdAlreadyUsedForSignIn = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN",
@@ -1807,6 +1817,7 @@ export const KnownErrors = {
   UserAlreadyConnectedToAnotherOAuthConnection,
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
+  AppleBundleIdNotConfigured,
   OAuthProviderAccountIdAlreadyUsedForSignIn,
   MultiFactorAuthenticationRequired,
   InvalidTotpCode,

@@ -56,8 +56,8 @@ describe("Native Apple Sign In", () => {
     expect(response.status).toBe(400);
     expect(response.body).toMatchInlineSnapshot(`
       {
-        "code": "OAUTH_PROVIDER_NOT_FOUND_OR_NOT_ENABLED",
-        "error": "The OAuth provider is not found or not enabled.",
+        "code": "APPLE_BUNDLE_ID_NOT_CONFIGURED",
+        "error": "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
       }
     `);
   });
