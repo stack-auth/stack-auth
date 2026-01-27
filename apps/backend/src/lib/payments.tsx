@@ -26,7 +26,7 @@ type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
 type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
 
 export async function ensureClientCanAccessCustomer(options: {
-  customerType: "user" | "team",
+  customerType: "user" | "team" | "custom",
   customerId: string,
   user: UsersCrud["Admin"]["Read"] | undefined,
   tenancy: Tenancy,
@@ -35,6 +35,9 @@ export async function ensureClientCanAccessCustomer(options: {
   const currentUser = options.user;
   if (!currentUser) {
     throw new KnownErrors.UserAuthenticationRequired();
+  }
+  if (options.customerType === "custom") {
+    throw new StatusError(StatusError.Forbidden, options.forbiddenMessage);
   }
   if (options.customerType === "user") {
     if (options.customerId !== currentUser.id) {

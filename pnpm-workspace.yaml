@@ -5,3 +5,7 @@ packages:
   - docs
 
 minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+- next
+- '@next/env'
+- '@next/swc'
