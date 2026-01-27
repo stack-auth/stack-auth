@@ -1,7 +1,7 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "Catalogs",
+  title: "Settings",
 };
 
 export default async function Page() {
@@ -9,4 +9,3 @@ export default async function Page() {
     <PageClient />
   );
 }
-

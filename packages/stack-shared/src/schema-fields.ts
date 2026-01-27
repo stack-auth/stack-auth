@@ -623,7 +623,7 @@ export const priceOrIncludeByDefaultSchema = yupUnion(
 );
 export const productSchema = yupObject({
   displayName: yupString(),
-  catalogId: userSpecifiedIdSchema("catalogId").optional().meta({ openapiField: { description: 'The ID of the catalog this product belongs to. Within a catalog, all products are mutually exclusive unless they are an add-on to another product in the catalog.', exampleValue: 'catalog-id' } }),
+  productLineId: userSpecifiedIdSchema("productLineId").optional().meta({ openapiField: { description: 'The ID of the product line this product belongs to. Within a product line, all products are mutually exclusive unless they are an add-on to another product in the product line.', exampleValue: 'product-line-id' } }),
   isAddOnTo: yupUnion(
     yupBoolean().isFalse(),
     yupRecord(
@@ -865,3 +865,20 @@ export function yupDefinedAndNonEmptyWhen<S extends yup.StringSchema>(
     otherwise: (schema: S) => schema.optional()
   });
 }
+
+export const branchConfigSourceSchema = yupUnion(
+  yupObject({
+    type: yupString().oneOf(["pushed-from-github"]).defined(),
+    owner: yupString().defined(),
+    repo: yupString().defined(),
+    branch: yupString().defined(),
+    commit_hash: yupString().defined(),
+    config_file_path: yupString().defined(),
+  }),
+  yupObject({
+    type: yupString().oneOf(["pushed-from-unknown"]).defined(),
+  }),
+  yupObject({
+    type: yupString().oneOf(["unlinked"]).defined(),
+  }),
+);

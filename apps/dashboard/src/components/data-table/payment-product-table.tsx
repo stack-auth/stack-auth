@@ -2,15 +2,18 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
 import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
 
+type BranchPayments = NonNullable<yup.InferType<typeof branchPaymentsSchema>>;
+
 type PaymentProduct = {
   id: string,
-} & yup.InferType<typeof branchPaymentsSchema>["products"][string];
+} & BranchPayments["products"][string];
 
 const columns: ColumnDef<PaymentProduct>[] = [
   {
@@ -49,7 +52,7 @@ const columns: ColumnDef<PaymentProduct>[] = [
   }
 ];
 
-export function PaymentProductTable({ products }: { products: Record<string, yup.InferType<typeof branchPaymentsSchema>["products"][string]> }) {
+export function PaymentProductTable({ products }: { products: Record<string, BranchPayments["products"][string]> }) {
   const data: PaymentProduct[] = Object.entries(products)
     .map(([id, product]) => ({
       id,
@@ -70,6 +73,7 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const updateConfig = useUpdateConfig();
 
   return (
     <>
@@ -109,7 +113,11 @@ function ActionsCell({ product }: { product: PaymentProduct }) {
               typedEntries(config.payments.products)
                 .filter(([productId]) => productId !== product.id)
             );
-            await project.updateConfig({ "payments.products": updatedProducts });
+            await updateConfig({
+              adminApp: stackAdminApp,
+              configUpdate: { "payments.products": updatedProducts },
+              pushable: true,
+            });
             toast({ title: "Product deleted" });
           },
         }}

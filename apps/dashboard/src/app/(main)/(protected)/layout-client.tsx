@@ -1,6 +1,7 @@
 "use client";
 
 import Loading from "@/app/loading";
+import { ConfigUpdateDialogProvider } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -25,6 +26,10 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
   if (getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" && !user) {
     return <Loading />;
   } else {
-    return <>{children}</>;
+    return (
+      <ConfigUpdateDialogProvider>
+        {children}
+      </ConfigUpdateDialogProvider>
+    );
   }
 }

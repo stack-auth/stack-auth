@@ -1267,9 +1267,9 @@ it("should immediately cancel existing subscriptions when granting a product of 
         displayName: "Item 1",
       },
     },
-    catalogs: {
+    productLines: {
       grp: {
-        displayName: "Catalog",
+        displayName: "Product Line",
       },
     },
     products: {
@@ -1278,7 +1278,7 @@ it("should immediately cancel existing subscriptions when granting a product of 
         customerType: "user",
         serverOnly: false,
         stackable: false,
-        catalogId: "grp",
+        productLineId: "grp",
         prices: {
           monthly: {
             USD: "1000",
@@ -1298,7 +1298,7 @@ it("should immediately cancel existing subscriptions when granting a product of 
         customerType: "user",
         serverOnly: false,
         stackable: false,
-        catalogId: "grp",
+        productLineId: "grp",
         prices: {
           monthly: {
             USD: "2000",

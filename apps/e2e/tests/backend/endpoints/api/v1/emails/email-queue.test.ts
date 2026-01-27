@@ -1,3 +1,4 @@
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
@@ -6,8 +7,17 @@ import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
 import { Auth, Project, User, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
 
+type OutboxEmail = {
+  id: string,
+  subject?: string,
+  status: string,
+  skipped_reason?: string,
+  is_transactional?: boolean,
+  tsx_source?: string,
+};
+
 // Helper to get emails from the outbox, filtered by subject if provided
-async function getOutboxEmails(options?: { subject?: string }) {
+async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
   const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
     method: "GET",
     accessType: "server",
@@ -16,6 +26,23 @@ async function getOutboxEmails(options?: { subject?: string }) {
     return listResponse.body.items.filter((e: any) => e.subject === options.subject);
   }
   return listResponse.body.items;
+}
+
+// Helper to poll the outbox until an email with the expected subject and status appears
+async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
+  const maxRetries = 20;
+  let emails: OutboxEmail[] = [];
+  for (let i = 0; i < maxRetries; i++) {
+    emails = await getOutboxEmails({ subject });
+    if (emails.length > 0 && emails[0].status === status) {
+      return emails;
+    }
+    await wait(500);
+  }
+  throw new StackAssertionError(
+    `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
+    { foundEmails: emails }
+  );
 }
 
 const testEmailConfig = {
@@ -333,22 +360,17 @@ describe("email queue edge cases", () => {
     });
     expect(sendResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(5000);
+    // Wait for the email to be processed and reach "skipped" status
+    const outboxEmails = await waitForOutboxEmailWithStatus("No Email Provided Test", "skipped");
 
-    // The email should have been skipped (user has no primary email)
-    // We can verify this by checking that no email was sent to any mailbox
-    // Note: The skip reason USER_HAS_NO_PRIMARY_EMAIL is used for user-primary-email recipient type
-    // This test verifies the email queue handles users without primary emails correctly
+    // Verify outbox shows skipped with USER_HAS_NO_PRIMARY_EMAIL
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
+
+    // Verify no email was actually sent to the mailbox
     const messages = await backendContext.value.mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "No Email Provided Test");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows skipped with USER_HAS_NO_PRIMARY_EMAIL
-    const outboxEmails = await getOutboxEmails({ subject: "No Email Provided Test" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
   });
 
   it.todo("should return an error when email is sent to a custom email but no custom emails are provided", async ({ expect }) => {

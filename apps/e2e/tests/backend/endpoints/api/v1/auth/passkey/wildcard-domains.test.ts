@@ -11,7 +11,7 @@ describe("Passkey with wildcard domains", () => {
     });
 
     // Configure various wildcard domains
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -92,7 +92,7 @@ describe("Passkey with wildcard domains", () => {
     const res = await Auth.Password.signUpWithEmail();
 
     // Configure wildcard domain that matches our test origin
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       body: {
@@ -168,7 +168,7 @@ describe("Passkey with wildcard domains", () => {
     await Auth.signOut();
 
     // Configure double wildcard domain that matches localhost:8103
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       body: {
@@ -230,7 +230,7 @@ describe("Passkey with wildcard domains", () => {
     await Auth.Password.signUpWithEmail();
 
     // Configure exact domain that doesn't match
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       body: {
@@ -308,7 +308,7 @@ describe("Passkey with wildcard domains", () => {
     await Auth.signOut();
 
     // Configure wildcard that doesn't match localhost
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       body: {
@@ -380,7 +380,7 @@ describe("Passkey with wildcard domains", () => {
     await Auth.signOut();
 
     // Configure wildcard that matches localhost
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       body: {
@@ -438,7 +438,7 @@ describe("Passkey with wildcard domains", () => {
     });
 
     // Configure complex wildcard patterns
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {

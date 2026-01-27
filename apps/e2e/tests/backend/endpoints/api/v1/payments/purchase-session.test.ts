@@ -166,13 +166,13 @@ it("should return client secret for one-time price even if a conflicting group s
   await Project.updateConfig({
     payments: {
       testMode: true,
-      catalogs: { grp: { displayName: "Test Group" } },
+      productLines: { grp: { displayName: "Test Group" } },
       products: {
         subProduct: {
           displayName: "Sub Product",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
@@ -181,7 +181,7 @@ it("should return client secret for one-time price even if a conflicting group s
           displayName: "One Time",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -638,7 +638,7 @@ it("should update existing stripe subscription when switching products within a 
   await Project.updateConfig({
     payments: {
       testMode: true,
-      catalogs: {
+      productLines: {
         grp: { displayName: "Test Group" },
       },
       products: {
@@ -646,7 +646,7 @@ it("should update existing stripe subscription when switching products within a 
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -660,7 +660,7 @@ it("should update existing stripe subscription when switching products within a 
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -745,7 +745,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
   await Project.updateConfig({
     payments: {
       testMode: true,
-      catalogs: {
+      productLines: {
         grp: { displayName: "Test Group" },
       },
       products: {
@@ -753,7 +753,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -767,7 +767,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: {
             monthly: {
@@ -908,13 +908,13 @@ it("should block one-time purchase in same group after prior one-time purchase i
   await Project.updateConfig({
     payments: {
       testMode: true,
-      catalogs: { grp: { displayName: "Group" } },
+      productLines: { grp: { displayName: "Group" } },
       products: {
         productA: {
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: true,
           prices: { one: { USD: "500" } },
           includedItems: {},
@@ -923,7 +923,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: true,
           prices: { one: { USD: "700" } },
           includedItems: {},
@@ -966,5 +966,5 @@ it("should block one-time purchase in same group after prior one-time purchase i
     body: { full_code: codeB, price_id: "one", quantity: 1 },
   });
   expect(resB.status).toBe(400);
-  expect(String(resB.body)).toContain("one-time purchase in this product catalog");
+  expect(String(resB.body)).toContain("one-time purchase in this product line");
 });
