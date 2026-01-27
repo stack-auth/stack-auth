@@ -61,6 +61,14 @@ function validateRefundEntries(options: { entries: TransactionEntry[], refundEnt
   }
 }
 
+function getRefundedQuantity(refundEntries: RefundEntrySelection[]) {
+  let total = 0;
+  for (const refundEntry of refundEntries) {
+    total += refundEntry.quantity;
+  }
+  return total;
+}
+
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -141,6 +149,7 @@ export const POST = createSmartRouteHandler({
         entries: transaction.entries,
         refundEntries,
       });
+      const refundedQuantity = getRefundedQuantity(refundEntries);
       const totalStripeUnits = getTotalUsdStripeUnits({
         product: subscription.product as InferType<typeof productSchema>,
         priceId: subscription.priceId ?? null,
@@ -157,15 +166,50 @@ export const POST = createSmartRouteHandler({
         payment_intent: paymentIntentId,
         amount: refundAmountStripeUnits,
       });
-      await prisma.subscription.update({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
-        data: {
-          status: SubscriptionStatus.canceled,
-          cancelAtPeriodEnd: true,
-          currentPeriodEnd: new Date(),
-          refundedAt: new Date(),
-        },
-      });
+      if (refundedQuantity > 0) {
+        if (!subscription.stripeSubscriptionId) {
+          throw new StackAssertionError("Stripe subscription id missing for refund", { subscriptionId: subscription.id });
+        }
+        const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+        if (stripeSubscription.items.data.length === 0) {
+          throw new StackAssertionError("Stripe subscription has no items", { subscriptionId: subscription.id });
+        }
+        const subscriptionItem = stripeSubscription.items.data[0];
+        if (!Number.isFinite(subscriptionItem.quantity) || Math.trunc(subscriptionItem.quantity ?? 0) !== subscriptionItem.quantity) {
+          throw new StackAssertionError("Stripe subscription item quantity is not an integer", {
+            subscriptionId: subscription.id,
+            itemQuantity: subscriptionItem.quantity,
+          });
+        }
+        const currentQuantity = subscriptionItem.quantity ?? 0;
+        const newQuantity = currentQuantity - refundedQuantity;
+        if (newQuantity < 0) {
+          throw new StackAssertionError("Refund quantity exceeds Stripe subscription item quantity", {
+            subscriptionId: subscription.id,
+            currentQuantity,
+            refundedQuantity,
+          });
+        }
+        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+          cancel_at_period_end: newQuantity === 0,
+          items: [{
+            id: subscriptionItem.id,
+            quantity: newQuantity,
+          }],
+        });
+        await prisma.subscription.update({
+          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+          data: {
+            cancelAtPeriodEnd: newQuantity === 0,
+            refundedAt: new Date(),
+          },
+        });
+      } else {
+        await prisma.subscription.update({
+          where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+          data: { refundedAt: new Date() },
+        });
+      }
     } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
