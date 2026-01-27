@@ -48,6 +48,8 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`email_verified`**: Whether the user's email has been verified
 - **`selected_team_id`**: The currently selected team ID (nullable)
 - **`is_anonymous`**: Whether this is an anonymous user session
+- **`is_restricted`**: Whether the user is restricted (e.g., unverified email or anonymous)
+- **`restricted_reason`**: Why the user is restricted (nullable). The `type` field is either `anonymous` or `email_not_verified`
 
 ## Example JWT Payload
 
@@ -68,7 +70,9 @@ Here's what a typical Stack Auth JWT payload looks like:
   "email": "john@example.com",
   "email_verified": true,
   "selected_team_id": "team_789",
-  "is_anonymous": false
+  "is_anonymous": false,
+  "is_restricted": false,
+  "restricted_reason": null
 }
 ```
 
@@ -77,6 +81,14 @@ Anonymous user tokens have the same shape, but:
 - `iss` becomes `https://api.stack-auth.com/api/v1/projects-anonymous-users/<project-id>`
 - `aud` becomes `<project-id>:anon`
 - `is_anonymous` is `true`
+- `is_restricted` is `true`
+- `restricted_reason` is `{ "type": "anonymous" }`
+
+Restricted user tokens (e.g., users who haven't verified their email when verification is required) have:
+
+- `aud` becomes `<project-id>:restricted`
+- `is_restricted` is `true`
+- `restricted_reason` is `{ "type": "email_not_verified" }`
 
 ## Working with JWTs
 
@@ -84,85 +96,42 @@ Anonymous user tokens have the same shape, but:
 
 Stack Auth automatically handles JWT tokens for you. When you use hooks like `useUser()`, the JWT is automatically included in API requests:
 
-```tsx
-import { useUser } from '@stackframe/stack';
-
-export function UserProfile() {
-  const user = useUser();
-  
-  if (!user) {
-    return <div>Please sign in</div>;
-  }
-  
-  return <div>Welcome, {user.displayName}!</div>;
-}
-```
+<PlatformCodeblock 
+  document="concepts/jwt"
+  examples={["client-side-usage"]}
+/>
 
 ### Server-Side Usage
 
 On the server side, you can access the JWT and its claims through the Stack Auth API:
 
-```tsx
-import { stackServerApp } from '@/stack';
-
-export async function GET() {
-  const user = await stackServerApp.getUser();
-  
-  if (!user) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-  
-  // Access user information from the JWT
-  return Response.json({
-    id: user.id,
-    displayName: user.displayName,
-    primaryEmail: user.primaryEmail,
-    selectedTeamId: user.selectedTeamId,
-    // Other user properties...
-  });
-}
-```
+<PlatformCodeblock 
+  document="concepts/jwt"
+  examples={["server-side-usage"]}
+/>
 
 ### Manual JWT Verification
 
 If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Stack Auth's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
 
-```typescript
-import * as jose from 'jose';
-
-// Get the public key set from Stack Auth
-const jwks = jose.createRemoteJWKSet(
-  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json')
-);
-
-// Verify a regular (non-anonymous) access token
-try {
-  const { payload } = await jose.jwtVerify(token, jwks, {
-    issuer: 'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
-    audience: 'YOUR_PROJECT_ID',
-  });
-
-  console.log('JWT is valid:', payload);
-} catch (error) {
-  console.error('JWT verification failed:', error);
-}
-```
+<PlatformCodeblock 
+  document="concepts/jwt"
+  examples={["manual-jwt-verification"]}
+/>
 
 To support anonymous sessions, include those keys and allow both issuers and audiences:
 
-```typescript
-const jwks = jose.createRemoteJWKSet(
-  new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true')
-);
+<PlatformCodeblock 
+  document="concepts/jwt"
+  examples={["manual-jwt-verification-anonymous"]}
+/>
 
-const { payload } = await jose.jwtVerify(token, jwks, {
-  issuer: [
-    'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
-    'https://api.stack-auth.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
-  ],
-  audience: ['YOUR_PROJECT_ID', 'YOUR_PROJECT_ID:anon'],
-});
-```
+To support restricted users (e.g., users who haven't verified their email), add `include_restricted=true`:
+
+<PlatformCodeblock 
+  document="concepts/jwt"
+  examples={["manual-jwt-verification-restricted"]}
+/>
 
 ### Signing Keys
 
