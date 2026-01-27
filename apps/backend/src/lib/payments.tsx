@@ -331,7 +331,10 @@ export async function getSubscriptions(options: {
 
   const productLinesWithDbSubscriptions = new Set<string>();
   for (const s of dbSubscriptions) {
-    const product = s.product as yup.InferType<typeof productSchema> | undefined;
+    let product = s.product as yup.InferType<typeof productSchema> | undefined;
+    if (!product) {
+      product = s.productId ? getOrUndefined(products, s.productId) : undefined;
+    }
     if (!product) continue;
     subscriptions.push({
       id: s.id,
