@@ -1,11 +1,10 @@
-import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
+import { createOAuthUserAndAccount, findExistingOAuthAccount, getProjectUserIdFromOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { createAuthTokens } from "@/lib/tokens";
-import { createOrUpgradeAnonymousUser } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 // Apple's JWKS endpoint for verifying identity tokens
@@ -91,155 +90,43 @@ export const POST = createSmartRouteHandler({
     const appleUser = await verifyAppleIdToken(body.id_token, appleBundleIds);
 
     // Check if user already exists with this Apple account
-    const existingAccounts = await prisma.projectUserOAuthAccount.findMany({
-      where: {
-        tenancyId: tenancy.id,
-        configOAuthProviderId: "apple",
-        providerAccountId: appleUser.sub,
-        allowSignIn: true,
-      },
-    });
+    const existingAccount = await findExistingOAuthAccount(prisma, tenancy.id, "apple", appleUser.sub);
 
-    if (existingAccounts.length > 1) {
-      throw new StackAssertionError("Multiple accounts found for the same Apple ID");
-    }
-
-    const existingAccount = existingAccounts[0] as (typeof existingAccounts)[number] | undefined;
     let projectUserId: string;
     let isNewUser = false;
 
     if (existingAccount) {
       // ========================== Existing user - sign in ==========================
-      projectUserId = existingAccount.projectUserId ?? throwErr("OAuth account exists but has no associated user");
+      projectUserId = getProjectUserIdFromOAuthAccount(existingAccount);
     } else {
       // ========================== New user - sign up ==========================
 
-      let primaryEmailAuthEnabled = false;
-      let linkedUserId: string | undefined;
-
-      if (appleUser.email) {
-        primaryEmailAuthEnabled = true;
-
-        const existingContactChannel = await getAuthContactChannelWithEmailNormalization(
-          prisma,
-          {
-            tenancyId: tenancy.id,
-            type: "EMAIL",
-            value: appleUser.email,
-          }
-        );
-
-        // Check if we should link this OAuth account to an existing user based on email
-        if (existingContactChannel && existingContactChannel.usedForAuth) {
-          const accountMergeStrategy = tenancy.config.auth.oauth.accountMergeStrategy;
-          switch (accountMergeStrategy) {
-            case "link_method": {
-              if (!existingContactChannel.isVerified) {
-                throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", appleUser.email, true);
-              }
-
-              if (!appleUser.emailVerified) {
-                // Apple reports email as not verified - don't allow linking
-                throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", appleUser.email);
-              }
-
-              // Link to existing user
-              linkedUserId = existingContactChannel.projectUserId;
-              break;
-            }
-            case "raise_error": {
-              throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", appleUser.email);
-            }
-            case "allow_duplicates": {
-              primaryEmailAuthEnabled = false;
-              break;
-            }
-          }
-        }
-      }
+      // Handle email merge strategy if email is provided
+      const { linkedUserId, primaryEmailAuthEnabled } = appleUser.email
+        ? await handleOAuthEmailMergeStrategy(prisma, tenancy, appleUser.email, appleUser.emailVerified)
+        : { linkedUserId: null, primaryEmailAuthEnabled: false };
 
       if (linkedUserId) {
         // ========================== Link Apple account to existing user ==========================
+        await linkOAuthAccountToUser(prisma, {
+          tenancyId: tenancy.id,
+          providerId: "apple",
+          providerAccountId: appleUser.sub,
+          email: appleUser.email,
+          projectUserId: linkedUserId,
+        });
         projectUserId = linkedUserId;
-
-        // Create OAuth account link
-        await prisma.projectUserOAuthAccount.create({
-          data: {
-            configOAuthProviderId: "apple",
-            providerAccountId: appleUser.sub,
-            email: appleUser.email,
-            projectUser: {
-              connect: {
-                tenancyId_projectUserId: {
-                  tenancyId: tenancy.id,
-                  projectUserId,
-                },
-              },
-            },
-          },
-        });
-
-        // Create auth method for the linked user
-        await prisma.authMethod.create({
-          data: {
-            tenancyId: tenancy.id,
-            projectUserId,
-            oauthAuthMethod: {
-              create: {
-                projectUserId,
-                configOAuthProviderId: "apple",
-                providerAccountId: appleUser.sub,
-              }
-            }
-          }
-        });
       } else {
         // ========================== Create new user ==========================
-
-        // Check if sign up is allowed
-        if (!tenancy.config.auth.allowSignUp) {
-          throw new KnownErrors.SignUpNotEnabled();
-        }
-
-        // Create new user (or upgrade anonymous user)
-        const newUser = await createOrUpgradeAnonymousUser(
-          tenancy,
-          null, // No existing user to upgrade
-          {
-            primary_email: appleUser.email,
-            primary_email_verified: appleUser.emailVerified,
-            primary_email_auth_enabled: primaryEmailAuthEnabled,
-          },
-          [],
-        );
-        projectUserId = newUser.id;
+        const result = await createOAuthUserAndAccount(prisma, tenancy, {
+          providerId: "apple",
+          providerAccountId: appleUser.sub,
+          email: appleUser.email,
+          emailVerified: appleUser.emailVerified,
+          primaryEmailAuthEnabled,
+        });
+        projectUserId = result.projectUserId;
         isNewUser = true;
-
-        // Create auth method
-        const authMethod = await prisma.authMethod.create({
-          data: {
-            tenancyId: tenancy.id,
-            projectUserId,
-          }
-        });
-
-        // Create OAuth account link
-        await prisma.projectUserOAuthAccount.create({
-          data: {
-            tenancyId: tenancy.id,
-            configOAuthProviderId: "apple",
-            providerAccountId: appleUser.sub,
-            email: appleUser.email,
-            projectUserId,
-            oauthAuthMethod: {
-              create: {
-                authMethodId: authMethod.id,
-              }
-            },
-            allowConnectedAccounts: true,
-            allowSignIn: true,
-          },
-        });
       }
     }
 
