@@ -1561,7 +1561,7 @@ export namespace Payments {
     const { userId } = await User.create();
     const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
       method: "POST",
-      accessType: "client",
+      accessType: "server",
       body: {
         customer_type: "user",
         customer_id: userId,

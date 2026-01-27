@@ -1,4 +1,4 @@
-import { ensureProductIdOrInlineProduct, getCustomerPurchaseContext } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getCustomerPurchaseContext } from "@/lib/payments";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -66,11 +66,22 @@ export const POST = createSmartRouteHandler({
       }),
     }).defined(),
   }),
-  handler: async (req) => {
+  handler: async (req, fullReq) => {
     const { tenancy } = req.auth;
     if (tenancy.config.payments.blockNewPurchases) {
       throw new KnownErrors.NewPurchasesBlocked();
     }
+
+    if (req.auth.type === "client") {
+      await ensureClientCanAccessCustomer({
+        customerType: req.body.customer_type,
+        customerId: req.body.customer_id,
+        user: fullReq.auth?.user,
+        tenancy,
+        forbiddenMessage: "Clients can only create purchase URLs for their own user or teams they have admin access to.",
+      });
+    }
+
     const stripe = await getStripeForAccount({ tenancy });
     const productConfig = await ensureProductIdOrInlineProduct(tenancy, req.auth.type, req.body.product_id, req.body.product_inline);
     const customerType = productConfig.customerType;
