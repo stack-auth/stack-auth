@@ -7,6 +7,24 @@ import Crypto
 import AuthenticationServices
 #endif
 
+// MARK: - Apple Sign In Credential Provider Protocol
+
+/// Protocol for providing Apple Sign In credentials (allows mocking for tests)
+public protocol AppleCredentialProvider: Sendable {
+    func getCredential() async throws -> AppleSignInCredential
+}
+
+/// Credential data extracted from Apple Sign In
+public struct AppleSignInCredential: Sendable {
+    public let identityToken: String
+    public let authorizationCode: String?
+    
+    public init(identityToken: String, authorizationCode: String? = nil) {
+        self.identityToken = identityToken
+        self.authorizationCode = authorizationCode
+    }
+}
+
 /// OAuth URL result
 public struct OAuthUrlResult: Sendable {
     public let url: URL
@@ -172,14 +190,19 @@ public actor StackClientApp {
     
     #if canImport(AuthenticationServices) && !os(watchOS)
     /// Sign in with OAuth using ASWebAuthenticationSession (or native Apple Sign In for "apple" provider)
+    /// - Parameters:
+    ///   - provider: The OAuth provider ID (e.g., "google", "github", "apple")
+    ///   - presentationContextProvider: Context provider for presenting the auth UI
+    ///   - appleCredentialProvider: Optional custom credential provider for Apple Sign In (for testing)
     @MainActor
     public func signInWithOAuth(
         provider: String,
-        presentationContextProvider: ASWebAuthenticationPresentationContextProviding? = nil
+        presentationContextProvider: ASWebAuthenticationPresentationContextProviding? = nil,
+        appleCredentialProvider: AppleCredentialProvider? = nil
     ) async throws {
         // Use native Apple Sign In for "apple" provider
         if provider == "apple" {
-            try await signInWithAppleNative()
+            try await signInWithAppleNative(credentialProvider: appleCredentialProvider)
             return
         }
         
@@ -232,8 +255,26 @@ public actor StackClientApp {
     }
     
     /// Native Apple Sign In using ASAuthorizationController
+    /// - Parameter credentialProvider: Optional custom credential provider (for testing). If nil, uses real ASAuthorizationController.
     @MainActor
-    private func signInWithAppleNative() async throws {
+    private func signInWithAppleNative(credentialProvider: AppleCredentialProvider? = nil) async throws {
+        let credential: AppleSignInCredential
+        
+        if let provider = credentialProvider {
+            // Use injected provider (for testing)
+            credential = try await provider.getCredential()
+        } else {
+            // Real flow with ASAuthorizationController
+            credential = try await getSystemAppleCredential()
+        }
+        
+        // Send identity token to our backend
+        try await exchangeAppleIdentityToken(credential.identityToken)
+    }
+    
+    /// Get Apple Sign In credential using the system's ASAuthorizationController
+    @MainActor
+    private func getSystemAppleCredential() async throws -> AppleSignInCredential {
         let appleIDProvider = ASAuthorizationAppleIDProvider()
         let request = appleIDProvider.createRequest()
         request.requestedScopes = [.fullName, .email]
@@ -241,7 +282,7 @@ public actor StackClientApp {
         let authController = ASAuthorizationController(authorizationRequests: [request])
         
         // Use delegate helper to bridge async/await
-        let credential = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>) in
+        let asCredential = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>) in
             let delegate = AppleSignInDelegate(continuation: continuation)
             authController.delegate = delegate
             
@@ -252,13 +293,19 @@ public actor StackClientApp {
         }
         
         // Extract identity token
-        guard let identityTokenData = credential.identityToken,
+        guard let identityTokenData = asCredential.identityToken,
               let identityToken = String(data: identityTokenData, encoding: .utf8) else {
             throw StackAuthError(code: "oauth_error", message: "No identity token received from Apple")
         }
         
-        // Send identity token to our backend
-        try await exchangeAppleIdentityToken(identityToken)
+        let authorizationCode: String?
+        if let codeData = asCredential.authorizationCode {
+            authorizationCode = String(data: codeData, encoding: .utf8)
+        } else {
+            authorizationCode = nil
+        }
+        
+        return AppleSignInCredential(identityToken: identityToken, authorizationCode: authorizationCode)
     }
     
     /// Exchange Apple identity token for Stack Auth tokens
@@ -268,6 +315,7 @@ public actor StackClientApp {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(projectId, forHTTPHeaderField: "x-stack-project-id")
+        request.setValue("client", forHTTPHeaderField: "x-stack-access-type")
         
         let publishableKey = await client.publishableClientKey
         request.setValue(publishableKey, forHTTPHeaderField: "x-stack-publishable-client-key")
