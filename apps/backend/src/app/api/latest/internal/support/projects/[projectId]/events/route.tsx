@@ -2,6 +2,7 @@ import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { supportAuthSchema, validateSupportTeamMembership } from "../../../support-auth";
 
 export const GET = createSmartRouteHandler({
@@ -31,11 +32,22 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req, fullReq) => {
-    await validateSupportTeamMembership(fullReq.auth!);
+    const auth = fullReq.auth ?? throwErr("Missing auth in support events route");
+    await validateSupportTeamMembership(auth);
 
     const { projectId } = req.params;
-    const limit = Math.min(100, parseInt(req.query.limit ?? "30", 10));
-    const offset = parseInt(req.query.offset ?? "0", 10);
+
+    // Parse and validate limit: must be finite, positive, capped at 100, default 30
+    const parsedLimit = parseInt(req.query.limit ?? "", 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 100)
+      : 30;
+
+    // Parse and validate offset: must be finite, non-negative, default 0
+    const parsedOffset = parseInt(req.query.offset ?? "", 10);
+    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0
+      ? parsedOffset
+      : 0;
 
     // Events are stored with projectId in the data field
     const whereClause = {

@@ -2,6 +2,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenanc
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { supportAuthSchema, validateSupportTeamMembership } from "../../../support-auth";
 
 export const GET = createSmartRouteHandler({
@@ -33,13 +34,24 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req, fullReq) => {
-    await validateSupportTeamMembership(fullReq.auth!);
+    const auth = fullReq.auth ?? throwErr("Missing auth in support teams route");
+    await validateSupportTeamMembership(auth);
 
     const { projectId } = req.params;
     const search = req.query.search;
     const teamId = req.query.teamId;
-    const limit = Math.min(100, parseInt(req.query.limit ?? "25", 10));
-    const offset = parseInt(req.query.offset ?? "0", 10);
+
+    // Parse and validate limit: must be finite, positive, capped at 100, default 25
+    const parsedLimit = parseInt(req.query.limit ?? "", 10);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(parsedLimit, 100)
+      : 25;
+
+    // Parse and validate offset: must be finite, non-negative, default 0
+    const parsedOffset = parseInt(req.query.offset ?? "", 10);
+    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0
+      ? parsedOffset
+      : 0;
 
     const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID);
     const prisma = await getPrismaClientForTenancy(tenancy);
