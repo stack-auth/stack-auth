@@ -1,8 +1,8 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 type ResendEmail = {
@@ -129,7 +129,11 @@ export const GET = createSmartRouteHandler({
     description: "Tests the sign-up + email verification flow. Returns 200 if successful.",
     tags: ["Monitoring"],
   },
-  request: yupObject({}),
+  request: yupObject({
+    headers: yupObject({
+      "authorization": yupTuple([yupString()]).defined(),
+    }).defined(),
+  }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
@@ -138,7 +142,12 @@ export const GET = createSmartRouteHandler({
       message: yupString().defined(),
     }).defined(),
   }),
-  handler: async () => {
+  handler: async ({ headers }) => {
+    const authHeader = headers.authorization[0];
+    if (authHeader !== `Bearer ${getEnvVariable("STACK_EMAIL_MONITOR_SECRET_TOKEN")}`) {
+      throw new StatusError(401, "Unauthorized");
+    }
+
     const uniqueId = generateSecureRandomString();
     const testEmail = `monitor+${uniqueId}@${getEnvVariable("STACK_EMAIL_MONITOR_RESEND_EMAIL_DOMAIN")}`;
     const testPassword = generateSecureRandomString();
