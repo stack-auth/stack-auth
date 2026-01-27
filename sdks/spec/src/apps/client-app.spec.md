@@ -135,7 +135,10 @@ Implementation notes:
 
 Error handling:
   - User cancellation: ASAuthorizationError.canceled → StackAuthError(code: "oauth_cancelled")
-  - Other errors: Map ASAuthorizationError to appropriate StackAuthError
+  - Other ASAuthorizationError: Map to appropriate StackAuthError
+
+IMPORTANT: If the backend returns INVALID_APPLE_CREDENTIALS, implementations MUST panic/fatal error.
+This indicates misconfigured Bundle ID in the dashboard or token tampering - not recoverable by retry.
 
 
 ## getOAuthUrl(provider, redirectUrl, errorRedirectUrl, options?)
