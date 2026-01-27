@@ -204,11 +204,14 @@ export function StackCompanion({ className }: { className?: string }) {
   // Re-check for new versions when changelog is opened/closed
   useEffect(() => {
     if (activeItem === 'changelog') {
-      // When changelog is opened, mark the latest version as seen
+      // When changelog is opened, mark the latest released version as seen
+      // Skip unreleased versions to avoid breaking version comparison
       if (changelogData && changelogData.length > 0) {
-        const latestVersion = changelogData[0].version;
-        document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestVersion)}; path=/; max-age=31536000`; // 1 year
-        setLastSeenVersion(latestVersion);
+        const latestReleasedEntry = changelogData.find(entry => !entry.isUnreleased);
+        if (latestReleasedEntry) {
+          document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestReleasedEntry.version)}; path=/; max-age=31536000`; // 1 year
+          setLastSeenVersion(latestReleasedEntry.version);
+        }
       }
       // Clear the notification badge immediately
       setHasNewVersions(false);

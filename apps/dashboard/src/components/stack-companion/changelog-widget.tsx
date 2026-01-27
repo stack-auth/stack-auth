@@ -40,9 +40,10 @@ function toChangelogItems(entries: ApiChangelogEntry[]): ChangelogItem[] {
 }
 
 function markLatestVersionSeen(entries: ApiChangelogEntry[]) {
-  if (entries.length > 0) {
-    const latestVersion = entries[0].version;
-    document.cookie = `stack-last-seen-changelog-version=${encodeURIComponent(latestVersion)}; path=/; max-age=31536000`;
+  // Find the first released version (skip unreleased to avoid breaking version comparison)
+  const latestReleasedEntry = entries.find(entry => !entry.isUnreleased);
+  if (latestReleasedEntry) {
+    document.cookie = `stack-last-seen-changelog-version=${encodeURIComponent(latestReleasedEntry.version)}; path=/; max-age=31536000`;
   }
 }
 
