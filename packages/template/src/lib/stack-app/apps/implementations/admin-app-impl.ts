@@ -223,15 +223,24 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("environment", configOverride);
-        await app._configOverridesCache.refresh([]);
+        await Promise.all([
+          app._configOverridesCache.refresh([]),
+          app._adminProjectCache.refresh([]),
+        ]);
       },
       async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
         await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
-        await app._configOverridesCache.refresh([]);
+        await Promise.all([
+          app._configOverridesCache.refresh([]),
+          app._adminProjectCache.refresh([]),
+        ]);
       },
       async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("branch", config);
-        await app._configOverridesCache.refresh([]);
+        await Promise.all([
+          app._configOverridesCache.refresh([]),
+          app._adminProjectCache.refresh([]),
+        ]);
       },
       async getPushedConfigSource(): Promise<PushedConfigSource> {
         const apiSource = await app._interface.getPushedConfigSource();
@@ -239,7 +248,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async unlinkPushedConfigSource(): Promise<void> {
         await app._interface.unlinkPushedConfigSource();
-        await app._configOverridesCache.refresh([]);
+        await Promise.all([
+          app._configOverridesCache.refresh([]),
+          app._adminProjectCache.refresh([]),
+        ]);
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);

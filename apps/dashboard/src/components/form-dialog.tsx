@@ -1,8 +1,8 @@
 "use client";
 
+import { ActionDialog, ActionDialogProps, Form } from "@/components/ui";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, ActionDialogProps, Form } from "@/components/ui";
 import React, { useEffect, useId, useState } from "react";
 import { FieldValues, useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -87,10 +87,17 @@ export function FormDialog<F extends FieldValues>(
     }
   };
 
+  // Only reset form when dialog opens, not when defaultValues changes during editing
+  // This prevents user edits from being lost due to background data refetches
+  const prevOpen = React.useRef(props.open);
   useEffect(() => {
-    form.reset(props.defaultValues);
+    // Reset form when dialog transitions from closed to open
+    if (props.open && !prevOpen.current) {
+      form.reset(props.defaultValues);
+    }
+    prevOpen.current = props.open;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.defaultValues]);
+  }, [props.open, props.defaultValues]);
 
   useEffect(() => {
     const subscription = form.watch((value, { name, type }) => {
