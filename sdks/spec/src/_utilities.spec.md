@@ -10,7 +10,7 @@ All API requests follow this pattern. This section describes the complete reques
 ### Base URL
 
 Construct API URL: `{baseUrl}/api/v1{path}`
-  - baseUrl defaults to "https://api.stack-auth.com"
+  - baseUrl defaults to `https://api.stack-auth.com`
   - Remove trailing slash from final URL
   - Example: `https://api.stack-auth.com/api/v1/users/me`
 
@@ -44,6 +44,7 @@ On 401 response with code="invalid_access_token":
 2. Fetch new access token using refresh token (see Token Refresh below)
 3. Retry the request with the new token
 4. If still 401 after retry: treat as unauthenticated
+
 ### [server-only] - Server Key Required
 
 Include header: x-stack-secret-server-key: <secretServerKey>

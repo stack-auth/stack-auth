@@ -127,7 +127,7 @@ Configuration requirements:
 - Note: The "Client ID" field in the dashboard is for web OAuth (Services ID), not native apps
 
 Implementation notes:
-- The identityToken is a JWT that can be verified using Apple's JWKS (https://appleid.apple.com/auth/keys)
+- The identityToken is a JWT that can be verified using Apple's JWKS (`https://appleid.apple.com/auth/keys`)
 - The JWT's audience claim must match the configured Bundle ID
 - User's name and email are only provided on the FIRST authorization; cache if needed
 - The native flow does NOT use redirect URLs - tokens are returned directly

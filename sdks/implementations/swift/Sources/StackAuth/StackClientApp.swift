@@ -605,21 +605,21 @@ public actor StackClientApp {
             
             // Check if we should return this user
             if await user.isAnonymous && !includeAnonymous {
-                return handleNoUser(or: or)
+                return try handleNoUser(or: or)
             }
             
             if await user.isRestricted && !effectiveIncludeRestricted {
-                return handleNoUser(or: or)
+                return try handleNoUser(or: or)
             }
             
             return user
             
         } catch {
-            return handleNoUser(or: or)
+            return try handleNoUser(or: or)
         }
     }
     
-    private func handleNoUser(or: GetUserOr) -> CurrentUser? {
+    private func handleNoUser(or: GetUserOr) throws -> CurrentUser? {
         switch or {
         case .returnNull, .anonymous:
             return nil
@@ -627,8 +627,7 @@ public actor StackClientApp {
             // Can't redirect in Swift
             return nil
         case .throw:
-            // Already thrown
-            return nil
+            throw UserNotSignedInError()
         }
     }
     
