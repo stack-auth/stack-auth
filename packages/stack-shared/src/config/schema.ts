@@ -812,7 +812,7 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
-  const themes: typeof prepared.emails.themes = config.emails.server.isShared ? DEFAULT_EMAIL_THEMES : prepared.emails.themes;
+  const themes: typeof prepared.emails.themes = prepared.emails.themes;
   const templates: typeof prepared.emails.templates = config.emails.server.isShared ? DEFAULT_EMAIL_TEMPLATES : prepared.emails.templates;
   const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
     const isAddOnTo = product.isAddOnTo === false ?
