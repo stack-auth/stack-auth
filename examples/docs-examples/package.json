@@ -18,7 +18,7 @@
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
-    "next": "^14.2.34",
+    "next": "^14.2.35",
     "next-themes": "^0.2.1",
     "react": "^18.2",
     "react-dom": "^18",
