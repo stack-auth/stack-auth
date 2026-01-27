@@ -89,15 +89,18 @@ export function FormDialog<F extends FieldValues>(
 
   // Only reset form when dialog opens, not when defaultValues changes during editing
   // This prevents user edits from being lost due to background data refetches
-  const prevOpen = React.useRef(props.open);
+  // Track resolved open state to handle both controlled (props.open) and uncontrolled (openState) modes
+  const resolvedOpen = props.open ?? openState;
+  const prevOpen = React.useRef(resolvedOpen);
   useEffect(() => {
+    const currentResolvedOpen = props.open ?? openState;
     // Reset form when dialog transitions from closed to open
-    if (props.open && !prevOpen.current) {
+    if (currentResolvedOpen && !prevOpen.current) {
       form.reset(props.defaultValues);
     }
-    prevOpen.current = props.open;
+    prevOpen.current = currentResolvedOpen;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.open, props.defaultValues]);
+  }, [props.open, openState, props.defaultValues]);
 
   useEffect(() => {
     const subscription = form.watch((value, { name, type }) => {
