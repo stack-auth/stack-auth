@@ -88,15 +88,16 @@ const CyclingExample = memo(function CyclingExample({
     return () => clearInterval(interval);
   }, [currentIndex]);
 
-  return <>
+  return <div className="relative">
     {EXAMPLE_QUERIES.map((example, index) => {
+      const isActive = index === currentIndex;
       return <button
         key={index}
         type="button"
         onClick={() => onSelectQuery?.(example.query)}
         className={cn(
-          "flex flex-col items-center gap-1 cursor-pointer group",
-          index === currentIndex ? "opacity-100" : "opacity-0",
+          "flex flex-col items-center gap-1 cursor-pointer group w-full",
+          isActive ? "opacity-100 relative" : "opacity-0 absolute inset-0 pointer-events-none",
           "transition-opacity duration-300"
         )}
       >
@@ -108,7 +109,7 @@ const CyclingExample = memo(function CyclingExample({
         </p>
       </button>;
     })}
-  </>;
+  </div>;
 });
 
 // Empty state placeholder component
@@ -118,33 +119,17 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
   onSelectQuery?: (query: string) => void,
 }) {
   return (
-    <div className="h-full flex flex-col gap-4 items-center select-none px-6 pt-8 pb-4">
-
+    <div className="h-full flex flex-col items-center select-none px-6">
+      {/* Top spacer */}
       <div className="flex-1" />
 
-      {/* Welcome header */}
-      <div className="relative text-center">
-        {/* Keybind reminder - like tape on the corner */}
-        <span className="absolute -top-4 -right-8 rotate-[30deg] flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
-          +
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
-        </span>
-        <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
-          Welcome to Control Center
-        </h2>
-        <p className="text-[11px] text-muted-foreground/50">
-          Your shortcut to everything
-        </p>
-      </div>
-
-      {/* Feature highlights with floating icons */}
+      {/* Welcome header + Feature highlights grouped together */}
       <div className="relative w-fit">
         {/* Floating decorative icons - left and right sides only */}
-        <div className="absolute -left-6 top-0 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
+        <div className="absolute -left-6 top-12 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
           <MagnifyingGlassIcon className="h-4.5 w-4.5 text-blue-500" />
         </div>
-        <div className="absolute -right-6 top-2 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
+        <div className="absolute -right-6 top-14 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
           <SparkleIcon className="h-4 w-4 text-purple-500" />
         </div>
         <div className="absolute -left-16 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center rotate-[20deg] opacity-50">
@@ -153,11 +138,27 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         <div className="absolute -right-20 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center rotate-[-8deg] opacity-60">
           <LayoutIcon className="h-4.5 w-4.5 text-cyan-500" />
         </div>
-        <div className="absolute -left-7 bottom-0 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
+        <div className="absolute -left-7 bottom-4 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
           <PlayIcon className="h-3.5 w-3.5 text-amber-500" />
         </div>
-        <div className="absolute -right-5 bottom-2 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
+        <div className="absolute -right-5 bottom-6 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
           <SparkleIcon className="h-4 w-4 text-rose-500" />
+        </div>
+
+        {/* Welcome header */}
+        <div className="relative text-center mb-4">
+          {/* Keybind reminder - like tape on the corner */}
+          <span className="absolute -top-4 -right-8 rotate-[30deg] flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+            +
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
+          </span>
+          <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
+            Welcome to Control Center
+          </h2>
+          <p className="text-[11px] text-muted-foreground/50">
+            Your shortcut to everything
+          </p>
         </div>
 
         {/* Feature text content */}
@@ -184,40 +185,45 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         </div>
       </div>
 
-      <div className="w-full max-w-[max(50vw,320px)] pt-4 mt-2 border-t border-foreground/[0.06]"></div>
-
-      {/* Cycling example */}
-      <div className="w-full max-w-[max(50vw,320px)]">
-        <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-2.5 text-center pointer-events-none">Try something like</p>
-        <div className="flex justify-center">
-          <CyclingExample onSelectQuery={onSelectQuery} />
-        </div>
-      </div>
-
+      {/* Bottom spacer */}
       <div className="flex-1" />
 
-      {/* Keyboard hints footer */}
-      <div className="pt-4 mt-4 -mx-6 px-6 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
-          +
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
-          <span>open</span>
+      {/* Bottom section - separator, cycling example, and footer grouped together */}
+      <div className="w-full shrink-0 -mx-6 px-6">
+        {/* Separator */}
+        <div className="border-t border-foreground/[0.06]" />
+
+        {/* Cycling example */}
+        <div className="py-5">
+          <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-3 text-center pointer-events-none">Try something like</p>
+          <div className="flex justify-center">
+            <CyclingExample onSelectQuery={onSelectQuery} />
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↑</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↓</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">→</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">←</kbd>
-          <span>navigate</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
-          <span>select</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
-          <span>close</span>
+
+        {/* Keyboard hints footer */}
+        <div className="py-3 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+            +
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
+            <span>open</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↑</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↓</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">→</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">←</kbd>
+            <span>navigate</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
+            <span>select</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
+            <span>close</span>
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
-import { CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
+import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _StackClientAppImpl } from "../implementations";
@@ -106,6 +106,12 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     "products",
     [options: CustomerProductsRequestOptions],
     CustomerProductsList,
+    true
+  >
+  & AsyncStoreProperty<
+    "invoices",
+    [options: CustomerInvoicesRequestOptions],
+    CustomerInvoicesList,
     true
   >
   & { [K in `redirectTo${Capitalize<keyof Omit<HandlerUrls, 'handler' | 'oauthCallback'>>}`]: (options?: RedirectToOptions) => Promise<void> }

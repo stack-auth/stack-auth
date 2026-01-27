@@ -1,5 +1,6 @@
 "use client";
 
+import { Link } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import {
@@ -24,8 +25,9 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -69,13 +71,48 @@ const CUSTOMER_TYPE_OPTIONS = [
   },
 ] as const;
 
+const COLOR_CLASSES = {
+  blue: {
+    hover: 'hover:border-blue-500/40 hover:shadow-[0_0_12px_rgba(59,130,246,0.1)]',
+    bg: 'bg-blue-500/10 dark:bg-blue-500/[0.15] group-hover:bg-blue-500/20',
+    icon: 'text-blue-600 dark:text-blue-400',
+  },
+  emerald: {
+    hover: 'hover:border-emerald-500/40 hover:shadow-[0_0_12px_rgba(16,185,129,0.1)]',
+    bg: 'bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20',
+    icon: 'text-emerald-600 dark:text-emerald-400',
+  },
+  amber: {
+    hover: 'hover:border-amber-500/40 hover:shadow-[0_0_12px_rgba(245,158,11,0.1)]',
+    bg: 'bg-amber-500/10 dark:bg-amber-500/[0.15] group-hover:bg-amber-500/20',
+    icon: 'text-amber-600 dark:text-amber-400',
+  },
+  gray: {
+    hover: '',
+    bg: 'bg-foreground/[0.05]',
+    icon: 'text-foreground/40',
+  },
+} as const;
+
 function CustomerTypeSelection({
   onSelectCustomerType,
   onCancel,
+  isTeamsEnabled,
+  projectId,
 }: {
   onSelectCustomerType: (type: 'user' | 'team' | 'custom') => void,
   onCancel: () => void,
+  isTeamsEnabled: boolean,
+  projectId: string,
 }) {
+  // Split options into available and unavailable
+  const availableOptions = CUSTOMER_TYPE_OPTIONS.filter(
+    (option) => option.value !== 'team' || isTeamsEnabled
+  );
+  const unavailableOptions = CUSTOMER_TYPE_OPTIONS.filter(
+    (option) => option.value === 'team' && !isTeamsEnabled
+  );
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-4 px-6 py-4 border-b border-border/40">
@@ -96,26 +133,11 @@ function CustomerTypeSelection({
             <Typography type="h2" className="text-2xl font-semibold">Who will this product be for?</Typography>
           </div>
 
+          {/* Available options */}
           <div className="grid gap-3">
-            {CUSTOMER_TYPE_OPTIONS.map((option) => {
+            {availableOptions.map((option) => {
               const Icon = option.icon;
-              const colorClasses = {
-                blue: {
-                  hover: 'hover:border-blue-500/40 hover:shadow-[0_0_12px_rgba(59,130,246,0.1)]',
-                  bg: 'bg-blue-500/10 dark:bg-blue-500/[0.15] group-hover:bg-blue-500/20',
-                  icon: 'text-blue-600 dark:text-blue-400',
-                },
-                emerald: {
-                  hover: 'hover:border-emerald-500/40 hover:shadow-[0_0_12px_rgba(16,185,129,0.1)]',
-                  bg: 'bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20',
-                  icon: 'text-emerald-600 dark:text-emerald-400',
-                },
-                amber: {
-                  hover: 'hover:border-amber-500/40 hover:shadow-[0_0_12px_rgba(245,158,11,0.1)]',
-                  bg: 'bg-amber-500/10 dark:bg-amber-500/[0.15] group-hover:bg-amber-500/20',
-                  icon: 'text-amber-600 dark:text-amber-400',
-                },
-              }[option.color];
+              const colorClasses = COLOR_CLASSES[option.color];
 
               return (
                 <Card
@@ -149,6 +171,59 @@ function CustomerTypeSelection({
               );
             })}
           </div>
+
+          {/* Unavailable options section */}
+          {unavailableOptions.length > 0 && (
+            <div className="space-y-2 pt-8">
+              <Typography type="label" className="text-xs text-foreground/40 uppercase tracking-wider">
+                Unavailable options
+              </Typography>
+              <p className="text-xs text-muted-foreground mb-3">
+                These options require additional apps or configuration.
+              </p>
+              <div className="grid gap-3">
+                {unavailableOptions.map((option) => {
+                  const Icon = option.icon;
+                  const colorClasses = COLOR_CLASSES.gray;
+
+                  return (
+                    <Link
+                      key={option.value}
+                      href={`/projects/${projectId}/apps/teams`}
+                    >
+                      <Card
+                        className={cn(
+                          "cursor-pointer group",
+                          "rounded-xl border border-border/30 dark:border-foreground/[0.05]",
+                          "bg-foreground/[0.01] hover:bg-foreground/[0.03]",
+                          "opacity-60 hover:opacity-80",
+                          "transition-all duration-150 hover:transition-none"
+                        )}
+                      >
+                        <CardHeader className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "p-2.5 rounded-xl",
+                              colorClasses.bg
+                            )}>
+                              <Icon className={cn("h-5 w-5", colorClasses.icon)} />
+                            </div>
+                            <div className="flex-1">
+                              <CardTitle className="text-base font-semibold text-foreground/50">{option.label}</CardTitle>
+                              <CardDescription className="text-sm mt-1 text-muted-foreground/70">
+                                Enable the Teams app to choose this customer type
+                              </CardDescription>
+                            </div>
+                            <ArrowSquareOutIcon className="h-4 w-4 text-foreground/30" />
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -175,6 +250,21 @@ function toIdFormat(displayName: string): string {
     .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
 }
 
+// Helper to get duplicate data from sessionStorage
+function getDuplicateData(key: string | null): Product | null {
+  if (!key) return null;
+  try {
+    const data = sessionStorage.getItem(key);
+    if (data) {
+      sessionStorage.removeItem(key); // Clean up after reading
+      return JSON.parse(data) as Product;
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  return null;
+}
+
 export default function PageClient() {
   const projectId = useProjectId();
   const router = useRouter();
@@ -182,39 +272,52 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const paymentsConfig: CompleteConfig['payments'] = config.payments;
 
+  // Check for duplicate data from sessionStorage
+  const duplicateKey = searchParams.get("duplicate");
+  const [duplicateData] = useState(() => getDuplicateData(duplicateKey));
+
   // Get URL parameters for pre-filling the form
-  const urlProductLineId = searchParams.get("productLineId");
-  const urlCustomerType = searchParams.get("customerType") as 'user' | 'team' | 'custom' | null;
+  const urlProductLineId = duplicateData?.productLineId ?? searchParams.get("productLineId");
+  const urlCustomerType = duplicateData?.customerType ?? searchParams.get("customerType") as 'user' | 'team' | 'custom' | null;
 
   // Validate productLineId exists and get its customerType
   const validProductLineId = urlProductLineId && urlProductLineId in paymentsConfig.productLines ? urlProductLineId : null;
   const productLineCustomerType = validProductLineId ? paymentsConfig.productLines[validProductLineId].customerType : null;
 
-  // Determine initial customer type: from product line > from URL > default 'user'
+  // Determine initial customer type: from product line > from URL/duplicate > default 'user'
   const validUrlCustomerType = urlCustomerType && ['user', 'team', 'custom'].includes(urlCustomerType) ? urlCustomerType : null;
   const initialCustomerType = productLineCustomerType ?? validUrlCustomerType ?? 'user';
 
-  // Skip customer type selection if we have a valid productLineId or a valid customerType in URL
-  const skippedCustomerTypeSelection = !!validProductLineId || !!validUrlCustomerType;
+  // Skip customer type selection if we have duplicate data, valid productLineId, or valid customerType in URL
+  const skippedCustomerTypeSelection = !!duplicateData || !!validProductLineId || !!validUrlCustomerType;
   const [hasSelectedCustomerType, setHasSelectedCustomerType] = useState(skippedCustomerTypeSelection);
 
-  // Form state
+  // Parse duplicate data for form initialization
+  const duplicateIsAddOn = duplicateData?.isAddOnTo !== false && duplicateData?.isAddOnTo !== undefined;
+  const duplicateIsAddOnTo = duplicateIsAddOn && duplicateData.isAddOnTo
+    ? Object.keys(duplicateData.isAddOnTo as Record<string, boolean>)
+    : [];
+  const duplicatePrices = duplicateData?.prices === 'include-by-default' ? {} : (duplicateData?.prices ?? {});
+  const duplicateFreeByDefault = duplicateData?.prices === 'include-by-default';
+
+  // Form state - initialized from duplicate data if available
   const [productId, setProductId] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState(duplicateData?.displayName ?? "");
   const [hasManuallyEditedId, setHasManuallyEditedId] = useState(false);
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(initialCustomerType);
   const [productLineId, setProductLineId] = useState(validProductLineId ?? "");
-  const [isAddOn, setIsAddOn] = useState(false);
-  const [isAddOnTo, setIsAddOnTo] = useState<string[]>([]);
-  const [stackable, setStackable] = useState(false);
-  const [serverOnly, setServerOnly] = useState(false);
-  const [freeByDefault, setFreeByDefault] = useState(false);
+  const [isAddOn, setIsAddOn] = useState(duplicateIsAddOn);
+  const [isAddOnTo, setIsAddOnTo] = useState<string[]>(duplicateIsAddOnTo);
+  const [stackable, setStackable] = useState(duplicateData?.stackable ?? false);
+  const [serverOnly, setServerOnly] = useState(duplicateData?.serverOnly ?? false);
+  const [freeByDefault, setFreeByDefault] = useState(duplicateFreeByDefault);
   const [isInlineProduct, setIsInlineProduct] = useState(false);
-  const [prices, setPrices] = useState<Record<string, Price>>({});
-  const [includedItems, setIncludedItems] = useState<Product['includedItems']>({});
-  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(undefined);
+  const [prices, setPrices] = useState<Record<string, Price>>(duplicatePrices);
+  const [includedItems, setIncludedItems] = useState<Product['includedItems']>(duplicateData?.includedItems ?? {});
+  const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(duplicateData?.freeTrial);
 
   // Dialog states
   const [showProductLineDialog, setShowProductLineDialog] = useState(false);
@@ -317,11 +420,15 @@ export default function PageClient() {
 
   const handleCreateProductLine = (productLine: { id: string, displayName: string }) => {
     runAsynchronouslyWithAlert(async () => {
-      await project.updateConfig({
-        [`payments.productLines.${productLine.id}`]: {
-          displayName: productLine.displayName || null,
-          customerType,
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: {
+          [`payments.productLines.${productLine.id}`]: {
+            displayName: productLine.displayName || null,
+            customerType,
+          },
         },
+        pushable: true,
       });
       setProductLineId(productLine.id);
     });
@@ -383,9 +490,15 @@ export default function PageClient() {
         freeTrial,
       };
 
-      await project.updateConfig({ [`payments.products.${productId}`]: product });
-      toast({ title: "Product created" });
-      router.push(`/projects/${projectId}/payments/products`);
+      const success = await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: { [`payments.products.${productId}`]: product },
+        pushable: true,
+      });
+      if (success) {
+        toast({ title: "Product created" });
+        router.push(`/projects/${projectId}/payments/products`);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -419,12 +532,17 @@ export default function PageClient() {
     }
   };
 
+  // Check if Teams app is enabled
+  const isTeamsEnabled = config.apps.installed.teams?.enabled ?? false;
+
   // Show customer type selection if not selected yet
   if (!hasSelectedCustomerType) {
     return (
       <CustomerTypeSelection
         onSelectCustomerType={handleSelectCustomerType}
         onCancel={handleCancel}
+        isTeamsEnabled={isTeamsEnabled}
+        projectId={projectId}
       />
     );
   }
@@ -847,7 +965,7 @@ ${Object.entries(prices).map(([id, price]) => {
                         <div className="mt-1.5 mb-0.5 space-y-1 p-2 rounded-lg bg-foreground/[0.02] border border-border/30">
                           <span className="text-xs text-foreground/50">Add-on to:</span>
                           <div className="space-y-1 max-h-24 overflow-y-auto">
-                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                            {existingProducts.map(product => (
                               <label key={product.id} className="flex items-center gap-2 cursor-pointer">
                                 <Checkbox
                                   id={`addon-to-${product.id}`}
@@ -1053,8 +1171,25 @@ ${Object.entries(prices).map(([id, price]) => {
         open={showNewItemDialog}
         onOpenChange={setShowNewItemDialog}
         onSave={async (item) => {
-          await project.updateConfig({ [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } });
-          toast({ title: "Item created" });
+          try {
+            const success = await updateConfig({
+              adminApp: stackAdminApp,
+              configUpdate: { [`payments.items.${item.id}`]: { displayName: item.displayName, customerType: item.customerType } },
+              pushable: true,
+            });
+            if (success) {
+              toast({ title: "Item created" });
+            } else {
+              // User cancelled the confirmation dialog - throw to keep dialog open
+              throw new Error("Operation cancelled");
+            }
+          } catch (error) {
+            // Show error toast for actual failures (not cancellations)
+            if (error instanceof Error && error.message !== "Operation cancelled") {
+              alert("Failed to create item: " + error.message);
+            }
+            throw error;
+          }
         }}
         existingItemIds={Object.keys(paymentsConfig.items)}
         forceCustomerType={customerType}
