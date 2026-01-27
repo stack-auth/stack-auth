@@ -171,12 +171,18 @@ public actor StackClientApp {
     }
     
     #if canImport(AuthenticationServices) && !os(watchOS)
-    /// Sign in with OAuth using ASWebAuthenticationSession
+    /// Sign in with OAuth using ASWebAuthenticationSession (or native Apple Sign In for "apple" provider)
     @MainActor
     public func signInWithOAuth(
         provider: String,
         presentationContextProvider: ASWebAuthenticationPresentationContextProviding? = nil
     ) async throws {
+        // Use native Apple Sign In for "apple" provider
+        if provider == "apple" {
+            try await signInWithAppleNative()
+            return
+        }
+        
         let callbackScheme = "stack-auth-mobile-oauth-url"
         let oauth = try await getOAuthUrl(
             provider: provider,
@@ -223,6 +229,75 @@ public actor StackClientApp {
             
             session.start()
         }
+    }
+    
+    /// Native Apple Sign In using ASAuthorizationController
+    @MainActor
+    private func signInWithAppleNative() async throws {
+        let appleIDProvider = ASAuthorizationAppleIDProvider()
+        let request = appleIDProvider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+        
+        let authController = ASAuthorizationController(authorizationRequests: [request])
+        
+        // Use delegate helper to bridge async/await
+        let credential = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>) in
+            let delegate = AppleSignInDelegate(continuation: continuation)
+            authController.delegate = delegate
+            
+            // Keep delegate alive during the authorization
+            objc_setAssociatedObject(authController, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+            
+            authController.performRequests()
+        }
+        
+        // Extract identity token
+        guard let identityTokenData = credential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            throw StackAuthError(code: "oauth_error", message: "No identity token received from Apple")
+        }
+        
+        // Send identity token to our backend
+        try await exchangeAppleIdentityToken(identityToken)
+    }
+    
+    /// Exchange Apple identity token for Stack Auth tokens
+    private func exchangeAppleIdentityToken(_ identityToken: String) async throws {
+        let url = URL(string: "\(baseUrl)/api/v1/auth/oauth/callback/apple/native")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(projectId, forHTTPHeaderField: "x-stack-project-id")
+        
+        let publishableKey = await client.publishableClientKey
+        request.setValue(publishableKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        
+        let body = ["id_token": identityToken]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OAuthError(code: "invalid_response", message: "Invalid HTTP response")
+        }
+        
+        if httpResponse.statusCode != 200 {
+            // Check for known error in response
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorCode = json["code"] as? String {
+                let message = json["error"] as? String ?? "Apple Sign In failed"
+                throw OAuthError(code: errorCode, message: message)
+            }
+            throw OAuthError(code: "apple_signin_failed", message: "HTTP \(httpResponse.statusCode)")
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let accessToken = json["access_token"] as? String,
+              let refreshToken = json["refresh_token"] as? String else {
+            throw OAuthError(code: "parse_error", message: "Failed to parse Apple Sign In response")
+        }
+        
+        await client.setTokens(accessToken: accessToken, refreshToken: refreshToken)
     }
     #endif
     
@@ -762,3 +837,91 @@ public actor StackClientApp {
             .replacingOccurrences(of: "=", with: "")
     }
 }
+
+// MARK: - Apple Sign In Delegate
+
+#if canImport(AuthenticationServices) && !os(watchOS)
+/// Helper class to bridge ASAuthorizationController delegate-based API to async/await
+private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
+    private let continuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>
+    
+    init(continuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>) {
+        self.continuation = continuation
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            continuation.resume(throwing: StackAuthError(code: "oauth_error", message: "Unexpected credential type from Apple"))
+            return
+        }
+        continuation.resume(returning: credential)
+    }
+    
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        let nsError = error as NSError
+        
+        // Check if it's an ASAuthorizationError
+        if nsError.domain == ASAuthorizationError.errorDomain {
+            let errorCode = ASAuthorizationError.Code(rawValue: nsError.code)
+            
+            switch errorCode {
+            case .canceled:
+                // User tapped Cancel or dismissed the Sign In with Apple dialog
+                continuation.resume(throwing: StackAuthError(code: "oauth_cancelled", message: "User cancelled Apple Sign In"))
+                
+            case .unknown:
+                // Error 1000 - The app is not properly configured for Sign In with Apple.
+                // This is the most common error during development.
+                continuation.resume(throwing: StackAuthError(
+                    code: "apple_signin_not_configured",
+                    message: "Apple Sign In is not configured correctly (error 1000). " +
+                             "To fix this: " +
+                             "(1) Open your project in Xcode, go to Signing & Capabilities, and add 'Sign In with Apple'. " +
+                             "(2) Ensure the app is signed with a valid Apple Developer certificate (not just a personal team). " +
+                             "(3) Register your Bundle ID at developer.apple.com and enable Sign In with Apple for it."
+                ))
+                
+            case .invalidResponse:
+                // Apple's servers returned an unexpected/malformed response.
+                // Usually a temporary server-side issue.
+                continuation.resume(throwing: StackAuthError(
+                    code: "apple_signin_invalid_response",
+                    message: "Apple's servers returned an unexpected response. This is usually temporary - please try again in a moment."
+                ))
+                
+            case .notHandled:
+                // No authorization provider could handle this request.
+                // This can happen if Apple ID is not set up on the device.
+                continuation.resume(throwing: StackAuthError(
+                    code: "apple_signin_not_handled",
+                    message: "Apple Sign In could not be completed. Ensure you are signed in to an Apple ID on this device (Settings > Apple ID)."
+                ))
+                
+            case .failed:
+                // Authentication failed - could be network issues, Apple ID issues, etc.
+                continuation.resume(throwing: StackAuthError(
+                    code: "apple_signin_failed",
+                    message: "Apple Sign In authentication failed. Check your internet connection and ensure your Apple ID is working correctly."
+                ))
+                
+            case .notInteractive:
+                // Attempted silent/automatic sign-in but user interaction is required.
+                // This shouldn't happen with our implementation since we always show the dialog.
+                continuation.resume(throwing: StackAuthError(
+                    code: "apple_signin_not_interactive",
+                    message: "Apple Sign In requires user interaction. Please try signing in again."
+                ))
+                
+            default:
+                continuation.resume(throwing: StackAuthError(
+                    code: "apple_signin_error",
+                    message: "Apple Sign In failed with error code \(nsError.code): \(error.localizedDescription)"
+                ))
+            }
+        } else {
+            // Non-ASAuthorizationError (rare)
+            continuation.resume(throwing: OAuthError(code: "oauth_error", message: error.localizedDescription))
+        }
+    }
+}
+#endif

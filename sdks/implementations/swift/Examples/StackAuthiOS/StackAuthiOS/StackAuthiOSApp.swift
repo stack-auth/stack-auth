@@ -1259,6 +1259,27 @@ struct OAuthView: View {
     
     var body: some View {
         Form {
+            Section("Sign In with Apple (Native)") {
+                Button {
+                    Task { await signInWithApple() }
+                } label: {
+                    HStack {
+                        Image(systemName: "apple.logo")
+                        Text("Sign In with Apple")
+                        if isSigningIn && provider == "apple" {
+                            Spacer()
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                    }
+                }
+                .disabled(isSigningIn)
+                
+                Text("Uses native ASAuthorizationController (Face ID/Touch ID)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
             Section("Sign In with OAuth") {
                 TextField("Provider", text: $provider)
                     .textInputAutocapitalization(.never)
@@ -1291,6 +1312,35 @@ struct OAuthView: View {
             }
         }
         .navigationTitle("OAuth")
+    }
+    
+    func signInWithApple() async {
+        viewModel.logInfo("signInWithOAuth(apple)", message: "Opening native Apple Sign In...")
+        isSigningIn = true
+        
+        do {
+            try await viewModel.clientApp.signInWithOAuth(
+                provider: "apple",
+                presentationContextProvider: presentationProvider
+            )
+            viewModel.logCall(
+                "signInWithOAuth(provider: \"apple\")",
+                params: "provider: \"apple\" (native flow)",
+                result: "Success! User signed in via Apple."
+            )
+            // Fetch user to show details
+            if let user = try await viewModel.clientApp.getUser() {
+                let dict = await serializeCurrentUser(user)
+                viewModel.logCall(
+                    "getUser() after Apple Sign In",
+                    result: formatObject("CurrentUser", dict)
+                )
+            }
+        } catch {
+            viewModel.logCall("signInWithOAuth(provider: \"apple\")", params: "provider: \"apple\"", error: error)
+        }
+        
+        isSigningIn = false
     }
     
     func signInWithOAuth() async {

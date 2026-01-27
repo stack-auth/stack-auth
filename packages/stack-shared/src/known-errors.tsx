@@ -1320,6 +1320,20 @@ const InvalidAuthorizationCode = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const InvalidIdToken = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_ID_TOKEN",
+  (provider: string, reason?: string) => [
+    400,
+    `The identity token from ${provider} is invalid.${reason ? ` Reason: ${reason}` : ""}`,
+    {
+      provider,
+      reason: reason ?? null,
+    },
+  ] as const,
+  (json: any) => [json.provider, json.reason ?? undefined] as const,
+);
+
 const OAuthProviderAccessDenied = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_ACCESS_DENIED",
@@ -1803,6 +1817,7 @@ export const KnownErrors = {
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,
+  InvalidIdToken,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,

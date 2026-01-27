@@ -3,12 +3,12 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E01234560001 /* StackAuthiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01234560002; };
-		E01234560003 /* StackAuth in Frameworks */ = {isa = PBXBuildFile; productRef = E01234560004; };
+		E01234560001 /* StackAuthiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01234560002 /* StackAuthiOSApp.swift */; };
+		E01234560003 /* StackAuth in Frameworks */ = {isa = PBXBuildFile; productRef = E01234560004 /* StackAuth */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,7 +67,7 @@
 /* Begin PBXNativeTarget section */
 		E0123456000C /* StackAuthiOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E0123456000D;
+			buildConfigurationList = E0123456000D /* Build configuration list for PBXNativeTarget "StackAuthiOS" */;
 			buildPhases = (
 				E0123456000E /* Sources */,
 				E01234560007 /* Frameworks */,
@@ -99,7 +99,7 @@
 					};
 				};
 			};
-			buildConfigurationList = E01234560010;
+			buildConfigurationList = E01234560010 /* Build configuration list for PBXProject "StackAuthiOS" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -331,7 +331,7 @@
 /* Begin XCLocalSwiftPackageReference section */
 		E01234560011 /* XCLocalSwiftPackageReference "../.." */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../..";
+			relativePath = ../..;
 		};
 /* End XCLocalSwiftPackageReference section */
 

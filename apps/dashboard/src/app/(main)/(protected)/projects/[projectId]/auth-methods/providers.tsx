@@ -2,12 +2,12 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { Link } from "@/components/link";
+import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@/components/ui";
 import clsx from "clsx";
 import { useState } from "react";
 import * as yup from "yup";
@@ -63,6 +63,7 @@ export const providerFormSchema = yupObject({
     }),
   facebookConfigId: yupString().optional(),
   microsoftTenantId: yupString().optional(),
+  appleBundleId: yupString().optional(),
 });
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
@@ -75,6 +76,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
+    appleBundleId: (props.provider as any)?.appleBundleId ?? "",
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
@@ -88,6 +90,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
+        appleBundleId: values.appleBundleId,
       });
     }
   };
@@ -165,6 +168,20 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                   label="Tenant ID (required if you are using the organizational directory)"
                   placeholder="Tenant ID"
                 />
+              )}
+
+              {props.id === 'apple' && (
+                <>
+                  <InputField
+                    control={form.control}
+                    name="appleBundleId"
+                    label="Bundle ID (for native iOS/macOS apps)"
+                    placeholder="com.example.myapp"
+                  />
+                  <Typography variant="secondary" type="footnote">
+                    The Bundle ID is required for native Sign In with Apple on iOS/macOS apps. The Client ID above (Services ID) is used for web OAuth.
+                  </Typography>
+                </>
               )}
             </>
           )}

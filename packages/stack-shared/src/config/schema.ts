@@ -255,6 +255,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          appleBundleId: schemaFields.oauthAppleBundleIdSchema.optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),

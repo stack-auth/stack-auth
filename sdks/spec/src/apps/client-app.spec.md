@@ -76,9 +76,14 @@ Implementation:
 
 4. Open the authorization URL:
    - Browser: window.location.assign(authorization_url)
-   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stack-auth"
+   - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stack-auth-mobile-oauth-url"
    - Android: Custom Tabs with callback URL registered as deep link
    - Desktop: Open system browser with registered URL scheme for callback
+
+   [APPLE-ONLY] Special case for Apple provider:
+   When provider is "apple" on Apple platforms, use native Sign In with Apple
+   (ASAuthorizationController) instead of ASWebAuthenticationSession. See
+   "Native Apple Sign In" section below.
 
 5. Handle callback:
    - Browser: Never returns; user lands on callback page which calls callOAuthCallback()
@@ -112,6 +117,46 @@ Call callOAuthCallback() on the callback page/handler to complete the flow.
 Error handling:
   - User cancellation: StackAuthError(code: "oauth_cancelled", message: "User cancelled OAuth")
   - Other errors: OAuthError(code: "oauth_error", message: <platform error description>)
+
+
+### Native Apple Sign In [APPLE-ONLY]
+
+When the provider is "apple" on Apple platforms (iOS, macOS, tvOS, watchOS, visionOS),
+implementations SHOULD use the native Sign In with Apple flow instead of the web-based
+OAuth flow. This provides a better user experience with Face ID/Touch ID integration
+and follows Apple's guidelines.
+
+Native Apple Sign In flow:
+1. Create an ASAuthorizationAppleIDRequest via ASAuthorizationAppleIDProvider
+2. Request scopes: [.fullName, .email]
+3. Present via ASAuthorizationController
+4. On success, receive:
+   - identityToken: JWT signed by Apple containing user info
+   - authorizationCode: Can be used for token refresh  
+   - user: Contains name/email (only on first authorization)
+5. Send identityToken to backend endpoint:
+   POST /api/v1/auth/oauth/callback/apple/native
+   Headers: x-stack-project-id, x-stack-publishable-client-key, x-stack-access-type: client
+   Body: { id_token: string }
+6. Backend verifies JWT against Apple's public keys (audience = Bundle ID), extracts user info
+7. Backend returns: { access_token, refresh_token, user_id, is_new_user }
+8. Store tokens and complete sign-in
+
+Configuration requirements:
+- The project must have the Apple OAuth provider enabled in the Stack Auth dashboard
+- For native apps, the "Bundle ID" field must be configured (this is your app's Bundle Identifier)
+- Note: The "Client ID" field in the dashboard is for web OAuth (Services ID), not native apps
+
+Implementation notes:
+- The identityToken is a JWT that can be verified using Apple's JWKS (https://appleid.apple.com/auth/keys)
+- The JWT's audience claim must match the configured Bundle ID
+- User's name and email are only provided on the FIRST authorization; cache if needed
+- The native flow does NOT use redirect URLs - tokens are returned directly
+- Face ID/Touch ID authentication is handled automatically by the system dialog
+
+Error handling:
+  - User cancellation: ASAuthorizationError.canceled → StackAuthError(code: "oauth_cancelled")
+  - Other errors: Map ASAuthorizationError to appropriate StackAuthError
 
 
 ## getOAuthUrl(provider, redirectUrl, errorRedirectUrl, options?)
