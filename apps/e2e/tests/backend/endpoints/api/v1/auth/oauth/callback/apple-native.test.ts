@@ -71,7 +71,7 @@ describe("Native Apple Sign In", () => {
           type: "standard",
           client_id: "com.example.web.service",
           client_secret: "test-secret",
-          apple_bundle_ids: "com.example.ios.app",
+          apple_bundle_ids: ["com.example.ios.app"],
         }],
       }
     });
@@ -98,7 +98,7 @@ describe("Native Apple Sign In", () => {
           type: "standard",
           client_id: "com.example.web.service",
           client_secret: "test-secret",
-          apple_bundle_ids: "com.example.ios.app",
+          apple_bundle_ids: ["com.example.ios.app"],
         }],
       }
     });

@@ -1,6 +1,6 @@
 "use client";
 import { FormDialog } from "@/components/form-dialog";
-import { InputField, SwitchField } from "@/components/form-fields";
+import { InputField, SwitchField, TextAreaField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
@@ -70,16 +70,25 @@ export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
   const hasSharedKeys = sharedProviders.includes(props.id as any);
+  // Convert array to newlines for display
+  const bundleIdsArray = (props.provider as any)?.appleBundleIds ?? [];
+  const bundleIdsDisplay = Array.isArray(bundleIdsArray) ? bundleIdsArray.join('\n') : "";
+
   const defaultValues = {
     shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
-    appleBundleIds: (props.provider as any)?.appleBundleIds ?? "",
+    appleBundleIds: bundleIdsDisplay,
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
+    // Convert newlines to array for storage
+    const bundleIdsToStore = values.appleBundleIds
+      ? values.appleBundleIds.split('\n').map(s => s.trim()).filter(Boolean)
+      : [];
+
     if (values.shared) {
       await props.updateProvider({ id: props.id, type: 'shared' });
     } else {
@@ -90,7 +99,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
-        appleBundleIds: values.appleBundleIds || "",
+        appleBundleIds: bundleIdsToStore,
       });
     }
   };
@@ -171,18 +180,14 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               )}
 
               {props.id === 'apple' && (
-                <>
-                  <InputField
-                    control={form.control}
-                    name="appleBundleIds"
-                    label="Bundle IDs"
-                    placeholder="com.example.ios,com.example.macos"
-                    required
-                  />
-                  <Typography variant="secondary" type="footnote">
-                    Comma-separated list of Bundle IDs. Without it, native sign-in with Apple may not function correctly.
-                  </Typography>
-                </>
+                <TextAreaField
+                  control={form.control}
+                  name="appleBundleIds"
+                  label="Bundle IDs (for native iOS/macOS apps)"
+                  placeholder={"com.example.ios\ncom.example.macos"}
+                  rows={3}
+                  helperText="One Bundle ID per line. Required for native Sign In with Apple. The Client ID above (Services ID) is used for web OAuth."
+                />
               )}
             </>
           )}
