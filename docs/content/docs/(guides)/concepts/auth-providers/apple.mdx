@@ -48,14 +48,15 @@ You will need to create an Apple Developer account, and generate an Apple Servic
   <Step>
   ### Generate Your Client Secret
   
-  1. Navigate to the [Supabase Apple Secret Generator](https://supabase.com/docs/guides/auth/social-login/auth-apple#generating-a-client_secret) page.
-  2. Fill in the required fields:
-     - **Account ID**: Your Apple Developer account ID found at the top-right of the portal
-     - **Service ID**: The identifier of your Service ID (found in Identifiers > Service IDs)
-     - **Key ID**: The ID of the private key you just created
-     - **Choose File**: Upload the .p8 private key file you downloaded
-  3. Click **Generate Secret Key**.
-  4. Copy the generated secret immediately - you'll need it for the next step.
+  Use the tool below to generate your Apple Client Secret. You'll need:
+  - **Team ID**: Your Apple Developer account ID found at the top-right of the portal
+  - **Service ID**: The identifier of your Service ID (found in Identifiers > Service IDs)
+  - **Key ID**: The ID of the private key you just created
+  - **Private Key File**: Upload the .p8 private key file you downloaded
+  
+  <AppleSecretGenerator />
+  
+  Copy the generated secret immediately - you'll need it for the next step.
   </Step>
   <Step>
   ### Enable Apple OAuth in Stack Auth
