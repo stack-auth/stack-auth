@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { Payments, Project, User, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Payments, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 function createDefaultPaymentsConfig(testMode: boolean | undefined) {
   return {
@@ -60,7 +60,7 @@ async function createPurchaseCode(options: { userId: string, productId: string }
 }
 
 async function createTestModeTransaction(productId: string, priceId: string) {
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const code = await createPurchaseCode({ userId, productId });
   const response = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
     accessType: "admin",
@@ -79,7 +79,7 @@ async function createTestModeTransaction(productId: string, priceId: string) {
 
 async function createLiveModeOneTimePurchaseTransaction(options: { quantity?: number } = {}) {
   const config = await setupProjectWithPaymentsConfig({ testMode: false });
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const quantity = options.quantity ?? 1;
 
   const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {

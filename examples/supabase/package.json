@@ -14,7 +14,7 @@
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "jose": "^5.2.2",
-    "next": "^14.2.34",
+    "next": "^14.2.35",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },
