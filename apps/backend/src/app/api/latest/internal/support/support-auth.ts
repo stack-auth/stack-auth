@@ -15,7 +15,7 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
  *
  * Can be configured via STACK_INTERNAL_SUPPORT_TEAM_ID environment variable.
  */
-export const SUPPORT_TEAM_ID = getEnvVariable("STACK_INTERNAL_SUPPORT_TEAM_ID");
+export const SUPPORT_TEAM_ID = getEnvVariable("STACK_INTERNAL_SUPPORT_TEAM_ID", "");
 
 /**
  * Schema for support API authentication.
