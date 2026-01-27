@@ -141,7 +141,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               <InputField
                 control={form.control}
                 name="clientId"
-                label="Client ID"
+                label={props.id === 'apple' ? "Service ID (Client ID)" : "Client ID"}
                 placeholder="Client ID"
                 required
               />
@@ -149,7 +149,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               <InputField
                 control={form.control}
                 name="clientSecret"
-                label="Client Secret"
+                label={props.id === 'apple' ? "Client Secret" : "Client Secret"}
                 placeholder="Client Secret"
                 required
               />
@@ -176,9 +176,9 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                 <ChipsInputField
                   control={form.control}
                   name="appleBundleIds"
-                  label="Bundle IDs (for native iOS/macOS apps)"
-                  placeholder="com.example.ios"
-                  helperText="Press Enter or comma to add. Required for native Sign In with Apple. The Client ID above (Services ID) is used for web OAuth."
+                  label="Bundle IDs"
+                  placeholder="com.example.myiosapp"
+                  helperText="Optional bundle IDs of the native iOS or macOS apps that use Sign in with Apple. These are required for native/mobile Sign in with Apple to work. Press Enter or comma to add multiple."
                 />
               )}
             </>
