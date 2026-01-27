@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { FlaskIcon } from "@phosphor-icons/react";
 import { useAdminApp } from "../../use-admin-app";
@@ -9,9 +10,14 @@ export function TestModeToggle() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const paymentsConfig = project.useConfig().payments;
+  const updateConfig = useUpdateConfig();
 
   const handleToggle = async (enabled: boolean) => {
-    await project.updateConfig({ "payments.testMode": enabled });
+    await updateConfig({
+      adminApp,
+      configUpdate: { "payments.testMode": enabled },
+      pushable: false,
+    });
   };
 
   return (

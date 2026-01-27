@@ -1,6 +1,7 @@
 import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
 import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
+import { useUpdateConfig } from "@/lib/config-update";
 import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { appSquarePaddingExpression, appSquareWidthExpression, AppIcon as SharedAppIcon } from "@stackframe/stack-shared/dist/apps/apps-ui";
@@ -55,6 +56,7 @@ export function AppSquare({
   const adminApp = useAdminApp()!;
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
 
   const isEnabled = config.apps.installed[appId]?.enabled ?? false;
   const appDetailsPath = `/projects/${projectId}/apps/${appId}`;
@@ -71,8 +73,10 @@ export function AppSquare({
   };
 
   const performToggle = async () => {
-    await project.updateConfig({
-      [`apps.installed.${appId}.enabled`]: !isEnabled,
+    await updateConfig({
+      adminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: !isEnabled },
+      pushable: true,
     });
     onToggleEnabled?.(!isEnabled);
   };

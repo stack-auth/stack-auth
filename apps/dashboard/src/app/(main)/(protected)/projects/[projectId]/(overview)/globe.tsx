@@ -485,21 +485,22 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
 
                       if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
 
-                      // Base color for all countries - theme-aware
+                      // Base color for countries with no users - theme-aware
                       if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
-                      // Dark mode: light slate, Light mode: darker slate for visibility
+                        // Dark mode: light slate, Light mode: darker slate for visibility
                         return theme === 'dark' ? "#7d93bc" : "#64748b";
                       }
 
                       const scaled = value / maxColorValue;
                       if (theme === 'dark') {
-                      // Dark mode: vibrant teal/emerald that pops against slate
-                      // Goes from teal-400 to emerald-300 as scaled increases
-                        return `hsl(${168 - 8 * scaled}, ${70 + 15 * scaled}%, ${55 + 20 * scaled}%)`;
+                        // Dark mode: gradient from cyan (low) to bright green (high)
+                        // Hue goes from 190 (cyan) to 140 (green) - 50 degree range for visibility
+                        // Saturation and lightness also increase for more vibrancy at high values
+                        return `hsl(${190 - 50 * scaled}, ${60 + 30 * scaled}%, ${50 + 25 * scaled}%)`;
                       } else {
-                      // Light mode: rich teal/emerald that stands out against slate
-                      // Goes from teal-600 to emerald-500 as scaled increases
-                        return `hsl(${168 - 8 * scaled}, ${70 + 20 * scaled}%, ${35 + 10 * scaled}%)`;
+                        // Light mode: gradient from teal (low) to vibrant green (high)
+                        // Hue goes from 190 (teal) to 140 (green) - matching dark mode range
+                        return `hsl(${190 - 50 * scaled}, ${50 + 40 * scaled}%, ${35 + 15 * scaled}%)`;
                       }
                     }}
                     onHexPolygonHover={(d: any) => {
