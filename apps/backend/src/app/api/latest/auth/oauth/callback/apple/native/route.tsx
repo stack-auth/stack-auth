@@ -76,12 +76,13 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
 
-    // Get Apple Bundle IDs from provider config (stored as Record)
+    // Get Apple Bundle IDs from provider config (stored as Record<id, { bundleId: string }>)
     // For native Apple Sign In, we need the app's Bundle ID(s) (not the web Services ID)
-    if (!appleProvider.appleBundleIds) {
+    if (!appleProvider.appleBundles) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();
     }
-    const appleBundleIds = Object.keys(appleProvider.appleBundleIds);
+    const appleBundleIds = Object.values(appleProvider.appleBundles)
+      .flatMap(b => b?.bundleId ? [b.bundleId] : []);
 
     if (appleBundleIds.length === 0) {
       throw new KnownErrors.OAuthProviderNotFoundOrNotEnabled();

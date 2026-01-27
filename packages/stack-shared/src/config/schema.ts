@@ -253,7 +253,12 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
-          appleBundleIds: yupRecord(userSpecifiedIdSchema("appleBundleId"), yupBoolean().isTrue()).optional(),
+          appleBundles: yupRecord(
+            userSpecifiedIdSchema("appleBundleId"),
+            yupObject({
+              bundleId: schemaFields.oauthAppleBundleIdSchema,
+            }),
+          ).optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),
@@ -554,7 +559,7 @@ const organizationConfigDefaults = {
         clientSecret: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
-        appleBundleIds: undefined,
+        appleBundles: undefined,
       }),
     },
   },
