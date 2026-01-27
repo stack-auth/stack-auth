@@ -1233,20 +1233,6 @@ class MacOSPresentationContextProvider: NSObject, ASWebAuthenticationPresentatio
     }
 }
 
-// MARK: - Mock Credential Provider for Testing
-
-class MockAppleCredentialProviderForTesting: AppleCredentialProvider, @unchecked Sendable {
-    let mockToken: String
-    
-    init(mockToken: String) {
-        self.mockToken = mockToken
-    }
-    
-    func getCredential() async throws -> AppleSignInCredential {
-        return AppleSignInCredential(identityToken: mockToken, authorizationCode: nil)
-    }
-}
-
 // MARK: - OAuth View
 
 struct OAuthView: View {
@@ -1255,7 +1241,6 @@ struct OAuthView: View {
     @State private var redirectUrl = "stack-auth-mobile-oauth-url://success"
     @State private var errorRedirectUrl = "stack-auth-mobile-oauth-url://error"
     @State private var isSigningIn = false
-    @State private var mockToken = "fake.identity.token"
     private let presentationProvider = MacOSPresentationContextProvider()
     
     var body: some View {
@@ -1274,25 +1259,6 @@ struct OAuthView: View {
                 Text("Uses native ASAuthorizationController (Face ID/Touch ID)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-            
-            Section("Sign In with Apple (MOCK - for testing)") {
-                TextField("Mock Identity Token", text: $mockToken)
-                    .font(.system(.body, design: .monospaced))
-                
-                Button {
-                    Task { await signInWithAppleMock() }
-                } label: {
-                    HStack {
-                        Image(systemName: "testtube.2")
-                        Text("Test with Mock Token")
-                    }
-                }
-                .disabled(isSigningIn)
-                
-                Text("Bypasses ASAuthorizationController - sends mock token directly to backend")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
             }
             
             Section("Sign In with OAuth") {
@@ -1353,39 +1319,6 @@ struct OAuthView: View {
             }
         } catch {
             viewModel.logCall("signInWithOAuth(provider: \"apple\")", params: "provider: \"apple\"", error: error)
-        }
-        
-        isSigningIn = false
-    }
-    
-    func signInWithAppleMock() async {
-        let params = "provider: \"apple\"\nmockToken: \"\(mockToken)\""
-        viewModel.logInfo("signInWithOAuth(apple, mock)", message: "Testing with mock token...", details: params)
-        isSigningIn = true
-        
-        let mockProvider = MockAppleCredentialProviderForTesting(mockToken: mockToken)
-        
-        do {
-            try await viewModel.clientApp.signInWithOAuth(
-                provider: "apple",
-                presentationContextProvider: presentationProvider,
-                appleCredentialProvider: mockProvider
-            )
-            viewModel.logCall(
-                "signInWithOAuth(provider: \"apple\", mock)",
-                params: params,
-                result: "Success! User signed in via Apple (mock)."
-            )
-            // Fetch user to show details
-            if let user = try await viewModel.clientApp.getUser() {
-                let dict = await serializeCurrentUser(user)
-                viewModel.logCall(
-                    "getUser() after Apple Sign In (mock)",
-                    result: formatObject("CurrentUser", dict)
-                )
-            }
-        } catch {
-            viewModel.logCall("signInWithOAuth(provider: \"apple\", mock)", params: params, error: error)
         }
         
         isSigningIn = false
