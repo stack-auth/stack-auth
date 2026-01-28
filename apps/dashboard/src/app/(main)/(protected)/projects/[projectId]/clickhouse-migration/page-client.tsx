@@ -60,7 +60,7 @@ export default function PageClient() {
   }, []);
 
   const buildRequestBody = React.useCallback(() => {
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(1000, limit) : 1000;
+    const safeLimit = limit;
     const minCreatedAtMillis = timeWindowRef.current?.minCreatedAtMillis ?? parseCreatedAtMillis(minCreatedAt);
     const maxCreatedAtMillis = timeWindowRef.current?.maxCreatedAtMillis ?? parseCreatedAtMillis(maxCreatedAt);
     if (minCreatedAtMillis === null || maxCreatedAtMillis === null) {
