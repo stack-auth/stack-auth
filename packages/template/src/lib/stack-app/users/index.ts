@@ -307,11 +307,11 @@ export type ServerBaseUser = {
   setServerMetadata(metadata: any): Promise<void>,
   setClientReadOnlyMetadata(metadata: any): Promise<void>,
 
-  /** Whether the user is restricted by an administrator. Can be set manually or by signup rules. */
+  /** Whether the user is restricted by an administrator. Can be set manually or by sign-up rules. */
   readonly restrictedByAdmin: boolean,
   /** Public reason shown to the user explaining why they are restricted. Optional. */
   readonly restrictedByAdminReason: string | null,
-  /** Private details about the restriction (e.g., which signup rule triggered). Only visible to server access and above. */
+  /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
   readonly restrictedByAdminPrivateDetails: string | null,
 
   createTeam(data: Omit<ServerTeamCreateOptions, "creatorUserId">): Promise<ServerTeam>,

@@ -3,7 +3,7 @@ import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
-describe("signup rules", () => {
+describe("sign-up rules", () => {
   // ==========================================
   // BASIC RULE BEHAVIOR
   // ==========================================
@@ -27,7 +27,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-specific': {
+      'auth.signUpRules.block-specific': {
         enabled: true,
         displayName: 'Block specific email',
         priority: 0,
@@ -37,7 +37,7 @@ describe("signup rules", () => {
           message: 'This email is blocked',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Sign up with a different email should work
@@ -53,7 +53,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-rule': {
+      'auth.signUpRules.block-rule': {
         enabled: true,
         displayName: 'Block test emails',
         priority: 0,
@@ -63,7 +63,7 @@ describe("signup rules", () => {
           message: 'Sign-ups from this email are not allowed',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const blockedEmail = `blocked-${generateSecureRandomString(8)}@example.com`;
@@ -94,7 +94,7 @@ describe("signup rules", () => {
     const customMessage = "Custom rejection: This domain is not allowed";
 
     await Project.updateConfig({
-      'auth.signupRules.custom-message-rule': {
+      'auth.signUpRules.custom-message-rule': {
         enabled: true,
         displayName: 'Block with custom message',
         priority: 0,
@@ -104,7 +104,7 @@ describe("signup rules", () => {
           message: customMessage,
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
@@ -135,7 +135,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const res = await Auth.Password.signUpWithEmail();
@@ -150,7 +150,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRulesDefaultAction': 'reject',
+      'auth.signUpRulesDefaultAction': 'reject',
     });
 
     const email = `test-${generateSecureRandomString(8)}@example.com`;
@@ -179,7 +179,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.allow-company': {
+      'auth.signUpRules.allow-company': {
         enabled: true,
         displayName: 'Allow company emails',
         priority: 0,
@@ -188,7 +188,7 @@ describe("signup rules", () => {
           type: 'allow',
         },
       },
-      'auth.signupRulesDefaultAction': 'reject',
+      'auth.signUpRulesDefaultAction': 'reject',
     });
 
     // Allowed domain should work
@@ -227,7 +227,7 @@ describe("signup rules", () => {
 
     // Priority 0 rejects, priority 1 allows - reject should win
     await Project.updateConfig({
-      'auth.signupRules.allow-rule': {
+      'auth.signUpRules.allow-rule': {
         enabled: true,
         displayName: 'Allow all',
         priority: 1,
@@ -236,7 +236,7 @@ describe("signup rules", () => {
           type: 'allow',
         },
       },
-      'auth.signupRules.reject-rule': {
+      'auth.signUpRules.reject-rule': {
         enabled: true,
         displayName: 'Reject all',
         priority: 0,
@@ -246,7 +246,7 @@ describe("signup rules", () => {
           message: 'All signups rejected',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
@@ -270,7 +270,7 @@ describe("signup rules", () => {
 
     // Both have priority 0, "aaa-rule" should be evaluated before "zzz-rule"
     await Project.updateConfig({
-      'auth.signupRules.zzz-rule': {
+      'auth.signUpRules.zzz-rule': {
         enabled: true,
         displayName: 'Allow (evaluated second)',
         priority: 0,
@@ -279,7 +279,7 @@ describe("signup rules", () => {
           type: 'allow',
         },
       },
-      'auth.signupRules.aaa-rule': {
+      'auth.signUpRules.aaa-rule': {
         enabled: true,
         displayName: 'Reject (evaluated first)',
         priority: 0,
@@ -289,7 +289,7 @@ describe("signup rules", () => {
           message: 'First rule matched',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
@@ -313,7 +313,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.first-allow': {
+      'auth.signUpRules.first-allow': {
         enabled: true,
         displayName: 'Allow specific domain',
         priority: 0,
@@ -322,7 +322,7 @@ describe("signup rules", () => {
           type: 'allow',
         },
       },
-      'auth.signupRules.second-reject': {
+      'auth.signUpRules.second-reject': {
         enabled: true,
         displayName: 'Reject all',
         priority: 1,
@@ -332,7 +332,7 @@ describe("signup rules", () => {
           message: 'Should not reach here for special.com',
         },
       },
-      'auth.signupRulesDefaultAction': 'reject',
+      'auth.signUpRulesDefaultAction': 'reject',
     });
 
     // special.com should be allowed by first rule
@@ -370,7 +370,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.disabled-reject-rule': {
+      'auth.signUpRules.disabled-reject-rule': {
         enabled: false,
         displayName: 'Reject all (disabled)',
         priority: 0,
@@ -380,7 +380,7 @@ describe("signup rules", () => {
           message: 'Should not see this',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const res = await Auth.Password.signUpWithEmail();
@@ -395,7 +395,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.disabled-allow': {
+      'auth.signUpRules.disabled-allow': {
         enabled: false,
         displayName: 'Allow all (disabled)',
         priority: 0,
@@ -404,7 +404,7 @@ describe("signup rules", () => {
           type: 'allow',
         },
       },
-      'auth.signupRules.enabled-reject': {
+      'auth.signUpRules.enabled-reject': {
         enabled: true,
         displayName: 'Reject all (enabled)',
         priority: 1,
@@ -414,7 +414,7 @@ describe("signup rules", () => {
           message: 'Enabled rule matched',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
@@ -441,7 +441,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-spam': {
+      'auth.signUpRules.block-spam': {
         enabled: true,
         displayName: 'Block spam emails',
         priority: 0,
@@ -451,7 +451,7 @@ describe("signup rules", () => {
           message: 'Spam detected',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email containing "spam" should be rejected
@@ -485,7 +485,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-test-prefix': {
+      'auth.signUpRules.block-test-prefix': {
         enabled: true,
         displayName: 'Block test prefix',
         priority: 0,
@@ -494,7 +494,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email starting with "test-blocked" should be rejected
@@ -528,7 +528,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-suffix': {
+      'auth.signUpRules.block-suffix': {
         enabled: true,
         displayName: 'Block disposable suffix',
         priority: 0,
@@ -537,7 +537,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email ending with @tempmail.com should be rejected
@@ -571,7 +571,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-numeric': {
+      'auth.signUpRules.block-numeric': {
         enabled: true,
         displayName: 'Block numeric-only usernames',
         priority: 0,
@@ -581,7 +581,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email with numeric-only local part should be rejected
@@ -619,7 +619,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.domain-block': {
+      'auth.signUpRules.domain-block': {
         enabled: true,
         displayName: 'Block specific domain',
         priority: 0,
@@ -628,7 +628,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Blocked domain should be rejected
@@ -662,7 +662,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-disposable': {
+      'auth.signUpRules.block-disposable': {
         enabled: true,
         displayName: 'Block disposable emails',
         priority: 0,
@@ -672,7 +672,7 @@ describe("signup rules", () => {
           message: 'Disposable emails not allowed',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // All listed domains should be rejected
@@ -713,7 +713,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.password-only': {
+      'auth.signUpRules.password-only': {
         enabled: true,
         displayName: 'Allow only password signups',
         priority: 0,
@@ -723,7 +723,7 @@ describe("signup rules", () => {
           message: 'Only password authentication is allowed',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Password signup should work
@@ -740,7 +740,7 @@ describe("signup rules", () => {
 
     // Allow only password and otp methods
     await Project.updateConfig({
-      'auth.signupRules.restrict-methods': {
+      'auth.signUpRules.restrict-methods': {
         enabled: true,
         displayName: 'Restrict to password and OTP',
         priority: 0,
@@ -750,7 +750,7 @@ describe("signup rules", () => {
           message: 'Auth method not allowed',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Password signup should work
@@ -770,7 +770,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.complex-rule': {
+      'auth.signUpRules.complex-rule': {
         enabled: true,
         displayName: 'Block test users from specific domain',
         priority: 0,
@@ -779,7 +779,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // test@example.com should be rejected (both conditions match)
@@ -824,7 +824,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.or-rule': {
+      'auth.signUpRules.or-rule': {
         enabled: true,
         displayName: 'Block spam or bot patterns',
         priority: 0,
@@ -833,7 +833,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email with "spam" should be rejected
@@ -879,7 +879,7 @@ describe("signup rules", () => {
 
     // Block if: (contains "test" OR contains "demo") AND domain is example.com
     await Project.updateConfig({
-      'auth.signupRules.nested-rule': {
+      'auth.signUpRules.nested-rule': {
         enabled: true,
         displayName: 'Nested condition',
         priority: 0,
@@ -888,7 +888,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // test@example.com should be rejected
@@ -949,7 +949,7 @@ describe("signup rules", () => {
     // Rule: block emails containing "bad+char" but allow emails containing "bad-char"
     // If the collision bug exists, both would evaluate to the same result
     await Project.updateConfig({
-      'auth.signupRules.collision-test': {
+      'auth.signUpRules.collision-test': {
         enabled: true,
         displayName: 'Test collision handling',
         priority: 0,
@@ -958,7 +958,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email with "bad+char" but not "bad-char" should be rejected
@@ -1019,7 +1019,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.allow-specific': {
+      'auth.signUpRules.allow-specific': {
         enabled: true,
         displayName: 'Allow specific pattern',
         priority: 0,
@@ -1028,7 +1028,7 @@ describe("signup rules", () => {
           type: 'allow',
         },
       },
-      'auth.signupRulesDefaultAction': 'reject',
+      'auth.signUpRulesDefaultAction': 'reject',
     });
 
     // VIP email should be allowed
@@ -1062,7 +1062,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.log-suspicious': {
+      'auth.signUpRules.log-suspicious': {
         enabled: true,
         displayName: 'Log suspicious patterns',
         priority: 0,
@@ -1071,7 +1071,7 @@ describe("signup rules", () => {
           type: 'log',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Suspicious email should still be allowed (log doesn't block)
@@ -1099,7 +1099,7 @@ describe("signup rules", () => {
 
     // Set default to reject - this would block normal signups
     await Project.updateConfig({
-      'auth.signupRulesDefaultAction': 'reject',
+      'auth.signUpRulesDefaultAction': 'reject',
     });
 
     // Anonymous signup should still work (rules don't apply)
@@ -1122,7 +1122,7 @@ describe("signup rules", () => {
 
     // Create rule that blocks certain emails
     await Project.updateConfig({
-      'auth.signupRules.block-conversion': {
+      'auth.signUpRules.block-conversion': {
         enabled: true,
         displayName: 'Block blocked email conversion',
         priority: 0,
@@ -1132,7 +1132,7 @@ describe("signup rules", () => {
           message: 'Cannot convert with this email',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // First create anonymous user
@@ -1172,7 +1172,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-blocked': {
+      'auth.signUpRules.block-blocked': {
         enabled: true,
         displayName: 'Block blocked emails',
         priority: 0,
@@ -1181,7 +1181,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // First create anonymous user
@@ -1222,7 +1222,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-all': {
+      'auth.signUpRules.block-all': {
         enabled: true,
         displayName: 'Block all signups',
         priority: 0,
@@ -1232,7 +1232,7 @@ describe("signup rules", () => {
           message: 'All signups are currently disabled',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
@@ -1255,7 +1255,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.never-match': {
+      'auth.signUpRules.never-match': {
         enabled: true,
         displayName: 'Never matches',
         priority: 0,
@@ -1264,7 +1264,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Should be allowed since rule never matches
@@ -1280,7 +1280,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-spam-domain': {
+      'auth.signUpRules.block-spam-domain': {
         enabled: true,
         displayName: 'Block spam domains',
         priority: 0,
@@ -1290,7 +1290,7 @@ describe("signup rules", () => {
           message: 'Spam domain blocked',
         },
       },
-      'auth.signupRules.block-bot-pattern': {
+      'auth.signUpRules.block-bot-pattern': {
         enabled: true,
         displayName: 'Block bot patterns',
         priority: 1,
@@ -1300,7 +1300,7 @@ describe("signup rules", () => {
           message: 'Bot pattern blocked',
         },
       },
-      'auth.signupRules.block-numeric': {
+      'auth.signUpRules.block-numeric': {
         enabled: true,
         displayName: 'Block numeric emails',
         priority: 2,
@@ -1310,7 +1310,7 @@ describe("signup rules", () => {
           message: 'Numeric email blocked',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Test spam domain
@@ -1366,7 +1366,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.require-email': {
+      'auth.signUpRules.require-email': {
         enabled: true,
         displayName: 'Check email exists',
         priority: 0,
@@ -1376,7 +1376,7 @@ describe("signup rules", () => {
           message: 'Email is required',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Empty email should be handled (rejected for other reasons by the API)
@@ -1401,7 +1401,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-plus': {
+      'auth.signUpRules.block-plus': {
         enabled: true,
         displayName: 'Block plus addressing',
         priority: 0,
@@ -1411,7 +1411,7 @@ describe("signup rules", () => {
           message: 'Plus addressing not allowed',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Email with + should be rejected
@@ -1445,7 +1445,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.block-admin': {
+      'auth.signUpRules.block-admin': {
         enabled: true,
         displayName: 'Block admin pattern',
         priority: 0,
@@ -1455,7 +1455,7 @@ describe("signup rules", () => {
           type: 'reject',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Lowercase "admin" should be blocked
@@ -1496,7 +1496,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.restrict-test-domain': {
+      'auth.signUpRules.restrict-test-domain': {
         enabled: true,
         displayName: 'Restrict test domain users',
         priority: 0,
@@ -1505,7 +1505,7 @@ describe("signup rules", () => {
           type: 'restrict',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const email = `user-${generateSecureRandomString(8)}@restricted-test.com`;
@@ -1531,7 +1531,7 @@ describe("signup rules", () => {
     expect(userResponse.body.restricted_by_admin).toBe(true);
     // Signup rules set private_details (internal), not reason (public)
     expect(userResponse.body.restricted_by_admin_reason).toBe(null);
-    expect(userResponse.body.restricted_by_admin_private_details).toContain("signup rule");
+    expect(userResponse.body.restricted_by_admin_private_details).toContain("sign-up rule");
     expect(userResponse.body.is_restricted).toBe(true);
     expect(userResponse.body.restricted_reason).toEqual({ type: "restricted_by_administrator" });
   });
@@ -1544,7 +1544,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.restrict-bad-domain': {
+      'auth.signUpRules.restrict-bad-domain': {
         enabled: true,
         displayName: 'Restrict bad domain',
         priority: 0,
@@ -1553,7 +1553,7 @@ describe("signup rules", () => {
           type: 'restrict',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // Sign up with a different domain
@@ -1596,7 +1596,7 @@ describe("signup rules", () => {
     // Enable email verification requirement
     await Project.updateConfig({
       'onboarding.requireEmailVerification': true,
-      'auth.signupRules.restrict-suspicious': {
+      'auth.signUpRules.restrict-suspicious': {
         enabled: true,
         displayName: 'Restrict suspicious domain',
         priority: 0,
@@ -1605,7 +1605,7 @@ describe("signup rules", () => {
           type: 'restrict',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const email = `user-${generateSecureRandomString(8)}@suspicious-test.com`;
@@ -1643,7 +1643,7 @@ describe("signup rules", () => {
     // Enable email verification requirement and add restrict rule
     await Project.updateConfig({
       'onboarding.requireEmailVerification': true,
-      'auth.signupRules.restrict-flagged': {
+      'auth.signUpRules.restrict-flagged': {
         enabled: true,
         displayName: 'Restrict flagged domain',
         priority: 0,
@@ -1652,20 +1652,20 @@ describe("signup rules", () => {
           type: 'restrict',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const email = `user-${generateSecureRandomString(8)}@flagged-domain.com`;
     const password = generateSecureRandomString();
 
-    const signupResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    const signUpResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
       body: { email, password },
     });
 
-    expect(signupResponse.status).toBe(200);
-    const userId = signupResponse.body.user_id;
+    expect(signUpResponse.status).toBe(200);
+    const userId = signUpResponse.body.user_id;
 
     // Verify the email via admin API
     const verifyResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -1817,9 +1817,9 @@ describe("signup rules", () => {
       },
     });
 
-    // Create a user with admin restriction via signup rule
+    // Create a user with admin restriction via sign-up rule
     await Project.updateConfig({
-      'auth.signupRules.auto-restrict': {
+      'auth.signUpRules.auto-restrict': {
         enabled: true,
         displayName: 'Auto-restrict all',
         priority: 0,
@@ -1833,13 +1833,13 @@ describe("signup rules", () => {
     const email = `user-${generateSecureRandomString(8)}@example.com`;
     const password = generateSecureRandomString();
 
-    const signupResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    const signUpResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
       body: { email, password },
     });
-    expect(signupResponse.status).toBe(200);
-    const userId = signupResponse.body.user_id;
+    expect(signUpResponse.status).toBe(200);
+    const userId = signUpResponse.body.user_id;
 
     // Verify user is restricted
     const beforeResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -1884,7 +1884,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.add-metadata-rule': {
+      'auth.signUpRules.add-metadata-rule': {
         enabled: true,
         displayName: 'Add metadata for test domain',
         priority: 0,
@@ -1898,7 +1898,7 @@ describe("signup rules", () => {
           },
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const email = `user-${generateSecureRandomString(8)}@metadata-test.com`;
@@ -1931,7 +1931,7 @@ describe("signup rules", () => {
     });
   });
 
-  it("should merge metadata from signup rule with existing metadata", async ({ expect }) => {
+  it("should merge metadata from sign-up rule with existing metadata", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
@@ -1939,7 +1939,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.add-tag': {
+      'auth.signUpRules.add-tag': {
         enabled: true,
         displayName: 'Add signup tag',
         priority: 0,
@@ -1951,20 +1951,20 @@ describe("signup rules", () => {
           },
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     // First, sign up a user
     const email = `user-${generateSecureRandomString(8)}@example.com`;
     const password = generateSecureRandomString();
 
-    const signupResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    const signUpResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
       body: { email, password },
     });
-    expect(signupResponse.status).toBe(200);
-    const userId = signupResponse.body.user_id;
+    expect(signUpResponse.status).toBe(200);
+    const userId = signUpResponse.body.user_id;
 
     // Then add some additional metadata manually
     const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
@@ -2003,7 +2003,7 @@ describe("signup rules", () => {
     });
 
     await Project.updateConfig({
-      'auth.signupRules.secret-rule': {
+      'auth.signUpRules.secret-rule': {
         enabled: true,
         displayName: 'Block specific secret pattern',
         priority: 0,
@@ -2013,7 +2013,7 @@ describe("signup rules", () => {
           message: 'This internal message should NOT be exposed to users',
         },
       },
-      'auth.signupRulesDefaultAction': 'allow',
+      'auth.signUpRulesDefaultAction': 'allow',
     });
 
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {

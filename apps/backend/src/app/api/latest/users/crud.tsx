@@ -116,7 +116,7 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
     return { isRestricted: true, restrictedReason: { type: "email_not_verified" } };
   }
 
-  // Check if user was restricted by administrator (e.g., via signup rules or manual admin action)
+  // Check if user was restricted by administrator (e.g., via sign-up rules or manual admin action)
   if (restrictedByAdmin) {
     return { isRestricted: true, restrictedReason: { type: "restricted_by_administrator" } };
   }

@@ -20,9 +20,9 @@ export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   totp_secret_base64: fieldSchema.userTotpSecretMutationSchema.optional(),
   selected_team_id: fieldSchema.selectedTeamIdSchema.nullable().optional(),
   is_anonymous: fieldSchema.yupBoolean().oneOf([false]).optional(),
-  restricted_by_admin: fieldSchema.yupBoolean().optional().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by signup rules.', exampleValue: false } }),
+  restricted_by_admin: fieldSchema.yupBoolean().optional().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
   restricted_by_admin_reason: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
-  restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Private details about the restriction (e.g., which signup rule triggered). Only visible to server access and above.', exampleValue: null } }),
+  restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
 }).defined().test(
   "restricted_by_admin_consistency",
   "When restricted_by_admin is false, reason and private_details must be null",
@@ -63,9 +63,9 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   restricted_reason: fieldSchema.yupObject({
     type: fieldSchema.yupString().oneOf(fieldSchema.restrictedReasonTypes).defined(),
   }).nullable().defined().meta({ openapiField: { description: 'The reason why the user is restricted (e.g., type: "email_not_verified", "anonymous", or "restricted_by_administrator"), null if not restricted', exampleValue: null } }),
-  restricted_by_admin: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by signup rules.', exampleValue: false } }),
+  restricted_by_admin: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
   restricted_by_admin_reason: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
-  restricted_by_admin_private_details: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Private details about the restriction (e.g., which signup rule triggered). Only visible to server access and above.', exampleValue: null } }),
+  restricted_by_admin_private_details: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
 
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
     id: fieldSchema.yupString().defined(),

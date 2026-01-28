@@ -1,9 +1,9 @@
 import { evaluate, parse, CelEvaluationError, CelParseError, CelTypeError } from "cel-js";
 
 /**
- * Context variables available for signup rule CEL expressions.
+ * Context variables available for sign-up rule CEL expressions.
  */
-export type SignupRuleContext = {
+export type SignUpRuleContext = {
   /** User's email address */
   email: string,
   /** Domain part of email (after @) */
@@ -15,7 +15,7 @@ export type SignupRuleContext = {
 };
 
 // Extended context with helper functions for string operations
-type ExtendedContext = SignupRuleContext & {
+type ExtendedContext = SignUpRuleContext & {
   // Pre-computed helpers for common patterns
   _email_lower: string,
 };
@@ -34,7 +34,7 @@ type ExtendedContext = SignupRuleContext & {
  */
 function preprocessExpression(
   expression: string,
-  context: SignupRuleContext
+  context: SignUpRuleContext
 ): { expression: string, context: Record<string, unknown> } {
   const extendedContext: Record<string, unknown> = { ...context };
 
@@ -49,7 +49,7 @@ function preprocessExpression(
   // This ensures each occurrence gets a unique key, even if the same expression appears multiple times
   transformedExpr = expression.replace(methodPattern, (fullMatch, varName, method, arg) => {
     // Get the variable value from context
-    const varValue = context[varName as keyof SignupRuleContext];
+    const varValue = context[varName as keyof SignUpRuleContext];
     if (typeof varValue !== 'string') {
       // Return unchanged if variable is not a string
       return fullMatch;
@@ -109,7 +109,7 @@ function preprocessExpression(
  */
 export function evaluateCelExpression(
   expression: string,
-  context: SignupRuleContext
+  context: SignUpRuleContext
 ): boolean {
   try {
     // Pre-process to handle method calls
@@ -136,7 +136,7 @@ export function validateCelExpression(expression: string): { valid: true } | { v
   try {
     // First, transform the expression as we would during evaluation
     // Use dummy context for validation
-    const dummyContext: SignupRuleContext = {
+    const dummyContext: SignUpRuleContext = {
       email: 'test@example.com',
       emailDomain: 'example.com',
       authMethod: 'password',
@@ -169,17 +169,17 @@ export function validateCelExpression(expression: string): { valid: true } | { v
 }
 
 /**
- * Creates a SignupRuleContext from raw request data.
+ * Creates a SignUpRuleContext from raw request data.
  * This helper extracts and derives the context variables needed for rule evaluation.
  *
  * @param params - Raw parameters from the signup request
- * @returns SignupRuleContext ready for CEL evaluation
+ * @returns SignUpRuleContext ready for CEL evaluation
  */
-export function createSignupRuleContext(params: {
+export function createSignUpRuleContext(params: {
   email: string,
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider?: string,
-}): SignupRuleContext {
+}): SignUpRuleContext {
   const email = params.email;
   const emailDomain = email.includes('@') ? email.split('@').pop() ?? '' : '';
 

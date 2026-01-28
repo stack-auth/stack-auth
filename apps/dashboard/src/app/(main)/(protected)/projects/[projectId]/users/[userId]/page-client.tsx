@@ -358,7 +358,7 @@ function RestrictionDialog({
             <Textarea
               value={privateDetails}
               onChange={(e) => setPrivateDetails(e.target.value)}
-              placeholder="Internal notes, e.g., which signup rule triggered"
+              placeholder="Internal notes, e.g., which sign-up rule triggered"
               className="min-h-[80px]"
               disabled={isSaving}
             />

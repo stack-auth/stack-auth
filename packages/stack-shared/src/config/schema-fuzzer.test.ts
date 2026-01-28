@@ -48,7 +48,7 @@ const branchSchemaFuzzerConfig = [{
         }],
       }],
     }],
-    signupRules: [{
+    signUpRules: [{
       "some-rule-id": [{
         enabled: [true, false],
         displayName: ["Block Test Emails", "Allow Only Company Domain"],
@@ -66,7 +66,7 @@ const branchSchemaFuzzerConfig = [{
         }],
       }],
     }],
-    signupRulesDefaultAction: ["allow", "reject"],
+    signUpRulesDefaultAction: ["allow", "reject"],
   }],
   dataVault: [{
     stores: [{

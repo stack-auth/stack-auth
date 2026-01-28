@@ -45,46 +45,46 @@ type RuleAnalytics = {
   hourlyCounts: { hour: string, count: number }[],
 };
 
-// Types for signup rules from config
-type SignupRuleMetadataEntry = {
+// Types for sign-up rules from config
+type SignUpRuleMetadataEntry = {
   value: string | number | boolean,
   target: 'client' | 'client_read_only' | 'server',
 };
 
-type SignupRuleAction = {
+type SignUpRuleAction = {
   type: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
-  metadata?: Record<string, SignupRuleMetadataEntry>,
+  metadata?: Record<string, SignUpRuleMetadataEntry>,
   message?: string,
 };
 
-type SignupRule = {
+type SignUpRule = {
   enabled: boolean,
   displayName: string,
   priority: number,
   condition: string,
-  action: SignupRuleAction,
+  action: SignUpRuleAction,
 };
 
-type SignupRuleEntry = {
+type SignUpRuleEntry = {
   id: string,
-  rule: SignupRule,
+  rule: SignUpRule,
 };
 
 // Get sorted rules from config
 // Type assertion needed because schema changes take effect at build time
-type ConfigWithSignupRules = CompleteConfig & {
+type ConfigWithSignUpRules = CompleteConfig & {
   auth: {
-    signupRules?: Record<string, SignupRule>,
-    signupRulesDefaultAction?: 'allow' | 'reject',
+    signUpRules?: Record<string, SignUpRule>,
+    signUpRulesDefaultAction?: 'allow' | 'reject',
   },
 };
 
-function getSortedRules(config: CompleteConfig): SignupRuleEntry[] {
-  const configWithRules = config as ConfigWithSignupRules;
+function getSortedRules(config: CompleteConfig): SignUpRuleEntry[] {
+  const configWithRules = config as ConfigWithSignUpRules;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
-  const rules = configWithRules.auth.signupRules ?? {};
+  const rules = configWithRules.auth.signUpRules ?? {};
   return Object.entries(rules)
-    .map(([id, rule]) => ({ id, rule: rule as SignupRule }))
+    .map(([id, rule]) => ({ id, rule: rule as SignUpRule }))
     .sort((a, b) => {
       const priorityA = a.rule.priority;
       const priorityB = b.rule.priority;
@@ -155,14 +155,14 @@ function RuleEditor({
   onSave,
   onCancel,
 }: {
-  rule?: SignupRule,
+  rule?: SignUpRule,
   ruleId: string,
   isNew: boolean,
-  onSave: (ruleId: string, rule: SignupRule) => Promise<void>,
+  onSave: (ruleId: string, rule: SignUpRule) => Promise<void>,
   onCancel: () => void,
 }) {
   const [displayName, setDisplayName] = useState(rule?.displayName ?? '');
-  const [actionType, setActionType] = useState<SignupRuleAction['type']>(rule?.action.type ?? 'allow');
+  const [actionType, setActionType] = useState<SignUpRuleAction['type']>(rule?.action.type ?? 'allow');
   const [actionMessage, setActionMessage] = useState(rule?.action.message ?? '');
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
@@ -201,17 +201,17 @@ function RuleEditor({
       const celCondition = visualTreeToCel(conditionTree);
 
       // Build metadata from entries
-      const metadata: Record<string, SignupRuleMetadataEntry> | undefined =
+      const metadata: Record<string, SignUpRuleMetadataEntry> | undefined =
         actionType === 'add_metadata'
           ? metadataEntries
             .filter(e => e.key.trim())
             .reduce((acc, e) => {
               acc[e.key.trim()] = { value: e.value, target: e.target };
               return acc;
-            }, {} as Record<string, SignupRuleMetadataEntry>)
+            }, {} as Record<string, SignUpRuleMetadataEntry>)
           : undefined;
 
-      const newRule: SignupRule = {
+      const newRule: SignUpRule = {
         displayName: displayName.trim(),
         condition: celCondition,
         priority: rule?.priority ?? 0,
@@ -277,7 +277,7 @@ function RuleEditor({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-muted-foreground">Action:</label>
-              <Select value={actionType} onValueChange={(v) => setActionType(v as SignupRuleAction['type'])}>
+              <Select value={actionType} onValueChange={(v) => setActionType(v as SignUpRuleAction['type'])}>
                 <SelectTrigger className="w-40">
                   <SelectValue />
                 </SelectTrigger>
@@ -394,13 +394,13 @@ function SortableRuleRow({
   onSave,
   onCancelEdit,
 }: {
-  entry: SignupRuleEntry,
+  entry: SignUpRuleEntry,
   analytics?: RuleAnalytics,
   isEditing: boolean,
   onEdit: () => void,
   onDelete: () => void,
   onToggleEnabled: (enabled: boolean) => void,
-  onSave: (ruleId: string, rule: SignupRule) => Promise<void>,
+  onSave: (ruleId: string, rule: SignUpRule) => Promise<void>,
   onCancelEdit: () => void,
 }) {
   const {
@@ -616,8 +616,8 @@ function DeleteRuleDialog({
 // Internal symbol for accessing SDK internals
 const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
-// Custom hook to fetch signup rules analytics
-function useSignupRulesAnalytics() {
+// Custom hook to fetch sign-up rules analytics
+function useSignUpRulesAnalytics() {
   const stackAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -627,7 +627,7 @@ function useSignupRulesAnalytics() {
 
     const fetchAnalytics = async () => {
       try {
-        const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest('/internal/signup-rules', {
+        const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest('/internal/sign-up-rules', {
           method: 'GET',
         });
         if (cancelled) return;
@@ -645,7 +645,7 @@ function useSignupRulesAnalytics() {
 
         setAnalytics(analyticsMap);
       } catch (e) {
-        console.debug('Failed to fetch signup rules analytics:', e);
+        console.debug('Failed to fetch sign-up rules analytics:', e);
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -673,18 +673,18 @@ export default function PageClient() {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newRuleId, setNewRuleId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [ruleToDelete, setRuleToDelete] = useState<SignupRuleEntry | null>(null);
+  const [ruleToDelete, setRuleToDelete] = useState<SignUpRuleEntry | null>(null);
 
   // Reordering loading state
   const [isReordering, setIsReordering] = useState(false);
 
   // Fetch analytics data
-  const { analytics: ruleAnalytics } = useSignupRulesAnalytics();
+  const { analytics: ruleAnalytics } = useSignUpRulesAnalytics();
 
   // Type assertion needed because schema changes take effect at build time
-  const configWithRules = config as ConfigWithSignupRules;
+  const configWithRules = config as ConfigWithSignUpRules;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
-  const defaultAction = configWithRules.auth.signupRulesDefaultAction ?? 'allow';
+  const defaultAction = configWithRules.auth.signUpRulesDefaultAction ?? 'allow';
 
   const sortedRules = useMemo(() => getSortedRules(config), [config]);
 
@@ -708,7 +708,7 @@ export default function PageClient() {
 
       const configUpdate: Record<string, number> = {};
       newOrder.forEach((entry, index) => {
-        configUpdate[`auth.signupRules.${entry.id}.priority`] = index;
+        configUpdate[`auth.signUpRules.${entry.id}.priority`] = index;
       });
 
       try {
@@ -730,7 +730,7 @@ export default function PageClient() {
     setEditingRuleId(null);
   };
 
-  const handleSaveRule = async (ruleId: string, rule: SignupRule) => {
+  const handleSaveRule = async (ruleId: string, rule: SignUpRule) => {
     // For new rules, set priority to be at the end
     if (isCreatingNew) {
       rule.priority = sortedRules.length;
@@ -739,7 +739,7 @@ export default function PageClient() {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
-        [`auth.signupRules.${ruleId}`]: rule,
+        [`auth.signUpRules.${ruleId}`]: rule,
       },
       pushable: true,
     });
@@ -759,7 +759,7 @@ export default function PageClient() {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
-        [`auth.signupRules.${ruleToDelete.id}`]: null,
+        [`auth.signUpRules.${ruleToDelete.id}`]: null,
       },
       pushable: true,
     });
@@ -771,7 +771,7 @@ export default function PageClient() {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
-        [`auth.signupRules.${ruleId}.enabled`]: enabled,
+        [`auth.signUpRules.${ruleId}.enabled`]: enabled,
       },
       pushable: true,
     });
@@ -781,7 +781,7 @@ export default function PageClient() {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
-        'auth.signupRulesDefaultAction': value,
+        'auth.signUpRulesDefaultAction': value,
       },
       pushable: true,
     });

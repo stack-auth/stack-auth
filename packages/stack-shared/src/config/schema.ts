@@ -121,21 +121,21 @@ const branchAppsSchema = yupObject({
 // --- END NEW Apps Schema ---
 
 
-// --- Signup Rules Schema ---
+// --- Sign-Up Rules Schema ---
 // Metadata entry schema with target field
-const signupRuleMetadataEntrySchema = yupObject({
+const signUpRuleMetadataEntrySchema = yupObject({
   value: yupMixed<string | number | boolean>().defined(),
   target: yupString().oneOf(['client', 'client_read_only', 'server']).defined(),
 });
 
-const signupRuleActionSchema = yupObject({
+const signUpRuleActionSchema = yupObject({
   type: yupString().oneOf(['allow', 'reject', 'restrict', 'log', 'add_metadata']).defined(),
   // For add_metadata action: each entry has a value and a target (client, client_read_only, or server)
-  metadata: yupRecord(yupString(), signupRuleMetadataEntrySchema).optional(),
+  metadata: yupRecord(yupString(), signUpRuleMetadataEntrySchema).optional(),
   message: yupString().optional(), // for reject action custom message (internal use, not shown to user)
 });
 
-const signupRuleSchema = yupObject({
+const signUpRuleSchema = yupObject({
   enabled: yupBoolean(),
   displayName: yupString(),
   // Priority for rule ordering (lower = higher priority, evaluated first)
@@ -144,9 +144,9 @@ const signupRuleSchema = yupObject({
   // CEL expression string - evaluated against signup context
   // Example: 'email.endsWith("@gmail.com") && authMethod == "password"'
   condition: yupString(),
-  action: signupRuleActionSchema,
+  action: signUpRuleActionSchema,
 });
-// --- END Signup Rules Schema ---
+// --- END Sign-Up Rules Schema ---
 
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean(),
@@ -170,13 +170,13 @@ const branchAuthSchema = yupObject({
       }),
     ),
   }),
-  // Signup rules - CEL-based rules for controlling who can sign up
-  signupRules: yupRecord(
-    userSpecifiedIdSchema("signupRuleId"),
-    signupRuleSchema,
+  // Sign-up rules - CEL-based rules for controlling who can sign up
+  signUpRules: yupRecord(
+    userSpecifiedIdSchema("signUpRuleId"),
+    signUpRuleSchema,
   ),
-  // Default action when no signup rules match
-  signupRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
+  // Default action when no sign-up rules match
+  signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
 });
 
 export const branchPaymentsSchema = yupObject({
@@ -596,7 +596,7 @@ const organizationConfigDefaults = {
         appleBundles: undefined,
       }),
     },
-    signupRules: (key: string) => ({
+    signUpRules: (key: string) => ({
       enabled: false,
       displayName: undefined,
       priority: 0,
@@ -607,7 +607,7 @@ const organizationConfigDefaults = {
         message: undefined,
       },
     }),
-    signupRulesDefaultAction: 'allow',
+    signUpRulesDefaultAction: 'allow',
   },
 
   emails: {

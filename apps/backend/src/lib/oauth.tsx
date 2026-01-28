@@ -1,6 +1,6 @@
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { Tenancy } from "@/lib/tenancies";
-import { createOrUpgradeAnonymousUserWithRules, SignupRuleOptions } from "@/lib/users";
+import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/users";
 import { PrismaClientTransaction } from "@/prisma-client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -195,7 +195,7 @@ export async function createOAuthUserAndAccount(
     currentUser?: UsersCrud["Admin"]["Read"] | null,
     displayName?: string,
     profileImageUrl?: string,
-    signupRuleOptions: SignupRuleOptions,
+    signUpRuleOptions: SignUpRuleOptions,
   }
 ): Promise<{ projectUserId: string, oauthAccountId: string }> {
   // Check if sign up is allowed
@@ -203,7 +203,7 @@ export async function createOAuthUserAndAccount(
     throw new KnownErrors.SignUpNotEnabled();
   }
 
-  // Create new user (or upgrade anonymous user) with signup rule evaluation
+  // Create new user (or upgrade anonymous user) with sign-up rule evaluation
   const newUser = await createOrUpgradeAnonymousUserWithRules(
     tenancy,
     params.currentUser ?? null,
@@ -215,7 +215,7 @@ export async function createOAuthUserAndAccount(
       primary_email_auth_enabled: params.primaryEmailAuthEnabled,
     },
     [],
-    params.signupRuleOptions,
+    params.signUpRuleOptions,
   );
 
   // Create auth method
