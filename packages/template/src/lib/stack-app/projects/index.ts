@@ -5,6 +5,22 @@ import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigO
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 
+/**
+ * SDK type for pushed config source (camelCase for SDK).
+ * Represents where the branch config was pushed from.
+ */
+export type PushedConfigSource =
+  | { type: "pushed-from-github", owner: string, repo: string, branch: string, commitHash: string, configFilePath: string }
+  | { type: "pushed-from-unknown" }
+  | { type: "unlinked" };
+
+export type PushConfigOptions = {
+  /**
+   * The source of this config push.
+   */
+  source: PushedConfigSource,
+};
+
 
 export type Project = {
   readonly id: string,
@@ -33,6 +49,13 @@ export type AdminProject = {
   // NEXT_LINE_PLATFORM react-like
   useConfig(this: AdminProject): CompleteConfig,
 
+  /**
+   * Updates the environment's config by merging the provided config into the existing config.
+   *
+   * Changes made with `updateConfig` always take precedence over those made with `pushConfig`, even if the `pushConfig`
+   * config was pushed after the changes were made with `updateConfig`. This is best for environment-specific
+   * configuration like secrets, API keys, and other values that you wouldn't push into a source repository.
+   */
   // We have some strict types here in order to prevent accidental overwriting of a top-level property of a config object
   updateConfig(
     this: AdminProject,
@@ -40,6 +63,57 @@ export type AdminProject = {
       [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
     }
   ): Promise<void>,
+
+  /**
+   * Pushes a config, replacing any previous config pushed with `pushConfig`.
+   *
+   * **Note:** This function does **not** replace any changes made with `updateConfig`. Changes made with
+   * `updateConfig` always take precedence over those made with `pushConfig`, even if the `pushConfig`
+   * config was pushed after the changes were made with `updateConfig`.
+   *
+   * This is useful for programmatically deploying configuration. More often than not, you'll want to use
+   * `updateConfig` instead.
+   */
+  pushConfig(
+    this: AdminProject,
+    config: EnvironmentConfigOverrideOverride & {
+      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
+    },
+    options: PushConfigOptions,
+  ): Promise<void>,
+
+  /**
+   * Updates the pushed config by merging the provided config into the existing pushed config.
+   *
+   * **Warning:** This is almost always **not** the function you want to call. Changes made with
+   * `updatePushedConfig` will be replaced entirely the next time `pushConfig` is called. Consider using
+   * `pushConfig` to set the full pushed config, or `updateConfig` for environment-specific values that
+   * should persist across pushes.
+   *
+   * This function is useful for making temporary modifications to the pushed config before the next push.
+   */
+  updatePushedConfig(
+    this: AdminProject,
+    config: EnvironmentConfigOverrideOverride & {
+      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
+    }
+  ): Promise<void>,
+
+  /**
+   * Gets the source metadata for the pushed config, indicating where it was pushed from.
+   *
+   * The source can be:
+   * - `pushed-from-github`: Config was pushed from a GitHub repository
+   * - `pushed-from-unknown`: Config was pushed via CLI but source details unknown
+   * - `unlinked`: Config can be edited directly on the dashboard
+   */
+  getPushedConfigSource(this: AdminProject): Promise<PushedConfigSource>,
+
+  /**
+   * Unlinks the pushed config source, setting it to "unlinked".
+   * This allows the config to be edited directly on the dashboard without external push restrictions.
+   */
+  unlinkPushedConfigSource(this: AdminProject): Promise<void>,
 
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
@@ -86,6 +160,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
           client_secret: p.clientSecret,
           facebook_config_id: p.facebookConfigId,
           microsoft_tenant_id: p.microsoftTenantId,
+          apple_bundle_ids: p.appleBundleIds,
         }),
       })),
       email_config: options.config?.emailConfig && (

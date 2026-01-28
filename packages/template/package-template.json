@@ -11,7 +11,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.59",
+  "version": "2.8.62",
   "repository": "https://github.com/stack-auth/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -155,7 +155,7 @@
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
     "//": "NEXT_LINE_PLATFORM next",
-    "next": "^14.2.34",
+    "next": "^14.2.35",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
     "react": "^19.0.0",

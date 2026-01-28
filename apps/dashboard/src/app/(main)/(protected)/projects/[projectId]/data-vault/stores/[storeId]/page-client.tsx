@@ -2,6 +2,7 @@
 
 import { CodeBlock } from "@/components/code-block";
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilSimpleIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useState } from "react";
@@ -18,6 +19,7 @@ export default function PageClient({ storeId }: PageClientProps) {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const router = useRouter();
+  const updateConfig = useUpdateConfig();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -53,8 +55,10 @@ export default function PageClient({ storeId }: PageClientProps) {
     try {
       const { [storeId]: _, ...remainingStores } = config.dataVault.stores;
 
-      await project.updateConfig({
-        [`dataVault.stores.${storeId}`]: null,
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: { [`dataVault.stores.${storeId}`]: null },
+        pushable: true,
       });
 
       toast({ title: "Data vault store deleted successfully" });
@@ -65,11 +69,15 @@ export default function PageClient({ storeId }: PageClientProps) {
   };
 
   const handleUpdateDisplayName = async () => {
-    await project.updateConfig({
-      [`dataVault.stores.${storeId}`]: {
-        ...store,
-        displayName: editedDisplayName.trim() || store.displayName,
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        [`dataVault.stores.${storeId}`]: {
+          ...store,
+          displayName: editedDisplayName.trim() || store.displayName,
+        },
       },
+      pushable: true,
     });
 
     toast({ title: "Display name updated successfully" });

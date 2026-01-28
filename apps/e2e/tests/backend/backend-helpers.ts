@@ -94,7 +94,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
     }
   } else {
     for (const [key, value] of Object.entries(obj)) {
-      if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
+      if (key.match(/^[a-z0-9][A-Z][a-z0-9]+$/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
       if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata", "variables", "skipped_details"].includes(key)) continue;
@@ -1215,10 +1215,68 @@ export namespace Project {
   }
 
   export async function updateConfig(config: any) {
-    const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
       accessType: "admin",
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  export type BranchConfigSource =
+    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+    | { type: "pushed-from-unknown" }
+    | { type: "unlinked" };
+
+  /**
+   * Push config to branch level. Source defaults to 'unlinked' if not specified.
+   */
+  export async function pushConfig(config: any, source: BranchConfigSource = { type: "unlinked" }) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PUT",
+      body: {
+        config_string: JSON.stringify(config),
+        source,
+      },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Update the pushed config (PATCH - preserves source)
+   */
+  export async function updatePushedConfig(config: any) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Get the current branch config source
+   */
+  export async function getConfigSource(): Promise<BranchConfigSource> {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "GET",
+    });
+    expect(response.status).toBe(200);
+    return response.body.source;
+  }
+
+  /**
+   * Unlink the branch config source (set to 'unlinked')
+   */
+  export async function unlinkConfigSource() {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "DELETE",
     });
     expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
@@ -1503,7 +1561,7 @@ export namespace Payments {
     const { userId } = await User.create();
     const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
       method: "POST",
-      accessType: "client",
+      accessType: "server",
       body: {
         customer_type: "user",
         customer_id: userId,

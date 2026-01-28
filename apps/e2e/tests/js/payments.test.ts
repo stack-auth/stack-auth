@@ -71,7 +71,7 @@ it("returns default item quantity for a team", async ({ expect }) => {
 });
 
 it("root-level getItem works for user and team", async ({ expect }) => {
-  const { clientApp, serverApp, adminApp } = await createApp({
+  const { clientApp, adminApp } = await createApp({
     config: { clientTeamCreationEnabled: true },
   });
 
@@ -100,12 +100,12 @@ it("root-level getItem works for user and team", async ({ expect }) => {
       customerType: "user",
     },
   });
-  const userItem = await serverApp.getItem({ itemId: userItemId, userId: user.id });
+  const userItem = await clientApp.getItem({ itemId: userItemId, userId: user.id });
   expect(userItem.quantity).toBe(0);
 }, { timeout: 60_000 });
 
 it("customCustomerId is supported via root-level getItem and admin quantity change", async ({ expect }) => {
-  const { clientApp, adminApp } = await createApp({
+  const { serverApp, clientApp, adminApp } = await createApp({
     config: {},
   });
   const project = await adminApp.getProject();
@@ -117,10 +117,10 @@ it("customCustomerId is supported via root-level getItem and admin quantity chan
     },
   });
   const customCustomerId = "custom-abc";
-  const before = await clientApp.getItem({ itemId, customCustomerId });
+  const before = await serverApp.getItem({ itemId, customCustomerId });
   expect(before.quantity).toBe(0);
   await adminApp.createItemQuantityChange({ customCustomerId, itemId, quantity: 5 });
-  const after = await clientApp.getItem({ itemId, customCustomerId });
+  const after = await serverApp.getItem({ itemId, customCustomerId });
   expect(after.quantity).toBe(5);
 }, { timeout: 60_000 });
 
@@ -352,7 +352,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   } as const;
   await serverApp.grantProduct({ userId: user.id, product: inlineUserProduct });
 
-  const allUserProducts = await clientApp.listProducts({ userId: user.id });
+  const allUserProducts = await serverApp.listProducts({ userId: user.id });
   expect(allUserProducts).toHaveLength(2);
   expect(allUserProducts.nextCursor).toBeNull();
   const configGrant = allUserProducts.find((product) => product.displayName === "Config Offer");
@@ -367,7 +367,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   expect(nextPage).toHaveLength(1);
   expect(nextPage.nextCursor).toBeNull();
 
-  const userProductsFromCustomer = await user.listProducts();
+  const userProductsFromCustomer = await serverApp.listProducts({ userId: user.id });
   expect(userProductsFromCustomer).toHaveLength(2);
 
   const team = await user.createTeam({ displayName: "Products Team" });
@@ -388,7 +388,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   expect(teamProducts[0].quantity).toBe(1);
   expect(teamProducts[0].displayName).toBe(inlineTeamProduct.display_name);
 
-  const teamProductsFromCustomer = await team.listProducts();
+  const teamProductsFromCustomer = await serverApp.listProducts({ teamId: team.id });
   expect(teamProductsFromCustomer).toHaveLength(1);
   expect(teamProductsFromCustomer[0].displayName).toBe(inlineTeamProduct.display_name);
 
@@ -405,7 +405,7 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   } as const;
   await serverApp.grantProduct({ customCustomerId, product: inlineCustomProduct, quantity: 1 });
 
-  const customProducts = await clientApp.listProducts({ customCustomerId });
+  const customProducts = await serverApp.listProducts({ customCustomerId });
   expect(customProducts).toHaveLength(1);
   expect(customProducts[0].quantity).toBe(1);
   expect(customProducts[0].displayName).toBe(inlineCustomProduct.display_name);

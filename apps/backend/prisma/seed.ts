@@ -3,7 +3,7 @@ import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/c
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
-import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
@@ -96,10 +96,10 @@ export async function seed() {
     },
   });
 
-  await overrideEnvironmentConfigOverride({
+  await overrideBranchConfigOverride({
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
-    environmentConfigOverrideOverride: {
+    branchConfigOverrideOverride: {
       // Disable email verification for internal project - dashboard admins shouldn't need to verify their email
       onboarding: {
         requireEmailVerification: false,
@@ -547,7 +547,8 @@ type SeedDummyUsersOptions = {
 
 type PaymentsSetup = {
   paymentsProducts: Record<string, unknown>,
-  paymentsOverride: Record<string, unknown>,
+  paymentsBranchOverride: Record<string, unknown>,
+  paymentsEnvironmentOverride: Record<string, unknown>,
 };
 
 async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<string, string>> {
@@ -904,8 +905,8 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     },
   };
 
-  const paymentsOverride = {
-    testMode: true,
+  // Branch config - products, items, productLines
+  const paymentsBranchOverride = {
     productLines: {
       workspace: {
         displayName: 'Workspace Plans',
@@ -937,9 +938,15 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     products: paymentsProducts,
   };
 
+  // Environment config - only testMode
+  const paymentsEnvironmentOverride = {
+    testMode: true,
+  };
+
   return {
     paymentsProducts,
-    paymentsOverride,
+    paymentsBranchOverride,
+    paymentsEnvironmentOverride,
   };
 }
 
@@ -1003,16 +1010,40 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     tenancy: dummyTenancy,
     teamNameToId,
   });
-  const { paymentsProducts, paymentsOverride } = buildDummyPaymentsSetup();
+  const { paymentsProducts, paymentsBranchOverride, paymentsEnvironmentOverride } = buildDummyPaymentsSetup();
 
+  // Set branch-level config (products, items, productLines, apps)
+  await overrideBranchConfigOverride({
+    projectId: DUMMY_PROJECT_ID,
+    branchId: DEFAULT_BRANCH_ID,
+    branchConfigOverrideOverride: {
+      payments: paymentsBranchOverride as any,
+      apps: {
+        installed: typedFromEntries(typedEntries(ALL_APPS).map(([key]) => [key, { enabled: true }])),
+      },
+    },
+  });
+
+  // Set environment-level config (testMode)
   await overrideEnvironmentConfigOverride({
     projectId: DUMMY_PROJECT_ID,
     branchId: DEFAULT_BRANCH_ID,
     environmentConfigOverrideOverride: {
-      payments: paymentsOverride as any,
-      apps: {
-        installed: typedFromEntries(typedEntries(ALL_APPS).map(([key]) => [key, { enabled: true }])),
-      },
+      payments: paymentsEnvironmentOverride as any,
+    },
+  });
+
+  // Set the dummy project's branch config source to pushed-from-github with dummy values
+  await setBranchConfigOverrideSource({
+    projectId: DUMMY_PROJECT_ID,
+    branchId: DEFAULT_BRANCH_ID,
+    source: {
+      type: "pushed-from-github",
+      owner: "stack-auth",
+      repo: "dummy-config-repo",
+      branch: "main",
+      commit_hash: "abc123def456789",
+      config_file_path: "stack.config.json",
     },
   });
 

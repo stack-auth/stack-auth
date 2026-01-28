@@ -252,6 +252,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
+      teamId: "",
     }
   );
 

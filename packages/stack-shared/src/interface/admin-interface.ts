@@ -1,4 +1,6 @@
+import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
+import { branchConfigSourceSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -7,9 +9,12 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 
 export type ChatContent = Array<
@@ -38,6 +43,30 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
   publishable_client_key?: string,
   secret_server_key?: string,
   super_secret_admin_key?: string,
+};
+
+export type ClickhouseMigrationRequest = {
+  min_created_at_millis: number,
+  max_created_at_millis: number,
+  cursor?: {
+    created_at_millis: number,
+    id: string,
+  },
+  limit?: number,
+};
+
+export type ClickhouseMigrationResponse = {
+  total_events: number,
+  processed_events: number,
+  remaining_events: number,
+  migrated_events: number,
+  skipped_existing_events: number,
+  inserted_rows: number,
+  progress: number,
+  next_cursor: {
+    created_at_millis: number,
+    id: string,
+  } | null,
 };
 
 export class StackAdminInterface extends StackServerInterface {
@@ -521,16 +550,60 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateConfig(data: { configOverride: any }): Promise<void> {
+  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
-      `/internal/config/override`,
+      `/internal/config/override/${level}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async setConfigOverride(level: "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          config_string: JSON.stringify(configOverride),
+          ...(source && { source }),
+        }),
+      },
+      null,
+    );
+  }
+
+  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
       {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
+        body: JSON.stringify({ config_override_string: JSON.stringify(configOverrideOverride) }),
       },
+      null,
+    );
+  }
+
+  async getPushedConfigSource(): Promise<BranchConfigSourceApi> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/source`,
+      { method: "GET" },
+      null,
+    );
+    const data = await response.json();
+    return data.source;
+  }
+
+  async unlinkPushedConfigSource(): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/source`,
+      { method: "DELETE" },
       null,
     );
   }
@@ -579,6 +652,35 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.data.json();
   }
 
+  async getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null> {
+    const response = await this.sendAdminRequestAndCatchKnownError(
+      "/internal/payments/method-configs",
+      { method: "GET" },
+      null,
+      [KnownErrors.StripeAccountInfoNotFound],
+    );
+    if (response.status === "error") {
+      return null;
+    }
+    const data = await response.data.json();
+    return {
+      configId: data.config_id,
+      methods: data.methods,
+    };
+  }
+
+  async updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/payments/method-configs",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ config_id: configId, updates }),
+      },
+      null,
+    );
+  }
+
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/stripe-widgets/account-session",
@@ -624,6 +726,21 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async migrateEventsToClickhouse(options: ClickhouseMigrationRequest): Promise<ClickhouseMigrationResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/clickhouse/migrate-events",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async previewAffectedUsersByOnboardingChange(
     onboarding: { require_email_verification?: boolean },
     limit?: number,
@@ -650,6 +767,27 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    const data = await response.json();
+    return {
+      result: data.result,
+    };
+  }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();

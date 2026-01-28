@@ -18,6 +18,7 @@ import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
@@ -1804,6 +1805,7 @@ export class StackClientInterface {
       { itemId: string, customCustomerId: string }
     ),
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<ItemCrud['Client']['Read']> {
     let customerType: "user" | "team" | "custom";
     let customerId: string;
@@ -1820,10 +1822,12 @@ export class StackClientInterface {
       throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
     }
 
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       urlString`/payments/items/${customerType}/${customerId}/${options.itemId}`,
       {},
       session,
+      requestType,
     );
     return await response.json();
   }
@@ -1831,12 +1835,32 @@ export class StackClientInterface {
   async listProducts(
     options: ListCustomerProductsOptions,
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<CustomerProductsListResponse> {
     const queryParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
       limit: options.limit !== undefined ? options.limit.toString() : undefined,
     }));
     const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}`;
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {},
+      session,
+      requestType,
+    );
+    return await response.json();
+  }
+
+  async listInvoices(
+    options: ListCustomerInvoicesOptions,
+    session: InternalSession | null,
+  ): Promise<CustomerInvoicesListResponse> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit !== undefined ? options.limit.toString() : undefined,
+    }));
+    const path = urlString`/payments/invoices/${options.customer_type}/${options.customer_id}`;
     const response = await this.sendClientRequest(
       `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {},

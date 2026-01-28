@@ -1187,6 +1187,16 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AppleBundleIdNotConfigured = createKnownErrorConstructor(
+  KnownError,
+  "APPLE_BUNDLE_ID_NOT_CONFIGURED",
+  () => [
+    400,
+    "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
+  ] as const,
+  () => [] as const,
+);
+
 const OAuthProviderAccountIdAlreadyUsedForSignIn = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN",
@@ -1316,6 +1326,16 @@ const InvalidAuthorizationCode = createKnownErrorConstructor(
   () => [
     400,
     "The given authorization code is invalid.",
+  ] as const,
+  () => [] as const,
+);
+
+const InvalidAppleCredentials = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_APPLE_CREDENTIALS",
+  () => [
+    400,
+    "The Apple Sign In credentials could not be verified. Please try signing in again.",
   ] as const,
   () => [] as const,
 );
@@ -1672,6 +1692,28 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnalyticsQueryTimeout = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_TIMEOUT",
+  (timeoutMs: number) => [
+    400,
+    `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
+    { timeout_ms: timeoutMs },
+  ] as const,
+  (json) => [json.timeout_ms] as const,
+);
+
+const AnalyticsQueryError = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_ERROR",
+  (error: string) => [
+    400,
+    `The query failed to execute: ${error}`,
+    { error },
+  ] as const,
+  (json) => [json.error] as const,
+);
+
 const DefaultPaymentMethodRequired = createKnownErrorConstructor(
   KnownError,
   "DEFAULT_PAYMENT_METHOD_REQUIRED",
@@ -1793,6 +1835,7 @@ export const KnownErrors = {
   UserAlreadyConnectedToAnotherOAuthConnection,
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
+  AppleBundleIdNotConfigured,
   OAuthProviderAccountIdAlreadyUsedForSignIn,
   MultiFactorAuthenticationRequired,
   InvalidTotpCode,
@@ -1803,6 +1846,7 @@ export const KnownErrors = {
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,
+  InvalidAppleCredentials,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
@@ -1831,6 +1875,8 @@ export const KnownErrors = {
   NewPurchasesBlocked,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
+  AnalyticsQueryTimeout,
+  AnalyticsQueryError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
