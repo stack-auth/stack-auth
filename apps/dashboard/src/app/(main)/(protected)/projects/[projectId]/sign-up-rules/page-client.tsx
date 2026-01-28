@@ -2,37 +2,37 @@
 
 import { ConditionBuilder } from "@/components/rule-builder";
 import {
-  ActionDialog,
-  Alert,
-  Button,
-  cn,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Spinner,
-  Switch,
-  Typography,
+    ActionDialog,
+    Alert,
+    Button,
+    cn,
+    Input,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    Spinner,
+    Switch,
+    Typography,
 } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
 import {
-  createEmptyCondition,
-  createEmptyGroup,
-  parseCelToVisualTree,
-  visualTreeToCel,
-  type RuleNode,
+    createEmptyCondition,
+    createEmptyGroup,
+    parseCelToVisualTree,
+    visualTreeToCel,
+    type RuleNode,
 } from "@/lib/cel-visual-parser";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { useUpdateConfig } from "@/lib/config-update";
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import React, { useState, useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -109,7 +109,8 @@ function RuleSparkline({
     );
   }
 
-  const avgPerHour = totalCount / Math.max(data.length, 1);
+  // Use full 48h window for accurate per-hour rate
+  const avgPerHour = totalCount / 48;
   const rateLabel = avgPerHour < 1
     ? `${totalCount}/48h`
     : `${avgPerHour.toFixed(1)}/h`;

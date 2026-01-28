@@ -1,16 +1,16 @@
 "use client";
 
-import { Button, cn, SelectItem } from "@/components/ui";
-import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { Button, cn } from "@/components/ui";
 import {
-  type ConditionField,
-  type ConditionNode,
-  type ConditionOperator,
-  createEmptyCondition,
-  createEmptyGroup,
-  type GroupNode,
-  type RuleNode,
+    type ConditionField,
+    type ConditionNode,
+    type ConditionOperator,
+    createEmptyCondition,
+    createEmptyGroup,
+    type GroupNode,
+    type RuleNode,
 } from "@/lib/cel-visual-parser";
+import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import React from "react";
 
 // Field options with labels

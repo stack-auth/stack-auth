@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 describe("sign-up rules", () => {
   // ==========================================

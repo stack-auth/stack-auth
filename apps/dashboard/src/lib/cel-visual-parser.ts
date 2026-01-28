@@ -63,37 +63,45 @@ export function visualTreeToCel(node: RuleNode): string {
   }
 }
 
+/**
+ * Escapes special characters in string values for use in CEL expressions.
+ * Backslashes must be escaped first to avoid double-escaping.
+ */
+function escapeCelString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function conditionToCel(condition: ConditionNode): string {
   const { field, operator, value } = condition;
 
   switch (operator) {
     case 'equals': {
-      return `${field} == "${value}"`;
+      return `${field} == "${escapeCelString(String(value))}"`;
     }
     case 'not_equals': {
-      return `${field} != "${value}"`;
+      return `${field} != "${escapeCelString(String(value))}"`;
     }
     case 'matches': {
-      return `${field}.matches("${value}")`;
+      return `${field}.matches("${escapeCelString(String(value))}")`;
     }
     case 'ends_with': {
-      return `${field}.endsWith("${value}")`;
+      return `${field}.endsWith("${escapeCelString(String(value))}")`;
     }
     case 'starts_with': {
-      return `${field}.startsWith("${value}")`;
+      return `${field}.startsWith("${escapeCelString(String(value))}")`;
     }
     case 'contains': {
-      return `${field}.contains("${value}")`;
+      return `${field}.contains("${escapeCelString(String(value))}")`;
     }
     case 'in_list': {
       if (Array.isArray(value)) {
-        const items = value.map(v => `"${v}"`).join(', ');
+        const items = value.map(v => `"${escapeCelString(String(v))}"`).join(', ');
         return `${field} in [${items}]`;
       }
-      return `${field} == "${value}"`;
+      return `${field} == "${escapeCelString(String(value))}"`;
     }
     default: {
-      return `${field} == "${value}"`;
+      return `${field} == "${escapeCelString(String(value))}"`;
     }
   }
 }

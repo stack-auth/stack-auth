@@ -6,42 +6,42 @@ import { InputField, SelectField } from "@/components/form-fields";
 import { StyledLink } from "@/components/link";
 import { SettingCard } from "@/components/settings";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-  ActionCell,
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Input,
-  Separator,
-  SimpleTooltip,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Textarea,
-  Typography,
-  cn,
-  useToast
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+    ActionCell,
+    Alert,
+    AlertDescription,
+    AlertTitle,
+    Avatar,
+    AvatarFallback,
+    AvatarImage,
+    Button,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+    Input,
+    Separator,
+    SimpleTooltip,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+    Textarea,
+    Typography,
+    cn,
+    useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
@@ -52,6 +52,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -306,32 +307,36 @@ function RestrictionDialog({
     onOpenChange(newOpen);
   };
 
-  const handleSaveAndRestrict = async () => {
+  const handleSaveAndRestrict = () => {
     setIsSaving(true);
-    try {
-      await user.update({
-        restrictedByAdmin: true,
-        restrictedByAdminReason: publicReason.trim() || null,
-        restrictedByAdminPrivateDetails: privateDetails.trim() || null,
-      } as any);
-      onOpenChange(false);
-    } finally {
-      setIsSaving(false);
-    }
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        await user.update({
+          restrictedByAdmin: true,
+          restrictedByAdminReason: publicReason.trim() || null,
+          restrictedByAdminPrivateDetails: privateDetails.trim() || null,
+        } as any);
+        onOpenChange(false);
+      } finally {
+        setIsSaving(false);
+      }
+    });
   };
 
-  const handleRemoveRestriction = async () => {
+  const handleRemoveRestriction = () => {
     setIsSaving(true);
-    try {
-      await user.update({
-        restrictedByAdmin: false,
-        restrictedByAdminReason: null,
-        restrictedByAdminPrivateDetails: null,
-      } as any);
-      onOpenChange(false);
-    } finally {
-      setIsSaving(false);
-    }
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        await user.update({
+          restrictedByAdmin: false,
+          restrictedByAdminReason: null,
+          restrictedByAdminPrivateDetails: null,
+        } as any);
+        onOpenChange(false);
+      } finally {
+        setIsSaving(false);
+      }
+    });
   };
 
   return (
