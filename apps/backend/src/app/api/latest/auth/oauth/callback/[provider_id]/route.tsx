@@ -1,9 +1,8 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
-import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
-import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
-import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getProvider, oauthServer } from "@/oauth";
 import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -17,9 +16,10 @@ import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
 /**
- * Create a project user OAuth account with the provided data
+ * Create a project user OAuth account with the provided data.
+ * Used for the "link" flow which doesn't go through the standard sign-up path.
  */
-async function createProjectUserOAuthAccount(prisma: PrismaClientTransaction, params: {
+async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransaction, params: {
   tenancyId: string,
   providerId: string,
   providerAccountId: string,
@@ -44,7 +44,7 @@ async function createProjectUserOAuthAccount(prisma: PrismaClientTransaction, pa
 }
 
 const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
-  if (!errorRedirectUrl || !validateRedirectUrl(errorRedirectUrl, tenancy)) {
+  if (!errorRedirectUrl || (!validateRedirectUrl(errorRedirectUrl, tenancy) && !isAcceptedNativeAppUrl(errorRedirectUrl))) {
     throw error;
   }
 
@@ -215,22 +215,16 @@ const handler = createSmartRouteHandler({
           {
             authenticateHandler: {
               handle: async () => {
-                const oldAccounts = await prisma.projectUserOAuthAccount.findMany({
-                  where: {
-                    tenancyId: outerInfo.tenancyId,
-                    configOAuthProviderId: provider.id,
-                    providerAccountId: userInfo.accountId,
-                    allowSignIn: true,
-                  },
-                });
-
-                if (oldAccounts.length > 1) {
-                  throw new StackAssertionError("Multiple accounts found for the same provider and account ID");
-                }
-
-                const oldAccount = oldAccounts[0] as (typeof oldAccounts)[number] | undefined;
+                // Find existing OAuth account (used by both link and sign-in flows)
+                const oldAccount = await findExistingOAuthAccount(
+                  prisma,
+                  outerInfo.tenancyId,
+                  provider.id,
+                  userInfo.accountId
+                );
 
                 // ========================== link account with user ==========================
+                // This flow is when a signed-in user wants to connect an OAuth account
                 if (type === "link") {
                   if (!projectUserId) {
                     throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
@@ -244,7 +238,7 @@ const handler = createSmartRouteHandler({
                     await storeTokens(oldAccount.id);
                   } else {
                     // ========================== connect account with user ==========================
-                    const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
+                    const newOAuthAccount = await createProjectUserOAuthAccountForLink(prisma, {
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
@@ -260,171 +254,95 @@ const handler = createSmartRouteHandler({
                     newUser: false,
                     afterCallbackRedirectUrl,
                   };
-                } else {
+                }
 
-                  // ========================== sign in user ==========================
+                // ========================== sign in / sign up flow ==========================
 
-                  if (oldAccount) {
-                    await storeTokens(oldAccount.id);
+                // Check if user already exists with this OAuth account
+                if (oldAccount) {
+                  await storeTokens(oldAccount.id);
 
-                    return {
-                      id: oldAccount.projectUserId,
-                      newUser: false,
-                      afterCallbackRedirectUrl,
-                    };
-                  }
+                  return {
+                    id: oldAccount.projectUserId,
+                    newUser: false,
+                    afterCallbackRedirectUrl,
+                  };
+                }
 
-                  // ========================== sign up user ==========================
+                // ========================== sign up user ==========================
 
-                  let primaryEmailAuthEnabled = false;
-                  if (userInfo.email) {
-                    primaryEmailAuthEnabled = true;
+                // Handle email merge strategy if email is provided
+                const { linkedUserId, primaryEmailAuthEnabled } = userInfo.email
+                  ? await handleOAuthEmailMergeStrategy(prisma, tenancy, userInfo.email, userInfo.emailVerified)
+                  : { linkedUserId: null, primaryEmailAuthEnabled: false };
 
-                    const oldContactChannel = await getAuthContactChannelWithEmailNormalization(
-                      prisma,
-                      {
-                        tenancyId: outerInfo.tenancyId,
-                        type: 'EMAIL',
-                        value: userInfo.email,
-                      }
-                    );
+                if (linkedUserId) {
+                  // ========================== Link OAuth account to existing user via email ==========================
+                  const { oauthAccountId } = await linkOAuthAccountToUser(prisma, {
+                    tenancyId: outerInfo.tenancyId,
+                    providerId: provider.id,
+                    providerAccountId: userInfo.accountId,
+                    email: userInfo.email ?? undefined,
+                    projectUserId: linkedUserId,
+                  });
 
-                    // Check if we should link this OAuth account to an existing user based on email
-                    if (oldContactChannel && oldContactChannel.usedForAuth) {
-                      const oauthAccountMergeStrategy = tenancy.config.auth.oauth.accountMergeStrategy;
-                      switch (oauthAccountMergeStrategy) {
-                        case 'link_method': {
-                          if (!oldContactChannel.isVerified) {
-                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email, true);
-                          }
+                  await storeTokens(oauthAccountId);
+                  return {
+                    id: linkedUserId,
+                    newUser: false,
+                    afterCallbackRedirectUrl,
+                  };
+                }
 
-                          if (!userInfo.emailVerified) {
-                            // TODO handle this case
-                            const err = new StackAssertionError("OAuth account merge strategy is set to link_method, but the NEW email is not verified. This is an edge case that we don't handle right now", { oldContactChannel, userInfo });
-                            captureError("oauth-link-method-email-not-verified", err);
-                            throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
-                          }
+                // ========================== Create new user ==========================
 
-                          const existingUser = oldContactChannel.projectUser;
-
-                          // First create the OAuth account
-                          const newOAuthAccount = await createProjectUserOAuthAccount(prisma, {
-                            tenancyId: outerInfo.tenancyId,
-                            providerId: provider.id,
-                            providerAccountId: userInfo.accountId,
-                            email: userInfo.email,
-                            projectUserId: existingUser.projectUserId,
-                          });
-
-                          await prisma.authMethod.create({
-                            data: {
-                              tenancyId: outerInfo.tenancyId,
-                              projectUserId: existingUser.projectUserId,
-                              oauthAuthMethod: {
-                                create: {
-                                  projectUserId: existingUser.projectUserId,
-                                  configOAuthProviderId: provider.id,
-                                  providerAccountId: userInfo.accountId,
-                                }
-                              }
-                            }
-                          });
-
-                          await storeTokens(newOAuthAccount.id);
-                          return {
-                            id: existingUser.projectUserId,
-                            newUser: false,
-                            afterCallbackRedirectUrl,
-                          };
-                        }
-                        case 'raise_error': {
-                          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", userInfo.email);
-                        }
-                        case 'allow_duplicates': {
-                          primaryEmailAuthEnabled = false;
-                          break;
-                        }
-                      }
+                // Get currentUser for anonymous user upgrade (if they were signed in during /authorize)
+                let currentUser = null;
+                if (projectUserId) {
+                  // Note: it's possible that the user has been deleted, but the request is still
+                  // done with a token that was issued before the user was deleted (or the user was
+                  // deleted between the /authorize and /callback requests)
+                  try {
+                    currentUser = await usersCrudHandlers.adminRead({
+                      tenancy,
+                      user_id: projectUserId,
+                      allowedErrorTypes: [KnownErrors.UserNotFound],
+                    });
+                  } catch (error) {
+                    if (!KnownErrors.UserNotFound.isInstance(error)) {
+                      throw error;
                     }
                   }
+                }
 
-
-                  if (!tenancy.config.auth.allowSignUp) {
-                    throw new KnownErrors.SignUpNotEnabled();
-                  }
-
-                  // Set currentUser to the user that was signed in with the `token` access token during the /authorize request
-                  let currentUser;
-                  if (projectUserId) {
-                    // note that it's possible that the user has been deleted, but the request is still done with a token that was issued before the user was deleted
-                    // (or the user was deleted between the /authorize and /callback requests)
-                    // hence, we catch the error and ignore if that's the case
-                    try {
-                      currentUser = await usersCrudHandlers.adminRead({
-                        tenancy,
-                        user_id: projectUserId,
-                        allowedErrorTypes: [KnownErrors.UserNotFound],
-                      });
-                    } catch (error) {
-                      if (KnownErrors.UserNotFound.isInstance(error)) {
-                        currentUser = null;
-                      } else {
-                        throw error;
-                      }
-                    }
-                  } else {
-                    currentUser = null;
-                  }
-
-                  const newAccountBeforeAuthMethod = await createOrUpgradeAnonymousUserWithRules(
-                    tenancy,
+                const { projectUserId: newUserId, oauthAccountId } = await createOAuthUserAndAccount(
+                  prisma,
+                  tenancy,
+                  {
+                    providerId: provider.id,
+                    providerAccountId: userInfo.accountId,
+                    email: userInfo.email ?? undefined,
+                    emailVerified: userInfo.emailVerified,
+                    primaryEmailAuthEnabled,
                     currentUser,
-                    {
-                      display_name: userInfo.displayName,
-                      profile_image_url: userInfo.profileImageUrl || undefined,
-                      primary_email: userInfo.email,
-                      primary_email_verified: userInfo.emailVerified,
-                      primary_email_auth_enabled: primaryEmailAuthEnabled,
-                    },
-                    [],
-                    {
+                    displayName: userInfo.displayName ?? undefined,
+                    profileImageUrl: userInfo.profileImageUrl ?? undefined,
+                    signupRuleOptions: {
                       authMethod: 'oauth',
                       oauthProvider: provider.id,
                       // Note: Request context not easily available in OAuth callback
                       // TODO: Pass IP and user agent from stored OAuth state if needed
                     },
-                  );
-                  const authMethod = await prisma.authMethod.create({
-                    data: {
-                      tenancyId: tenancy.id,
-                      projectUserId: newAccountBeforeAuthMethod.id,
-                    }
-                  });
-                  const oauthAccount = await prisma.projectUserOAuthAccount.create({
-                    data: {
-                      tenancyId: tenancy.id,
-                      projectUserId: newAccountBeforeAuthMethod.id,
-                      configOAuthProviderId: provider.id,
-                      providerAccountId: userInfo.accountId,
-                      email: userInfo.email,
-                      oauthAuthMethod: {
-                        create: {
-                          authMethodId: authMethod.id,
-                        }
-                      },
-                      allowConnectedAccounts: true,
-                      allowSignIn: true,
-                    }
-                  });
+                  }
+                );
 
-                  await storeTokens(oauthAccount.id);
+                await storeTokens(oauthAccountId);
 
-                  return {
-                    id: newAccountBeforeAuthMethod.id,
-                    newUser: true,
-                    afterCallbackRedirectUrl,
-                  };
-                }
+                return {
+                  id: newUserId,
+                  newUser: true,
+                  afterCallbackRedirectUrl,
+                };
               }
             }
           }

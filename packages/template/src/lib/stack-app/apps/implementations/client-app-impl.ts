@@ -1760,7 +1760,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
-    const session = await this._getSession();
+    const currentUser = await this.getUser();
+    const session = currentUser?._internalSession ?? await this._getSession();
     if ("userId" in options) {
       const response = Result.orThrow(await this._userProductsCache.getOrWait([session, options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
       return this._customerProductsFromResponse(response);

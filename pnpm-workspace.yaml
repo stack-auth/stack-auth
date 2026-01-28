@@ -3,5 +3,11 @@ packages:
   - apps/*
   - examples/*
   - docs
+  - sdks/*
+  - sdks/implementations/*
 
 minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+- next
+- '@next/env'
+- '@next/swc'

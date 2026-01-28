@@ -2,7 +2,7 @@
 
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { Button } from "@stackframe/stack-ui";
+import { Button } from "../ui/button";
 import { Cell, ColumnFiltersState, SortingState, Table } from "@tanstack/react-table";
 import { download, generateCsv, mkConfig } from 'export-to-csv';
 import { DownloadIcon } from "lucide-react";

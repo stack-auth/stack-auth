@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@stackframe/stack",
-  "version": "2.8.60",
+  "version": "2.8.62",
   "repository": "https://github.com/stack-auth/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -109,7 +109,7 @@
     "esbuild": "^0.20.2",
     "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
-    "next": "^14.2.34",
+    "next": "^14.2.35",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
     "react": "^19.0.0",
