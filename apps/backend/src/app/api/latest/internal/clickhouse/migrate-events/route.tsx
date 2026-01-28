@@ -1,10 +1,10 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient, isClickhouseConfigured } from "@/lib/clickhouse";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import type { Prisma } from "@/generated/prisma/client";
 
 type Cursor = {
   created_at_millis: number,
@@ -88,13 +88,8 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      total_events: yupNumber().defined(),
-      processed_events: yupNumber().defined(),
-      remaining_events: yupNumber().defined(),
       migrated_events: yupNumber().defined(),
-      skipped_existing_events: yupNumber().defined(),
       inserted_rows: yupNumber().defined(),
-      progress: yupNumber().min(0).max(1).defined(),
       next_cursor: yupObject({
         created_at_millis: yupNumber().integer().defined(),
         id: yupString().defined(),
@@ -128,8 +123,6 @@ export const POST = createSmartRouteHandler({
     const where: Prisma.EventWhereInput = cursorFilter
       ? { AND: [baseWhere, cursorFilter] }
       : baseWhere;
-
-    const totalEvents = await globalPrismaClient.event.count({ where: baseWhere });
 
     const events = await globalPrismaClient.event.findMany({
       where,
@@ -171,39 +164,13 @@ export const POST = createSmartRouteHandler({
       created_at_millis: lastEvent.createdAt.getTime(),
       id: lastEvent.id,
     } : null;
-    const progressCursor: Cursor | null = nextCursor ?? (cursorCreatedAt && body.cursor ? {
-      created_at_millis: body.cursor.created_at_millis,
-      id: body.cursor.id,
-    } : null);
-
-    const progressCursorCreatedAt = progressCursor ? new Date(progressCursor.created_at_millis) : null;
-    const remainingWhere = progressCursor ? {
-      AND: [
-        baseWhere,
-        {
-          OR: [
-            { createdAt: { gt: progressCursorCreatedAt! } },
-            { createdAt: progressCursorCreatedAt!, id: { gt: progressCursor.id } },
-          ],
-        },
-      ],
-    } : baseWhere;
-
-    const remainingEvents = await globalPrismaClient.event.count({ where: remainingWhere });
-    const processedEvents = totalEvents - remainingEvents;
-    const progress = totalEvents === 0 ? 1 : processedEvents / totalEvents;
 
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        total_events: totalEvents,
-        processed_events: processedEvents,
-        remaining_events: remainingEvents,
         migrated_events: migratedEvents,
-        skipped_existing_events: 0,
         inserted_rows: insertedRows,
-        progress,
         next_cursor: nextCursor,
       },
     };
