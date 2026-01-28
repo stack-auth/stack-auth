@@ -8,7 +8,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@stackframe/stack-ui";
+} from "../ui/table";
 import {
   ColumnDef,
   ColumnFiltersState,

@@ -59,7 +59,7 @@ services:
       POSTGRES_PASSWORD: PASSWORD-PLACEHOLDER--uqfEC1hmmv
       POSTGRES_DB: stackframe
     ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}36:8080"
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}38:8080"
     depends_on:
       - db
       - db-replica
@@ -254,6 +254,25 @@ services:
     environment:
       HOST_ON_HOST: host.docker.internal
 
+  # ================= ClickHouse =================
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.10
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}36:8123"  # HTTP interface
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}37:9000"  # Native interface
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: stackframe
+      CLICKHOUSE_PASSWORD: PASSWORD-PLACEHOLDER--9gKyMxJeMx
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
   # ================= Drizzle Gateway =================
 
   drizzle-gateway:
@@ -278,6 +297,7 @@ volumes:
   s3mock-data:
   deno-cache:
   localstack-data:
+  clickhouse-data:
   drizzle-gateway:
 
 # ================= configs =================

@@ -619,6 +619,23 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     }
 
+    const BLOCKED_PROJECT_ID = "2397ef60-a33e-4efb-ad9b-300da67ee29e";
+    const BLOCKED_DOMAIN = "gsmoal.com";
+    if (context.tenancy.project.id === BLOCKED_PROJECT_ID) {
+      for (const email of resolution.emails) {
+        const emailDomain = email.split("@")[1]?.toLowerCase();
+        if (emailDomain === BLOCKED_DOMAIN || emailDomain.endsWith(`.${BLOCKED_DOMAIN}`)) {
+          console.warn(`[email-queue] Blocked email to ${email} from project ${BLOCKED_PROJECT_ID} — domain @${BLOCKED_DOMAIN} (or subdomain) is blocked for this project`);
+          await markSkipped(row, EmailOutboxSkippedReason.LIKELY_NOT_DELIVERABLE, {
+            reason: "domain_blocked_for_project",
+            blockedDomain: BLOCKED_DOMAIN,
+            email,
+          });
+          return;
+        }
+      }
+    }
+
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
       : await lowLevelSendEmailDirectViaProvider({

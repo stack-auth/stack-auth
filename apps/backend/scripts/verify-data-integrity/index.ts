@@ -1,24 +1,27 @@
-import { globalPrismaClient } from "@/prisma-client";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
+import { createApiHelpers, type OutputData } from "./api";
+import { createPaymentsVerifier } from "./payments-verifier";
+import { createRecurse } from "./recurse";
+import { verifyStripePayoutIntegrity } from "./stripe-payout-integrity";
+
 const prismaClient = globalPrismaClient;
 const OUTPUT_FILE_PATH = "./verify-data-integrity-output.untracked.json";
-
-type EndpointOutput = {
-  status: number,
-  responseJson: any,
-};
-
-type OutputData = Record<string, EndpointOutput[]>;
+const STRIPE_SECRET_KEY = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
+const USE_MOCK_STRIPE_API = STRIPE_SECRET_KEY === "sk_test_mockstripekey";
 
 let targetOutputData: OutputData | undefined = undefined;
 const currentOutputData: OutputData = {};
 
+const recurse = createRecurse();
 
 async function main() {
   console.log();
@@ -78,7 +81,6 @@ async function main() {
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
 
-
   if (shouldSaveOutput) {
     console.log(`Will save output to ${OUTPUT_FILE_PATH}`);
   }
@@ -91,7 +93,7 @@ async function main() {
       throw new Error(`Cannot verify output: ${OUTPUT_FILE_PATH} does not exist`);
     }
     try {
-      targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, 'utf8'));
+      targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, "utf8"));
 
       // TODO next-release these are hacks for the migration, delete them
       if (targetOutputData) {
@@ -99,6 +101,8 @@ async function main() {
           if ("config" in output.responseJson) {
             delete output.responseJson.config.id;
             output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
+              // `any` because this is historical output JSON from disk.
+              // We intentionally keep this "migration hack" untyped.
               .filter((provider: any) => provider.enabled)
               .map((provider: any) => omit(provider, ["enabled"]));
           }
@@ -112,11 +116,17 @@ async function main() {
     }
   }
 
+  const { expectStatusCode } = createApiHelpers({
+    currentOutputData,
+    targetOutputData,
+  });
+
   const projects = await prismaClient.project.findMany({
     select: {
       id: true,
       displayName: true,
       description: true,
+      stripeAccountId: true,
     },
     orderBy: recentFirst ? {
       updatedAt: "desc",
@@ -127,6 +137,9 @@ async function main() {
   console.log(`Found ${projects.length} projects, iterating over them.`);
   if (startAt !== 0) {
     console.log(`Starting at project ${startAt}.`);
+  }
+  if (USE_MOCK_STRIPE_API) {
+    console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
   }
 
   const maxUsersPerProject = 100;
@@ -173,6 +186,32 @@ async function main() {
           },
         }),
       ]);
+      void currentProject;
+
+      const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
+      const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
+      const paymentsVerifier = tenancy && paymentsConfig
+        ? await createPaymentsVerifier({
+          projectId,
+          tenancyId: tenancy.id,
+          tenancy,
+          paymentsConfig,
+          prisma: await getPrismaClientForTenancy(tenancy),
+          expectStatusCode,
+        })
+        : null;
+
+      const stripeAccountId = projects[i].stripeAccountId;
+      if (!USE_MOCK_STRIPE_API && tenancy && stripeAccountId != null) {
+        await verifyStripePayoutIntegrity({
+          projectId,
+          tenancy,
+          stripeAccountId,
+          expectStatusCode,
+        });
+      }
+
+      const verifiedTeams = new Set<string>();
 
       if (!skipUsers) {
         for (let j = 0; j < users.items.length; j++) {
@@ -198,6 +237,8 @@ async function main() {
               },
             });
             for (const projectPermission of projectPermissions.items) {
+              // `any` because these endpoint response types aren't imported here,
+              // and this script is intentionally tolerant of response shape changes.
               if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
                 throw new StackAssertionError(deindent`
                   Project permission ${projectPermission.id} not found in project permission definitions.
@@ -227,6 +268,8 @@ async function main() {
                   },
                 });
                 for (const teamPermission of teamPermissions.items) {
+                  // `any` because these endpoint response types aren't imported here,
+                  // and this script is intentionally tolerant of response shape changes.
                   if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
                     throw new StackAssertionError(deindent`
                       Team permission ${teamPermission.id} not found in team permission definitions.
@@ -234,8 +277,32 @@ async function main() {
                   }
                 }
               });
+
+              if (paymentsVerifier && !verifiedTeams.has(team.id)) {
+                await paymentsVerifier.verifyCustomerPayments({
+                  customerType: "team",
+                  customerId: team.id,
+                });
+                verifiedTeams.add(team.id);
+              }
+            }
+
+            if (paymentsVerifier) {
+              await paymentsVerifier.verifyCustomerPayments({
+                customerType: "user",
+                customerId: user.id,
+              });
             }
           });
+        }
+
+        if (paymentsVerifier) {
+          for (const customCustomerId of paymentsVerifier.customCustomerIds) {
+            await paymentsVerifier.verifyCustomerPayments({
+              customerType: "custom",
+              customerId: customCustomerId,
+            });
+          }
         }
       }
     });
@@ -267,6 +334,7 @@ async function main() {
   console.log();
   console.log();
 }
+
 // eslint-disable-next-line no-restricted-syntax
 main().catch((...args) => {
   console.error();
@@ -276,90 +344,3 @@ main().catch((...args) => {
   process.exit(1);
 });
 
-async function expectStatusCode(expectedStatusCode: number, endpoint: string, request: RequestInit) {
-  const apiUrl = new URL(getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
-  const response = await fetch(new URL(endpoint, apiUrl), {
-    ...request,
-    headers: {
-      "x-stack-disable-artificial-development-delay": "yes",
-      "x-stack-development-disable-extended-logging": "yes",
-      ...filterUndefined(request.headers ?? {}),
-    },
-  });
-
-  const responseText = await response.text();
-
-  if (response.status !== expectedStatusCode) {
-    throw new StackAssertionError(deindent`
-      Expected status code ${expectedStatusCode} but got ${response.status} for ${endpoint}:
-
-          ${responseText}
-    `, { request, response });
-  }
-
-  const responseJson = JSON.parse(responseText);
-  const currentOutput: EndpointOutput = {
-    status: response.status,
-    responseJson,
-  };
-
-  appendOutputData(endpoint, currentOutput);
-
-  return responseJson;
-}
-
-function appendOutputData(endpoint: string, output: EndpointOutput) {
-  if (!(endpoint in currentOutputData)) {
-    currentOutputData[endpoint] = [];
-  }
-  const newLength = currentOutputData[endpoint].push(output);
-  if (targetOutputData) {
-    if (!(endpoint in targetOutputData)) {
-      throw new StackAssertionError(deindent`
-        Output data mismatch for endpoint ${endpoint}:
-          Expected ${endpoint} to be in targetOutputData, but it is not.
-      `, { endpoint });
-    }
-    if (targetOutputData[endpoint].length < newLength) {
-      throw new StackAssertionError(deindent`
-        Output data mismatch for endpoint ${endpoint}:
-          Expected ${targetOutputData[endpoint].length} outputs but got at least ${newLength}.
-      `, { endpoint });
-    }
-    if (!(deepPlainEquals(targetOutputData[endpoint][newLength - 1], output))) {
-      throw new StackAssertionError(deindent`
-        Output data mismatch for endpoint ${endpoint}:
-          Expected output[${JSON.stringify(endpoint)}][${newLength - 1}] to be:
-            ${JSON.stringify(targetOutputData[endpoint][newLength - 1], null, 2)}
-          but got:
-            ${JSON.stringify(output, null, 2)}.
-      `, { endpoint });
-    }
-  }
-}
-
-let lastProgress = performance.now() - 9999999999;
-
-type RecurseFunction = (progressPrefix: string, inner: (recurse: RecurseFunction) => Promise<void>) => Promise<void>;
-
-const _recurse = async (progressPrefix: string | ((...args: any[]) => void), inner: Parameters<RecurseFunction>[1]): Promise<void> => {
-  const progressFunc = typeof progressPrefix === "function" ? progressPrefix : (...args: any[]) => {
-    console.log(`${progressPrefix}`, ...args);
-  };
-  if (performance.now() - lastProgress > 1000) {
-    progressFunc();
-    lastProgress = performance.now();
-  }
-  try {
-    return await inner(
-      (progressPrefix, inner) => _recurse(
-        (...args) => progressFunc(progressPrefix, ...args),
-        inner,
-      ),
-    );
-  } catch (error) {
-    progressFunc(`\x1b[41mERROR\x1b[0m!`);
-    throw error;
-  }
-};
-const recurse: RecurseFunction = _recurse;
