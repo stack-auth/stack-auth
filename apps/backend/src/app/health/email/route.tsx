@@ -101,8 +101,11 @@ const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boo
 const waitForVerificationEmail = async (testEmail: string) => {
   const MAX_POLL_ATTEMPTS = 24;
   const POLL_INTERVAL_MS = 5000;
-  // Use Inbucket in dev/test (backend sends to Inbucket via SMTP in non-production)
-  const useInbucket = getNodeEnvironment() !== "production";
+  const useInbucket = getEnvVariable("STACK_EMAIL_MONITOR_USE_INBUCKET") === "true";
+
+  if (useInbucket && getNodeEnvironment().includes("prod")) {
+    throw new StackAssertionError("Inbucket is not supported as the email monitor inbox in production. Make sure STACK_EMAIL_MONITOR_USE_INBUCKET is set to false.");
+  }
 
   for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
     await wait(POLL_INTERVAL_MS);
