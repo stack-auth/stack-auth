@@ -3,13 +3,13 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
-import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
@@ -56,13 +56,8 @@ export type ClickhouseMigrationRequest = {
 };
 
 export type ClickhouseMigrationResponse = {
-  total_events: number,
-  processed_events: number,
-  remaining_events: number,
   migrated_events: number,
-  skipped_existing_events: number,
   inserted_rows: number,
-  progress: number,
   next_cursor: {
     created_at_millis: number,
     id: string,

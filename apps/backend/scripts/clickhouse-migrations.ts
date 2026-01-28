@@ -35,12 +35,8 @@ CREATE TABLE IF NOT EXISTS analytics_internal.events (
     data             JSON,
     project_id       String,
     branch_id        String,
-    user_id          String,
-    team_id          String,
-    refresh_token_id String,
-    is_anonymous     Boolean,
-    session_id       String,
-    ip_address       String,
+    user_id          Nullable(String),
+    team_id          Nullable(String),
     created_at DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE MergeTree
