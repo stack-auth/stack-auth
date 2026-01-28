@@ -95,6 +95,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
 - When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
+- Fail early, fail loud. Fail fast with an error instead of silently continuing.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

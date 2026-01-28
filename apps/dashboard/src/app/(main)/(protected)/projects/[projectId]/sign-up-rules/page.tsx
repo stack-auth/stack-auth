@@ -1,5 +1,3 @@
-import PageClient from "./page-client";
+"use client";
 
-export default async function Page() {
-  return <PageClient />;
-}
+export { default } from "./page-client";

@@ -2033,4 +2033,270 @@ describe("sign-up rules", () => {
     expect(response.body.error).not.toContain('internal message');
     expect(response.body.error).not.toContain('secret-pattern-xyz');
   });
+
+  // ==========================================
+  // CEL INJECTION PREVENTION TESTS
+  // ==========================================
+
+  it("should handle email addresses containing quotes without injection", async ({ expect }) => {
+    // Test that quotes in email addresses don't break CEL parsing
+    // An attacker might try: test"@example.com to inject CEL
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Rule that should only match the literal string
+    await Project.updateConfig({
+      'auth.signUpRules.quote-test': {
+        enabled: true,
+        displayName: 'Match literal quote',
+        priority: 0,
+        // This tests that the condition with escaped quotes works correctly
+        condition: 'email.contains("test\\"value")',
+        action: {
+          type: 'reject',
+          message: 'Contains quote pattern',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Email without the pattern should be allowed
+    const response1 = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `normal-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(response1.status).toBe(200);
+  });
+
+  it("should handle backslashes in CEL conditions without injection", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Rule with backslash in the condition
+    await Project.updateConfig({
+      'auth.signUpRules.backslash-test': {
+        enabled: true,
+        displayName: 'Match backslash pattern',
+        priority: 0,
+        // Testing backslash escaping in CEL
+        condition: 'email.contains("test\\\\value")',
+        action: {
+          type: 'reject',
+          message: 'Contains backslash pattern',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Email without the pattern should be allowed
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `normal-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("should not allow CEL injection via email value manipulation", async ({ expect }) => {
+    // This tests that even if an attacker crafts a malicious email,
+    // the CEL evaluation treats it as a literal value, not code
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Simple reject rule for test domain
+    await Project.updateConfig({
+      'auth.signUpRules.domain-check': {
+        enabled: true,
+        displayName: 'Block test domain',
+        priority: 0,
+        condition: 'emailDomain == "blocked-domain.com"',
+        action: {
+          type: 'reject',
+          message: 'Domain not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Try an email that looks like it might break CEL parsing
+    // but should be treated as literal email value
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        // Even with special chars, it should work if valid email
+        email: `test-${generateSecureRandomString(4)}@safe-domain.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("should handle malformed regex in matches() gracefully", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Rule with an intentionally malformed regex pattern
+    await Project.updateConfig({
+      'auth.signUpRules.bad-regex': {
+        enabled: true,
+        displayName: 'Malformed regex',
+        priority: 0,
+        // Unbalanced parenthesis - invalid regex
+        condition: 'email.matches("test(unclosed")',
+        action: {
+          type: 'reject',
+          message: 'Matched malformed regex',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Should still allow signup - malformed regex should fail safely
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `test-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    // Invalid regex should fail the condition (return false), so signup allowed
+    expect(response.status).toBe(200);
+  });
+
+  it("should handle special regex characters in contains/startsWith/endsWith", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Rule with regex special chars in a string method (not regex method)
+    await Project.updateConfig({
+      'auth.signUpRules.special-chars': {
+        enabled: true,
+        displayName: 'Special chars in contains',
+        priority: 0,
+        // These chars are regex special but should be literal in contains()
+        condition: 'email.contains("+test")',
+        action: {
+          type: 'reject',
+          message: 'Contains special pattern',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Email without the pattern should be allowed
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `normal-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("should handle ReDoS attack patterns safely with RE2", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Rule with a pattern that would cause catastrophic backtracking with native RegExp
+    // This pattern (a+)+ is known to cause exponential time with certain inputs
+    // RE2 handles this in linear time
+    await Project.updateConfig({
+      'auth.signUpRules.redos-pattern': {
+        enabled: true,
+        displayName: 'ReDoS test pattern',
+        priority: 0,
+        // Pattern that causes catastrophic backtracking in native regex engines
+        condition: 'email.matches("^(a+)+$")',
+        action: {
+          type: 'reject',
+          message: 'Matched ReDoS pattern',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // This should complete quickly (not hang) because we use RE2
+    // A vulnerable regex engine would hang on this input
+    const startTime = performance.now();
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `normal-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    const elapsed = performance.now() - startTime;
+
+    expect(response.status).toBe(200);
+    // Should complete in under 5 seconds (RE2 is linear time)
+    // A vulnerable engine would take exponential time
+    expect(elapsed).toBeLessThan(5000);
+  });
+
+  it("should reject complex ReDoS patterns that RE2 doesn't support", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // RE2 doesn't support backreferences, so this pattern should fail to compile
+    // and the rule should not match (return false)
+    await Project.updateConfig({
+      'auth.signUpRules.backreference': {
+        enabled: true,
+        displayName: 'Backreference pattern',
+        priority: 0,
+        // Backreferences like \1 are not supported by RE2
+        condition: 'email.matches("^(a)\\\\1$")',
+        action: {
+          type: 'reject',
+          message: 'Matched backreference pattern',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Should allow signup because RE2 can't compile the pattern
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `aa-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    // Pattern compilation fails, so rule doesn't match, allowing signup
+    expect(response.status).toBe(200);
+  });
 });

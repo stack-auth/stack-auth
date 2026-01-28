@@ -2,26 +2,26 @@
 
 import { ConditionBuilder } from "@/components/rule-builder";
 import {
-    ActionDialog,
-    Alert,
-    Button,
-    cn,
-    Input,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    Spinner,
-    Switch,
-    Typography,
+  ActionDialog,
+  Alert,
+  Button,
+  cn,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Spinner,
+  Switch,
+  Typography,
 } from "@/components/ui";
 import {
-    createEmptyCondition,
-    createEmptyGroup,
-    parseCelToVisualTree,
-    visualTreeToCel,
-    type RuleNode,
+  createEmptyCondition,
+  createEmptyGroup,
+  parseCelToVisualTree,
+  visualTreeToCel,
+  type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { useUpdateConfig } from "@/lib/config-update";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
