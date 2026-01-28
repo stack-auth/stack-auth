@@ -11,6 +11,10 @@ export type ExecuteJavascriptOptions = {
   engine?: 'freestyle' | 'vercel-sandbox',
 };
 
+type ExecuteResult =
+  | { status: "ok", data: unknown }
+  | { status: "error", error: { message: string, stack?: string, cause?: unknown } };
+
 type JsEngine = {
   name: string,
   execute: (code: string, options: ExecuteJavascriptOptions) => Promise<unknown>,
@@ -157,6 +161,25 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
   });
 }
 
+/**
+ * Compare two execution results for sanity test equality.
+ * For error results, we only compare status and message (not stack traces,
+ * which differ between execution environments).
+ */
+function areResultsEqual(a: ExecuteResult, b: ExecuteResult): boolean {
+  if (a.status !== b.status) return false;
+
+  if (a.status === 'ok' && b.status === 'ok') {
+    return JSON.stringify(a.data) === JSON.stringify(b.data);
+  }
+
+  if (a.status === 'error' && b.status === 'error') {
+    return a.error.message === b.error.message;
+  }
+
+  return false;
+}
+
 async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   const results: Array<{ engine: string, result: unknown }> = [];
   const failures: Array<{ engine: string, error: unknown }> = [];
@@ -181,8 +204,8 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
     return;
   }
 
-  const referenceResult = results[0].result;
-  const allEqual = results.every(r => JSON.stringify(r.result) === JSON.stringify(referenceResult));
+  const referenceResult = results[0].result as ExecuteResult;
+  const allEqual = results.every(r => areResultsEqual(r.result as ExecuteResult, referenceResult));
   if (!allEqual) {
     captureError("js-execution-sanity-test-mismatch", new StackAssertionError(
       "JS execution sanity test: engines returned different results",
