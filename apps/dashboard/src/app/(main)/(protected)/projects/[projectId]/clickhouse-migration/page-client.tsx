@@ -95,12 +95,8 @@ export default function PageClient() {
 
   const resetMigration = React.useCallback(() => {
     stopMigration();
-    cursorRef.current = null;
-    timeWindowRef.current = null;
     setCursor(null);
     setError(null);
-    setTotalMigratedEvents(0);
-    setTotalInsertedRows(0);
     setBatchCount(0);
     setDone(false);
   }, [stopMigration]);
@@ -161,7 +157,8 @@ export default function PageClient() {
                   value={minCreatedAt}
                   onChange={(e) => {
                     setMinCreatedAt(e.target.value);
-                    resetMigration();
+                    cursorRef.current = null;
+                    timeWindowRef.current = null;
                   }}
                   placeholder="1735689600000 or 2024-08-01T00:00"
                 />
@@ -173,7 +170,8 @@ export default function PageClient() {
                   value={maxCreatedAt}
                   onChange={(e) => {
                     setMaxCreatedAt(e.target.value);
-                    resetMigration();
+                    cursorRef.current = null;
+                    timeWindowRef.current = null;
                   }}
                   placeholder="1767225600000 or 2024-12-01T00:00"
                 />
