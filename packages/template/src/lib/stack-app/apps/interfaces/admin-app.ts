@@ -1,4 +1,5 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -110,6 +111,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
     refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void>,
+    queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
