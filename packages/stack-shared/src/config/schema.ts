@@ -121,6 +121,33 @@ const branchAppsSchema = yupObject({
 // --- END NEW Apps Schema ---
 
 
+// --- Signup Rules Schema ---
+// Metadata entry schema with target field
+const signupRuleMetadataEntrySchema = yupObject({
+  value: yupMixed<string | number | boolean>().defined(),
+  target: yupString().oneOf(['client', 'client_read_only', 'server']).defined(),
+});
+
+const signupRuleActionSchema = yupObject({
+  type: yupString().oneOf(['allow', 'reject', 'restrict', 'log', 'add_metadata']).defined(),
+  // For add_metadata action: each entry has a value and a target (client, client_read_only, or server)
+  metadata: yupRecord(yupString(), signupRuleMetadataEntrySchema).optional(),
+  message: yupString().optional(), // for reject action custom message (internal use, not shown to user)
+});
+
+const signupRuleSchema = yupObject({
+  enabled: yupBoolean(),
+  displayName: yupString(),
+  // Priority for rule ordering (lower = higher priority, evaluated first)
+  // Rules with same priority are sorted alphabetically by ID
+  priority: yupNumber().integer().min(0),
+  // CEL expression string - evaluated against signup context
+  // Example: 'email.endsWith("@gmail.com") && authMethod == "password"'
+  condition: yupString(),
+  action: signupRuleActionSchema,
+});
+// --- END Signup Rules Schema ---
+
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean(),
   password: yupObject({
@@ -143,6 +170,13 @@ const branchAuthSchema = yupObject({
       }),
     ),
   }),
+  // Signup rules - CEL-based rules for controlling who can sign up
+  signupRules: yupRecord(
+    userSpecifiedIdSchema("signupRuleId"),
+    signupRuleSchema,
+  ),
+  // Default action when no signup rules match
+  signupRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
 });
 
 export const branchPaymentsSchema = yupObject({
@@ -555,6 +589,18 @@ const organizationConfigDefaults = {
         microsoftTenantId: undefined,
       }),
     },
+    signupRules: (key: string) => ({
+      enabled: false,
+      displayName: undefined,
+      priority: 0,
+      condition: undefined,
+      action: {
+        type: 'allow',
+        metadata: undefined,
+        message: undefined,
+      },
+    }),
+    signupRulesDefaultAction: 'allow',
   },
 
   emails: {

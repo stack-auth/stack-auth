@@ -729,7 +729,7 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
-export const restrictedReasonTypes = ["anonymous", "email_not_verified"] as const;
+export const restrictedReasonTypes = ["anonymous", "email_not_verified", "restricted_by_administrator"] as const;
 export type RestrictedReasonType = typeof restrictedReasonTypes[number];
 
 export const accessTokenPayloadSchema = yupObject({

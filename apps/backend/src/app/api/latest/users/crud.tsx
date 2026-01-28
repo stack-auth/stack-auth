@@ -101,7 +101,8 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   isAnonymous: boolean,
   primaryEmailVerified: boolean,
   config: T,
-): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" } } {
+  restrictedByAdmin?: boolean,
+): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } } {
   // note: when you implement this function, make sure to also update the filter in the list users endpoint
 
   // Anonymous users are always restricted (they need to sign up first)
@@ -110,8 +111,14 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   }
 
   // Check email verification requirement (default to false if not configured)
+  // This takes precedence over admin restriction because it's user-actionable
   if (config.onboarding.requireEmailVerification && !primaryEmailVerified) {
     return { isRestricted: true, restrictedReason: { type: "email_not_verified" } };
+  }
+
+  // Check if user was restricted by administrator (e.g., via signup rules or manual admin action)
+  if (restrictedByAdmin) {
+    return { isRestricted: true, restrictedReason: { type: "restricted_by_administrator" } };
   }
 
   // EXTENSIBILITY: Add more conditions here in the future
@@ -141,6 +148,7 @@ export const userPrismaToCrud = (
     prisma.isAnonymous,
     primaryEmailVerified,
     config,
+    prisma.restrictedByAdmin,
   );
 
   const result = {
@@ -170,6 +178,9 @@ export const userPrismaToCrud = (
     is_anonymous: prisma.isAnonymous,
     is_restricted: isRestricted,
     restricted_reason: restrictedReason,
+    restricted_by_admin: prisma.restrictedByAdmin,
+    restricted_by_admin_reason: prisma.restrictedByAdminReason,
+    restricted_by_admin_private_details: prisma.restrictedByAdminPrivateDetails,
   };
   return result;
 };
@@ -347,6 +358,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         row.isAnonymous,
         primaryEmailContactChannel?.isVerified || false,
         config,
+        row.restrictedByAdmin,
       );
 
       return {
@@ -384,6 +396,9 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         is_anonymous: row.isAnonymous,
         is_restricted: restrictedStatus.isRestricted,
         restricted_reason: restrictedStatus.restrictedReason,
+        restricted_by_admin: row.restrictedByAdmin,
+        restricted_by_admin_reason: row.restrictedByAdminReason,
+        restricted_by_admin_private_details: row.restrictedByAdminPrivateDetails,
       };
     },
   };
@@ -417,6 +432,7 @@ export function getUserIfOnGlobalPrismaClientQuery(
         user.is_anonymous,
         user.primary_email_verified,
         config,
+        user.restricted_by_admin,
       );
       return {
         ...user,
@@ -599,7 +615,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
+          restrictedByAdmin: data.restricted_by_admin ?? false,
+          restrictedByAdminReason: data.restricted_by_admin_reason === undefined ? undefined : (data.restricted_by_admin_reason || null),
+          restrictedByAdminPrivateDetails: data.restricted_by_admin_private_details === undefined ? undefined : (data.restricted_by_admin_private_details || null),
         },
         include: userFullInclude,
       });
@@ -1074,7 +1093,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
+          restrictedByAdmin: data.restricted_by_admin ?? undefined,
+          restrictedByAdminReason: data.restricted_by_admin_reason === undefined ? undefined : (data.restricted_by_admin_reason || null),
+          restrictedByAdminPrivateDetails: data.restricted_by_admin_private_details === undefined ? undefined : (data.restricted_by_admin_private_details || null),
         },
         include: userFullInclude,
       });

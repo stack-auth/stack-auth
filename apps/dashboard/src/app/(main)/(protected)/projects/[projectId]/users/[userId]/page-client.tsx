@@ -11,15 +11,25 @@ import {
   AccordionItem,
   AccordionTrigger,
   ActionCell,
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
   Separator,
   SimpleTooltip,
   Table,
@@ -28,6 +38,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
   Typography,
   cn,
   useToast
@@ -35,7 +46,7 @@ import {
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
@@ -247,6 +258,219 @@ function UserHeader({ user }: UserHeaderProps) {
   );
 }
 
+// Get the human-readable restriction reason
+function getRestrictionReasonText(user: ServerUser): string {
+  const restrictedReason = user.restrictedReason;
+  if (!restrictedReason) return '';
+
+  switch (restrictedReason.type) {
+    case 'anonymous': {
+      return 'Anonymous user';
+    }
+    case 'email_not_verified': {
+      return 'Unverified email';
+    }
+    case 'restricted_by_administrator': {
+      return 'Manually restricted';
+    }
+    default: {
+      return 'Restricted';
+    }
+  }
+}
+
+// Restriction dialog for editing restriction details
+function RestrictionDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: ServerUser,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+}) {
+  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
+  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
+  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
+
+  const [publicReason, setPublicReason] = useState(restrictedByAdminReason ?? '');
+  const [privateDetails, setPrivateDetails] = useState(restrictedByAdminPrivateDetails ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Reset form when dialog opens
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) {
+      setPublicReason(restrictedByAdminReason ?? '');
+      setPrivateDetails(restrictedByAdminPrivateDetails ?? '');
+    }
+    onOpenChange(newOpen);
+  };
+
+  const handleSaveAndRestrict = async () => {
+    setIsSaving(true);
+    try {
+      await user.update({
+        restrictedByAdmin: true,
+        restrictedByAdminReason: publicReason.trim() || null,
+        restrictedByAdminPrivateDetails: privateDetails.trim() || null,
+      } as any);
+      onOpenChange(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveRestriction = async () => {
+    setIsSaving(true);
+    try {
+      await user.update({
+        restrictedByAdmin: false,
+        restrictedByAdminReason: null,
+        restrictedByAdminPrivateDetails: null,
+      } as any);
+      onOpenChange(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>User Restriction</DialogTitle>
+          <DialogDescription>
+            Restricted users cannot access your app by default. You can optionally provide a public reason (shown to the user) and private details (for internal notes).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Public reason (shown to user)</label>
+            <Input
+              value={publicReason}
+              onChange={(e) => setPublicReason(e.target.value)}
+              placeholder="Optional message visible to the user"
+              disabled={isSaving}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Private details (internal only)</label>
+            <Textarea
+              value={privateDetails}
+              onChange={(e) => setPrivateDetails(e.target.value)}
+              placeholder="Internal notes, e.g., which signup rule triggered"
+              className="min-h-[80px]"
+              disabled={isSaving}
+            />
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {restrictedByAdmin && (
+            <Button
+              variant="destructive"
+              onClick={handleRemoveRestriction}
+              disabled={isSaving}
+              className="sm:mr-auto"
+            >
+              Remove manual restriction
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveAndRestrict}
+            disabled={isSaving}
+          >
+            Save &amp; restrict user
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Restriction row that looks like an editable input but opens a dialog
+function RestrictedStatusRow({ user }: { user: ServerUser }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const isRestricted = user.isRestricted;
+  const reasonText = getRestrictionReasonText(user);
+
+  const displayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
+
+  return (
+    <>
+      <UserInfo icon={<ProhibitIcon size={16}/>} name="Restricted">
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className={cn(
+            "w-full text-left px-1 py-0 rounded-md text-sm",
+            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
+            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
+            "transition-colors hover:transition-none",
+          )}
+        >
+          {displayValue}
+        </button>
+      </UserInfo>
+      <RestrictionDialog
+        user={user}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+    </>
+  );
+}
+
+// Restriction banner shown at top of page when user is restricted
+function RestrictionBanner({ user }: { user: ServerUser }) {
+  if (!user.isRestricted) return null;
+
+  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
+  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
+  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
+  const reasonText = getRestrictionReasonText(user);
+
+  return (
+    <Alert variant="destructive" className="mb-4">
+      <ProhibitIcon size={16} />
+      <AlertTitle>This user is currently restricted</AlertTitle>
+      <AlertDescription className="mt-2">
+        <p className="mb-2">
+          Restricted users cannot access your app by default. This user is restricted because: <strong>{reasonText}</strong>.
+        </p>
+        {user.restrictedReason?.type === 'email_not_verified' && (
+          <p className="text-sm opacity-80">
+            The user needs to verify their email address to remove this restriction.
+          </p>
+        )}
+        {user.restrictedReason?.type === 'anonymous' && (
+          <p className="text-sm opacity-80">
+            Anonymous users must sign up with credentials to remove this restriction.
+          </p>
+        )}
+        {user.restrictedReason?.type === 'restricted_by_administrator' && (
+          <div className="text-sm opacity-80">
+            <p>This user was manually restricted by an administrator.</p>
+            {restrictedByAdminReason && (
+              <p className="mt-1"><strong>Public reason:</strong> {restrictedByAdminReason}</p>
+            )}
+            {restrictedByAdminPrivateDetails && (
+              <p className="mt-1"><strong>Private details:</strong> {restrictedByAdminPrivateDetails}</p>
+            )}
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 type UserDetailsProps = {
   user: ServerUser,
 };
@@ -282,6 +506,7 @@ function UserDetails({ user }: UserDetailsProps) {
       <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
       </UserInfo>
+      <RestrictedStatusRow user={user} />
     </div>
   );
 }
@@ -1175,6 +1400,7 @@ function UserPage({ user }: { user: ServerUser }) {
   return (
     <PageLayout>
       <div className="flex flex-col gap-6">
+        <RestrictionBanner user={user} />
         <UserHeader user={user} />
         <Separator />
         <UserDetails user={user} />

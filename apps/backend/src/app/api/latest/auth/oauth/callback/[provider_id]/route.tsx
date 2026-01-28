@@ -3,7 +3,7 @@ import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-chann
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthCookieSchema } from "@/lib/tokens";
-import { createOrUpgradeAnonymousUser } from "@/lib/users";
+import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getProvider, oauthServer } from "@/oauth";
 import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -376,7 +376,7 @@ const handler = createSmartRouteHandler({
                     currentUser = null;
                   }
 
-                  const newAccountBeforeAuthMethod = await createOrUpgradeAnonymousUser(
+                  const newAccountBeforeAuthMethod = await createOrUpgradeAnonymousUserWithRules(
                     tenancy,
                     currentUser,
                     {
@@ -387,6 +387,12 @@ const handler = createSmartRouteHandler({
                       primary_email_auth_enabled: primaryEmailAuthEnabled,
                     },
                     [],
+                    {
+                      authMethod: 'oauth',
+                      oauthProvider: provider.id,
+                      // Note: Request context not easily available in OAuth callback
+                      // TODO: Pass IP and user agent from stored OAuth state if needed
+                    },
                   );
                   const authMethod = await prisma.authMethod.create({
                     data: {
