@@ -25,16 +25,17 @@ export type SignUpRuleAction = {
 /**
  * A sign-up rule from the config.
  * Type definition for the signUpRules field in auth config.
+ * Note: All fields except metadata are required after config defaults are applied.
  */
 type SignUpRuleConfig = {
-  enabled?: boolean,
-  displayName?: string,
-  priority?: number,
-  condition?: string,
-  action?: {
-    type?: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
-    message?: string,
-    metadata?: Record<string, SignUpRuleMetadataEntry>,
+  enabled: boolean,
+  displayName: string | undefined,
+  priority: number,
+  condition: string | undefined,
+  action: {
+    type: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
+    message: string | undefined,
+    metadata: Record<string, SignUpRuleMetadataEntry> | undefined,
   },
 };
 
@@ -123,21 +124,21 @@ export async function evaluateSignUpRules(
   const sortedRuleEntries = Object.entries(rules)
     .filter(([, rule]) => rule.enabled)
     .sort((a, b) => {
-      const priorityA = a[1].priority ?? 0;
-      const priorityB = b[1].priority ?? 0;
+      const priorityA = a[1].priority;
+      const priorityB = b[1].priority;
       if (priorityA !== priorityB) return priorityA - priorityB;
       return stringCompare(a[0], b[0]);
     });
 
   // Evaluate each rule in order
   for (const [ruleId, rule] of sortedRuleEntries) {
-    if (!rule.condition || !rule.action) continue;
+    if (!rule.condition) continue;
 
     try {
       const matches = evaluateCelExpression(rule.condition, context);
       if (matches) {
         const action: SignUpRuleAction = {
-          type: rule.action.type ?? 'allow',
+          type: rule.action.type,
           metadata: rule.action.metadata,
           message: rule.action.message,
         };
@@ -178,7 +179,8 @@ export function applySignUpRuleAction(result: SignUpRuleResult): {
   switch (result.action.type) {
     case 'reject': {
       // Throw an error to reject the signup
-      // Don't include the custom rule message to avoid helping users evade rules
+      // Note: We intentionally don't pass the custom message to avoid helping users evade rules
+      // The custom message is only for internal logging/analytics purposes
       throw new KnownErrors.SignUpRejected();
     }
     case 'restrict': {

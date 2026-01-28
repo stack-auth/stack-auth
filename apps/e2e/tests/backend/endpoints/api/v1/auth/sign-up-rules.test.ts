@@ -84,7 +84,7 @@ describe("sign-up rules", () => {
     });
   });
 
-  it("should use custom rejection message from rule", async ({ expect }) => {
+  it("should reject sign-up when rule with custom message matches (message is for internal use only)", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
@@ -101,6 +101,7 @@ describe("sign-up rules", () => {
         condition: 'emailDomain == "blocked-domain.com"',
         action: {
           type: 'reject',
+          // Note: This message is for internal logging/analytics only, not shown to users
           message: customMessage,
         },
       },
@@ -119,8 +120,9 @@ describe("sign-up rules", () => {
     expect(response.status).toBe(403);
     expect(response.body).toMatchObject({
       code: 'SIGN_UP_REJECTED',
-      error: customMessage,
     });
+    // Custom message is intentionally NOT exposed to users to avoid helping evade rules
+    expect(response.body.error).not.toContain(customMessage);
   });
 
   // ==========================================

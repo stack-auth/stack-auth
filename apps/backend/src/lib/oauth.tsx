@@ -4,7 +4,7 @@ import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/
 import { PrismaClientTransaction } from "@/prisma-client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
  * Find an existing OAuth account for sign-in.

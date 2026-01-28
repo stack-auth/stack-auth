@@ -1,9 +1,9 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
-import { Tenancy } from "./tenancies";
 import { createSignUpRuleContext } from "./cel-evaluator";
-import { evaluateAndApplySignUpRules, SignUpRuleMetadataEntry } from "./sign-up-rules";
+import { evaluateAndApplySignUpRules } from "./sign-up-rules";
+import { Tenancy } from "./tenancies";
 
 /**
  * Options for sign-up rule evaluation context.
