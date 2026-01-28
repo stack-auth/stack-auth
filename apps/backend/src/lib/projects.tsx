@@ -189,6 +189,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
             clientSecret: provider.client_secret,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
+            appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies CompleteConfig['auth']['oauth']['providers'][string]
