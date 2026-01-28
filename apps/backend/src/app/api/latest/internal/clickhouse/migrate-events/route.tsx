@@ -1,10 +1,11 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient, isClickhouseConfigured } from "@/lib/clickhouse";
+import { endUserIpInfoSchema, type EndUserIpInfo } from "@/lib/events";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 type Cursor = {
   created_at_millis: number,
@@ -22,30 +23,84 @@ const parseMillisOrThrow = (value: number | undefined, field: string) => {
   return parsed;
 };
 
-const createClickhouseRow = (event: {
+type EventWithIpInfo = {
   id: string,
   systemEventTypeIds: string[],
-  data: any,
+  data: unknown,
   eventEndedAt: Date,
   eventStartedAt: Date,
   isWide: boolean,
-}) => {
+  isEndUserIpInfoGuessTrusted: boolean,
+  endUserIpInfoGuess: {
+    ip: string,
+    countryCode: string | null,
+    regionCode: string | null,
+    cityName: string | null,
+    latitude: number | null,
+    longitude: number | null,
+    tzIdentifier: string | null,
+  } | null,
+};
+
+/**
+ * Transforms a $session-activity event from Postgres into a $token-refresh event for ClickHouse.
+ *
+ * The $session-activity event has:
+ * - sessionId (from SessionActivityEventType)
+ * - userId, branchId, isAnonymous, teamId (from UserActivityEventType)
+ * - projectId (from ProjectEventType via inheritance)
+ *
+ * The $token-refresh event needs:
+ * - projectId, branchId, organizationId (null), userId, refreshTokenId, isAnonymous, ipInfo
+ */
+const createClickhouseRow = (event: EventWithIpInfo) => {
   const dataRecord = typeof event.data === "object" && event.data !== null ? event.data as Record<string, unknown> : {};
-  const clickhouseEventData = {
-    ...dataRecord,
+
+  // Extract fields from the old $session-activity format
+  const projectId = typeof dataRecord.projectId === "string" ? dataRecord.projectId : throwErr(new StackAssertionError("projectId is required"));
+  const branchId = typeof dataRecord.branchId === "string" ? dataRecord.branchId : DEFAULT_BRANCH_ID;
+  const userId = typeof dataRecord.userId === "string" && dataRecord.userId ? dataRecord.userId : throwErr(new StackAssertionError("userId is required"));
+  // sessionId becomes refreshTokenId in the new schema
+  const refreshTokenId = typeof dataRecord.sessionId === "string" ? dataRecord.sessionId : throwErr(new StackAssertionError("sessionId is required"));
+  // isAnonymous may not exist on old events, default to false
+  const isAnonymous = typeof dataRecord.isAnonymous === "boolean" ? dataRecord.isAnonymous : false;
+
+  // Build ipInfo from the event's endUserIpInfoGuess relation
+  let ipInfo: EndUserIpInfo | null = null;
+  if (event.endUserIpInfoGuess) {
+    const ip = event.endUserIpInfoGuess;
+    ipInfo = {
+      ip: ip.ip,
+      isTrusted: event.isEndUserIpInfoGuessTrusted,
+      countryCode: ip.countryCode ?? undefined,
+      regionCode: ip.regionCode ?? undefined,
+      cityName: ip.cityName ?? undefined,
+      latitude: ip.latitude ?? undefined,
+      longitude: ip.longitude ?? undefined,
+      tzIdentifier: ip.tzIdentifier ?? undefined,
+    };
+    // Validate against schema
+    ipInfo = endUserIpInfoSchema.validateSync(ipInfo, { stripUnknown: true });
+  }
+
+  // Build the data object matching TokenRefreshEventType schema
+  const tokenRefreshData = {
+    projectId,
+    branchId,
+    organizationId: null,
+    userId: userId,
+    refreshTokenId,
+    isAnonymous,
+    ipInfo,
     is_wide: event.isWide,
     event_started_at: event.eventStartedAt,
     event_ended_at: event.eventEndedAt,
   };
-  const projectId = typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";
-  const branchId = DEFAULT_BRANCH_ID;
-  const userId = typeof dataRecord.userId === "string" && dataRecord.userId ? dataRecord.userId : null;
 
-  // Translate $session-activity to $token-refresh
   return {
     event_type: '$token-refresh',
     event_at: event.eventEndedAt,
-    data: clickhouseEventData,
+    data: tokenRefreshData,
     project_id: projectId,
     branch_id: branchId,
     user_id: userId,
@@ -129,6 +184,9 @@ export const POST = createSmartRouteHandler({
         { id: "asc" },
       ],
       take: limit,
+      include: {
+        endUserIpInfoGuess: true,
+      },
     });
 
     let insertedRows = 0;
