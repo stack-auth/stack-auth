@@ -28,6 +28,7 @@ function getTotalUsdStripeUnits(options: { product: InferType<typeof productSche
 type RefundEntrySelection = {
   entry_index: number,
   quantity: number,
+  amount_usd: MoneyAmount,
 };
 
 function validateRefundEntries(options: { entries: TransactionEntry[], refundEntries: RefundEntrySelection[] }) {
@@ -68,6 +69,14 @@ function getRefundedQuantity(refundEntries: RefundEntrySelection[]) {
   return total;
 }
 
+function getRefundAmountStripeUnits(refundEntries: RefundEntrySelection[]) {
+  let total = 0;
+  for (const refundEntry of refundEntries) {
+    total += moneyAmountToStripeUnits(refundEntry.amount_usd, USD_CURRENCY);
+  }
+  return total;
+}
+
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -81,11 +90,11 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       type: yupString().oneOf(["subscription", "one-time-purchase"]).defined(),
       id: yupString().defined(),
-      amount_usd: moneyAmountSchema(USD_CURRENCY).defined(),
       refund_entries: yupArray(
         yupObject({
           entry_index: yupNumber().integer().defined(),
           quantity: yupNumber().integer().defined(),
+          amount_usd: moneyAmountSchema(USD_CURRENCY).defined(),
         }).defined(),
       ).defined(),
     }).defined()
@@ -99,8 +108,10 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const refundAmountUsd = body.amount_usd;
-    const refundEntries = body.refund_entries;
+    const refundEntries = body.refund_entries.map((entry) => ({
+      ...entry,
+      amount_usd: entry.amount_usd as MoneyAmount,
+    }));
     if (body.type === "subscription") {
       const subscription = await prisma.subscription.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
@@ -154,7 +165,7 @@ export const POST = createSmartRouteHandler({
         priceId: subscription.priceId ?? null,
         quantity: subscription.quantity,
       });
-      refundAmountStripeUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
+      refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
       if (refundAmountStripeUnits < 0) {
         throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
       }
@@ -237,7 +248,7 @@ export const POST = createSmartRouteHandler({
         priceId: purchase.priceId ?? null,
         quantity: purchase.quantity,
       });
-      refundAmountStripeUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
+      refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
       if (refundAmountStripeUnits < 0) {
         throw new KnownErrors.SchemaError("Refund amount cannot be negative.");
       }

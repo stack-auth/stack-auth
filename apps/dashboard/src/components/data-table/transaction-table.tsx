@@ -259,28 +259,28 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
 
   const refundValidation = React.useMemo(() => {
     if (!chargedAmountUsd || !USD_CURRENCY) {
-      return { canSubmit: false, error: "Refund amounts are only supported for USD charges.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Refund amounts are only supported for USD charges.", refundEntries: undefined };
     }
     if (!refundAmountUsd) {
-      return { canSubmit: false, error: "Enter a refund amount.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Enter a refund amount.", refundEntries: undefined };
     }
     const isValid = moneyAmountSchema(USD_CURRENCY).defined().isValidSync(refundAmountUsd);
     if (!isValid) {
-      return { canSubmit: false, error: "Refund amount must be a valid USD amount.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Refund amount must be a valid USD amount.", refundEntries: undefined };
     }
     const refundUnits = moneyAmountToStripeUnits(refundAmountUsd as MoneyAmount, USD_CURRENCY);
     const maxChargedUnits = moneyAmountToStripeUnits(chargedAmountUsd as MoneyAmount, USD_CURRENCY);
     if (refundUnits < 0) {
-      return { canSubmit: false, error: "Refund amount cannot be negative.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Refund amount cannot be negative.", refundEntries: undefined };
     }
     if (refundUnits > maxChargedUnits) {
-      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined };
     }
     if (!canComputeRefundEntries) {
-      return { canSubmit: false, error: "Refund entries are only supported for USD-priced products.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Refund entries are only supported for USD-priced products.", refundEntries: undefined };
     }
     if (totalSelectedQuantity < 0) {
-      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined };
     }
     const maxUnits = maxChargedUnits;
     const selectedUnits = selectedEntries.reduce((sum, entry) => {
@@ -289,15 +289,23 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
       return sum + entryUnits;
     }, 0);
     if (selectedUnits < 0) {
-      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: "Quantity cannot be negative.", refundEntries: undefined };
     }
     if (selectedUnits > maxUnits) {
-      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined, amountUsd: undefined };
+      return { canSubmit: false, error: `Refund amount cannot exceed $${chargedAmountUsd}.`, refundEntries: undefined };
     }
-    const refundEntries = selectedEntries
+    const entries = selectedEntries
       .filter((entry) => entry.selectedQuantity > 0)
       .map((entry) => ({ entryIndex: entry.entryIndex, quantity: entry.selectedQuantity }));
-    return { canSubmit: true, error: null, refundEntries, amountUsd: refundAmountUsd as MoneyAmount };
+    const fallbackEntry = selectedEntries[0] ?? throwErr("Refund entry missing for refund entries");
+    const normalizedEntries = entries.length > 0
+      ? entries
+      : [{ entryIndex: fallbackEntry.entryIndex, quantity: 0 }];
+    const refundEntries = normalizedEntries.map((entry, index) => ({
+      ...entry,
+      amountUsd: (index === 0 ? refundAmountUsd : "0") as MoneyAmount,
+    }));
+    return { canSubmit: true, error: null, refundEntries };
   }, [chargedAmountUsd, canComputeRefundEntries, refundAmountUsd, selectedEntries, totalSelectedQuantity]);
 
   return (
@@ -318,7 +326,6 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
               await app.refundTransaction({
                 ...target,
                 refundEntries: refundValidation.refundEntries ?? throwErr("Refund entries missing for refund"),
-                amountUsd: refundValidation.amountUsd ?? throwErr("Refund amount missing for refund"),
               });
             },
             props: chargedAmountUsd ? { disabled: !refundValidation.canSubmit } : undefined,

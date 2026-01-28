@@ -710,8 +710,7 @@ export class StackAdminInterface extends StackServerInterface {
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
-    amountUsd: MoneyAmount,
-    refundEntries: Array<{ entryIndex: number, quantity: number }>,
+    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
   }): Promise<{ success: boolean }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
@@ -723,10 +722,10 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           type: options.type,
           id: options.id,
-          amount_usd: options.amountUsd,
           refund_entries: options.refundEntries.map((entry) => ({
             entry_index: entry.entryIndex,
             quantity: entry.quantity,
+            amount_usd: entry.amountUsd,
           })),
         }),
       },

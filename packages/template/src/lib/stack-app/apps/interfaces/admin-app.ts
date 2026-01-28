@@ -114,8 +114,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     refundTransaction(options: {
       type: "subscription" | "one-time-purchase",
       id: string,
-      amountUsd: MoneyAmount,
-      refundEntries: Array<{ entryIndex: number, quantity: number }>,
+      refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
     }): Promise<void>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 

@@ -154,8 +154,7 @@ it("returns TestModePurchaseNonRefundable when refunding test mode one-time purc
     body: {
       type: "one-time-purchase",
       id: transactionId,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -184,8 +183,7 @@ it("returns SubscriptionInvoiceNotFound when id does not exist", async () => {
     body: {
       type: "subscription",
       id: missingId,
-      amount_usd: "1000",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -268,8 +266,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -292,8 +289,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(secondRefundAttempt).toMatchInlineSnapshot(`
@@ -332,8 +328,7 @@ it("refunds partial amounts for non-test mode one-time purchases", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "1250",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1250" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -361,8 +356,7 @@ it("refunds partial amounts for non-test mode one-time purchases", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "1250",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1250" }],
     },
   });
   expect(secondRefundAttempt.body.code).toBe("ONE_TIME_PURCHASE_ALREADY_REFUNDED");
@@ -377,8 +371,7 @@ it("refunds selected quantities for non-test mode one-time purchases", async () 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "10000",
-      refund_entries: [{ entry_index: 0, quantity: 2 }],
+      refund_entries: [{ entry_index: 0, quantity: 2, amount_usd: "10000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -410,8 +403,7 @@ it("returns SCHEMA_ERROR when amount_usd is negative", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "-1",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "-1" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -447,8 +439,7 @@ it("allows amount_usd of zero", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "0",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "0" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -460,7 +451,7 @@ it("allows amount_usd of zero", async () => {
   `);
 });
 
-it("allows empty refund_entries (money-only refund)", async () => {
+it("allows zero-quantity refund entries (money-only refund)", async () => {
   const { userId, purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
@@ -469,8 +460,7 @@ it("allows empty refund_entries (money-only refund)", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [],
+      refund_entries: [{ entry_index: 0, quantity: 0, amount_usd: "5000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -502,8 +492,7 @@ it("returns SCHEMA_ERROR when refund_entries contains bad entry_index", async ()
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 999, quantity: 1 }],
+      refund_entries: [{ entry_index: 999, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -531,8 +520,7 @@ it("returns SCHEMA_ERROR when refund_entries contains negative quantity", async 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: -1 }],
+      refund_entries: [{ entry_index: 0, quantity: -1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -560,8 +548,7 @@ it("allows refund_entries with zero quantity", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: 0 }],
+      refund_entries: [{ entry_index: 0, quantity: 0, amount_usd: "5000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -593,8 +580,7 @@ it("returns SCHEMA_ERROR when refund_entries contains quantity past limit", asyn
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: 2 }],
+      refund_entries: [{ entry_index: 0, quantity: 2, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -622,8 +608,7 @@ it("returns SCHEMA_ERROR when amount_usd exceeds charged amount", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5001",
-      refund_entries: [{ entry_index: 0, quantity: 1 }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5001" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -651,8 +636,7 @@ it("returns SCHEMA_ERROR when refund_entries contains negative entry_index", asy
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: -1, quantity: 1 }],
+      refund_entries: [{ entry_index: -1, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -680,8 +664,7 @@ it("returns SCHEMA_ERROR when refund_entries quantity is not an integer", async 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 0, quantity: 1.5 }],
+      refund_entries: [{ entry_index: 0, quantity: 1.5, amount_usd: "5000" }],
     },
   });
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
@@ -696,8 +679,7 @@ it("returns SCHEMA_ERROR when refund_entries references non-product_grant entrie
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
-      refund_entries: [{ entry_index: 1, quantity: 1 }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -725,10 +707,9 @@ it("returns SCHEMA_ERROR when refund_entries contains duplicate entry indexes", 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      amount_usd: "5000",
       refund_entries: [
-        { entry_index: 0, quantity: 1 },
-        { entry_index: 0, quantity: 1 },
+        { entry_index: 0, quantity: 1, amount_usd: "5000" },
+        { entry_index: 0, quantity: 1, amount_usd: "5000" },
       ],
     },
   });
