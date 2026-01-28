@@ -43,6 +43,7 @@ export const POST = createSmartRouteHandler({
     summary: "Native Apple Sign In",
     description: "Authenticate a user using a native Sign In with Apple identity token. This endpoint is used by iOS/macOS apps that use the native ASAuthorizationController flow instead of web-based OAuth. The project must have Apple OAuth configured with the app's Bundle ID.",
     tags: ["Oauth"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({
