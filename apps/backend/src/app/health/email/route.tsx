@@ -32,7 +32,7 @@ const transformInbucketToResendFormat = (messages: InbucketMessage[]): { data: R
 };
 
 const fetchFromInbucket = async (testEmail: string): Promise<{ data: ResendEmail[] }> => {
-  const inbucketUrl = getEnvVariable("STACK_INBUCKET_API_URL");
+  const inbucketUrl = getEnvVariable("STACK_EMAIL_MONITOR_INBUCKET_API_URL");
   const mailboxName = testEmail.split("@")[0];
 
   const response = await fetch(`${inbucketUrl}/api/v1/mailbox/${encodeURIComponent(mailboxName)}`);
