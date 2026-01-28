@@ -80,7 +80,7 @@ const createClickhouseRow = (event: EventWithIpInfo) => {
       tzIdentifier: ip.tzIdentifier ?? undefined,
     };
     // Validate against schema
-    ipInfo = endUserIpInfoSchema.validateSync(ipInfo, { stripUnknown: true });
+    ipInfo = endUserIpInfoSchema.nullable().defined().validateSync(ipInfo, { stripUnknown: true });
   }
 
   // Build the data object matching TokenRefreshEventType schema
