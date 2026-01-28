@@ -48,30 +48,44 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
       password: clickhouseAdminPassword,
     },
   });
-  const profile = await client.query({
-    query: `
-    SELECT
-      ProfileEvents['CPUTimeMicroseconds'] / 1000 AS cpu_time_ms,
-      ProfileEvents['RealTimeMicroseconds'] / 1000 AS wall_clock_time_ms
-    FROM clusterAllReplicas('default', system.query_log)
-    WHERE query_id = {query_id:String} AND type = 'QueryFinish'
-    ORDER BY event_time DESC
-    LIMIT 1
-  `,
-    query_params: { query_id: queryId },
-    auth: {
-      username: clickhouseAdminUser,
-      password: clickhouseAdminPassword,
-    },
-    format: "JSON",
-  });
+  const queryProfile = async () => {
+    const profile = await client.query({
+      query: `
+      SELECT
+        ProfileEvents['CPUTimeMicroseconds'] / 1000 AS cpu_time_ms,
+        ProfileEvents['RealTimeMicroseconds'] / 1000 AS wall_clock_time_ms
+      FROM clusterAllReplicas('default', system.query_log)
+      WHERE query_id = {query_id:String} AND type = 'QueryFinish'
+      ORDER BY event_time DESC
+      LIMIT 1
+    `,
+      query_params: { query_id: queryId },
+      auth: {
+        username: clickhouseAdminUser,
+        password: clickhouseAdminPassword,
+      },
+      format: "JSON",
+    });
 
-  const stats = await profile.json<{
-    cpu_time_ms: number,
-    wall_clock_time_ms: number,
-  }>();
-  if (stats.data.length !== 1) {
-    throw new StackAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
+    return await profile.json<{
+      cpu_time_ms: number,
+      wall_clock_time_ms: number,
+    }>();
+  };
+
+  const retryDelaysMs = [75, 150, 300];
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    const stats = await queryProfile();
+    if (stats.data.length === 1) {
+      return stats.data[0];
+    }
+    if (stats.data.length > 1) {
+      throw new StackAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
+    }
+    if (attempt < retryDelaysMs.length) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+    }
   }
-  return stats.data[0];
+
+  throw new StackAssertionError("Unexpected number of query log results: 0", { data: [] });
 };
