@@ -297,7 +297,7 @@ app.post('/simulate-refresh-error', async (req: express.Request, res: express.Re
     // Find refresh tokens for this grant
     // Note: oidc-provider stores refresh tokens with the grantId, but we need to find them
     // For simplicity, we'll store the error by grantId and check it in the middleware
-    const errorResponses: Record<string, { error: string, error_description: string }> = {
+    const errorResponses: Record<string, { error: string, error_description: string } | undefined> = {
       'invalid_grant': { error: 'invalid_grant', error_description: 'The refresh token is invalid or expired' },
       'access_denied': { error: 'access_denied', error_description: 'The resource owner denied the request' },
       'consent_required': { error: 'consent_required', error_description: 'User consent is required' },

@@ -25,6 +25,7 @@
     "codegen": "pnpm run with-env pnpm run generate-migration-imports && pnpm run with-env bash -c 'if [ \"$STACK_ACCELERATE_ENABLED\" = \"true\" ]; then pnpm run prisma generate --no-engine; else pnpm run codegen-prisma; fi' && pnpm run codegen-docs && pnpm run codegen-route-info",
     "codegen:watch": "concurrently -n \"prisma,docs,route-info,migration-imports\" -k \"pnpm run codegen-prisma:watch\" \"pnpm run codegen-docs:watch\" \"pnpm run codegen-route-info:watch\" \"pnpm run generate-migration-imports:watch\"",
     "psql-inner": "psql $(echo $STACK_DATABASE_CONNECTION_STRING | sed 's/\\?.*$//')",
+    "clickhouse": "pnpm run with-env clickhouse-client --host localhost --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}37 --user stackframe --password PASSWORD-PLACEHOLDER--9gKyMxJeMx",
     "psql": "pnpm run with-env:dev pnpm run psql-inner",
     "prisma-studio": "pnpm run with-env:dev prisma studio --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}06 --browser none",
     "prisma:dev": "pnpm run with-env:dev prisma",
@@ -50,6 +51,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.3.23",
     "@aws-sdk/client-s3": "^3.855.0",
+    "@clickhouse/client": "^1.14.0",
     "@node-oauth/oauth2-server": "^5.1.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.53.0",
