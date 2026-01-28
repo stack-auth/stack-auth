@@ -98,14 +98,9 @@ const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boo
   return matchesRecipient && matchesSubject;
 };
 
-const waitForVerificationEmail = async (testEmail: string) => {
+const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean) => {
   const MAX_POLL_ATTEMPTS = 24;
   const POLL_INTERVAL_MS = 5000;
-  const useInbucket = getEnvVariable("STACK_EMAIL_MONITOR_USE_INBUCKET") === "true";
-
-  if (useInbucket && getNodeEnvironment().includes("prod")) {
-    throw new StackAssertionError("Inbucket is not supported as the email monitor inbox in production. Make sure STACK_EMAIL_MONITOR_USE_INBUCKET is set to false.");
-  }
 
   for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
     await wait(POLL_INTERVAL_MS);
@@ -147,13 +142,18 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(401, "Unauthorized");
     }
 
+    const useInbucket = getEnvVariable("STACK_EMAIL_MONITOR_USE_INBUCKET") === "true";
+    if (useInbucket && getNodeEnvironment().includes("prod")) {
+      throw new StackAssertionError("Inbucket is not supported as the email monitor inbox in production");
+    }
+
     const uniqueId = generateSecureRandomString();
     const testEmail = `monitor+${uniqueId}@${getEnvVariable("STACK_EMAIL_MONITOR_RESEND_EMAIL_DOMAIN")}`;
     const testPassword = generateSecureRandomString();
 
     await performSignUp(testEmail, testPassword);
 
-    await waitForVerificationEmail(testEmail);
+    await waitForVerificationEmail(testEmail, useInbucket);
 
     return {
       statusCode: 200,
