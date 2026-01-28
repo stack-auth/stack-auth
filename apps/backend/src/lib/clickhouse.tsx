@@ -71,7 +71,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
     wall_clock_time_ms: number,
   }>();
   if (stats.data.length !== 1) {
-    throw new StackAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data });
+    throw new StackAssertionError(`Unexpected number of query log results: ${stats.data.length}`, { data: stats.data, queryId });
   }
   return stats.data[0];
 };
