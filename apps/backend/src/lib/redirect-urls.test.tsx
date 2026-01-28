@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateRedirectUrl } from './redirect-urls';
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
 
 describe('validateRedirectUrl', () => {
@@ -472,5 +472,56 @@ describe('validateRedirectUrl', () => {
       expect(validateRedirectUrl('https://api.v2.production.com/', tenancy)).toBe(true);
       expect(validateRedirectUrl('https://other.com/handler', tenancy)).toBe(false);
     });
+  });
+
+  describe('native app SDK URLs', () => {
+    it('should not accept native app URLs in validateRedirectUrl (handled separately in OAuth model)', () => {
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {},
+        },
+      });
+
+      // Native app URLs are handled by isAcceptedNativeAppUrl in the OAuth model,
+      // not by validateRedirectUrl. This keeps native app URL acceptance scoped to OAuth only.
+      expect(validateRedirectUrl('stack-auth-mobile-oauth-url://success', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stack-auth-mobile-oauth-url://error', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stack-auth-mobile-oauth-url://oauth-callback', tenancy)).toBe(false);
+    });
+
+    it('should not accept other custom schemes without trusted domain config', () => {
+      const tenancy = createMockTenancy({
+        domains: {
+          allowLocalhost: false,
+          trustedDomains: {},
+        },
+      });
+
+      // Other custom schemes require explicit trusted domain configuration
+      expect(validateRedirectUrl('myapp://callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stackauth-myapp://callback', tenancy)).toBe(false);
+      expect(validateRedirectUrl('stack-auth-custom://callback', tenancy)).toBe(false);
+    });
+  });
+});
+
+describe('isAcceptedNativeAppUrl', () => {
+  it('should accept the native app OAuth URL scheme', () => {
+    expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://success')).toBe(true);
+    expect(isAcceptedNativeAppUrl('stack-auth-mobile-oauth-url://error')).toBe(true);
+  });
+
+  it('should reject other custom schemes', () => {
+    expect(isAcceptedNativeAppUrl('myapp://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('stackauth-myapp://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('stack-auth://callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('https://example.com/callback')).toBe(false);
+    expect(isAcceptedNativeAppUrl('http://localhost:3000/callback')).toBe(false);
+  });
+
+  it('should reject invalid URLs', () => {
+    expect(isAcceptedNativeAppUrl('not-a-url')).toBe(false);
+    expect(isAcceptedNativeAppUrl('')).toBe(false);
   });
 });

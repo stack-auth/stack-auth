@@ -189,6 +189,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
           type: 'shared'
@@ -222,15 +223,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("environment", configOverride);
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
         await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("branch", config);
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async getPushedConfigSource(): Promise<PushedConfigSource> {
         const apiSource = await app._interface.getPushedConfigSource();
@@ -238,7 +239,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async unlinkPushedConfigSource(): Promise<void> {
         await app._interface.unlinkPushedConfigSource();
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -481,6 +482,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   protected override async _refreshProject() {
     await Promise.all([
       super._refreshProject(),
+      this._adminProjectCache.refresh([]),
+    ]);
+  }
+
+  protected async _refreshProjectConfig() {
+    await Promise.all([
+      this._configOverridesCache.refresh([]),
       this._adminProjectCache.refresh([]),
     ]);
   }

@@ -253,6 +253,12 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          appleBundles: yupRecord(
+            userSpecifiedIdSchema("appleBundleId"),
+            yupObject({
+              bundleId: schemaFields.oauthAppleBundleIdSchema,
+            }),
+          ).optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),
@@ -553,6 +559,7 @@ const organizationConfigDefaults = {
         clientSecret: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
+        appleBundles: undefined,
       }),
     },
   },
@@ -822,8 +829,10 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
+
   const themes: typeof prepared.emails.themes = prepared.emails.themes;
   const templates: typeof prepared.emails.templates = config.emails.server.isShared ? DEFAULT_EMAIL_TEMPLATES : prepared.emails.templates;
+
   const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :
@@ -845,6 +854,13 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
 
   return {
     ...prepared,
+    auth: {
+      ...prepared.auth,
+      oauth: {
+        ...prepared.auth.oauth,
+        providers: typedFromEntries(typedEntries(prepared.auth.oauth.providers).filter(([key, value]) => value.type !== undefined)),
+      },
+    },
     emails: {
       ...prepared.emails,
       selectedThemeId: has(themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
@@ -883,6 +899,30 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
   if (Object.getPrototypeOf(configOverride) !== Object.getPrototypeOf({})) {
     return Result.error("Config override must be plain old JavaScript object.");
   }
+
+  // Ensure that all keys with dots in them are at the top level of the object, not nested
+  const ensureNoDotsInKeys = (obj: unknown): Result<never, string> | undefined => {
+    if (typeof obj !== "object" || obj === null) {
+      return;
+    }
+    for (const entry of Object.entries(obj)) {
+      if (entry[0].includes(".")) {
+        return Result.error(`Key ${entry[0]} contains a dot, which is not allowed in config override.`);
+      }
+      const result = ensureNoDotsInKeys(entry[1]);
+      if (result) {
+        return result;
+      }
+    }
+    return;
+  };
+  for (const key of Object.keys(configOverride)) {
+    const result = ensureNoDotsInKeys(configOverride[key as keyof typeof configOverride]);
+    if (result) {
+      return result;
+    }
+  }
+
   // Check config format
   const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
   if (reason) return Result.error("Invalid config format: " + reason);
