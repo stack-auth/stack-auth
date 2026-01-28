@@ -22,7 +22,7 @@ const parseMillisOrThrow = (value: number | undefined, field: string) => {
   return parsed;
 };
 
-const createClickhouseRows = (event: {
+const createClickhouseRow = (event: {
   id: string,
   systemEventTypeIds: string[],
   data: any,
@@ -39,24 +39,18 @@ const createClickhouseRows = (event: {
   };
   const projectId = typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";
   const branchId = DEFAULT_BRANCH_ID;
-  const userId = typeof dataRecord.userId === "string" ? dataRecord.userId : "";
-  const teamId = typeof dataRecord.teamId === "string" ? dataRecord.teamId : "";
-  const sessionId = typeof dataRecord.sessionId === "string" ? dataRecord.sessionId : "";
-  const isAnonymous = typeof dataRecord.isAnonymous === "boolean" ? dataRecord.isAnonymous : false;
+  const userId = typeof dataRecord.userId === "string" && dataRecord.userId ? dataRecord.userId : null;
 
-  const eventTypes = [...new Set(event.systemEventTypeIds)];
-
-  return eventTypes.map(eventType => ({
-    event_type: eventType,
+  // Translate $session-activity to $token-refresh
+  return {
+    event_type: '$token-refresh',
     event_at: event.eventEndedAt,
     data: clickhouseEventData,
     project_id: projectId,
     branch_id: branchId,
     user_id: userId,
-    team_id: teamId,
-    session_id: sessionId,
-    is_anonymous: isAnonymous,
-  }));
+    team_id: null,
+  };
 };
 
 export const POST = createSmartRouteHandler({
@@ -111,6 +105,10 @@ export const POST = createSmartRouteHandler({
         gte: minCreatedAt,
         lt: maxCreatedAt,
       },
+      // Only migrate $session-activity events (translated to $token-refresh in ClickHouse)
+      systemEventTypeIds: {
+        has: '$session-activity',
+      },
     };
 
     const cursorFilter: Prisma.EventWhereInput | undefined = (cursorCreatedAt && cursorId) ? {
@@ -141,22 +139,19 @@ export const POST = createSmartRouteHandler({
         throw new StatusError(StatusError.ServiceUnavailable, "ClickHouse is not configured");
       }
       const clickhouseClient = getClickhouseAdminClient();
-      const rowsByEvent = events.map(createClickhouseRows);
-      const rowsToInsert = rowsByEvent.flat();
-      migratedEvents = rowsByEvent.reduce((acc, rows) => acc + (rows.length ? 1 : 0), 0);
+      const rowsToInsert = events.map(createClickhouseRow);
+      migratedEvents = events.length;
 
-      if (rowsToInsert.length) {
-        await clickhouseClient.insert({
-          table: "analytics_internal.events",
-          values: rowsToInsert,
-          format: "JSONEachRow",
-          clickhouse_settings: {
-            date_time_input_format: "best_effort",
-            async_insert: 1,
-          },
-        });
-        insertedRows = rowsToInsert.length;
-      }
+      await clickhouseClient.insert({
+        table: "analytics_internal.events",
+        values: rowsToInsert,
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          date_time_input_format: "best_effort",
+          async_insert: 1,
+        },
+      });
+      insertedRows = rowsToInsert.length;
     }
 
     const lastEvent = events.at(-1);
