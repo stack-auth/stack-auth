@@ -152,9 +152,11 @@ export const POST = createSmartRouteHandler({
     const cursorId = body.cursor?.id;
     const limit = body.limit;
 
+    const laterOfMinCreatedAtOrCursorCreatedAt = !cursorCreatedAt || minCreatedAt > cursorCreatedAt ? minCreatedAt : cursorCreatedAt;
+
     const baseWhere: Prisma.EventWhereInput = {
       createdAt: {
-        gte: minCreatedAt,
+        gte: laterOfMinCreatedAtOrCursorCreatedAt,
         lt: maxCreatedAt,
       },
       // Only migrate $session-activity events (translated to $token-refresh in ClickHouse)
