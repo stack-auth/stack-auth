@@ -208,9 +208,6 @@ export async function logEvent<T extends EventType[]>(
   const eventTypesArray = [...allEventTypes];
   const clickhouseEventData = {
     ...data as Record<string, unknown>,
-    is_wide: isWide,
-    event_started_at: timeRange.start,
-    event_ended_at: timeRange.end,
   };
   const dataRecord = data as Record<string, unknown> | null | undefined;
   const projectId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";

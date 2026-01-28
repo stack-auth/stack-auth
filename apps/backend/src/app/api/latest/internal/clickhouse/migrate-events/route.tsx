@@ -92,9 +92,6 @@ const createClickhouseRow = (event: EventWithIpInfo) => {
     refreshTokenId,
     isAnonymous,
     ipInfo,
-    is_wide: event.isWide,
-    event_started_at: event.eventStartedAt,
-    event_ended_at: event.eventEndedAt,
   };
 
   return {
