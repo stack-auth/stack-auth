@@ -332,7 +332,7 @@ export async function getSubscriptions(options: {
   const productLinesWithDbSubscriptions = new Set<string>();
   for (const s of dbSubscriptions) {
     const product = s.product as yup.InferType<typeof productSchema>;
-    subscriptions.push({
+    const subscription: Subscription = {
       id: s.id,
       productId: s.productId,
       product,
@@ -343,8 +343,9 @@ export async function getSubscriptions(options: {
       status: s.status,
       createdAt: s.createdAt,
       stripeSubscriptionId: s.stripeSubscriptionId,
-    });
-    if (product.productLineId !== undefined) {
+    };
+    subscriptions.push(subscription);
+    if (product.productLineId !== undefined && isActiveSubscription(subscription)) {
       productLinesWithDbSubscriptions.add(product.productLineId);
     }
   }
