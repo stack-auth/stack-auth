@@ -11,8 +11,7 @@ import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
-import { getEndUserInfo } from './end-users';
-import { SystemEventTypes, logEvent } from './events';
+import { SystemEventTypes, getEndUserIpInfoForEvent, logEvent } from './events';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -213,9 +212,8 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
   const now = new Date();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
 
-  // Get end user IP info for session tracking
-  const endUserInfo = await getEndUserInfo();
-  const ipInfo = endUserInfo ? (endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo) : undefined;
+  // Get end user IP info for session tracking and event logging
+  const ipInfo = await getEndUserIpInfoForEvent();
 
   await Promise.all([
     prisma.projectUser.update({
@@ -238,7 +236,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       },
       data: {
         lastActiveAt: now,
-        lastActiveAtIpInfo: ipInfo,
+        lastActiveAtIpInfo: ipInfo ?? undefined,
       },
     }),
   ]);
@@ -252,6 +250,21 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
+      teamId: "",
+    }
+  );
+
+  // Log token refresh event for ClickHouse analytics
+  await logEvent(
+    [SystemEventTypes.TokenRefresh],
+    {
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      userId: options.refreshTokenObj.projectUserId,
+      refreshTokenId: options.refreshTokenObj.id,
+      organizationId: null,
+      isAnonymous: user.is_anonymous,
+      ipInfo,
     }
   );
 

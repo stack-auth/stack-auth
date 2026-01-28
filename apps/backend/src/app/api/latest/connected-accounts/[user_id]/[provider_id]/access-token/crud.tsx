@@ -9,6 +9,7 @@ import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 
 
@@ -104,23 +105,26 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     }
 
     for (const token of filteredRefreshTokens) {
-      let tokenSet: TokenSet;
+      let tokenSetResult: Result<TokenSet, string>;
       try {
-        tokenSet = await providerInstance.getAccessToken({
+        tokenSetResult = await providerInstance.getAccessToken({
           refreshToken: token.refreshToken,
           scope: data.scope,
         });
       } catch (error) {
-        captureError('oauth-access-token-refresh-error', new StackAssertionError('Error refreshing access token — this might be nothing bad and the refresh token might just be expired, but we should instead of throwing an error check whether this is a legit error or not', {
+        // Unexpected errors (not handled by the provider) are logged and we continue to the next token
+        captureError('oauth-access-token-refresh-unexpected-error', new StackAssertionError('Unexpected error refreshing access token — this may indicate a bug or misconfiguration', {
           error,
           tenancyId: auth.tenancy.id,
           providerId: params.provider_id,
           userId: params.user_id,
-          refreshToken: token.refreshToken,
           scope: data.scope,
         }));
 
-        // mark the token as invalid
+        tokenSetResult = Result.error("Unexpected error refreshing access token");
+      }
+
+      if (tokenSetResult.status === "error") {
         await prisma.oAuthToken.update({
           where: { id: token.id },
           data: { isValid: false },
@@ -129,6 +133,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
         continue;
       }
 
+      const tokenSet = tokenSetResult.data;
       if (tokenSet.accessToken) {
         await prisma.oAuthAccessToken.create({
           data: {

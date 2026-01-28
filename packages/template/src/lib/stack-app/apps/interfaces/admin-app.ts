@@ -1,4 +1,5 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
@@ -116,6 +117,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       amountUsd: MoneyAmount,
       refundEntries: Array<{ entryIndex: number, quantity: number }>,
     }): Promise<void>,
+    queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,

@@ -10,6 +10,8 @@ import { AdminProject, AuthPage } from "@stackframe/stack";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
+import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useMemo, useState } from "react";
 import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -80,6 +82,7 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
         clientSecret: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
+        appleBundles: undefined,
         allowSignIn: true,
         allowConnectedAccounts: true,
       };
@@ -92,6 +95,9 @@ function adminProviderToConfigProvider(provider: AdminOAuthProviderConfig): Comp
         clientSecret: provider.clientSecret,
         facebookConfigId: provider.facebookConfigId,
         microsoftTenantId: provider.microsoftTenantId,
+        appleBundles: provider.appleBundleIds?.length
+          ? typedFromEntries(provider.appleBundleIds.map((bundleId: string) => [generateUuid(), { bundleId }] as const))
+          : undefined,
         allowSignIn: true,
         allowConnectedAccounts: true,
       };

@@ -57,6 +57,9 @@ importers:
       concurrently:
         specifier: ^8.2.2
         version: 8.2.2
+      dotenv-cli:
+        specifier: ^7.3.0
+        version: 7.4.1
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
@@ -114,6 +117,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.855.0
         version: 3.864.0
+      '@clickhouse/client':
+        specifier: ^1.14.0
+        version: 1.16.0
       '@node-oauth/oauth2-server':
         specifier: ^5.1.0
         version: 5.1.0
@@ -2195,6 +2201,10 @@ importers:
         specifier: ^8.0.2
         version: 8.3.5(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.4.47)(tsx@4.21.0)(typescript@5.8.3)(yaml@2.8.0)
 
+  sdks/implementations/swift: {}
+
+  sdks/spec: {}
+
 packages:
 
   '@ai-sdk/google@1.2.22':
@@ -2936,6 +2946,13 @@ packages:
 
   '@chevrotain/utils@11.0.3':
     resolution: {integrity: sha512-YslZMgtJUyuMbZ+aKvfF3x1f5liK4mWNxghFRv7jqRR9C3R3fAOGTTKvxXDa2Y1s9zSbcpuO0cAxDYsc9SrXoQ==}
+
+  '@clickhouse/client-common@1.16.0':
+    resolution: {integrity: sha512-qMzkI1NmV29ZjFkNpVSvGNfA0c7sCExlufAQMv+V+5xtNeYXnRfdqzmBLIQoq6Pf1ij0kw/wGLD3HQrl7pTFLA==}
+
+  '@clickhouse/client@1.16.0':
+    resolution: {integrity: sha512-ThPhoRMsKsf/hmBEgWlUsGxFecsr3i+k3JI8JV0Od7UpH2BSmk9VKMGJoyPCrTL0vPUs5rJH+7o4iCqBF09Xvg==}
+    engines: {node: '>=16'}
 
   '@date-fns/tz@1.2.0':
     resolution: {integrity: sha512-LBrd7MiJZ9McsOgxqWX7AaxrDjcFVjWH/tIKJd7pnR7McaslGYOP1QmmiBXdJH/H/yLCT+rcQ7FaPBUxRGUtrg==}
@@ -10057,10 +10074,6 @@ packages:
   cross-spawn@6.0.6:
     resolution: {integrity: sha512-VqCUuhcd1iB+dsv8gxPttb5iZh/D0iubSP21g36KXdEuf6I5JiioesUVjpCdHV9MZRUfVFlvwtIUyPfxo5trtw==}
     engines: {node: '>=4.8'}
-
-  cross-spawn@7.0.3:
-    resolution: {integrity: sha512-iRDPJKUPVEND7dHPO8rkbOnPpyDygcDFtWjpeWNCgy8WP2rXcxXL8TskReQl6OrB2G7+UJrags1q15Fudc7G6w==}
-    engines: {node: '>= 8'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -17760,6 +17773,12 @@ snapshots:
 
   '@chevrotain/utils@11.0.3': {}
 
+  '@clickhouse/client-common@1.16.0': {}
+
+  '@clickhouse/client@1.16.0':
+    dependencies:
+      '@clickhouse/client-common': 1.16.0
+
   '@date-fns/tz@1.2.0': {}
 
   '@dnd-kit/accessibility@3.1.1(react@19.2.3)':
@@ -23324,7 +23343,7 @@ snapshots:
       '@babel/core': 7.28.0
       '@sentry/babel-plugin-component-annotate': 4.3.0
       '@sentry/cli': 2.53.0(encoding@0.1.13)
-      dotenv: 16.4.7
+      dotenv: 16.6.1
       find-up: 5.0.0
       glob: 9.3.5
       magic-string: 0.30.8
@@ -26333,12 +26352,6 @@ snapshots:
       shebang-command: 1.2.0
       which: 1.3.1
 
-  cross-spawn@7.0.3:
-    dependencies:
-      path-key: 3.1.1
-      shebang-command: 2.0.0
-      which: 2.0.2
-
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -26772,8 +26785,8 @@ snapshots:
 
   dotenv-cli@7.4.1:
     dependencies:
-      cross-spawn: 7.0.3
-      dotenv: 16.4.7
+      cross-spawn: 7.0.6
+      dotenv: 16.6.1
       dotenv-expand: 10.0.0
       minimist: 1.2.8
 

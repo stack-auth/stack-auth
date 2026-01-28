@@ -1,6 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -190,6 +191,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
           type: 'shared'
@@ -223,15 +225,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("environment", configOverride);
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
         await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("branch", config);
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async getPushedConfigSource(): Promise<PushedConfigSource> {
         const apiSource = await app._interface.getPushedConfigSource();
@@ -239,7 +241,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async unlinkPushedConfigSource(): Promise<void> {
         await app._interface.unlinkPushedConfigSource();
-        await app._configOverridesCache.refresh([]);
+        await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -482,6 +484,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   protected override async _refreshProject() {
     await Promise.all([
       super._refreshProject(),
+      this._adminProjectCache.refresh([]),
+    ]);
+  }
+
+  protected async _refreshProjectConfig() {
+    await Promise.all([
+      this._configOverridesCache.refresh([]),
       this._adminProjectCache.refresh([]),
     ]);
   }
@@ -942,6 +951,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return data;
   }
   // END_PLATFORM
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
+  }
 
   async previewAffectedUsersByOnboardingChange(
     onboarding: { requireEmailVerification?: boolean },

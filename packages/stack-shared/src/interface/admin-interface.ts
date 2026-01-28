@@ -3,6 +3,7 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
@@ -43,6 +44,25 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
   publishable_client_key?: string,
   secret_server_key?: string,
   super_secret_admin_key?: string,
+};
+
+export type ClickhouseMigrationRequest = {
+  min_created_at_millis: number,
+  max_created_at_millis: number,
+  cursor?: {
+    created_at_millis: number,
+    id: string,
+  },
+  limit?: number,
+};
+
+export type ClickhouseMigrationResponse = {
+  migrated_events: number,
+  inserted_rows: number,
+  next_cursor: {
+    created_at_millis: number,
+    id: string,
+  } | null,
 };
 
 export class StackAdminInterface extends StackServerInterface {
@@ -715,6 +735,21 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async migrateEventsToClickhouse(options: ClickhouseMigrationRequest): Promise<ClickhouseMigrationResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/clickhouse/migrate-events",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(options),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
   async previewAffectedUsersByOnboardingChange(
     onboarding: { require_email_verification?: boolean },
     limit?: number,
@@ -741,6 +776,27 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    const data = await response.json();
+    return {
+      result: data.result,
+    };
+  }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();
