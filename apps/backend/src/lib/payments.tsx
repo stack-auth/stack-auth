@@ -331,8 +331,7 @@ export async function getSubscriptions(options: {
 
   const productLinesWithDbSubscriptions = new Set<string>();
   for (const s of dbSubscriptions) {
-    const product = s.productId ? getOrUndefined(products, s.productId) : s.product as yup.InferType<typeof productSchema>;
-    if (!product) continue;
+    const product = s.product as yup.InferType<typeof productSchema>;
     subscriptions.push({
       id: s.id,
       productId: s.productId,
@@ -352,7 +351,9 @@ export async function getSubscriptions(options: {
 
   for (const productLineId of Object.keys(productLines)) {
     if (productLinesWithDbSubscriptions.has(productLineId)) continue;
-    const productsInProductLine = typedEntries(products).filter(([_, product]) => product.productLineId === productLineId);
+    const productsInProductLine = typedEntries(products).filter(([_, product]) => (
+      product.productLineId === productLineId && product.customerType === options.customerType
+    ));
     const defaultProductLineProducts = productsInProductLine.filter(([_, product]) => product.prices === "include-by-default");
     if (defaultProductLineProducts.length > 1) {
       throw new StackAssertionError(
@@ -378,7 +379,10 @@ export async function getSubscriptions(options: {
   }
 
   const ungroupedDefaults = typedEntries(products).filter(([id, product]) => (
-    product.productLineId === undefined && product.prices === "include-by-default" && !subscriptions.some((s) => s.productId === id)
+    product.productLineId === undefined &&
+    product.prices === "include-by-default" &&
+    product.customerType === options.customerType &&
+    !subscriptions.some((s) => s.productId === id)
   ));
   for (const [productId, product] of ungroupedDefaults) {
     subscriptions.push({
