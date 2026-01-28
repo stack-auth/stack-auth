@@ -1,11 +1,12 @@
 'use client';
 
+import { useUser } from '@stackframe/stack';
 import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
 import { resolveSchema } from '../../lib/openapi-utils';
 import { useAPIPageContext } from './api-page-wrapper';
-import { Button } from './button';
+import { Button } from '../mdx/button';
 
 type EnhancedAPIPageProps = {
   document: string,
@@ -42,11 +43,13 @@ const HTTP_METHOD_COLORS = {
 
 export function EnhancedAPIPage({ document, operations, description }: EnhancedAPIPageProps) {
   const apiContext = useAPIPageContext();
+  const user = useUser(); // Get user for token refresh
 
   // Use default functions if API context is not available
-  const { sharedHeaders, reportError } = apiContext || {
+  const { sharedHeaders, reportError, updateSharedHeaders } = apiContext || {
     sharedHeaders: {},
-    reportError: () => {}
+    reportError: () => {},
+    updateSharedHeaders: () => {}
   };
 
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
@@ -205,7 +208,26 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     }));
 
     try {
-      const baseUrl = spec?.servers?.[0]?.url || '';
+      let headersForRequest = requestState.headers;
+      // Refresh admin access token before making request (if using admin auth)
+      if (user && headersForRequest['X-Stack-Access-Type'] === 'admin') {
+        const authJson = await user.getAuthJson();
+        if (authJson.accessToken) {
+          // Update the admin access token with a fresh one
+          const refreshedHeaders: Record<string, string> = {
+            ...headersForRequest,
+            'X-Stack-Admin-Access-Token': authJson.accessToken,
+          };
+          setRequestState(prev => ({ ...prev, headers: refreshedHeaders }));
+          updateSharedHeaders(refreshedHeaders);
+          headersForRequest = refreshedHeaders;
+        }
+      }
+      // Use local API URL in development, production URL from OpenAPI spec otherwise
+      const defaultBaseUrl = spec?.servers?.[0]?.url || '';
+      const localApiUrl = process.env.NEXT_PUBLIC_STACK_API_URL;
+      const baseUrl = localApiUrl ? localApiUrl + '/api/v1' : defaultBaseUrl;
+
       let url = baseUrl + path;
 
       // Replace path parameters
@@ -231,7 +253,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
 
       // Filter out empty headers
       const filteredHeaders = Object.fromEntries(
-        Object.entries(requestState.headers).filter(([key, value]) => key && value)
+        Object.entries(headersForRequest).filter(([key, value]) => key && value)
       );
 
       const requestOptions: RequestInit = {
@@ -247,6 +269,11 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         );
         if (Object.keys(bodyData).length > 0) {
           requestOptions.body = JSON.stringify(bodyData);
+          // Add Content-Type header when sending JSON body
+          requestOptions.headers = {
+            ...filteredHeaders,
+            'Content-Type': 'application/json',
+          };
         }
       }
 
@@ -286,7 +313,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         }
       }));
     }
-  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError]); // Changed from requestState.body
+  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError, user, updateSharedHeaders]);
 
   if (loading) {
     return (
@@ -387,7 +414,11 @@ function ModernAPIPlayground({
   };
 
   const generateCurlCommand = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -433,7 +464,11 @@ function ModernAPIPlayground({
     return curlCommand;
   }, [operation, path, method, spec, requestState]);
   const generateJavaScriptCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -483,7 +518,11 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generatePythonCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -617,36 +656,38 @@ function ModernAPIPlayground({
 
       {/* Content - Stacked Layout */}
       <div className="space-y-8">
-        {/* Request Panel */}
-        <div className="bg-fd-card border border-fd-border rounded-lg">
-          <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-            <div className="flex items-center gap-2">
-              <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
+        {/* Request Panel - only show if there are parameters or request body */}
+        {((operation.parameters && operation.parameters.length > 0) || operation.requestBody) && (
+          <div className="bg-fd-card border border-fd-border rounded-lg">
+            <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Parameters */}
+              {operation.parameters && operation.parameters.length > 0 && (
+                <ParametersSection
+                  parameters={operation.parameters}
+                  values={requestState.parameters}
+                  onChange={(params) => setRequestState(prev => ({ ...prev, parameters: params }))}
+                />
+              )}
+
+              {/* Request Body Fields */}
+              {operation.requestBody && (
+                <RequestBodyFieldsSection
+                  requestBody={operation.requestBody}
+                  spec={spec}
+                  values={requestState.bodyFields}
+                  onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
+                />
+              )}
             </div>
           </div>
-
-          <div className="p-6 space-y-6">
-            {/* Parameters */}
-            {operation.parameters && operation.parameters.length > 0 && (
-              <ParametersSection
-                parameters={operation.parameters}
-                values={requestState.parameters}
-                onChange={(params) => setRequestState(prev => ({ ...prev, parameters: params }))}
-              />
-            )}
-
-            {/* Request Body Fields */}
-            {operation.requestBody && (
-              <RequestBodyFieldsSection
-                requestBody={operation.requestBody}
-                spec={spec}
-                values={requestState.bodyFields}
-                onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
-              />
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Response Panel */}
         <ResponsePanel

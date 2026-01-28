@@ -1,12 +1,10 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters", "relationJoins"]
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("STACK_DATABASE_CONNECTION_STRING")
-  directUrl = env("STACK_DIRECT_DATABASE_CONNECTION_STRING")
+  provider = "postgresql"
 }
 
 model SchemaMigration {
@@ -41,7 +39,10 @@ model Project {
   projectUsers               ProjectUser[]
   provisionedProject         ProvisionedProject?
   tenancies                  Tenancy[]
+  branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
+
+  @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
 
 model Tenancy {
@@ -56,11 +57,27 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId    String?      @db.Uuid
+  organizationId    String?       @db.Uuid
   hasNoOrganization BooleanTrue?
+  emailOutboxes     EmailOutbox[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
+}
+
+model BranchConfigOverride {
+  projectId String
+  branchId  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  config Json
+  source Json?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, branchId])
 }
 
 model EnvironmentConfigOverride {
@@ -128,6 +145,7 @@ model TeamMember {
 
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
+  @@index([tenancyId, projectUserId, isSelected], map: "TeamMember_projectUserId_isSelected_idx")
 }
 
 model ProjectUserDirectPermission {
@@ -168,8 +186,9 @@ model ProjectUser {
   mirroredProjectId String
   mirroredBranchId  String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastActiveAt DateTime @default(now())
 
   sequenceId             BigInt? @unique
   shouldUpdateSequenceId Boolean @default(true)
@@ -193,7 +212,6 @@ model ProjectUser {
   passkeyAuthMethod          PasskeyAuthMethod[]
   otpAuthMethod              OtpAuthMethod[]
   oauthAuthMethod            OAuthAuthMethod[]
-  SentEmail                  SentEmail[]
   projectApiKey              ProjectApiKey[]
   directPermissions          ProjectUserDirectPermission[]
   Project                    Project?                      @relation(fields: [projectId], references: [id])
@@ -438,8 +456,10 @@ model ProjectUserRefreshToken {
   tenancyId     String @db.Uuid
   projectUserId String @db.Uuid
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lastActiveAt       DateTime @default(now())
+  lastActiveAtIpInfo Json?
 
   refreshToken    String    @unique
   expiresAt       DateTime?
@@ -648,6 +668,8 @@ model Event {
   // =============================== END END USER PROPERTIES ===============================
 
   @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@index([createdAt])
+  @@index([createdAt, id])
 }
 
 // An IP address that was seen in an event. Use the location fields instead of refetching the location from the ip, as the real-world geoip data may have changed since the event was logged.
@@ -671,26 +693,182 @@ model EventIpInfo {
 
 //#endregion
 
-model SentEmail {
+enum EmailOutboxStatus {
+  PAUSED
+  PREPARING
+  RENDERING
+  RENDER_ERROR
+  SCHEDULED
+  QUEUED
+  SENDING
+  SERVER_ERROR
+  SENT
+  SKIPPED
+  DELIVERY_DELAYED
+  BOUNCED
+  OPENED
+  CLICKED
+  MARKED_AS_SPAM
+}
+
+enum EmailOutboxSimpleStatus {
+  IN_PROGRESS
+  ERROR
+  OK
+}
+
+enum EmailOutboxSkippedReason {
+  USER_UNSUBSCRIBED
+  USER_ACCOUNT_DELETED
+  USER_HAS_NO_PRIMARY_EMAIL
+  NO_EMAIL_PROVIDED
+  LIKELY_NOT_DELIVERABLE
+  MANUALLY_CANCELLED
+}
+
+enum EmailOutboxCreatedWith {
+  DRAFT
+  PROGRAMMATIC_CALL
+}
+
+model EmailOutbox {
   tenancyId String @db.Uuid
 
   id String @default(uuid()) @db.Uuid
 
-  userId String? @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // note: [tsxSource, themeId, isHighPriority, toUserIds, toEmails, extraRenderVariables, shouldSkipDeliverabilityCheck, overrideSubject, overrideNotificationCategoryId] can be changed, but only while startedSendingAt is not set, and any modification should reset fields like [renderedByWorkerId, startedRenderingAt, finishedRenderingAt, renderError*, rendered*, isQueued] and any other fields with similar semantics to null.
+  tsxSource                      String
+  themeId                        String?
+  isHighPriority                 Boolean
+  // Who the email is being sent to. { type: "user-primary-email", userId: string } | { type: "user-custom-emails", userId: string, emails: string[] } | { type: "custom-emails", emails: string[] }
+  to                             Json
+  extraRenderVariables           Json
+  overrideSubject                String?
+  overrideNotificationCategoryId String?
+  shouldSkipDeliverabilityCheck  Boolean
+
+  createdWith                     EmailOutboxCreatedWith
+  // If the email was created from a draft, it is kept around so we can later group by it. Must be set if and only if createdWith is DRAFT. (Enforced by EmailOutbox_email_draft_check and EmailOutbox_email_draft_reverse_check constraints.)
+  emailDraftId                    String?
+  // If the email was created from a template programmatically, it is kept around so we can later group by it. Must be NOT set if createdWith is NOT PROGRAMMATIC_CALL. If createdWith is PROGRAMMATIC_CALL and this is not set, then no template was used (eg. email was sent directly as HTML). (Enforced by EmailOutbox_email_programmatic_call_template_check constraint.)
+  emailProgrammaticCallTemplateId String?
+
+  // Computed from EmailOutbox can be the `status` of the email:
+  //
+  // - ⚪ `paused`           : isPaused (can happen at any time)
+  // - ⚫ `skipped`          : !isPaused && skippedReason (can happen at any time, like paused)
+  // - ⚪ `preparing`        : !isPaused && !skippedReason && !startedRenderingAt
+  // - ⚪ `rendering`        : !isPaused && !skippedReason && !finishedRenderingAt
+  // - 🔴 `render-error`     : !isPaused && !skippedReason && finishedRenderingAt && renderError
+  // - ⚪ `scheduled`        : !isPaused && !skippedReason && finishedRenderingAt && !renderError && !isQueued
+  // - ⚪ `queued`           : !isPaused && !skippedReason && finishedRenderingAt && !renderError && isQueued && !startedSendingAt
+  // - ⚪ `sending`          : !isPaused && !skippedReason && startedSendingAt && (canHaveDeliveryInfo ? !deliveredAt : !finishedSendingAt)
+  // - 🔴 `server-error`     : !isPaused && !skippedReason && finishedSendingAt && sendServerErrorMessage
+  // - 🟢 `sent`             : !isPaused && !skippedReason && finishedSendingAt && !openedAt && !markedAsSpamAt && !sendServerErrorMessage && (canHaveDeliveryInfo ? deliveredAt : finishedSendingAt)
+  // - ⚪ `delivery-delayed` : !isPaused && !skippedReason && canHaveDeliveryInfo && deliveryDelayedAt
+  // - 🔴 `bounced`          : !isPaused && !skippedReason && canHaveDeliveryInfo && bouncedAt
+  // - 🔵 `opened`           : !isPaused && !skippedReason && openedAt && !clickedAt && !markedAsSpamAt
+  // - 🟣 `clicked`          : !isPaused && !skippedReason && clickedAt && !markedAsSpamAt
+  // - 🟡 `marked-as-spam`   : !isPaused && !skippedReason && markedAsSpamAt
+  //
+  // NOTE: The `sending` status is NOT the same as `finishedSendingAt`! If the outbox can have delivery info, then
+  // `sending` is about deliveredAt. A better name would be `delivering`, but that name is less catchy than `sending`.
+  //
+  // This column is auto-generated as defined in the SQL migration. It can not be set manually. Note: Setting the dbgenerated value is NOT sufficient to create a generated column in Postgres! (Prisma dbgenerated only generates a value for the *default*, and won't reflect any updates.) You must create one manually in the migration file instead, and then update the value here to match.
+  status EmailOutboxStatus @default(dbgenerated("\nCASE\n    WHEN \"isPaused\" THEN 'PAUSED'::\"EmailOutboxStatus\"\n    WHEN (\"skippedReason\" IS NOT NULL) THEN 'SKIPPED'::\"EmailOutboxStatus\"\n    WHEN (\"startedRenderingAt\" IS NULL) THEN 'PREPARING'::\"EmailOutboxStatus\"\n    WHEN (\"finishedRenderingAt\" IS NULL) THEN 'RENDERING'::\"EmailOutboxStatus\"\n    WHEN (\"renderErrorExternalMessage\" IS NOT NULL) THEN 'RENDER_ERROR'::\"EmailOutboxStatus\"\n    WHEN ((\"startedSendingAt\" IS NULL) AND (\"isQueued\" IS FALSE)) THEN 'SCHEDULED'::\"EmailOutboxStatus\"\n    WHEN (\"startedSendingAt\" IS NULL) THEN 'QUEUED'::\"EmailOutboxStatus\"\n    WHEN (\"finishedSendingAt\" IS NULL) THEN 'SENDING'::\"EmailOutboxStatus\"\n    WHEN ((\"canHaveDeliveryInfo\" IS TRUE) AND (\"deliveredAt\" IS NULL)) THEN 'SENDING'::\"EmailOutboxStatus\"\n    WHEN (\"sendServerErrorExternalMessage\" IS NOT NULL) THEN 'SERVER_ERROR'::\"EmailOutboxStatus\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN 'SENT'::\"EmailOutboxStatus\"\n    WHEN (\"markedAsSpamAt\" IS NOT NULL) THEN 'MARKED_AS_SPAM'::\"EmailOutboxStatus\"\n    WHEN (\"clickedAt\" IS NOT NULL) THEN 'CLICKED'::\"EmailOutboxStatus\"\n    WHEN (\"openedAt\" IS NOT NULL) THEN 'OPENED'::\"EmailOutboxStatus\"\n    WHEN (\"bouncedAt\" IS NOT NULL) THEN 'BOUNCED'::\"EmailOutboxStatus\"\n    WHEN (\"deliveryDelayedAt\" IS NOT NULL) THEN 'DELIVERY_DELAYED'::\"EmailOutboxStatus\"\n    ELSE 'SENT'::\"EmailOutboxStatus\"\nEND"))
+
+  // A simplified version of the status property.
+  // In terms of the color mapping of `status`, white statuses have a `simpleStatus` of `in-progress`, red statuses have a `simpleStatus` of `error`, and everything else has a `simpleStatus` of `ok`.
+  // 
+  // This column is auto-generated as defined in the SQL migration. It can not be set manually. See the note above on EmailOutboxStatus.status for more details on dbgenerated values.
+  simpleStatus EmailOutboxSimpleStatus @default(dbgenerated("\nCASE\n    WHEN (\"skippedReason\" IS NOT NULL) THEN 'OK'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"renderErrorExternalMessage\" IS NOT NULL) OR (\"sendServerErrorExternalMessage\" IS NOT NULL) OR (\"bouncedAt\" IS NOT NULL)) THEN 'ERROR'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"finishedSendingAt\" IS NOT NULL) AND ((\"canHaveDeliveryInfo\" IS FALSE) OR (\"deliveredAt\" IS NOT NULL))) THEN 'OK'::\"EmailOutboxSimpleStatus\"\n    WHEN ((\"finishedSendingAt\" IS NULL) OR ((\"canHaveDeliveryInfo\" IS TRUE) AND (\"deliveredAt\" IS NULL))) THEN 'IN_PROGRESS'::\"EmailOutboxSimpleStatus\"\n    ELSE 'OK'::\"EmailOutboxSimpleStatus\"\nEND"))
+
+  // priority is the sending priority of the email among all emails that are not yet sent but already past their scheduled time. Higher priority means it should be sent sooner.
+  //
+  // This column is auto-generated based on the following formula:
+  //  priority = (isHighPriority ? 100 : 0) + (renderedIsTransactional ? 10 : 0)
+  // See the note above on EmailOutboxStatus.status for more details on dbgenerated values.
+  priority Int @default(dbgenerated("(\nCASE\n    WHEN \"isHighPriority\" THEN 100\n    ELSE 0\nEND +\nCASE\n    WHEN \"renderedIsTransactional\" THEN 10\n    ELSE 0\nEND)"))
+
+  isPaused Boolean @default(false)
+
+  // either both or neither of [renderedByWorkerId, startedRenderingAt] must be set
+  renderedByWorkerId  String?   @db.Uuid
+  startedRenderingAt  DateTime?
+  // if startedRenderingAt is not set, then finishedRenderingAt is also not set
+  finishedRenderingAt DateTime?
+
+  // if finishedRenderingAt is set, then exactly one of [renderedHtml, renderedText, renderedSubject, renderedIsTransactional, renderedNotificationCategoryId] or [renderErrorExternalMessage, renderErrorExternalDetails, renderErrorInternalMessage, renderErrorInternalDetails] must be set; if finishedRenderingAt is not set, then none of the aforementioned fields are set
+  renderErrorExternalMessage     String?
+  renderErrorExternalDetails     Json?
+  renderErrorInternalMessage     String?
+  renderErrorInternalDetails     Json?
+  renderedHtml                   String?
+  renderedText                   String?
+  renderedSubject                String?
+  renderedIsTransactional        Boolean?
+  renderedNotificationCategoryId String?
+
+  // The scheduled time of when the email should be added to the queue. Can be edited, but only if the email has not yet started sending. Doing so should set isQueued to false.
+  scheduledAt DateTime
+
+  // The scheduled time of the email if it is in the future.
+  isQueued Boolean @default(false)
+
+  // A generated column that is equal to scheduledAt if isQueued is false, otherwise null. See the note above on EmailOutboxStatus.status for more details on dbgenerated values.
+  scheduledAtIfNotYetQueued DateTime? @default(dbgenerated("\nCASE\n    WHEN \"isQueued\" THEN NULL::timestamp without time zone\n    ELSE \"scheduledAt\"\nEND"))
+
+  // if finishedRenderingAt is not set, then startedSendingAt is also not set
+  startedSendingAt  DateTime?
+  // if startedSendingAt is not set, then finishedSendingAt is also not set
+  finishedSendingAt DateTime?
+
+  // A generated column that is equal to finishedSendingAt if canHaveDeliveryInfo is false, otherwise deliveredAt.
+  sentAt DateTime? @default(dbgenerated("\nCASE\n    WHEN (\"canHaveDeliveryInfo\" IS TRUE) THEN \"deliveredAt\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN \"finishedSendingAt\"\n    ELSE NULL::timestamp without time zone\nEND"))
+
+  // either all or none of [sendServerErrorExternalMessage, sendServerErrorExternalDetails, sendServerErrorInternalMessage, sendServerErrorInternalDetails] must be set. If finishedSendingAt is not set, then none of these are set.
+  sendServerErrorExternalMessage String?
+  sendServerErrorExternalDetails Json?
+  sendServerErrorInternalMessage String?
+  sendServerErrorInternalDetails Json?
+
+  // The reason why the email was skipped. Unlike most status-related fields, this can be set at any point in the email lifecycle (like isPaused). skippedDetails must be set if and only if skippedReason is set. (Enforced by EmailOutbox_skipped_details_consistency_check constraint.)
+  skippedReason  EmailOutboxSkippedReason?
+  skippedDetails Json?
+
+  // Whether this email was sent through a server that provides delivery info. This is set if and only if finishedSendingAt is set (it is only determined once the email has been sent). If canHaveDeliveryInfo is false, then [deliveredAt, deliveryDelayedAt, bouncedAt] are all not set. This flag is usually set to true if the email provider is Resend.
+  canHaveDeliveryInfo Boolean?
+
+  // at most one of [deliveredAt, deliveryDelayedAt, bouncedAt] can be set. If finishedSendingAt is not set, then none of these are set.
+  deliveredAt       DateTime?
+  deliveryDelayedAt DateTime?
+  bouncedAt         DateTime?
+
+  // if finishedSendingAt is not set, then openedAt is also not set
+  openedAt       DateTime?
+  // note: setting clickedAt should also set openedAt if it's not set yet
+  clickedAt      DateTime?
+  unsubscribedAt DateTime?
+  markedAsSpamAt DateTime?
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, finishedSendingAt(sort: Desc), scheduledAtIfNotYetQueued(sort: Desc), priority, id], map: "EmailOutbox_ordering_idx")
+  @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
+  @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
+}
+
+model EmailOutboxProcessingMetadata {
+  key String @id
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  senderConfig Json
-  to           String[]
-  subject      String
-  html         String?
-  text         String?
-
-  error Json?
-  user  ProjectUser? @relation(fields: [tenancyId, userId], references: [tenancyId, projectUserId], onDelete: Cascade)
-
-  @@id([tenancyId, id])
+  lastExecutedAt DateTime?
 }
 
 model EmailDraft {
@@ -872,6 +1050,9 @@ model SubscriptionInvoice {
   stripeSubscriptionId          String
   stripeInvoiceId               String
   isSubscriptionCreationInvoice Boolean
+  status                        String?
+  amountTotal                   Int?
+  hostedInvoiceUrl              String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

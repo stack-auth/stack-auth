@@ -4,7 +4,7 @@ import type { GenericQueryCtx } from "convex/server";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
-import { SendEmailOptions } from "../../email";
+import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
@@ -68,6 +68,7 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null }, // THIS_LINE_PLATFORM react-like
     listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }>,
 
+    // TODO this should actually be on ServerUser
     createOAuthProvider(options: {
       userId: string,
       accountId: string,
@@ -78,6 +79,11 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     }): Promise<Result<ServerOAuthProvider, InstanceType<typeof KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn>>>,
 
     sendEmail(options: SendEmailOptions): Promise<void>,
+
+    getEmailDeliveryStats(): Promise<EmailDeliveryInfo>,
+    // IF_PLATFORM react-like
+    useEmailDeliveryStats(): EmailDeliveryInfo,
+    // END_PLATFORM
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">

@@ -1,16 +1,11 @@
 'use client';
 
+import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
-import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
-import { getPublicEnvVar } from '@/lib/env';
-import { cn } from "@/lib/utils";
-import { UserButton } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
   Button,
   Sheet,
@@ -22,18 +17,25 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Typography,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { useUpdateConfig } from "@/lib/config-update";
+import { getPublicEnvVar } from '@/lib/env';
+import { cn } from "@/lib/utils";
 import {
-  Blocks,
-  ChevronDown,
-  ChevronRight,
-  Globe,
-  KeyRound,
-  LucideIcon,
-  Menu,
-  PanelLeft,
-  Settings,
-} from "lucide-react";
+  CaretDownIcon,
+  CaretRightIcon,
+  CubeIcon,
+  GearIcon,
+  GlobeIcon,
+  KeyIcon,
+  ListIcon,
+  SidebarIcon,
+  type Icon as PhosphorIcon,
+} from "@phosphor-icons/react";
+import { UserButton } from "@stackframe/stack";
+import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -41,7 +43,7 @@ import { useAdminApp, useProjectId } from "./use-admin-app";
 type Item = {
   name: React.ReactNode,
   href: string,
-  icon: LucideIcon,
+  icon: PhosphorIcon,
   regex?: RegExp,
   type: 'item',
 };
@@ -61,7 +63,7 @@ type AppSection = {
 type BottomItem = {
   name: string,
   href: string,
-  icon: LucideIcon,
+  icon: PhosphorIcon,
   external?: boolean,
   regex?: RegExp,
 };
@@ -71,19 +73,19 @@ const bottomItems: BottomItem[] = [
   {
     name: 'Explore Apps',
     href: '/apps',
-    icon: Blocks,
+    icon: CubeIcon,
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
   },
   {
     name: 'Project Keys',
     href: '/project-keys',
-    icon: KeyRound,
+    icon: KeyIcon,
     regex: /^\/projects\/[^\/]+\/project-keys(\/.*)?$/,
   },
   {
     name: 'Project Settings',
     href: '/project-settings',
-    icon: Settings,
+    icon: GearIcon,
     regex: /^\/projects\/[^\/]+\/project-settings$/,
   },
 ];
@@ -93,7 +95,7 @@ const overviewItem: Item = {
   name: "Overview",
   href: "/",
   regex: /^\/projects\/[^\/]+\/?$/,
-  icon: Globe,
+  icon: GlobeIcon,
   type: 'item'
 };
 
@@ -240,7 +242,7 @@ function NavItem({
             <IconComponent className={iconClasses} />
             <span className="truncate text-sm font-semibold">{item.name}</span>
           </span>
-          <ChevronDown strokeWidth={2} className={caretClasses} />
+          <CaretDownIcon weight="bold" className={caretClasses} />
         </Button>
       ) : (
         <Button
@@ -501,7 +503,7 @@ function SidebarContent({
                   onClick={onToggleCollapse}
                   className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
                 >
-                  <PanelLeft className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
+                  <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right">
@@ -513,6 +515,30 @@ function SidebarContent({
       </div>
     </div>
   );
+}
+
+function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
+
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
+
+  const handleEnableApp = useCallback(async (appId: AppId) => {
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      pushable: true,
+    });
+  }, [stackAdminApp, updateConfig]);
+
+  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
 }
 
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
@@ -531,7 +557,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         {/* Header - Sticky Floating */}
         <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Logo + Menu + Project Switcher */}
-          <div className="flex items-center gap-2">
+          <div className="flex grow-1 items-center gap-2">
             {/* Mobile: Menu button */}
             <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
               <SheetTitle className="hidden">
@@ -543,7 +569,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
                   size="sm"
                   className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
                 >
-                  <Menu className="h-4 w-4" />
+                  <ListIcon className="h-4 w-4" />
                 </Button>
               </SheetTrigger>
               <SheetContent
@@ -559,7 +585,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             {/* Desktop: Logo + Breadcrumb + Project Switcher */}
             <div className="hidden lg:flex items-center gap-2">
               <Logo height={24} href="/" />
-              <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+              <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
               {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
                 <Logo full width={96} href="/projects" />
               ) : (
@@ -573,8 +599,15 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             </div>
           </div>
 
-          {/* Right section: Theme toggle and User button */}
-          <div className="flex gap-2 items-center">
+          {/* Middle section: Control Center (development only) */}
+          {process.env.NODE_ENV === "development" && (
+            <div className="grow-1">
+              <CmdKTrigger />
+            </div>
+          )}
+
+          {/* Right section: Search, Theme toggle and User button */}
+          <div className="flex grow-1 gap-2 items-center">
             {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
               <ThemeToggle />
             ) : (
@@ -585,6 +618,11 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             )}
           </div>
         </div>
+
+        {/* Spotlight Search (development only) */}
+        {process.env.NODE_ENV === "development" && (
+          <SpotlightSearchWrapper projectId={projectId} />
+        )}
 
         {/* Body Layout (Left Sidebar + Content + Right Companion) */}
         <div className="flex flex-1 items-start w-full">
@@ -603,8 +641,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3">
-            <div className="relative flex flex-col min-h-full">
+          <main className="flex-1 min-w-0 px-2 pb-3 h-[calc(100vh-6rem)]">
+            <div className="relative flex flex-col h-full overflow-auto">
               {props.children}
             </div>
           </main>

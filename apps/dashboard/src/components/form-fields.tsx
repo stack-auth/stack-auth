@@ -1,8 +1,9 @@
 "use client";
+import { Badge, Button, Calendar, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, Input, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Switch, Textarea, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { Button, Calendar, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, Input, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Switch, Textarea, Typography } from "@stackframe/stack-ui";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, X } from "@phosphor-icons/react";
 import { Control, FieldValues, Path } from "react-hook-form";
+import { useState, useCallback, KeyboardEvent } from "react";
 
 
 import type { JSX } from "react";
@@ -342,6 +343,101 @@ export function NumberField<F extends FieldValues>(props: {
           </label>
         </FormItem>
       )}
+    />
+  );
+}
+
+export function ChipsInputField<F extends FieldValues>(props: {
+  control: Control<F>,
+  name: Path<F>,
+  label: React.ReactNode,
+  placeholder?: string,
+  required?: boolean,
+  helperText?: string | JSX.Element,
+  disabled?: boolean,
+}) {
+  const [inputValue, setInputValue] = useState("");
+
+  const handleKeyDown = useCallback((
+    e: KeyboardEvent<HTMLInputElement>,
+    currentValue: string[],
+    onChange: (value: string[]) => void,
+  ) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const trimmed = inputValue.trim();
+      if (trimmed && !currentValue.includes(trimmed)) {
+        onChange([...currentValue, trimmed]);
+      }
+      setInputValue("");
+    } else if (e.key === 'Backspace' && inputValue === "" && currentValue.length > 0) {
+      onChange(currentValue.slice(0, -1));
+    }
+  }, [inputValue]);
+
+  const removeChip = useCallback((
+    index: number,
+    currentValue: string[],
+    onChange: (value: string[]) => void,
+  ) => {
+    onChange(currentValue.filter((_, i) => i !== index));
+  }, []);
+
+  return (
+    <FormField
+      control={props.control}
+      name={props.name}
+      render={({ field }) => {
+        const values: string[] = Array.isArray(field.value) ? field.value : [];
+        return (
+          <FormItem>
+            <label className="flex flex-col gap-2">
+              <FieldLabel required={props.required}>{props.label}</FieldLabel>
+              <div className="flex flex-wrap gap-1.5 p-2 min-h-9 w-full max-w-lg rounded-md border border-input bg-transparent text-sm focus-within:ring-1 focus-within:ring-ring">
+                {values.map((chip, index) => (
+                  <Badge
+                    key={index}
+                    variant="secondary"
+                    className="flex items-center gap-1 py-0.5"
+                  >
+                    {chip}
+                    <button
+                      type="button"
+                      onClick={() => removeChip(index, values, field.onChange)}
+                      className="hover:bg-secondary-foreground/20 rounded-full p-0.5 transition-colors hover:transition-none"
+                      disabled={props.disabled}
+                    >
+                      <X size={12} />
+                    </button>
+                  </Badge>
+                ))}
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(e, values, field.onChange)}
+                  onBlur={() => {
+                    const trimmed = inputValue.trim();
+                    if (trimmed && !values.includes(trimmed)) {
+                      field.onChange([...values, trimmed]);
+                    }
+                    setInputValue("");
+                  }}
+                  placeholder={values.length === 0 ? props.placeholder : undefined}
+                  className="flex-1 min-w-[100px] bg-transparent outline-none placeholder:text-muted-foreground"
+                  disabled={props.disabled}
+                />
+              </div>
+              {props.helperText ? (
+                <Typography variant="secondary" className="text-sm leading-snug">
+                  {props.helperText}
+                </Typography>
+              ) : null}
+              <FormMessage />
+            </label>
+          </FormItem>
+        );
+      }}
     />
   );
 }

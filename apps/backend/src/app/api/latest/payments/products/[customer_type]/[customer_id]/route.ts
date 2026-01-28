@@ -1,10 +1,11 @@
-import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
+import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -31,7 +32,16 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: customerProductsListResponseSchema,
   }),
-  handler: async ({ auth, params, query }) => {
+  handler: async ({ auth, params, query }, fullReq) => {
+    if (auth.type === "client") {
+      await ensureClientCanAccessCustomer({
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+        user: fullReq.auth?.user,
+        tenancy: auth.tenancy,
+        forbiddenMessage: "Clients can only access their own user or team products.",
+      });
+    }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const ownedProducts = await getOwnedProductsForCustomer({
       prisma,
@@ -45,17 +55,55 @@ export const GET = createSmartRouteHandler({
         ? ownedProducts.filter(({ product }) => !product.serverOnly)
         : ownedProducts;
 
+    const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
+
+    const configuredProducts = auth.tenancy.config.payments.products;
+    for (const [productId, product] of typedEntries(configuredProducts)) {
+      if (product.customerType !== params.customer_type) continue;
+      if (auth.type === "client" && product.serverOnly) continue;
+      if (!product.productLineId) continue;
+      if (product.prices === "include-by-default") continue;
+      const hasIntervalPrice = typedEntries(product.prices).some(([, price]) => price.interval);
+      if (!hasIntervalPrice) continue;
+      if (product.isAddOnTo && typedKeys(product.isAddOnTo).length > 0) continue;
+
+      const inlineProduct = productToInlineProduct(product);
+      const intervalPrices = typedFromEntries(
+        typedEntries(inlineProduct.prices).filter(([, price]) => price.interval),
+      );
+      if (typedEntries(intervalPrices).length === 0) continue;
+
+      const existing = switchOptionsByProductLineId.get(product.productLineId) ?? [];
+      existing.push({ product_id: productId, product: { ...inlineProduct, prices: intervalPrices } });
+      switchOptionsByProductLineId.set(product.productLineId, existing);
+    }
+
     const sorted = visibleProducts
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((product) => ({
-        cursor: product.sourceId,
-        item: {
-          id: product.id,
-          quantity: product.quantity,
-          product: productToInlineProduct(product.product),
-        },
-      }));
+      .map((product) => {
+        const productLineId = product.product.productLineId;
+        const switchOptions =
+          product.type === "subscription" && product.id && productLineId
+            ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== product.id)
+            : undefined;
+
+        return {
+          cursor: product.sourceId,
+          item: {
+            id: product.id,
+            quantity: product.quantity,
+            product: productToInlineProduct(product.product),
+            type: product.type,
+            subscription: product.subscription ? {
+              current_period_end: product.subscription.currentPeriodEnd ? product.subscription.currentPeriodEnd.toISOString() : null,
+              cancel_at_period_end: product.subscription.cancelAtPeriodEnd,
+              is_cancelable: product.subscription.isCancelable,
+            } : null,
+            switch_options: switchOptions,
+          },
+        };
+      });
 
     let startIndex = 0;
     if (query.cursor) {
@@ -82,6 +130,7 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
+
 
 export const POST = createSmartRouteHandler({
   metadata: {

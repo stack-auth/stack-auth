@@ -1,17 +1,18 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../../helpers";
 import { withPortPrefix } from "../../../../../../helpers/ports";
-import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Payments, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should not be able to create purchase URL without offer_id or offer_inline", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
-      customer_id: generateUuid(),
+      customer_id: userId,
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -46,12 +47,13 @@ it("should error for non-existent offer_id", async ({ expect }) => {
     },
   });
 
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
-      customer_id: generateUuid(),
+      customer_id: userId,
       offer_id: "non-existent-offer",
     },
   });
@@ -97,10 +99,9 @@ it("should error for invalid customer_id", async ({ expect }) => {
     },
   });
 
-  await Auth.Otp.signIn();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       customer_type: "team",
       customer_id: generateUuid(),
@@ -150,13 +151,13 @@ it("should error for no connected stripe account", async ({ expect }) => {
     },
   });
 
-  const user = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
-      customer_id: user.userId,
+      customer_id: userId,
       product_id: "test-product",
     },
   });
@@ -174,7 +175,7 @@ it("should not allow offer_inline when calling from client", async ({ expect }) 
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -221,7 +222,7 @@ it("should error for server-only offer when calling from client", async ({ expec
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -254,7 +255,7 @@ it("should allow offer_inline when calling from server", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
 
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "server",
@@ -302,7 +303,7 @@ it("should allow valid offer_id", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",

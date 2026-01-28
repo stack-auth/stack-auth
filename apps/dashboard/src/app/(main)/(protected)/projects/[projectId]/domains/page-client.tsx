@@ -1,24 +1,32 @@
 "use client";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
+import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSwitch } from "@/components/settings";
-import { AdminDomainConfig, AdminProject } from "@stackframe/stack";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
-import React from "react";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import React, { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+type DomainEntry = {
+  id: string,
+  baseUrl: string,
+  handlerPath: string,
+};
+
 function EditDialog(props: {
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
   trigger?: React.ReactNode,
-  domains: AdminDomainConfig[],
-  project: AdminProject,
+  domains: DomainEntry[],
   type: 'update' | 'create',
 } & (
   {
@@ -26,11 +34,14 @@ function EditDialog(props: {
   } |
   {
     type: 'update',
-    editIndex: number,
+    editId: string,
     defaultDomain: string,
     defaultHandlerPath: string,
   }
 )) {
+  const stackAdminApp = useAdminApp();
+  const updateConfig = useUpdateConfig();
+
   const domainFormSchema = yup.object({
     domain: yupString()
       .test({
@@ -47,8 +58,8 @@ function EditDialog(props: {
 
           // Get all existing domains except the one being edited
           const existingDomains = props.domains
-            .filter((_, i) => (props.type === 'update' && i !== props.editIndex) || props.type === 'create')
-            .map(({ domain }) => domain);
+            .filter((d) => (props.type === 'update' && d.id !== props.editId) || props.type === 'create')
+            .map(({ baseUrl }) => baseUrl);
 
           // Generate all variations of the domain being tested
           const variations = [];
@@ -110,37 +121,47 @@ function EditDialog(props: {
     formSchema={domainFormSchema}
     okButton={{ label: props.type === 'create' ? "Create" : "Save" }}
     onSubmit={async (values) => {
-      const newDomains = [
-        ...props.domains,
-        {
-          domain: (values.insecureHttp ? 'http' : 'https') + `://` + values.domain,
-          handlerPath: values.handlerPath,
-        },
-        ...(canAddWww(values.domain) && values.addWww ? [{
-          domain: `${values.insecureHttp ? 'http' : 'https'}://www.` + values.domain,
-          handlerPath: values.handlerPath,
-        }] : []),
-      ];
+      const protocol = values.insecureHttp ? 'http://' : 'https://';
+      const baseUrl = protocol + values.domain;
+      const wwwBaseUrl = protocol + 'www.' + values.domain;
+
       try {
         if (props.type === 'create') {
-          await props.project.update({
-            config: {
-              domains: newDomains,
+          // Create new domain(s)
+          const newDomainId = generateUuid();
+          const configUpdate: Record<string, any> = {
+            [`domains.trustedDomains.${newDomainId}`]: {
+              baseUrl,
+              handlerPath: values.handlerPath,
             },
+          };
+
+          // Add www variant if requested
+          if (canAddWww(values.domain) && values.addWww) {
+            const wwwDomainId = generateUuid();
+            configUpdate[`domains.trustedDomains.${wwwDomainId}`] = {
+              baseUrl: wwwBaseUrl,
+              handlerPath: values.handlerPath,
+            };
+          }
+
+          // Domains are environment-level (contain URLs that may differ per environment)
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate,
+            pushable: false,
           });
         } else {
-          await props.project.update({
-            config: {
-              domains: [...props.domains].map((domain, i) => {
-                if (i === props.editIndex) {
-                  return {
-                    domain: (values.insecureHttp ? 'http://' : 'https://') + values.domain,
-                    handlerPath: values.handlerPath,
-                  };
-                }
-                return domain;
-              })
+          // Update existing domain
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: {
+              [`domains.trustedDomains.${props.editId}`]: {
+                baseUrl,
+                handlerPath: values.handlerPath,
+              },
             },
+            pushable: false,
           });
         }
       } catch (error) {
@@ -151,7 +172,7 @@ function EditDialog(props: {
           {
             cause: error,
             props,
-            newDomains,
+            values,
           },
         );
       }
@@ -225,9 +246,12 @@ function EditDialog(props: {
 function DeleteDialog(props: {
   open?: boolean,
   onOpenChange?: (open: boolean) => void,
-  domain: string,
-  project: AdminProject,
+  domainId: string,
+  baseUrl: string,
 }) {
+  const stackAdminApp = useAdminApp();
+  const updateConfig = useUpdateConfig();
+
   return (
     <ActionDialog
       open={props.open}
@@ -237,28 +261,27 @@ function DeleteDialog(props: {
       okButton={{
         label: "Delete",
         onClick: async () => {
-          await props.project.update({
-            config: {
-              domains: [...props.project.config.domains].filter(({ domain }) => domain !== props.domain),
-            }
+          await updateConfig({
+            adminApp: stackAdminApp,
+            configUpdate: {
+              [`domains.trustedDomains.${props.domainId}`]: null,
+            },
+            pushable: false,
           });
         }
       }}
       cancelButton
     >
       <Typography>
-        Do you really want to remove <b>{props.domain}</b> from the allow list? Your project will no longer be able to receive callbacks from this domain.
+        Do you really want to remove <b>{props.baseUrl}</b> from the allow list? Your project will no longer be able to receive callbacks from this domain.
       </Typography>
     </ActionDialog>
   );
 }
 
 function ActionMenu(props: {
-  domains: AdminDomainConfig[],
-  project: AdminProject,
-  editIndex: number,
-  targetDomain: string,
-  defaultHandlerPath: string,
+  domains: DomainEntry[],
+  domain: DomainEntry,
 }) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
@@ -269,17 +292,16 @@ function ActionMenu(props: {
         open={isEditModalOpen}
         onOpenChange={setIsEditModalOpen}
         domains={props.domains}
-        project={props.project}
         type="update"
-        editIndex={props.editIndex}
-        defaultDomain={props.targetDomain}
-        defaultHandlerPath={props.defaultHandlerPath}
+        editId={props.domain.id}
+        defaultDomain={props.domain.baseUrl}
+        defaultHandlerPath={props.domain.handlerPath}
       />
       <DeleteDialog
         open={isDeleteModalOpen}
         onOpenChange={setIsDeleteModalOpen}
-        domain={props.targetDomain}
-        project={props.project}
+        domainId={props.domain.id}
+        baseUrl={props.domain.baseUrl}
       />
       <ActionCell
         items={[
@@ -295,8 +317,39 @@ function ActionMenu(props: {
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
-  const domains = project.config.domains;
+  const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
 
+  // Local state for localhost setting
+  const [localAllowLocalhost, setLocalAllowLocalhost] = useState<boolean | undefined>(undefined);
+  const allowLocalhost = localAllowLocalhost ?? config.domains.allowLocalhost;
+  const hasLocalhostChanges = localAllowLocalhost !== undefined;
+
+  const handleLocalhostSave = async () => {
+    if (localAllowLocalhost !== undefined) {
+      await updateConfig({
+        adminApp: stackAdminApp,
+        configUpdate: {
+          'domains.allowLocalhost': localAllowLocalhost,
+        },
+        pushable: false,
+      });
+    }
+    setLocalAllowLocalhost(undefined);
+  };
+
+  const handleLocalhostDiscard = () => {
+    setLocalAllowLocalhost(undefined);
+  };
+
+  // Convert config domains to array format for display
+  const domains: DomainEntry[] = typedEntries(config.domains.trustedDomains)
+    .filter(([, domain]) => domain.baseUrl !== undefined)
+    .map(([id, domain]) => ({
+      id,
+      baseUrl: domain.baseUrl!,
+      handlerPath: domain.handlerPath,
+    }));
 
   return (
     <AppEnabledGuard appId="authentication">
@@ -308,7 +361,6 @@ export default function PageClient() {
             <EditDialog
               trigger={<Button>Add new domain</Button>}
               domains={domains}
-              project={project}
               type="create"
             />
           }
@@ -323,16 +375,13 @@ export default function PageClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {domains.map(({ domain, handlerPath }, i) => (
-                    <TableRow key={domain}>
-                      <TableCell>{domain}</TableCell>
+                  {domains.map((domain) => (
+                    <TableRow key={domain.id}>
+                      <TableCell>{domain.baseUrl}</TableCell>
                       <TableCell className="flex justify-end gap-4">
                         <ActionMenu
                           domains={domains}
-                          project={project}
-                          editIndex={i}
-                          targetDomain={domain}
-                          defaultHandlerPath={handlerPath}
+                          domain={domain}
                         />
                       </TableCell>
                     </TableRow>
@@ -349,16 +398,23 @@ export default function PageClient() {
 
         <SettingCard title="Development settings">
           <SettingSwitch
-            checked={project.config.allowLocalhost}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: { allowLocalhost: checked },
-              });
+            checked={allowLocalhost}
+            onCheckedChange={(checked) => {
+              if (checked === config.domains.allowLocalhost) {
+                setLocalAllowLocalhost(undefined);
+              } else {
+                setLocalAllowLocalhost(checked);
+              }
             }}
             label="Allow all localhost callbacks for development"
             hint={<>
               When enabled, allow access from all localhost URLs by default. This makes development easier but <b>should be disabled in production.</b>
             </>}
+          />
+          <InlineSaveDiscard
+            hasChanges={hasLocalhostChanges}
+            onSave={handleLocalhostSave}
+            onDiscard={handleLocalhostDiscard}
           />
         </SettingCard>
       </PageLayout>

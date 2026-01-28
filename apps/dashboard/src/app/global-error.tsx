@@ -1,7 +1,7 @@
 "use client";
 
 import * as Sentry from "@sentry/nextjs";
-import { Spinner } from "@stackframe/stack-ui";
+import { Spinner } from "@/components/ui";
 import Error from "next/error";
 import { useEffect } from "react";
 
@@ -26,7 +26,7 @@ export default function GlobalError({ error }: any) {
 
   return (
     <html>
-      <body>
+      <body className="flex items-center justify-center min-h-screen">
         {isProdLike ? (
           <Spinner />
         ) : (

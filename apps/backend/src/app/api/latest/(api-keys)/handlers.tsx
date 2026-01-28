@@ -4,7 +4,7 @@ import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { ProjectApiKey } from "@prisma/client";
+import { ProjectApiKey } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { TeamApiKeysCrud, UserApiKeysCrud, teamApiKeysCreateInputSchema, teamApiKeysCreateOutputSchema, teamApiKeysCrud, userApiKeysCreateInputSchema, userApiKeysCreateOutputSchema, userApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/project-api-keys";
 import { adaptSchema, clientOrHigherAuthTypeSchema, serverOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -153,7 +153,7 @@ function createApiKeyHandlers<Type extends "user" | "team">(type: Type) {
       metadata: {
         hidden: false,
         description: "Create a new API key for a user or team",
-        summary: "Create API key",
+        summary: `Create ${type} API key`,
         tags: ["API Keys"],
       },
       request: yupObject({

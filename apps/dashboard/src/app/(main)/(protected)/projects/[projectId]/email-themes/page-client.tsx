@@ -6,10 +6,11 @@ import { InputField } from "@/components/form-fields";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
+import { ActionDialog, Button, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
+import { CheckIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ActionDialog, Button, Typography } from "@stackframe/stack-ui";
-import { Check, Pencil } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -19,8 +20,10 @@ import { useAdminApp } from "../use-admin-app";
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
   const themes = stackAdminApp.useEmailThemes();
-  const activeTheme = project.config.emailTheme;
+  const activeTheme = config.emails.selectedThemeId;
+  const updateConfig = useUpdateConfig();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogSelectedThemeId, setDialogSelectedThemeId] = useState<string>(activeTheme);
 
@@ -29,8 +32,12 @@ export default function PageClient() {
   };
 
   const handleSaveTheme = async () => {
-    await project.update({
-      config: { emailTheme: dialogSelectedThemeId }
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        'emails.selectedThemeId': dialogSelectedThemeId,
+      },
+      pushable: true,
     });
   };
 
@@ -101,7 +108,7 @@ function ThemeOption({
         <EmailPreview themeId={theme.id} templateTsxSource={previewTemplateSource} disableResizing />
       </div>
       <div className="flex items-center gap-2">
-        {isSelected && <Check />}
+        {isSelected && <CheckIcon />}
         <Typography variant="secondary" >{theme.displayName}</Typography>
       </div>
       <Link href={`/projects/${project.id}/email-themes/${theme.id}`}>
@@ -110,7 +117,7 @@ function ThemeOption({
           size="icon"
           className="absolute top-2 right-2 bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
         >
-          <Pencil className="w-4 h-4" />
+          <PencilSimpleIcon className="w-4 h-4" />
         </Button>
       </Link>
     </div>

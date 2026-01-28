@@ -54,6 +54,12 @@ export const ALL_APPS = {
     tags: ["auth", "security"],
     stage: "stable",
   },
+  "onboarding": {
+    displayName: "Onboarding",
+    subtitle: "Configure user onboarding requirements",
+    tags: ["auth"],
+    stage: "alpha",
+  },
   "teams": {
     displayName: "Teams",
     subtitle: "Team collaboration and management",
@@ -76,7 +82,7 @@ export const ALL_APPS = {
     displayName: "Payments",
     subtitle: "Payment processing and subscription management",
     tags: ["operations", "gtm"],
-    stage: "stable",
+    stage: "beta",
   },
   "emails": {
     displayName: "Emails",

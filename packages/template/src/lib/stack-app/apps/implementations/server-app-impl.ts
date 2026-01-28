@@ -1,3 +1,4 @@
+import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
@@ -13,7 +14,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
@@ -25,17 +26,16 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentUserOptions } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, InlineProduct, ServerItem } from "../../customers";
+import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
-import { SendEmailOptions } from "../../email";
+import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
-import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, attachUserDestructureGuard, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud } from "../../users";
+import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
-import { startRegistration, WebAuthnError } from "@simplewebauthn/browser";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -56,9 +56,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeRestricted?: boolean,
     includeAnonymous?: boolean,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeAnonymous]) => {
-    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeAnonymous });
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous]) => {
+    return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
     const user = await this._interface.getServerUserById(userId);
@@ -136,6 +137,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.getDataVaultStoreValue(secret, storeId, key);
   });
 
+  private readonly _emailDeliveryInfoCache = createCache(async () => {
+    return await this._interface.getEmailDeliveryInfo();
+  });
+
   private readonly _serverUserApiKeysCache = createCache<[string], UserApiKeysCrud['Server']['Read'][]>(
     async ([userId]) => {
       const result = await this._interface.listProjectApiKeys({
@@ -179,19 +184,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([teamId, itemId]) => {
-      return await this._interface.getItem({ teamId, itemId }, null);
+      return await this._interface.getItem({ teamId, itemId }, null, "server");
     }
   );
 
   private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([userId, itemId]) => {
-      return await this._interface.getItem({ userId, itemId }, null);
+      return await this._interface.getItem({ userId, itemId }, null, "server");
     }
   );
 
   private readonly _serverCustomItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([customCustomerId, itemId]) => {
-      return await this._interface.getItem({ customCustomerId, itemId }, null);
+      return await this._interface.getItem({ customCustomerId, itemId }, null, "server");
     }
   );
 
@@ -202,7 +207,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: userId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -213,7 +218,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: teamId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -224,7 +229,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: customCustomerId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -434,7 +439,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     // END_PLATFORM
 
-    const serverUser = {
+    const serverUser = withUserDestructureGuard({
       ...super._createBaseUser(crud),
       lastActiveAt: new Date(crud.last_active_at_millis),
       serverMetadata: crud.server_metadata,
@@ -498,7 +503,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async revokeSession(sessionId: string) {
         await app._interface.deleteServerSession(sessionId);
       },
-      async setDisplayName(displayName: string) {
+      async setDisplayName(displayName: string | null) {
         return await this.update({ displayName });
       },
       async setClientMetadata(metadata: Record<string, any>) {
@@ -510,8 +515,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       async setServerMetadata(metadata: Record<string, any>) {
         return await this.update({ serverMetadata: metadata });
       },
-      async setSelectedTeam(team: Team | null) {
-        return await this.update({ selectedTeamId: team?.id ?? null });
+      async setSelectedTeam(team: Team | string | null) {
+        return await this.update({ selectedTeamId: typeof team === 'string' ? team : team?.id ?? null });
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like
@@ -759,23 +764,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         return registrationResult;
       },
       ...app._createServerCustomer(crud.id, "user"),
-    } satisfies ServerUser;
-
-    attachUserDestructureGuard(serverUser);
+    } satisfies ServerUser);
 
     return serverUser;
   }
 
   protected _serverTeamUserFromCrud(crud: TeamMemberProfilesCrud["Server"]["Read"]): ServerTeamUser {
-    const teamUser = {
+    const teamUser = withUserDestructureGuard({
       ...this._serverUserFromCrud(crud.user),
       teamProfile: {
         displayName: crud.display_name,
         profileImageUrl: crud.profile_image_url,
       },
-    } satisfies ServerTeamUser;
+    } satisfies ServerTeamUser);
 
-    attachUserDestructureGuard(teamUser);
     return teamUser;
   }
 
@@ -792,14 +794,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected override _currentUserFromCrud(crud: UsersCrud['Server']['Read'], session: InternalSession): ProjectCurrentServerUser<ProjectId> {
-    const currentUser = {
+    const currentUser = withUserDestructureGuard({
       ...this._serverUserFromCrud(crud),
       ...this._createAuth(session),
       ...this._isInternalProject() ? this._createInternalUserExtra(session) : {},
-    } satisfies ServerUser;
+    } satisfies ServerUser);
 
-    attachUserDestructureGuard(currentUser);
-    Object.freeze(currentUser);
     return currentUser as ProjectCurrentServerUser<ProjectId>;
   }
 
@@ -1038,18 +1038,28 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._getUserByConvex(options.ctx, "or" in options && options.or === "anonymous");
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
+
+      // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+      if (options?.or === 'anonymous' && options.includeRestricted === false) {
+        throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+      }
+
       // TODO this code is duplicated from the client app; fix that
       this._ensurePersistentTokenStore(options?.tokenStore);
       const session = await this._getSession(options?.tokenStore);
       let crud = Result.orThrow(await this._currentServerUserCache.getOrWait([session], "write-only"));
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-        crud = null;
-      }
+      const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+      const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
-      if (crud === null) {
+      if (crud === null || (crud.is_anonymous && !includeAnonymous) || (crud.is_restricted && !includeRestricted)) {
         switch (options?.or) {
           case 'redirect': {
-            await this.redirectToSignIn({ replace: true });
+            if (!crud?.is_anonymous && crud?.is_restricted) {
+              await this.redirectToOnboarding({ replace: true });
+            } else {
+              await this.redirectToSignIn({ replace: true });
+            }
+            // TODO: see client-app-impl. We probably want to `await neverResolve()` here instead of returning null
             break;
           }
           case 'throw': {
@@ -1057,7 +1067,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           case 'anonymous': {
             const tokens = await this._signUpAnonymously();
-            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]" }) ?? throwErr("Something went wrong while signing up anonymously");
+            return await this.getUser({ tokenStore: tokens, or: "anonymous-if-exists[deprecated]", includeRestricted: true }) ?? throwErr("Something went wrong while signing up anonymously");
           }
           case undefined:
           case "anonymous-if-exists[deprecated]":
@@ -1099,13 +1109,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       options = options as GetCurrentUserOptions<HasTokenStore> | undefined;
       // TODO this code is duplicated from the client app; fix that
+
+      // Validate that includeRestricted: false and or: 'anonymous' are mutually exclusive
+      if (options?.or === 'anonymous' && options.includeRestricted === false) {
+        throw new Error("Cannot use { or: 'anonymous' } with { includeRestricted: false }. Anonymous users implicitly include restricted users.");
+      }
+
       this._ensurePersistentTokenStore(options?.tokenStore);
 
       const session = this._useSession(options?.tokenStore);
       let crud = useAsyncCache(this._currentServerUserCache, [session] as const, "serverApp.useUser()");
-      if (crud?.is_anonymous && options?.or !== "anonymous" && options?.or !== "anonymous-if-exists[deprecated]") {
-        crud = null;
-      }
+      const includeAnonymous = options?.or === "anonymous" || options?.or === "anonymous-if-exists[deprecated]";
+      const includeRestricted = options?.includeRestricted === true || includeAnonymous;
 
       if (crud === null) {
         switch (options?.or) {
@@ -1153,7 +1168,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1161,7 +1176,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeAnonymous] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1206,6 +1221,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       const result = Result.orThrow(await this._serverCustomItemsCache.getOrWait([options.customCustomerId, options.itemId], "write-only"));
       return this._serverItemFromCrud({ type: "custom", id: options.customCustomerId }, result);
     }
+  }
+
+  async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    } else if ("teamId" in options) {
+      const response = Result.orThrow(await this._serverTeamProductsCache.getOrWait([options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    }
+    const response = Result.orThrow(await this._serverCustomProductsCache.getOrWait([options.customCustomerId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerProductsFromResponse(response);
   }
 
   // IF_PLATFORM react-like
@@ -1346,6 +1373,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   async sendEmail(options: SendEmailOptions): Promise<void> {
     await this._interface.sendEmail(options);
   }
+
+  async getEmailDeliveryStats(): Promise<EmailDeliveryInfo> {
+    return Result.orThrow(await this._emailDeliveryInfoCache.getOrWait([], "write-only"));
+  }
+
+  // IF_PLATFORM react-like
+  useEmailDeliveryStats(): EmailDeliveryInfo {
+    return useAsyncCache(this._emailDeliveryInfoCache, [], "stackServerApp.useEmailDeliveryStats()");
+  }
+  // END_PLATFORM
 
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([

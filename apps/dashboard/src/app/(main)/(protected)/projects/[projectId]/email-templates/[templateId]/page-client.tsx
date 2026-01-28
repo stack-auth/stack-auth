@@ -13,7 +13,7 @@ import {
 } from "@/components/vibe-coding";
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Button, toast } from "@stackframe/stack-ui";
+import { Button, toast } from "@/components/ui";
 import { useEffect, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -67,9 +67,7 @@ export default function PageClient(props: { templateId: string }) {
     <AppEnabledGuard appId="emails">
       <VibeCodeLayout
         previewComponent={
-          <div className="p-4 w-full h-full">
-            <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
-          </div>
+          <EmailPreview themeId={selectedThemeId} templateTsxSource={currentCode} />
         }
         editorComponent={
           <CodeEditor

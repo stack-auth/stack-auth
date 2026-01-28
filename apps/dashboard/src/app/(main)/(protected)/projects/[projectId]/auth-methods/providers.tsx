@@ -1,14 +1,14 @@
 "use client";
 import { FormDialog } from "@/components/form-dialog";
-import { InputField, SwitchField } from "@/components/form-fields";
+import { ChipsInputField, InputField, SwitchField } from "@/components/form-fields";
 import { Link } from "@/components/link";
+import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
+import { ArrowRightIcon } from "@phosphor-icons/react";
 import { AdminProject } from "@stackframe/stack";
 import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { sharedProviders } from "@stackframe/stack-shared/dist/utils/oauth";
-import { ActionDialog, Badge, BrandIcons, InlineCode, Label, SimpleTooltip, Typography, buttonVariants, cn } from "@stackframe/stack-ui";
 import clsx from "clsx";
-import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import * as yup from "yup";
 
@@ -63,18 +63,22 @@ export const providerFormSchema = yupObject({
     }),
   facebookConfigId: yupString().optional(),
   microsoftTenantId: yupString().optional(),
+  appleBundleIds: yup.array(yupString().defined()).optional(),
 });
 
 export type ProviderFormValues = yup.InferType<typeof providerFormSchema>
 
 export function ProviderSettingDialog(props: Props & { open: boolean, onClose: () => void }) {
   const hasSharedKeys = sharedProviders.includes(props.id as any);
+  const bundleIdsArray = (props.provider as any)?.appleBundleIds ?? [];
+
   const defaultValues = {
     shared: props.provider ? (props.provider.type === 'shared') : hasSharedKeys,
     clientId: (props.provider as any)?.clientId ?? "",
     clientSecret: (props.provider as any)?.clientSecret ?? "",
     facebookConfigId: (props.provider as any)?.facebookConfigId ?? "",
     microsoftTenantId: (props.provider as any)?.microsoftTenantId ?? "",
+    appleBundleIds: Array.isArray(bundleIdsArray) ? bundleIdsArray : [],
   };
 
   const onSubmit = async (values: ProviderFormValues) => {
@@ -88,6 +92,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
         clientSecret: values.clientSecret || "",
         facebookConfigId: values.facebookConfigId,
         microsoftTenantId: values.microsoftTenantId,
+        appleBundleIds: values.appleBundleIds ?? [],
       });
     }
   };
@@ -136,7 +141,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               <InputField
                 control={form.control}
                 name="clientId"
-                label="Client ID"
+                label={props.id === 'apple' ? "Service ID (Client ID)" : "Client ID"}
                 placeholder="Client ID"
                 required
               />
@@ -144,7 +149,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
               <InputField
                 control={form.control}
                 name="clientSecret"
-                label="Client Secret"
+                label={props.id === 'apple' ? "Client Secret" : "Client Secret"}
                 placeholder="Client Secret"
                 required
               />
@@ -166,6 +171,16 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
                   placeholder="Tenant ID"
                 />
               )}
+
+              {props.id === 'apple' && (
+                <ChipsInputField
+                  control={form.control}
+                  name="appleBundleIds"
+                  label="Bundle IDs"
+                  placeholder="com.example.myiosapp"
+                  helperText="Optional bundle IDs of the native iOS or macOS apps that use Sign in with Apple. These are required for native/mobile Sign in with Apple to work. Press Enter or comma to add multiple."
+                />
+              )}
             </>
           )}
 
@@ -181,7 +196,7 @@ export function ProviderSettingDialog(props: Props & { open: boolean, onClose: (
             target="_blank"
           >
             See full documentation
-            <ArrowRight size={16} />
+            <ArrowRightIcon size={16} />
           </Link>
 
         </>

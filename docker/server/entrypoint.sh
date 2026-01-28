@@ -11,9 +11,9 @@ fi
 
 # ============= ENV VARS =============
 
-export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=$(openssl rand -base64 32)
-export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=$(openssl rand -base64 32)
-export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=$(openssl rand -base64 32)
+export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
+export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
+export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
 export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
@@ -63,9 +63,10 @@ WORK_DIR="/tmp/processed"
 mkdir -p "$WORK_DIR"
 
 echo "Copying files to working directory..."
-cp -r /app/. "$WORK_DIR"/.
+cp -vr /app/. "$WORK_DIR"/.
 
-# Find all files in the working directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+# Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+echo "Finding unhandled sentinels..."
 unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
   xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
   grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
@@ -74,6 +75,7 @@ unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR
 # Choose an uncommon delimiter – here, we use the ASCII Unit Separator (0x1F)
 delimiter=$(printf '\037')
 
+echo "Replacing sentinels..."
 for sentinel in $unhandled_sentinels; do
   # The sentinel is like "STACK_ENV_VAR_SENTINEL_MY_VAR", so extract the env var name.
   env_var=${sentinel#STACK_ENV_VAR_SENTINEL_}

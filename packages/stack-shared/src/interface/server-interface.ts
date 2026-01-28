@@ -58,6 +58,81 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  override async getCustomerBilling(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/payments/billing/${customerType}/${customerId}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  override async createCustomerPaymentMethodSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    client_secret: string,
+    stripe_account_id: string,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/setup-intent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  override async setDefaultCustomerPaymentMethodFromSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    setupIntentId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    },
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/set-default`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          setup_intent_id: setupIntentId,
+        }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+
   protected async sendServerRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
     path: string,
     requestOptions: RequestInit,
@@ -227,6 +302,7 @@ export class StackServerInterface extends StackClientInterface {
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeRestricted?: boolean,
     includeAnonymous?: boolean,
   }): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
@@ -240,6 +316,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.includeRestricted ? {
+        include_restricted: 'true',
       } : {},
       ...options.includeAnonymous ? {
         include_anonymous: 'true',
@@ -802,6 +881,31 @@ export class StackServerInterface extends StackClientInterface {
       null,
     );
     return Result.ok(undefined);
+  }
+
+  async getEmailDeliveryInfo(): Promise<{
+    stats: {
+      hour: { sent: number, bounced: number, marked_as_spam: number },
+      day: { sent: number, bounced: number, marked_as_spam: number },
+      week: { sent: number, bounced: number, marked_as_spam: number },
+      month: { sent: number, bounced: number, marked_as_spam: number },
+    },
+    capacity: {
+      rate_per_second: number,
+      penalty_factor: number,
+    },
+  }> {
+    const res = await this.sendServerRequest(
+      "/emails/delivery-info",
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json"
+        },
+      },
+      null,
+    );
+    return await res.json();
   }
 
   async updateItemQuantity(

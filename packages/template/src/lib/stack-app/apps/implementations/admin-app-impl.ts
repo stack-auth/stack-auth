@@ -1,6 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -9,20 +10,58 @@ import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/uti
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
-import { AdminSentEmail } from "../..";
+import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
-import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
+import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { ConfigCrud } from "@stackframe/stack-shared/dist/interface/crud/config";
+import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import * as yup from "yup";
+import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
+
+/**
+ * Converts a PushedConfigSource (SDK camelCase) to BranchConfigSourceApi (API snake_case).
+ */
+function pushedConfigSourceToApi(source: PushedConfigSource): BranchConfigSourceApi {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commit_hash: source.commitHash,
+      config_file_path: source.configFilePath,
+    };
+  }
+  return source;
+}
+
+/**
+ * Converts a BranchConfigSourceApi (API snake_case) to PushedConfigSource (SDK camelCase).
+ */
+function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSource {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commitHash: source.commit_hash,
+      configFilePath: source.config_file_path,
+    };
+  }
+  return source;
+}
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
   declare protected _interface: StackAdminInterface;
@@ -99,7 +138,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     });
   }
 
-  _adminConfigFromCrud(data: ConfigCrud['Admin']['Read']): CompleteConfig {
+  _adminConfigFromCrud(data: { config_string: string }): CompleteConfig {
     return JSON.parse(data.config_string);
   }
 
@@ -151,6 +190,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
           type: 'shared'
@@ -183,8 +223,24 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
-        await app._interface.updateConfig({ configOverride });
-        await app._configOverridesCache.refresh([]);
+        await app._interface.updateConfigOverride("environment", configOverride);
+        await app._refreshProjectConfig();
+      },
+      async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
+        await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
+        await app._refreshProjectConfig();
+      },
+      async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
+        await app._interface.updateConfigOverride("branch", config);
+        await app._refreshProjectConfig();
+      },
+      async getPushedConfigSource(): Promise<PushedConfigSource> {
+        const apiSource = await app._interface.getPushedConfigSource();
+        return apiToPushedConfigSource(apiSource);
+      },
+      async unlinkPushedConfigSource(): Promise<void> {
+        await app._interface.unlinkPushedConfigSource();
+        await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -431,6 +487,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     ]);
   }
 
+  protected async _refreshProjectConfig() {
+    await Promise.all([
+      this._configOverridesCache.refresh([]),
+      this._adminProjectCache.refresh([]),
+    ]);
+  }
+
   protected async _refreshInternalApiKeys() {
     await this._internalApiKeysCache.refresh([]);
   }
@@ -585,6 +648,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.createStripeWidgetAccountSession();
   }
 
+  async getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null> {
+    return await this._interface.getPaymentMethodConfigs();
+  }
+
+  async updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void> {
+    await this._interface.updatePaymentMethodConfigs(configId, updates);
+  }
+
   async createItemQuantityChange(options: (
     { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
     { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
@@ -611,6 +682,247 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud;
   }
 
+  // Email Outbox methods
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Complex discriminated union conversion from API response
+  private _emailOutboxCrudToAdmin(crud: any): AdminEmailOutbox {
+    const recipient = crud.to;
+    let to: AdminEmailOutbox["to"];
+    if (recipient.type === "user-primary-email") {
+      to = { type: "user-primary-email", userId: recipient.user_id };
+    } else if (recipient.type === "user-custom-emails") {
+      to = { type: "user-custom-emails", userId: recipient.user_id, emails: recipient.emails };
+    } else {
+      to = { type: "custom-emails", emails: recipient.emails };
+    }
+
+    // Base fields present on all emails
+    const base = {
+      id: crud.id as string,
+      createdAt: new Date(crud.created_at_millis),
+      updatedAt: new Date(crud.updated_at_millis),
+      to,
+      scheduledAt: new Date(crud.scheduled_at_millis),
+      isPaused: false as const,
+      hasRendered: false as const,
+      hasDelivered: false as const,
+    };
+
+    // Rendered fields (available after rendering completes successfully)
+    const rendered = crud.has_rendered ? {
+      ...base,
+      startedRenderingAt: new Date(crud.started_rendering_at_millis),
+      renderedAt: new Date(crud.rendered_at_millis),
+      subject: crud.subject as string,
+      html: crud.html as string | null,
+      text: crud.text as string | null,
+      isTransactional: crud.is_transactional as boolean,
+      isHighPriority: crud.is_high_priority as boolean,
+      notificationCategoryId: crud.notification_category_id as string | null,
+      hasRendered: true as const,
+    } : null;
+
+    // Started sending fields
+    const startedSending = rendered && crud.started_sending_at_millis ? {
+      ...rendered,
+      startedSendingAt: new Date(crud.started_sending_at_millis),
+    } : null;
+
+    // Finished delivering fields
+    const finishedDelivering = startedSending && crud.has_delivered ? {
+      ...startedSending,
+      deliveredAt: new Date(crud.delivered_at_millis),
+      hasDelivered: true as const,
+    } : null;
+
+    // Use type assertion at the end because TypeScript has trouble with
+    // spread + override patterns on discriminated unions with const literal types
+    const result = (() => {
+      switch (crud.status) {
+        case "paused": {
+          return {
+            ...base,
+            status: "paused" as const,
+            simpleStatus: "in-progress" as const,
+            isPaused: true as const,
+          };
+        }
+        case "preparing": {
+          return {
+            ...base,
+            status: "preparing" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "rendering": {
+          return {
+            ...base,
+            status: "rendering" as const,
+            simpleStatus: "in-progress" as const,
+            startedRenderingAt: new Date(crud.started_rendering_at_millis),
+          };
+        }
+        case "render-error": {
+          return {
+            ...base,
+            status: "render-error" as const,
+            simpleStatus: "error" as const,
+            startedRenderingAt: new Date(crud.started_rendering_at_millis),
+            renderedAt: new Date(crud.rendered_at_millis),
+            renderError: crud.render_error,
+          };
+        }
+        case "scheduled": {
+          return {
+            ...rendered!,
+            status: "scheduled" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "queued": {
+          return {
+            ...rendered!,
+            status: "queued" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "sending": {
+          return {
+            ...startedSending!,
+            status: "sending" as const,
+            simpleStatus: "in-progress" as const,
+          };
+        }
+        case "server-error": {
+          return {
+            ...startedSending!,
+            status: "server-error" as const,
+            simpleStatus: "error" as const,
+            errorAt: new Date(crud.error_at_millis),
+            serverError: crud.server_error,
+          };
+        }
+        case "skipped": {
+          return {
+            ...base,
+            status: "skipped" as const,
+            simpleStatus: "ok" as const,
+            skippedAt: new Date(crud.skipped_at_millis),
+            skippedReason: crud.skipped_reason,
+            skippedDetails: crud.skipped_details ?? {},
+            hasRendered: crud.has_rendered as boolean,
+            // Optional fields
+            startedRenderingAt: crud.started_rendering_at_millis ? new Date(crud.started_rendering_at_millis) : undefined,
+            renderedAt: crud.rendered_at_millis ? new Date(crud.rendered_at_millis) : undefined,
+            subject: crud.subject,
+            html: crud.html,
+            text: crud.text,
+            isTransactional: crud.is_transactional,
+            isHighPriority: crud.is_high_priority,
+            notificationCategoryId: crud.notification_category_id,
+            startedSendingAt: crud.started_sending_at_millis ? new Date(crud.started_sending_at_millis) : undefined,
+          };
+        }
+        case "bounced": {
+          return {
+            ...startedSending!,
+            status: "bounced" as const,
+            simpleStatus: "error" as const,
+            bouncedAt: new Date(crud.bounced_at_millis),
+          };
+        }
+        case "delivery-delayed": {
+          return {
+            ...startedSending!,
+            status: "delivery-delayed" as const,
+            simpleStatus: "ok" as const,
+            deliveryDelayedAt: new Date(crud.delivery_delayed_at_millis),
+          };
+        }
+        case "sent": {
+          return {
+            ...finishedDelivering!,
+            status: "sent" as const,
+            simpleStatus: "ok" as const,
+            canHaveDeliveryInfo: crud.can_have_delivery_info,
+          };
+        }
+        case "opened": {
+          return {
+            ...finishedDelivering!,
+            status: "opened" as const,
+            simpleStatus: "ok" as const,
+            openedAt: new Date(crud.opened_at_millis),
+            canHaveDeliveryInfo: true as const,
+          };
+        }
+        case "clicked": {
+          return {
+            ...finishedDelivering!,
+            status: "clicked" as const,
+            simpleStatus: "ok" as const,
+            clickedAt: new Date(crud.clicked_at_millis),
+            canHaveDeliveryInfo: true as const,
+          };
+        }
+        case "marked-as-spam": {
+          return {
+            ...finishedDelivering!,
+            status: "marked-as-spam" as const,
+            simpleStatus: "ok" as const,
+            markedAsSpamAt: new Date(crud.marked_as_spam_at_millis),
+            canHaveDeliveryInfo: true as const,
+          };
+        }
+        default: {
+          throw new StackAssertionError(`Unknown email outbox status: ${crud.status}`, { status: crud.status });
+        }
+      }
+    })();
+    // The type system has difficulty with spread + override patterns on discriminated unions,
+    // so we use a type assertion here. The switch statement above ensures we return the correct shape.
+    return result as AdminEmailOutbox;
+  }
+
+  async listOutboxEmails(options?: { status?: string, simpleStatus?: string, limit?: number, cursor?: string }): Promise<{ items: AdminEmailOutbox[], nextCursor: string | null }> {
+    const response = await this._interface.listOutboxEmails({
+      status: options?.status,
+      simple_status: options?.simpleStatus,
+      limit: options?.limit,
+      cursor: options?.cursor,
+    });
+    return {
+      items: response.items.map((item) => this._emailOutboxCrudToAdmin(item)),
+      nextCursor: response.pagination?.next_cursor ?? null,
+    };
+  }
+
+  async getOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    const response = await this._interface.getOutboxEmail(id);
+    return this._emailOutboxCrudToAdmin(response);
+  }
+
+  async updateOutboxEmail(id: string, options: { isPaused?: boolean, scheduledAtMillis?: number, cancel?: boolean }): Promise<AdminEmailOutbox> {
+    const response = await this._interface.updateOutboxEmail(id, {
+      is_paused: options.isPaused,
+      scheduled_at_millis: options.scheduledAtMillis,
+      cancel: options.cancel,
+    });
+    return this._emailOutboxCrudToAdmin(response);
+  }
+
+  async pauseOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    return await this.updateOutboxEmail(id, { isPaused: true });
+  }
+
+  async unpauseOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    return await this.updateOutboxEmail(id, { isPaused: false });
+  }
+
+  async cancelOutboxEmail(id: string): Promise<AdminEmailOutbox> {
+    return await this.updateOutboxEmail(id, { cancel: true });
+  }
+
   // IF_PLATFORM react-like
   useTransactions(params: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): { transactions: Transaction[], nextCursor: string | null } {
     const data = useAsyncCache(this._transactionsCache, [params.cursor, params.limit, params.type, params.customerType] as const, "adminApp.useTransactions()");
@@ -628,4 +940,35 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return data;
   }
   // END_PLATFORM
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
+  }
+
+  async previewAffectedUsersByOnboardingChange(
+    onboarding: { requireEmailVerification?: boolean },
+    limit?: number,
+  ): Promise<{
+    affectedUsers: Array<{
+      id: string,
+      displayName: string | null,
+      primaryEmail: string | null,
+      restrictedReason: { type: "anonymous" | "email_not_verified" },
+    }>,
+    totalAffectedCount: number,
+  }> {
+    const result = await this._interface.previewAffectedUsersByOnboardingChange(
+      { require_email_verification: onboarding.requireEmailVerification },
+      limit,
+    );
+    return {
+      affectedUsers: result.affected_users.map(u => ({
+        id: u.id,
+        displayName: u.display_name,
+        primaryEmail: u.primary_email,
+        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" },
+      })),
+      totalAffectedCount: result.total_affected_count,
+    };
+  }
 }

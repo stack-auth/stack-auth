@@ -16,6 +16,9 @@ export type OAuthProviderConfig = {
   readonly id: string,
 };
 
+/**
+ * @deprecated This type is deprecated. Use the new config override setup instead.
+ */
 export type AdminProjectConfig = {
   readonly signUpEnabled: boolean,
   readonly credentialEnabled: boolean,
@@ -67,6 +70,7 @@ export type AdminOAuthProviderConfig = {
       clientSecret: string,
       facebookConfigId?: string,
       microsoftTenantId?: string,
+      appleBundleIds?: string[],
     }
   ) & OAuthProviderConfig;
 

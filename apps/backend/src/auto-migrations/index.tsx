@@ -1,6 +1,7 @@
+import { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { sqlQuoteIdent, sqlQuoteIdentToString } from '@/prisma-client';
-import { Prisma, PrismaClient } from '@prisma/client';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { wait } from '@stackframe/stack-shared/dist/utils/promises';
 import { MIGRATION_FILES } from './../generated/migration-files';
 
 // The bigint key for the pg advisory lock
@@ -37,7 +38,7 @@ function isMigrationNeededError(error: unknown): boolean {
 }
 
 async function getAppliedMigrations(options: {
-  prismaClient: PrismaClient,
+  prismaClient: Omit<PrismaClient, "$on">,
   schema: string,
 }) {
   // eslint-disable-next-line no-restricted-syntax
@@ -79,11 +80,12 @@ async function getAppliedMigrations(options: {
 }
 
 export async function applyMigrations(options: {
-  prismaClient: PrismaClient,
+  prismaClient: Omit<PrismaClient, "$on">,
   migrationFiles?: { migrationName: string, sql: string }[],
   artificialDelayInSeconds?: number,
   logging?: boolean,
   schema: string,
+  onBeforeMigration?: (migrationName: string) => Promise<void>,
 }): Promise<{
   newlyAppliedMigrationNames: string[],
 }> {
@@ -99,6 +101,10 @@ export async function applyMigrations(options: {
 
   const newlyAppliedMigrationNames: string[] = [];
   for (const migration of newMigrationFiles) {
+    // Call the callback before applying a new migration (not on conditional repeats)
+    if (options.onBeforeMigration) {
+      await options.onBeforeMigration(migration.migrationName);
+    }
 
     let shouldRepeat = true;
     for (let repeat = 0; shouldRepeat; repeat++) {
@@ -131,7 +137,11 @@ export async function applyMigrations(options: {
           const isSingleStatement = statement.includes('SINGLE_STATEMENT_SENTINEL');
           const isConditionallyRepeatMigration = statement.includes('CONDITIONALLY_REPEAT_MIGRATION_SENTINEL');
 
-          log(`  |> Running statement${isSingleStatement ? "" : "s"}${runOutside ? " outside of transaction" : ""}...`);
+          if (isConditionallyRepeatMigration && !isSingleStatement) {
+            throw new StackAssertionError("CONDITIONALLY_REPEAT_MIGRATION_SENTINEL requires SINGLE_STATEMENT_SENTINEL", { statement });
+          }
+
+          log(`  |> Running statement${isSingleStatement ? "" : "s"}${runOutside ? " outside of transaction" : ""}: ${statement.replace(/(\n|\s)/gm, " ").slice(0, 20)}...`);
 
           const txOrPrismaClient = runOutside ? options.prismaClient : tx;
           if (isSingleStatement) {
@@ -149,6 +159,7 @@ export async function applyMigrations(options: {
                 }
                 if (res[0].should_repeat_migration) {
                   log(`  |> Migration ${migration.migrationName} requested to be repeated. This is normal and *not* indicative of a problem.`);
+                  await wait(500);  // give the database a chance to catch up with everything else that's happening
                   // Commit the transaction and continue re-running the migration
                   return;
                 }
@@ -184,7 +195,9 @@ export async function applyMigrations(options: {
         // of this timeout is unhelpful, so we prefer relying on pg's statement timeout instead
         // (at the time of writing that one is set to 60s in prod)
         //
-        // if you have a migration that's slower, consider using CONDITIONALLY_REPEAT_MIGRATION_SENTINEL
+        // if you have a migration that's slower, consider using CONDITIONALLY_REPEAT_MIGRATION_SENTINEL (if you are
+        // editing too many rows) or split the migration into multiple smaller migrations (if you are running into
+        // excessive locking).
         timeout: 80_000,
         // Allow waiting longer to acquire a connection so bursts of concurrent migration attempts don't
         // immediately fail with P2028 ("Unable to start a transaction in the given time"). This keeps the

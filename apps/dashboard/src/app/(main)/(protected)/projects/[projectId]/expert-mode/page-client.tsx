@@ -1,6 +1,7 @@
 "use client";
 
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea, Typography } from "@stackframe/stack-ui";
+import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import React from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -44,9 +45,10 @@ function Gate(props: { onAuthorized: () => void }) {
 }
 
 function ExpertContent() {
-  const app = useAdminApp();
-  const project = app.useProject();
+  const adminApp = useAdminApp();
+  const project = adminApp.useProject();
   const completeConfig = project.useConfig();
+  const updateConfig = useUpdateConfig();
 
   const [jsonInput, setJsonInput] = React.useState<string>("");
   const [busy, setBusy] = React.useState(false);
@@ -65,7 +67,12 @@ function ExpertContent() {
     }
     setBusy(true);
     try {
-      await project.updateConfig(parsed as any);
+      // Expert mode uses environment config (pushable: false) since we don't know what fields are being updated
+      await updateConfig({
+        adminApp,
+        configUpdate: parsed,
+        pushable: false,
+      });
       setSuccess("Configuration override applied successfully.");
       setJsonInput("");
     } catch (e: any) {

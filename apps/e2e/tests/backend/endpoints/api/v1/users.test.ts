@@ -112,7 +112,11 @@ describe("with client access", () => {
         "body": {
           "code": "ACCESS_TOKEN_EXPIRED",
           "details": { "expired_at_millis": 1738374988000 },
-          "error": "Access token has expired. Please refresh it and try again. (The access token expired at 2025-02-01T01:56:28.000Z.)",
+          "error": deindent\`
+            Access token has expired. Please refresh it and try again. (The access token expired at 2025-02-01T01:56:28.000Z.)
+
+            Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
+          \`,
         },
         "headers": Headers {
           "x-stack-known-error": "ACCESS_TOKEN_EXPIRED",
@@ -138,6 +142,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -145,6 +150,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -177,6 +183,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -184,6 +191,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -200,7 +208,7 @@ describe("with client access", () => {
   });
 
   it("should not be able to read own user without access token even if refresh token is given", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     backendContext.set({ userAuth: { ...backendContext.value.userAuth, accessToken: undefined } });
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
@@ -221,7 +229,7 @@ describe("with client access", () => {
   });
 
   it("should return access token invalid error when reading own user with invalid access token", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     backendContext.set({ userAuth: { ...backendContext.value.userAuth, accessToken: "12341234" } });
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
@@ -261,6 +269,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -268,6 +277,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -299,6 +309,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -306,6 +317,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -330,7 +342,7 @@ describe("with client access", () => {
   it.todo("should not be able to set own profile image URL to a localhost/non-public URL");
 
   it("should not be able to set own server_metadata", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -367,11 +379,10 @@ describe("with client access", () => {
     await Project.createAndSwitch({
       config: {
         client_user_deletion_enabled: false,
-        magic_link_enabled: true,
       },
     });
 
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "DELETE",
@@ -389,11 +400,10 @@ describe("with client access", () => {
     await Project.createAndSwitch({
       config: {
         client_user_deletion_enabled: true,
-        magic_link_enabled: true,
       },
     });
 
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "DELETE",
@@ -455,6 +465,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -462,6 +473,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -493,6 +505,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -500,6 +513,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -516,7 +530,7 @@ describe("with client access", () => {
   });
 
   it("should be able to update totp_secret_base64 to valid base64", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const secret = generateSecureRandomString(32);
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
@@ -529,7 +543,7 @@ describe("with client access", () => {
   });
 
   it("should not be able to update totp_secret_base64 to invalid base64", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -589,7 +603,7 @@ describe("with client access", () => {
   });
 
   it("should not be able to read a user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     backendContext.set({
       userAuth: null,
     });
@@ -638,6 +652,7 @@ describe("with client access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
@@ -645,6 +660,7 @@ describe("with client access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -661,7 +677,7 @@ describe("with client access", () => {
   });
 
   it("should not be able to update own client read-only metadata", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -694,7 +710,7 @@ describe("with client access", () => {
   });
 
   it("should not be able to update profile image url", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -712,7 +728,7 @@ describe("with client access", () => {
   });
 
   it("should be able to update profile image url with base64", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -724,7 +740,7 @@ describe("with client access", () => {
   });
 
   it("should not be able to update profile image url with invalid base64", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
       method: "PATCH",
@@ -742,8 +758,8 @@ describe("with client access", () => {
   });
 
   it("should be able to update selected team", async ({ expect }) => {
-    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-    await Auth.Otp.signIn();
+    await Project.createAndSwitch();
+    await Auth.fastSignUp();
     const { teamId: team1Id } = await Team.createWithCurrentAsCreator({});
     const { teamId: team2Id } = await Team.createWithCurrentAsCreator({});
     const response1 = await niceBackendFetch("/api/v1/users/me", {
@@ -794,6 +810,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -803,6 +820,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -841,6 +859,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -850,6 +869,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -869,7 +889,7 @@ describe("with server access", () => {
   });
 
   it("should be able to delete own user", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "DELETE",
@@ -904,6 +924,7 @@ describe("with server access", () => {
               "has_password": false,
               "id": "<stripped UUID>",
               "is_anonymous": false,
+              "is_restricted": false,
               "last_active_at_millis": <stripped field 'last_active_at_millis'>,
               "oauth_providers": [],
               "otp_auth_enabled": true,
@@ -913,6 +934,7 @@ describe("with server access", () => {
               "primary_email_verified": true,
               "profile_image_url": null,
               "requires_totp_mfa": false,
+              "restricted_reason": null,
               "selected_team": null,
               "selected_team_id": null,
               "server_metadata": null,
@@ -927,10 +949,9 @@ describe("with server access", () => {
   });
 
   it("lists users with pagination", async ({ expect }) => {
-    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+    await Project.createAndSwitch();
     for (let i = 0; i < 5; i++) {
-      await bumpEmailAddress();
-      await Auth.Otp.signIn();
+      await Auth.fastSignUp();
     }
     const allResponse = await niceBackendFetch("/api/v1/users", {
       accessType: "server",
@@ -976,6 +997,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -985,6 +1007,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1021,6 +1044,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1030,6 +1054,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1062,6 +1087,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1071,6 +1097,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": "test",
@@ -1104,6 +1131,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1113,6 +1141,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1145,6 +1174,7 @@ describe("with server access", () => {
           "has_password": true,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1154,6 +1184,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1198,6 +1229,7 @@ describe("with server access", () => {
           "has_password": true,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1207,6 +1239,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1248,6 +1281,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": true,
+          "is_restricted": true,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1257,6 +1291,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": { "type": "anonymous" },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1287,6 +1322,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1296,6 +1332,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1428,6 +1465,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1437,6 +1475,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1491,6 +1530,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1500,6 +1540,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1529,6 +1570,7 @@ describe("with server access", () => {
           "has_password": true,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1538,6 +1580,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1582,6 +1625,7 @@ describe("with server access", () => {
           "has_password": true,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1591,6 +1635,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1617,6 +1662,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -1626,6 +1672,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1676,6 +1723,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1685,6 +1733,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1715,6 +1764,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1724,6 +1774,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1763,6 +1814,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1772,6 +1824,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1811,6 +1864,7 @@ describe("with server access", () => {
           "has_password": true,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1820,6 +1874,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1908,6 +1963,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -1917,6 +1973,7 @@ describe("with server access", () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1968,15 +2025,17 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
           "passkey_auth_enabled": false,
           "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
           "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
+          "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -2034,6 +2093,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": true,
@@ -2043,6 +2103,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -2094,7 +2155,7 @@ describe("with server access", () => {
   });
 
   it("should not be able to set profile image url to empty string", async ({ expect }) => {
-    await Auth.Otp.signIn();
+    await Auth.fastSignUp();
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "server",
       method: "PATCH",
@@ -2212,6 +2273,7 @@ describe("with server access", () => {
             "has_password": false,
             "id": "<stripped UUID>",
             "is_anonymous": false,
+            "is_restricted": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
             "otp_auth_enabled": false,
@@ -2221,6 +2283,7 @@ describe("with server access", () => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_reason": null,
             "selected_team": null,
             "selected_team_id": null,
             "server_metadata": null,
@@ -2274,6 +2337,7 @@ describe("with server access", () => {
             "has_password": false,
             "id": "<stripped UUID>",
             "is_anonymous": false,
+            "is_restricted": false,
             "last_active_at_millis": <stripped field 'last_active_at_millis'>,
             "oauth_providers": [],
             "otp_auth_enabled": false,
@@ -2283,6 +2347,7 @@ describe("with server access", () => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_reason": null,
             "selected_team": null,
             "selected_team_id": null,
             "server_metadata": null,
@@ -2373,6 +2438,7 @@ describe("with server access", () => {
           "has_password": false,
           "id": "<stripped UUID>",
           "is_anonymous": false,
+          "is_restricted": false,
           "last_active_at_millis": <stripped field 'last_active_at_millis'>,
           "oauth_providers": [],
           "otp_auth_enabled": false,
@@ -2382,6 +2448,7 @@ describe("with server access", () => {
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,

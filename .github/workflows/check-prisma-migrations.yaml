@@ -58,4 +58,4 @@ jobs:
         run: pnpm run db:init
 
       - name: Check for differences in Prisma schema and current DB
-        run: cd apps/backend && pnpm run prisma migrate diff --from-url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe --to-schema-datamodel ./prisma/schema.prisma --shadow-database-url postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/shadow_db --exit-code
+        run: cd apps/backend && pnpm run prisma:dev migrate diff --from-config-datasource --to-schema ./prisma/schema.prisma --exit-code

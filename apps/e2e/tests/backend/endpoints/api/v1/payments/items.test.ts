@@ -2,8 +2,8 @@ import { describe, expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectKeys, Project, User, backendContext, createMailbox, niceBackendFetch } from "../../../../backend-helpers";
 
-async function updateConfig(config: any) {
-  const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
+async function updateEnvironmentConfig(config: any) {
+  const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
     accessType: "admin",
     method: "PATCH",
     body: { config_override_string: JSON.stringify(config) },
@@ -38,7 +38,7 @@ describe("without authentication", () => {
 
 it("should be able to get item information with valid customer and item IDs", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -49,8 +49,8 @@ it("should be able to get item information with valid customer and item IDs", as
     },
   });
 
-  const user = await User.create();
-  const response = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item`, {
+  const { userId } = await Auth.fastSignUp();
+  const response = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
   });
   expect(response).toMatchInlineSnapshot(`
@@ -68,7 +68,7 @@ it("should be able to get item information with valid customer and item IDs", as
 
 it("should return ItemNotFound error for non-existent item", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -79,8 +79,8 @@ it("should return ItemNotFound error for non-existent item", async ({ expect }) 
     },
   });
 
-  const user = await User.create();
-  const response = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/non-existent-item`, {
+  const { userId } = await Auth.fastSignUp();
+  const response = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/non-existent-item`, {
     accessType: "client",
   });
   expect(response).toMatchInlineSnapshot(`
@@ -101,7 +101,7 @@ it("should return ItemNotFound error for non-existent item", async ({ expect }) 
 
 it("should return ItemCustomerTypeDoesNotMatch error for user accessing team item", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -112,8 +112,8 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
     },
   });
 
-  const user = await User.create();
-  const response = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item`, {
+  const { userId } = await Auth.fastSignUp();
+  const response = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
   });
   expect(response).toMatchInlineSnapshot(`
@@ -139,7 +139,7 @@ it("should return ItemCustomerTypeDoesNotMatch error for user accessing team ite
 
 it("creates an item quantity change successfully", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -167,7 +167,7 @@ it("creates an item quantity change successfully", async ({ expect }) => {
 
 it("aggregates item quantity changes in item quantity", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -178,16 +178,16 @@ it("aggregates item quantity changes in item quantity", async ({ expect }) => {
     },
   });
 
-  const user = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
-  const post1 = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item/update-quantity?allow_negative=false`, {
+  const post1 = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item/update-quantity?allow_negative=false`, {
     method: "POST",
     accessType: "admin",
     body: { delta: 2 },
   });
   expect(post1.status).toBe(200);
 
-  const get1 = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item`, {
+  const get1 = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
   });
   expect(get1.status).toBe(200);
@@ -196,7 +196,7 @@ it("aggregates item quantity changes in item quantity", async ({ expect }) => {
 
 it("ignores expired changes", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -207,16 +207,16 @@ it("ignores expired changes", async ({ expect }) => {
     },
   });
 
-  const user = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
-  const post = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item/update-quantity?allow_negative=false`, {
+  const post = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item/update-quantity?allow_negative=false`, {
     method: "POST",
     accessType: "admin",
     body: { delta: 4, expires_at: new Date(Date.now() - 1000).toISOString() },
   });
   expect(post.status).toBe(200);
 
-  const get = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item`, {
+  const get = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
   });
   expect(get.status).toBe(200);
@@ -225,7 +225,7 @@ it("ignores expired changes", async ({ expect }) => {
 
 it("sums multiple non-expired changes", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -236,10 +236,10 @@ it("sums multiple non-expired changes", async ({ expect }) => {
     },
   });
 
-  const user = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   for (const q of [2, -1, 5]) {
-    const r = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item/update-quantity?allow_negative=false`, {
+    const r = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item/update-quantity?allow_negative=false`, {
       method: "POST",
       accessType: "admin",
       body: { delta: q },
@@ -247,7 +247,7 @@ it("sums multiple non-expired changes", async ({ expect }) => {
     expect(r.status).toBe(200);
   }
 
-  const get = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item`, {
+  const get = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
   });
   expect(get.status).toBe(200);
@@ -256,7 +256,7 @@ it("sums multiple non-expired changes", async ({ expect }) => {
 
 it("validates item and customer type", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "team-item": {
@@ -296,7 +296,7 @@ it("validates item and customer type", async ({ expect }) => {
 
 it("should error when deducting more quantity than available", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -337,7 +337,7 @@ it("should error when deducting more quantity than available", async ({ expect }
 
 it("allows team admins to be added when item quantity is increased", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { createProjectResponse } = await Project.create();
   const ownerTeamId: string = createProjectResponse.body.owner_team_id;
 
@@ -371,13 +371,14 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
   `);
 
   backendContext.set({ mailbox: mailboxB });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
 
+  const invitationMessages = await mailboxB.waitForMessagesWithSubject("join");
   const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
     method: "POST",
     accessType: "client",
     body: {
-      code: (await mailboxB.fetchMessages()).findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
+      code: invitationMessages.findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
     },
   });
 
@@ -392,7 +393,7 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
 
 it("should allow negative quantity changes when allow_negative is true", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "test-item": {
@@ -403,9 +404,9 @@ it("should allow negative quantity changes when allow_negative is true", async (
     },
   });
 
-  const user = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
-  const response = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item/update-quantity?allow_negative=true`, {
+  const response = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item/update-quantity?allow_negative=true`, {
     method: "POST",
     accessType: "admin",
     body: { delta: -3 },
@@ -420,7 +421,7 @@ it("should allow negative quantity changes when allow_negative is true", async (
     }
   `);
 
-  const getItemResponse = await niceBackendFetch(`/api/latest/payments/items/user/${user.userId}/test-item`, {
+  const getItemResponse = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
   });
   expect(getItemResponse).toMatchInlineSnapshot(`
@@ -438,7 +439,7 @@ it("should allow negative quantity changes when allow_negative is true", async (
 
 it("supports custom customer type for items (GET and update-quantity)", async ({ expect }) => {
   await Project.createAndSwitch();
-  await updateConfig({
+  await updateEnvironmentConfig({
     payments: {
       items: {
         "custom-item": {
@@ -452,7 +453,7 @@ it("supports custom customer type for items (GET and update-quantity)", async ({
   const customCustomerId = "custom-xyz";
 
   const getBefore = await niceBackendFetch(`/api/latest/payments/items/custom/${customCustomerId}/custom-item`, {
-    accessType: "client",
+    accessType: "admin",
   });
   expect(getBefore.status).toBe(200);
   expect(getBefore.body.quantity).toBe(0);
@@ -465,7 +466,7 @@ it("supports custom customer type for items (GET and update-quantity)", async ({
   expect(postChange.status).toBe(200);
 
   const getAfter = await niceBackendFetch(`/api/latest/payments/items/custom/${customCustomerId}/custom-item`, {
-    accessType: "client",
+    accessType: "admin",
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(3);

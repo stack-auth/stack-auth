@@ -9,6 +9,8 @@ import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import posthog from "posthog-js";
 
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+
 Sentry.init({
   ...sentryBaseConfig,
 

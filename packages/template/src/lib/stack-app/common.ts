@@ -31,6 +31,15 @@ export type RedirectMethod = "window"
 export type GetCurrentUserOptions<HasTokenStore> =
   & {
     or?: 'redirect' | 'throw' | 'return-null' | 'anonymous' | /** @deprecated */ 'anonymous-if-exists[deprecated]',
+    /**
+     * Whether to include restricted users (users who haven't completed onboarding requirements like email verification).
+     * By default, restricted users are filtered out (treated similar to anonymous users).
+     *
+     * Note: This option cannot be set to false when `or: 'anonymous'` is used, as all anonymous users are also restricted.
+     *
+     * @default false
+     */
+    includeRestricted?: boolean,
     tokenStore?: TokenStoreInit,
   }
   & (HasTokenStore extends false ? {
@@ -94,6 +103,7 @@ export type HandlerUrls = {
   teamInvitation: string,
   mfa: string,
   error: string,
+  onboarding: string,
 }
 
 export type OAuthScopesOnSignIn = {
@@ -107,6 +117,24 @@ export type OAuthScopesOnSignIn = {
 export type AuthLike<ExtraOptions = {}> = {
   signOut(options?: { redirectUrl?: URL | string } & ExtraOptions): Promise<void>,
   signOut(options?: { redirectUrl?: URL | string }): Promise<void>,
+
+  /**
+   * Returns the current access token, or null if the user is not signed in.
+   *
+   * The access token is a short-lived JWT that can be used to authenticate requests to external servers.
+   * It will be automatically refreshed when it expires.
+   */
+  getAccessToken(options?: {} & ExtraOptions): Promise<string | null>,
+  useAccessToken(options?: {} & ExtraOptions): string | null, // THIS_LINE_PLATFORM react-like
+
+  /**
+   * Returns the current refresh token, or null if the user is not signed in.
+   *
+   * The refresh token is a long-lived token that can be used to obtain new access tokens.
+   * It should be kept secret and never exposed to the client.
+   */
+  getRefreshToken(options?: {} & ExtraOptions): Promise<string | null>,
+  useRefreshToken(options?: {} & ExtraOptions): string | null, // THIS_LINE_PLATFORM react-like
 
   /**
    * Returns headers for sending authenticated HTTP requests to external servers. Most commonly used in cross-origin
@@ -124,8 +152,8 @@ export type AuthLike<ExtraOptions = {}> = {
    * must include `x-stack-auth` in the [`Access-Control-Allow-Headers` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers)
    * of the CORS preflight response.
    *
-   * If you are not using HTTP (and hence cannot set headers), you will need to use the `getAuthJson()` function
-   * instead.
+   * If you are not using HTTP (and hence cannot set headers), you will need to use the `getAccessToken()` and
+   * `getRefreshToken()` functions instead.
    *
    * Example:
    *
@@ -146,8 +174,11 @@ export type AuthLike<ExtraOptions = {}> = {
    * ```
    */
   getAuthHeaders(options?: {} & ExtraOptions): Promise<{ "x-stack-auth": string }>,
+  useAuthHeaders(options?: {} & ExtraOptions): { "x-stack-auth": string }, // THIS_LINE_PLATFORM react-like
 
   /**
+   * @deprecated Use `getAccessToken()` and `getRefreshToken()` instead.
+   *
    * Creates a JSON-serializable object containing the information to authenticate a user on an external server.
    * Similar to `getAuthHeaders`, but returns an object that can be sent over any protocol instead of just
    * HTTP headers.
@@ -175,6 +206,8 @@ export type AuthLike<ExtraOptions = {}> = {
    * ```
    */
   getAuthJson(options?: {} & ExtraOptions): Promise<{ accessToken: string | null, refreshToken: string | null }>,
+  /** @deprecated Use `useAccessToken()` and `useRefreshToken()` instead. */
+  useAuthJson(options?: {} & ExtraOptions): { accessToken: string | null, refreshToken: string | null }, // THIS_LINE_PLATFORM react-like
 };
 
 /** @internal */

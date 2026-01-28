@@ -16,8 +16,8 @@ it("should sign up new users", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  await wait(5000);  // verification email is asynchronous, so let's give it some time to be received
-  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
+  // signUpWithEmail already waits for verification email
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Verify your email", { noBody: true });
   expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
@@ -40,6 +40,7 @@ it("should sign up new users", async ({ expect }) => {
         "has_password": true,
         "id": "<stripped UUID>",
         "is_anonymous": false,
+        "is_restricted": false,
         "oauth_providers": [],
         "otp_auth_enabled": false,
         "passkey_auth_enabled": false,
@@ -47,6 +48,7 @@ it("should sign up new users", async ({ expect }) => {
         "primary_email_verified": false,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_reason": null,
         "selected_team": {
           "client_metadata": null,
           "client_read_only_metadata": null,

@@ -1,7 +1,7 @@
-import { sendEmailFromTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@prisma/client";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -37,7 +37,7 @@ export const resetPasswordVerificationCodeHandler = createVerificationCodeHandle
   }),
   async send(codeObj, createOptions, sendOptions: { user: UsersCrud["Admin"]["Read"] }) {
     const tenancy = await getSoleTenancyFromProjectBranch(createOptions.project.id, createOptions.branchId);
-    await sendEmailFromTemplate({
+    await sendEmailFromDefaultTemplate({
       tenancy,
       user: sendOptions.user,
       email: createOptions.method.email,
@@ -45,6 +45,7 @@ export const resetPasswordVerificationCodeHandler = createVerificationCodeHandle
       extraVariables: {
         passwordResetLink: codeObj.link.toString(),
       },
+      shouldSkipDeliverabilityCheck: true,
     });
   },
   async handler(tenancy, { email }, data, { password }) {

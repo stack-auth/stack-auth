@@ -10,6 +10,7 @@ import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/pro
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
+import { recordRequestStats } from "@/lib/dev-request-stats";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -102,18 +103,24 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           }
 
           // request duration warning
-          const warnAfterSeconds = 12;
-          runAsynchronously(async () => {
-            await wait(warnAfterSeconds * 1000);
-            if (!hasRequestFinished) {
-              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to endpoint ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-            }
-          });
+          if (req.nextUrl.pathname !== "/api/latest/internal/email-queue-step") {
+            const warnAfterSeconds = 12;
+            runAsynchronously(async () => {
+              await wait(warnAfterSeconds * 1000);
+              if (!hasRequestFinished) {
+                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+              }
+            });
+          }
 
           if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
           const timeStart = performance.now();
           const res = await handler(req, options, requestId);
           const time = (performance.now() - timeStart);
+
+          // Record request stats for dev-stats page
+          recordRequestStats(req.method, req.nextUrl.pathname, time);
+
           if ([301, 302].includes(res.status)) {
             throw new StackAssertionError("HTTP status codes 301 and 302 should not be returned by our APIs because the behavior for non-GET methods is inconsistent across implementations. Use 303 (to rewrite method to GET) or 307/308 (to preserve the original method and data) instead.", { status: res.status, url: req.nextUrl, req, res });
           }
@@ -139,7 +146,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const res = await createResponse(req, requestId, {
             statusCode: statusError.statusCode,
             bodyType: "binary",
-            body: statusError.getBody(),  // if you get a type error on this line, it's likely you'll have to run `pnpm clean && pnpm i && pnpm run build:packages && pnpm run codegen` again. If you're a coding agent, just ignore the error.
+            body: statusError.getBody(),
             headers: {
               ...statusError.getHeaders(),
             },

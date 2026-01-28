@@ -24,6 +24,18 @@ function getDefaultDocsRedirectUrl(): string | null {
   return firstDocsPage?.url ?? null;
 }
 
+function formatDate(dateString: string): string {
+  // Parse date parts directly to avoid timezone issues
+  // (new Date("2026-01-12") is interpreted as UTC, which can shift the day in local time)
+  const [year, month, day] = dateString.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const suffix = day === 1 || day === 21 || day === 31 ? 'st'
+    : day === 2 || day === 22 ? 'nd'
+      : day === 3 || day === 23 ? 'rd'
+        : 'th';
+  return `${months[month - 1]} ${day}${suffix}, ${year}`;
+}
+
 export default async function Page(props: {
   params: Promise<{ slug?: string[] }>,
 }) {
@@ -46,7 +58,7 @@ export default async function Page(props: {
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
-      <div className="flex flex-row items-center justify-between gap-4 mb-4">
+      <div className="flex flex-row items-center justify-between gap-4 mb-2">
         <DocsTitle>{page.data.title}</DocsTitle>
         <div className="flex flex-row gap-2 items-center">
           <LLMCopyButton markdownUrl={`${page.url}.mdx`} />
@@ -55,6 +67,11 @@ export default async function Page(props: {
           />
         </div>
       </div>
+      {page.data.lastModified && (
+        <p className="text-xs text-fd-muted-foreground/60 mb-4">
+          Last updated {formatDate(page.data.lastModified)}
+        </p>
+      )}
       {/* Only show description if it exists and is not empty */}
       {page.data.description && page.data.description.trim() && (
         <DocsDescription>{page.data.description}</DocsDescription>

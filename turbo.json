@@ -15,7 +15,8 @@
     "GOOGLE_AI_API_KEY",
     "DISCORD_WEBHOOK_URL",
     "DISCORD_CHANNEL_ID",
-    "DISCORD_BOT_TOKEN"
+    "DISCORD_BOT_TOKEN",
+    "ENABLE_EXPERIMENTAL_COREPACK"
   ],
   "tasks": {
     "build": {
@@ -73,9 +74,6 @@
       "dependsOn": [
         "^build"
       ]
-    },
-    "@stackframe/stack-backend#generate-openapi-fumadocs": {
-      "cache": false
     },
     "clean": {
       "cache": false

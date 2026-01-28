@@ -1,4 +1,3 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../../helpers";
 import { Auth, ContactChannels, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
@@ -36,8 +35,9 @@ it("can't send a verification code while logged out", async ({ expect }) => {
 it("should send a verification code per e-mail", async ({ expect }) => {
   await Auth.Password.signUpWithEmail();
   await ContactChannels.sendVerificationCode();
-  await wait(1000);
-  expect(await backendContext.value.mailbox.fetchMessages({ noBody: true })).toMatchInlineSnapshot(`
+  // expect two emails; one from the signup, and one from the send-verification-code
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubjectCount("Verify your email", 2, { noBody: true });
+  expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
         "from": "Stack Dashboard <noreply@example.com>",

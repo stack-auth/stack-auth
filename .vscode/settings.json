@@ -7,6 +7,7 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.tabSize": 2,
   "cSpell.words": [
+    "pushable",
     "autoupdate",
     "backlinks",
     "Cancelation",
@@ -16,6 +17,7 @@
     "Ciphertext",
     "cjsx",
     "clsx",
+    "dbgenerated",
     "cmdk",
     "codegen",
     "crockford",
@@ -26,7 +28,6 @@
     "Deindentable",
     "deindented",
     "doesntexist",
-    "DUMBASS",
     "EAUTH",
     "EDNS",
     "EENVELOPE",

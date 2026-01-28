@@ -12,6 +12,9 @@ node-compile-cache/
 
 .vercel
 
+# https://stackoverflow.com/questions/76510164/can-i-safely-delete-vite-config-ts-timestamp-files
+vite.config.ts.timestamp-*
+
 # Misc
 .DS_Store
 .eslintcache
@@ -55,9 +58,6 @@ dist
 
 # Jetbrains
 .idea
-
-# Cursor
-.cursor
 
 # GitHub Actions runner
 /actions-runner

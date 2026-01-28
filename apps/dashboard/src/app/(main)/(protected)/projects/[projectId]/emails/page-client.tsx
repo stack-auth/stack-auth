@@ -4,16 +4,17 @@ import { TeamMemberSearchTable } from "@/components/data-table/team-member-searc
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
 import { SettingCard, SettingText } from "@/components/settings";
+import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
+import { WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@stackframe/stack-ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
 import { ColumnDef } from "@tanstack/react-table";
-import { AlertCircle, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -129,6 +130,7 @@ function EditEmailServerDialog(props: {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const [error, setError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<any>(null);
   const defaultValues = useMemo(() => getDefaultValues(config.emails.server, project), [config, project]);
@@ -145,17 +147,22 @@ function EditEmailServerDialog(props: {
       return 'prevent-close-and-prevent-reset';
     }
     setError(null);
-    await project.updateConfig({
-      "emails.server": {
-        isShared: false,
-        host: emailConfig.host,
-        port: emailConfig.port,
-        username: emailConfig.username,
-        password: emailConfig.password,
-        senderEmail: emailConfig.senderEmail,
-        senderName: emailConfig.senderName,
-        provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
-      } satisfies CompleteConfig['emails']['server']
+    // Email server config contains secrets, so it's environment-level only (pushable: false)
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        "emails.server": {
+          isShared: false,
+          host: emailConfig.host,
+          port: emailConfig.port,
+          username: emailConfig.username,
+          password: emailConfig.password,
+          senderEmail: emailConfig.senderEmail,
+          senderName: emailConfig.senderName,
+          provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+        } satisfies CompleteConfig['emails']['server']
+      },
+      pushable: false,
     });
 
     toast({
@@ -173,10 +180,15 @@ function EditEmailServerDialog(props: {
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
       if (values.type === 'shared') {
-        await project.update({
-          config: {
-            emailConfig: { type: 'shared' }
-          }
+        // Email server config contains secrets, so it's environment-level only (pushable: false)
+        await updateConfig({
+          adminApp: stackAdminApp,
+          configUpdate: {
+            "emails.server": {
+              isShared: true,
+            } satisfies Partial<CompleteConfig['emails']['server']>
+          },
+          pushable: false,
         });
       } else if (values.type === 'resend') {
         if (!values.password || !values.senderEmail || !values.senderName) {
@@ -452,7 +464,7 @@ function SendEmailDialog(props: {
                   className="absolute -top-2 -right-2 h-4 w-4 rounded-full p-0 hover:bg-red-100 opacity-0 group-hover:opacity-100"
                   onClick={() => setSelectedUsers(users => users.filter(u => u.id !== user.id))}
                 >
-                  <X className="h-3 w-3" />
+                  <XIcon className="h-3 w-3" />
                 </Button>
               )}
             </div>
@@ -482,7 +494,7 @@ function SendEmailDialog(props: {
         okButton
       >
         <Alert variant="default">
-          <AlertCircle className="h-4 w-4" />
+          <WarningCircleIcon className="h-4 w-4" />
           <AlertTitle>Warning</AlertTitle>
           <AlertDescription>
             You are using a shared email server. If you want to send manual emails, you need to configure a custom SMTP server.

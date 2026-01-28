@@ -13,6 +13,12 @@ export type {
 } from "./apps";
 
 export type {
+  EmailOutboxListOptions,
+  EmailOutboxListResult,
+  EmailOutboxUpdateOptions
+} from "./apps/interfaces/admin-app";
+
+export type {
   ProjectConfig
 } from "./project-configs";
 
@@ -46,6 +52,10 @@ export type {
 } from "./contact-channels";
 
 export type {
+  AdminEmailOutbox,
+  AdminEmailOutboxRecipient,
+  AdminEmailOutboxSimpleStatus,
+  AdminEmailOutboxStatus,
   AdminSentEmail
 } from "./email";
 
@@ -73,7 +83,8 @@ export type {
   AdminProject,
   AdminProjectCreateOptions,
   AdminProjectUpdateOptions,
-  Project
+  Project,
+  PushedConfigSource
 } from "./projects";
 
 export type {
@@ -101,7 +112,6 @@ export type {
   OAuthProvider,
   ServerOAuthProvider,
   ServerUser,
-  Session,
   User
 } from "./users";
 

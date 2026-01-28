@@ -14,7 +14,7 @@ This file provides guidance to coding agents when working with code in this repo
 These commands are usually already called by the user, but you can remind them to run it for you if they forgot to.
 - **Build packages**: `pnpm build:packages`
 - **Start dependencies**: `pnpm restart-deps` (resets & restarts Docker containers for DB, Inbucket, etc. Usually already called by the user)
-- **Run development**: Already called by the user in the background. You don't need to do this. This will also watch for changes and rebuild packages, codegen, etc.
+- **Run development**: Already called by the user in the background. You don't need to do this. This will also watch for changes and rebuild packages, codegen, etc. Do NOT call build:packages, dev, codegen, or anything like that yourself, as the dev is already running it.
 - **Run minimal dev**: `pnpm dev:basic` (only backend and dashboard for resource-limited systems)
 
 ### Testing
@@ -82,6 +82,17 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Whenever you make backwards-incompatible changes to the config schema, you must update the migration functions in `packages/stack-shared/src/config/schema.ts`!
 - NEVER try-catch-all, NEVER void a promise, and NEVER .catch(console.error) (or similar). In most cases you don't actually need to be asynchronous, especially when UI is involved (instead, use a loading indicator! eg. our <Button> component already takes an async callback for onClick and sets its loading state accordingly — if whatever component doesn't do that, update the component instead). If you really do need things to be asynchronous, use `runAsynchronously` or `runAsynchronouslyWithAlert` instead as it deals with error logging.
 - WHENEVER you create hover transitions, avoid hover-enter transitions, and just use hover-exit transitions. For example, `transition-colors hover:transition-none`.
+- Any environment variables you create should be prefixed with `STACK_` (or NEXT_PUBLIC_STACK_ if they are public). This ensures that their changes are picked up by Turborepo (and helps readability).
+- NEVER just silently use fallback values or whatever when you don't know how to fix type errors. If there is a state that should never happen because of higher-level logic, and the type system doesn't represent that, either update the types or throw an error. Stuff like `?? 0` or `?? ""` is often code smell when `?? throwErr("this should never happen because XYZ")` would be better.
+- Code defensively. Prefer `?? throwErr(...)` over non-null assertions, with good error messages explicitly stating the assumption that must've been violated for the error to be thrown.
+- Try to avoid the `any` type. Whenever you need to use `any`, leave a comment explaining why you're using it (optimally it explains why the type system fails here, and how you can be certain that any errors in that code path would still be flagged at compile-, test-, or runtime).
+- Don't use Date.now() for measuring elapsed (real) time, instead use `performance.now()`
+- Use urlString`` or encodeURIComponent() instead of normal string interpolation for URLs, for consistency even if it's not strictly necessary.
+- When making config updates, use path notation (`{ "path.to.field": my-value }`) to avoid overwriting sibling properties
+- IMPORTANT: Any assumption you make should either be validated through type system (preferred), assertions, or tests. Optimally, two out of three.
+- If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
+- Whenever you update an SDK implementation in `sdks/implementations`, make sure to update the specs accordingly in `sdks/specs` such that if you reimplemented the entire SDK from the specs again, you would get the same implementation. (For example, if the specs are not precise enough to describe a change you made, make the specs more precise.)
+- When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

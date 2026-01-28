@@ -22,6 +22,7 @@ const oauthProviderReadSchema = yupObject({
   // extra params
   facebook_config_id: schemaFields.oauthFacebookConfigIdSchema.optional(),
   microsoft_tenant_id: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+  apple_bundle_ids: schemaFields.oauthAppleBundleIdsSchema.optional(),
 });
 
 const oauthProviderWriteSchema = oauthProviderReadSchema.omit(['provider_config_id']);
@@ -123,6 +124,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
   logo_dark_mode_url: schemaFields.projectLogoDarkModeUrlSchema.nullable().optional(),
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.optional(),
+  /** @deprecated */
   config: yupObject({
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.optional(),
     credential_enabled: schemaFields.projectCredentialEnabledSchema.optional(),
@@ -142,6 +144,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
     team_member_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     user_default_permissions: yupArray(teamPermissionSchema.defined()).optional(),
     oauth_account_merge_strategy: schemaFields.oauthAccountMergeStrategySchema.optional(),
+    require_email_verification: schemaFields.yupBoolean().optional(),
   }).optional().default(undefined),
 }).defined();
 
@@ -173,16 +176,19 @@ export const projectsCrud = createCrud({
       summary: 'Get the current project',
       description: 'Get the current project information and configuration including display name, OAuth providers, email configuration, etc.',
       tags: ['Projects'],
+      hidden: true,
     },
     adminUpdate: {
       summary: 'Update the current project',
       description: 'Update the current project information and configuration including display name, OAuth providers, email configuration, etc.',
       tags: ['Projects'],
+      hidden: true,
     },
     adminDelete: {
       summary: 'Delete the current project',
       description: 'Delete the current project and all associated data (including users, teams, API keys, project configs, etc.). Be careful, this action is irreversible.',
       tags: ['Projects'],
+      hidden: true,
     },
   },
 });

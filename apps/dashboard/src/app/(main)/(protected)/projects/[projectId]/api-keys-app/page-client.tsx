@@ -1,7 +1,10 @@
 "use client";
+import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { StyledLink } from "@/components/link";
 import { SettingCard, SettingSwitch } from "@/components/settings";
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
+import { useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -9,6 +12,41 @@ import { useAdminApp } from "../use-admin-app";
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
+
+  // Local state for API key settings
+  const [localUserApiKeys, setLocalUserApiKeys] = useState<boolean | undefined>(undefined);
+  const [localTeamApiKeys, setLocalTeamApiKeys] = useState<boolean | undefined>(undefined);
+
+  const userApiKeysEnabled = localUserApiKeys ?? config.apiKeys.enabled.user;
+  const teamApiKeysEnabled = localTeamApiKeys ?? config.apiKeys.enabled.team;
+
+  const hasChanges = useMemo(() =>
+    localUserApiKeys !== undefined || localTeamApiKeys !== undefined,
+  [localUserApiKeys, localTeamApiKeys]);
+
+  const handleSave = async () => {
+    const configUpdate: Record<string, boolean> = {};
+    if (localUserApiKeys !== undefined) {
+      configUpdate['apiKeys.enabled.user'] = localUserApiKeys;
+    }
+    if (localTeamApiKeys !== undefined) {
+      configUpdate['apiKeys.enabled.team'] = localTeamApiKeys;
+    }
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate,
+      pushable: true,
+    });
+    setLocalUserApiKeys(undefined);
+    setLocalTeamApiKeys(undefined);
+  };
+
+  const handleDiscard = () => {
+    setLocalUserApiKeys(undefined);
+    setLocalTeamApiKeys(undefined);
+  };
 
   return (
     <AppEnabledGuard appId="api-keys">
@@ -26,13 +64,13 @@ export default function PageClient() {
         >
           <SettingSwitch
             label="Allow User API Keys"
-            checked={project.config.allowUserApiKeys}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: {
-                  allowUserApiKeys: checked
-                }
-              });
+            checked={userApiKeysEnabled}
+            onCheckedChange={(checked) => {
+              if (checked === config.apiKeys.enabled.user) {
+                setLocalUserApiKeys(undefined);
+              } else {
+                setLocalUserApiKeys(checked);
+              }
             }}
           />
           <Typography variant="secondary" type="footnote">
@@ -41,18 +79,23 @@ export default function PageClient() {
 
           <SettingSwitch
             label="Allow Team API Keys"
-            checked={project.config.allowTeamApiKeys}
-            onCheckedChange={async (checked) => {
-              await project.update({
-                config: {
-                  allowTeamApiKeys: checked
-                }
-              });
+            checked={teamApiKeysEnabled}
+            onCheckedChange={(checked) => {
+              if (checked === config.apiKeys.enabled.team) {
+                setLocalTeamApiKeys(undefined);
+              } else {
+                setLocalTeamApiKeys(checked);
+              }
             }}
           />
           <Typography variant="secondary" type="footnote">
             Enable to allow users to create API keys for their teams. Enables team-api-keys backend routes.
           </Typography>
+          <InlineSaveDiscard
+            hasChanges={hasChanges}
+            onSave={handleSave}
+            onDiscard={handleDiscard}
+          />
         </SettingCard>
       </PageLayout>
     </AppEnabledGuard>

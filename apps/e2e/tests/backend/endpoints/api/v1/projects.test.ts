@@ -63,7 +63,7 @@ it("gets current project (internal)", async ({ expect }) => {
 });
 
 it("creates and updates the basic project information of a project", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response } = await Project.updateCurrent(adminAccessToken, {
     display_name: "Updated Project",
@@ -112,7 +112,7 @@ it("creates and updates the basic project information of a project", async ({ ex
 });
 
 it("updates the basic project configuration", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response } = await Project.updateCurrent(adminAccessToken, {
     config: {
@@ -164,7 +164,7 @@ it("updates the basic project configuration", async ({ expect }) => {
 });
 
 it("updates the project domains configuration", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
@@ -284,7 +284,7 @@ it("updates the project domains configuration", async ({ expect }) => {
 });
 
 it("should allow insecure HTTP connections if insecureHttp is true", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response } = await Project.updateCurrent(adminAccessToken, {
     config: {
@@ -341,7 +341,7 @@ it("should allow insecure HTTP connections if insecureHttp is true", async ({ ex
 });
 
 it("should not allow protocols other than http(s) in trusted domains", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response } = await Project.updateCurrent(adminAccessToken, {
     config: {
@@ -376,7 +376,7 @@ it("should not allow protocols other than http(s) in trusted domains", async ({ 
 });
 
 it("updates the project email configuration", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
@@ -700,7 +700,7 @@ it("does not update project email config to empty host", async ({ expect }) => {
 });
 
 it("updates the project email configuration with invalid parameters", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
     config: {
@@ -777,7 +777,7 @@ it("updates the project email configuration with invalid parameters", async ({ e
 });
 
 it("updates the project oauth configuration", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
   // create google oauth provider with shared type
   const { updateProjectResponse: response1 } = await Project.updateCurrent(adminAccessToken, {
@@ -1182,7 +1182,7 @@ it("fails when trying to update OAuth provider with empty client_secret", async 
 });
 
 it("deletes a project with admin access", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
@@ -1204,7 +1204,7 @@ it("deletes a project with admin access", async ({ expect }) => {
 });
 
 it("deletes a project with server access", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Delete the project
@@ -1236,7 +1236,7 @@ it("deletes a project with server access", async ({ expect }) => {
 });
 
 it("deletes a project with users, teams, and permissions", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken, createProjectResponse } = await Project.createAndGetAdminToken({
     config: {
       magic_link_enabled: true,
@@ -1436,7 +1436,7 @@ it("makes sure users own the correct projects after creating a project", async (
 
 it("removes a deleted project from a user", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const adminAccessToken = backendContext.value.userAuth?.accessToken;
   const { projectId } = await Project.create();
 
@@ -1481,7 +1481,7 @@ it("removes a deleted project from a user", async ({ expect }) => {
 
 it("makes sure other users are not affected by project deletion", async ({ expect }) => {
   backendContext.set({ projectKeys: InternalProjectKeys });
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const user1Auth = backendContext.value.userAuth;
   const { projectId } = await Project.create();
 
@@ -1567,11 +1567,11 @@ it("should increment and decrement userCount when a user is added to a project",
 });
 
 it("should preserve API Keys app enabled state when updating allowUserApiKeys config", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Enable the API Keys app
-  const enableAppResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+  const enableAppResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
     accessType: "admin",
     method: "PATCH",
     headers: {
@@ -1588,7 +1588,7 @@ it("should preserve API Keys app enabled state when updating allowUserApiKeys co
   expect(enableAppResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {},
+      "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

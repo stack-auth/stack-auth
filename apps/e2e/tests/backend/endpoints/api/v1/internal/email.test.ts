@@ -31,14 +31,6 @@ it("should list sent emails for the current project", async ({ expect }) => {
           {
             "error": null,
             "id": "<stripped UUID>",
-            "sender_config": {
-              "host": "127.0.0.1",
-              "port": <stripped field 'port'>,
-              "sender_email": "noreply@example.com",
-              "sender_name": "New Project",
-              "type": "shared",
-              "username": "does not matter, ignored by Inbucket",
-            },
             "sent_at_millis": <stripped field 'sent_at_millis'>,
             "subject": "Sign in to New Project: Your code is <stripped code>",
             "to": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
@@ -46,14 +38,6 @@ it("should list sent emails for the current project", async ({ expect }) => {
           {
             "error": null,
             "id": "<stripped UUID>",
-            "sender_config": {
-              "host": "127.0.0.1",
-              "port": <stripped field 'port'>,
-              "sender_email": "noreply@example.com",
-              "sender_name": "New Project",
-              "type": "shared",
-              "username": "does not matter, ignored by Inbucket",
-            },
             "sent_at_millis": <stripped field 'sent_at_millis'>,
             "subject": "Sign in to New Project: Your code is <stripped code>",
             "to": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],
@@ -93,14 +77,6 @@ it("should not allow two different projects to see the same send log", async ({ 
           {
             "error": null,
             "id": "<stripped UUID>",
-            "sender_config": {
-              "host": "127.0.0.1",
-              "port": <stripped field 'port'>,
-              "sender_email": "noreply@example.com",
-              "sender_name": "New Project",
-              "type": "shared",
-              "username": "does not matter, ignored by Inbucket",
-            },
             "sent_at_millis": <stripped field 'sent_at_millis'>,
             "subject": "Sign in to New Project: Your code is <stripped code>",
             "to": ["default-mailbox--<stripped UUID>@stack-generated.example.com"],

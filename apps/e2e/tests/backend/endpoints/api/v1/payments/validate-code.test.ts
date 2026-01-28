@@ -1,5 +1,5 @@
 import { it } from "../../../../../helpers";
-import { Payments, Project, User, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../backend-helpers";
 
 
 it("should error on invalid code", async ({ expect }) => {
@@ -27,7 +27,45 @@ it("should error on invalid code", async ({ expect }) => {
 });
 
 it("should allow valid code and return product data", async ({ expect }) => {
-  const { code } = await Payments.createPurchaseUrlAndGetCode();
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const createResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(createResponse.status).toBe(200);
+  const url = (createResponse.body as { url: string }).url;
+  const codeMatch = url.match(/\/purchase\/([a-z0-9-_]+)/);
+  const code = codeMatch ? codeMatch[1] : undefined;
+  expect(code).toBeDefined();
+
   const validateResponse = await niceBackendFetch("/api/latest/payments/purchases/validate-code", {
     method: "POST",
     accessType: "client",
@@ -93,7 +131,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   // Create a code for test-product and purchase it in test mode (creates DB subscription)
   const createUrlRes1 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -154,13 +192,13 @@ it("should include conflicting_products when switching within the same group", a
   await Project.updateConfig({
     payments: {
       testMode: true,
-      catalogs: { grp: { displayName: "Group" } },
+      productLines: { grp: { displayName: "Group" } },
       products: {
         productA: {
           displayName: "Product A",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: { monthly: { USD: "1000", interval: [1, "month"] } },
           includedItems: {},
@@ -169,7 +207,7 @@ it("should include conflicting_products when switching within the same group", a
           displayName: "Product B",
           customerType: "user",
           serverOnly: false,
-          catalogId: "grp",
+          productLineId: "grp",
           stackable: false,
           prices: { monthly: { USD: "2000", interval: [1, "month"] } },
           includedItems: {},
@@ -178,7 +216,7 @@ it("should include conflicting_products when switching within the same group", a
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // Subscribe to productA in test mode
   const resUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -271,7 +309,7 @@ it("should reject untrusted return_url and accept trusted return_url", async ({ 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   await Project.updateConfig({
     domains: {
       allowLocalhost: false,

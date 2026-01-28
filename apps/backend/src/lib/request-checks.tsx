@@ -1,4 +1,4 @@
-import { StandardOAuthProviderType } from "@prisma/client";
+import { StandardOAuthProviderType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ProviderType, standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";

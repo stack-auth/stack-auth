@@ -71,18 +71,24 @@ const branchSchemaFuzzerConfig = [{
     }],
   }],
   payments: [{
-    testMode: [false, true],
+    blockNewPurchases: [false, true],
     autoPay: [{
       interval: [[[0, 1, -3, 100, 0.333, Infinity], ["day", "week", "month", "year"]]] as const,
     }],
-    catalogs: [{
-      "some-catalog-id": [{
-        displayName: ["Some Catalog", "Some Other Catalog"],
+    productLines: [{
+      "some-product-line-id": [{
+        displayName: ["Some Product Line", "Some Other Product Line"],
+        customerType: ["user", "team", "custom"] as const,
       }],
     }],
-    groups: [{
-      "some-catalog-id": [{
-        displayName: ["Some Catalog", "Some Other Catalog"],
+    catalogs: [{  // ensure migration works
+      "some-product-line-id": [{
+        displayName: ["Some Product Line", "Some Other Product Line"],
+      }],
+    }],
+    groups: [{  // ensure migration works
+      "some-product-line-id": [{
+        displayName: ["Some Product Line", "Some Other Product Line"],
       }],
     }],
     items: [{
@@ -98,8 +104,9 @@ const branchSchemaFuzzerConfig = [{
         freeTrial: [[[0, 1, -3, 100, 0.333, Infinity], ["day", "week", "month", "year"]]] as const,
         serverOnly: [true, false],
         stackable: [true, false],
-        catalogId: ["some-catalog-id", "some-other-catalog-id"],
-        groupId: ["some-catalog-id", "some-other-catalog-id"],  // ensure migration works
+        productLineId: ["some-product-line-id", "some-other-product-line-id"],
+        catalogId: ["some-product-line-id", "some-other-product-line-id"],  // ensure migration works
+        groupId: ["some-product-line-id", "some-other-product-line-id"],  // ensure migration works
         isAddOnTo: [false, { "some-product-id": [true], "some-other-product-id": [true] }] as const,
         prices: ["include-by-default" as "include-by-default", {
           "some-price-id": [{
@@ -168,13 +175,14 @@ const branchSchemaFuzzerConfig = [{
       }] as const,
     }],
   }],
-  domains: [{
-    allowLocalhost: [true, false],
-  }],
+  domains: [{}],
   apps: [{
     installed: [typedFromEntries(typedEntries(ALL_APPS).map(([key, value]) => [key, [{
       enabled: [true, false],
     }]]))],
+  }],
+  onboarding: [{
+    requireEmailVerification: [true, false],
   }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 
@@ -191,11 +199,12 @@ const environmentSchemaFuzzerConfig = [{
         clientSecret: ["some-client-secret"],
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
+        appleBundles: [{ "some-bundle-id": [{ bundleId: ["com.example.app"] }] }],
       }]]))] as const,
     }],
   }],
   domains: [{
-    ...branchSchemaFuzzerConfig[0].domains[0],
+    allowLocalhost: [true, false],
     trustedDomains: [{
       "some-domain-id": [{
         baseUrl: ["https://example.com/something-here"],
@@ -215,6 +224,10 @@ const environmentSchemaFuzzerConfig = [{
       senderName: ["Some Sender"],
       senderEmail: ["some-sender@example.com", "some invalid email"],
     }],
+  }],
+  payments: [{
+    ...branchSchemaFuzzerConfig[0].payments[0],
+    testMode: [false, true],
   }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 

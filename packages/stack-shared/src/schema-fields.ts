@@ -438,8 +438,45 @@ export const dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yu
 /**
  * This schema is useful for fields where the user can specify the ID, such as price IDs. It is particularly common
  * for IDs in the config schema.
+ *
+ * Valid IDs:
+ * - Must contain only letters, numbers, underscores, and hyphens
+ * - Must not start with a hyphen
+ * - Maximum length of 63 characters
  */
-export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(63).matches(/^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/, `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`);
+export const USER_SPECIFIED_ID_PATTERN = /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/;
+export const USER_SPECIFIED_ID_MAX_LENGTH = 63;
+
+/**
+ * Checks if the given string is a valid user-specified ID.
+ */
+export function isValidUserSpecifiedId(id: string): boolean {
+  return id.length > 0 && id.length <= USER_SPECIFIED_ID_MAX_LENGTH && USER_SPECIFIED_ID_PATTERN.test(id);
+}
+
+/**
+ * Gets the error message for an invalid user-specified ID.
+ */
+export function getUserSpecifiedIdErrorMessage(idName: `${string}Id`): string {
+  return `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`;
+}
+
+/**
+ * Sanitizes user input to create a valid user-specified ID.
+ * Converts to lowercase and replaces invalid characters with hyphens.
+ * Strips leading hyphens.
+ */
+export function sanitizeUserSpecifiedId(input: string): string {
+  // Convert to lowercase, replace invalid characters with empty string (or hyphen for spaces)
+  const sanitized = input
+    .replace(/\s+/g, '-')  // Replace spaces with hyphens
+    .replace(/[^a-zA-Z0-9_-]/g, '');  // Remove other invalid characters
+
+  // Strip leading hyphens
+  return sanitized.replace(/^-+/, '');
+}
+
+export const userSpecifiedIdSchema = (idName: `${string}Id`) => yupString().max(USER_SPECIFIED_ID_MAX_LENGTH).matches(USER_SPECIFIED_ID_PATTERN, getUserSpecifiedIdErrorMessage(idName));
 export const moneyAmountSchema = (currency: Currency) => yupString<MoneyAmount>().test('money-amount', 'Invalid money amount', (value, context) => {
   if (value == null) return true;
   const regex = /^([0-9]+)(\.([0-9]+))?$/;
@@ -527,6 +564,8 @@ export const oauthClientIdSchema = yupString().meta({ openapiField: { descriptio
 export const oauthClientSecretSchema = yupString().meta({ openapiField: { description: 'OAuth client secret. Needs to be specified when using type="standard"', exampleValue: 'google-oauth-client-secret' } });
 export const oauthFacebookConfigIdSchema = yupString().meta({ openapiField: { description: 'The configuration id for Facebook business login (for things like ads and marketing). This is only required if you are using the standard OAuth with Facebook and you are using Facebook business login.' } });
 export const oauthMicrosoftTenantIdSchema = yupString().meta({ openapiField: { description: 'The Microsoft tenant id for Microsoft directory. This is only required if you are using the standard OAuth with Microsoft and you have an Azure AD tenant.' } });
+export const oauthAppleBundleIdsSchema = yupArray(yupString().defined()).meta({ openapiField: { description: 'Apple Bundle IDs for native iOS/macOS apps. Required for native Sign In with Apple (in addition to web Apple OAuth which uses the Client ID/Services ID).', exampleValue: ['com.example.ios', 'com.example.macos'] } });
+export const oauthAppleBundleIdSchema = yupString().defined().meta({ openapiField: { description: 'Apple Bundle ID for native iOS/macOS apps.', exampleValue: 'com.example.ios' } });
 export const oauthAccountMergeStrategySchema = yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).meta({ openapiField: { description: 'Determines how to handle OAuth logins that match an existing user by email. `link_method` adds the OAuth method to the existing user. `raise_error` rejects the login with an error. `allow_duplicates` creates a new user.', exampleValue: 'link_method' } });
 // Project email config
 export const emailTypeSchema = yupString().oneOf(['shared', 'standard']).meta({ openapiField: { description: 'Email provider type, one of shared, standard. "shared" uses Stack shared email provider and it is only meant for development. "standard" uses your own email server and will have your email address as the sender.', exampleValue: 'standard' } });
@@ -586,7 +625,7 @@ export const priceOrIncludeByDefaultSchema = yupUnion(
 );
 export const productSchema = yupObject({
   displayName: yupString(),
-  catalogId: userSpecifiedIdSchema("catalogId").optional().meta({ openapiField: { description: 'The ID of the catalog this product belongs to. Within a catalog, all products are mutually exclusive unless they are an add-on to another product in the catalog.', exampleValue: 'catalog-id' } }),
+  productLineId: userSpecifiedIdSchema("productLineId").optional().meta({ openapiField: { description: 'The ID of the product line this product belongs to. Within a product line, all products are mutually exclusive unless they are an add-on to another product in the product line.', exampleValue: 'product-line-id' } }),
   isAddOnTo: yupUnion(
     yupBoolean().isFalse(),
     yupRecord(
@@ -692,9 +731,13 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
+export const restrictedReasonTypes = ["anonymous", "email_not_verified"] as const;
+export type RestrictedReasonType = typeof restrictedReasonTypes[number];
+
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
   exp: yupNumber().optional(),
+  iat: yupNumber().defined(),
   iss: yupString().defined(),
   aud: yupString().defined(),
   project_id: yupString().defined(),
@@ -706,6 +749,10 @@ export const accessTokenPayloadSchema = yupObject({
   email_verified: yupBoolean().defined(),
   selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
+  is_restricted: yupBoolean().defined(),
+  restricted_reason: yupObject({
+    type: yupString().oneOf(restrictedReasonTypes).defined(),
+  }).defined().nullable(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });
@@ -820,3 +867,20 @@ export function yupDefinedAndNonEmptyWhen<S extends yup.StringSchema>(
     otherwise: (schema: S) => schema.optional()
   });
 }
+
+export const branchConfigSourceSchema = yupUnion(
+  yupObject({
+    type: yupString().oneOf(["pushed-from-github"]).defined(),
+    owner: yupString().defined(),
+    repo: yupString().defined(),
+    branch: yupString().defined(),
+    commit_hash: yupString().defined(),
+    config_file_path: yupString().defined(),
+  }),
+  yupObject({
+    type: yupString().oneOf(["pushed-from-unknown"]).defined(),
+  }),
+  yupObject({
+    type: yupString().oneOf(["unlinked"]).defined(),
+  }),
+);

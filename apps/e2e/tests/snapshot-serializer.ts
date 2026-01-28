@@ -36,6 +36,7 @@ const stripHeaders = [] as const;
 const stripFields = [
   "access_token",
   "refresh_token",
+  "expires_in",
   "refreshTokenId",
   "refresh_token_id",
   "exp",
@@ -49,6 +50,18 @@ const stripFields = [
   "sent_at_millis",
   "updated_at_millis",
   "manually_revoked_at_millis",
+  "scheduled_at_millis",
+  "started_rendering_at_millis",
+  "rendered_at_millis",
+  "started_sending_at_millis",
+  "delivered_at_millis",
+  "skipped_at_millis",
+  "error_at_millis",
+  "bounced_at_millis",
+  "delivery_delayed_at_millis",
+  "opened_at_millis",
+  "clicked_at_millis",
+  "marked_as_spam_at_millis",
   "last_four",
   "attempt_code",
   "nonce",
@@ -57,6 +70,7 @@ const stripFields = [
   "token",
   "createdAt",
   "updatedAt",
+  "current_period_end",
   "response",
   "msgId",
   "endpointId",
@@ -68,6 +82,8 @@ const stripFields = [
   "nextAttempt",
   "lastFour",
   "port",
+  "wall_clock_time",
+  "cpu_time",
 ] as const;
 
 const stripFieldsIfString = [
@@ -105,6 +121,7 @@ const stringRegexReplacements = [
   [/(\/integrations\/(neon|custom)\/oauth\/idp\/(interaction|auth)\/)[a-zA-Z0-9_-]+/gi, "$1<stripped $3 UID>"],
   [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_STACK_PORT_PREFIX>"],
   [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_STACK_PORT_PREFIX%3E"],
+  [/(Timeout exceeded: elapsed )[0-9.]+( ms)/gi, "$1<stripped time>$2"],
 ] as const;
 
 

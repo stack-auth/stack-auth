@@ -2,7 +2,7 @@
 
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
+import { ClipboardList, CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";
 
@@ -37,6 +37,7 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
     </>
   )),
   vercel: Triangle,
+  onboarding: ClipboardList,
 };
 
 function createSvgIcon(ChildrenComponent: () => React.ReactNode): (props: React.SVGProps<SVGSVGElement>) => React.ReactNode {
@@ -109,10 +110,12 @@ export function AppGrid({ appIds, className }: {
   className?: string,
 }) {
   return (
-    <div className={cn("flex gap-1 lg:gap-8 flex-wrap", className)}>
-      {appIds.map(appId => (
-        <AppCard key={appId} appId={appId} />
-      ))}
+    <div className="max-w-3xl mx-auto">
+      <div className={cn("flex gap-1 lg:gap-8 flex-wrap justify-center", className)}>
+        {appIds.map(appId => (
+          <AppCard key={appId} appId={appId} />
+        ))}
+      </div>
     </div>
   );
 }

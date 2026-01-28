@@ -8,7 +8,7 @@ import { AssistantChat, CodeEditor, VibeCodeLayout } from "@/components/vibe-cod
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@stackframe/stack-ui";
+import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@/components/ui";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
