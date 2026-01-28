@@ -1,8 +1,9 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
 import { getStackStripe, getStripeForAccount, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
-import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
+import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -12,7 +13,6 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import Stripe from "stripe";
 
 const subscriptionChangedEvents = [
@@ -400,7 +400,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
   }
   else {
-    throw new StackAssertionError("Unknown stripe webhook type received", { event });
+    throw new StackAssertionError("Unknown stripe webhook type received: " + event.type, { event });
   }
 }
 

@@ -6,7 +6,7 @@ import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/connected-accounts";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
@@ -29,7 +29,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
 
     const provider = { id: providerRaw[0], ...providerRaw[1] };
 
-    if (provider.isShared && getEnvVariable('STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS') !== 'true') {
+    if (provider.isShared && !getNodeEnvironment().includes('prod') && getEnvVariable('STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS', '') !== 'true') {
       throw new KnownErrors.OAuthAccessTokenNotAvailableWithSharedOAuthKeys();
     }
 
