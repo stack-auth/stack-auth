@@ -1,4 +1,4 @@
-import { executeJavascript } from '@/lib/js-execution';
+import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -70,9 +70,6 @@ const entryJs = deindent`
 `;
 
 type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
-type ExecuteResult =
-  | { status: "ok", data: unknown }
-  | { status: "error", error: unknown };
 
 async function bundleAndExecute<T>(
   files: Record<string, string> & { '/entry.js': string },
