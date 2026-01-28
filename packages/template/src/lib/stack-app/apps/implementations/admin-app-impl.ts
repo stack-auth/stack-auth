@@ -223,24 +223,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("environment", configOverride);
-        await Promise.all([
-          app._configOverridesCache.refresh([]),
-          app._adminProjectCache.refresh([]),
-        ]);
+        await app._refreshProjectConfig();
       },
       async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
         await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
-        await Promise.all([
-          app._configOverridesCache.refresh([]),
-          app._adminProjectCache.refresh([]),
-        ]);
+        await app._refreshProjectConfig();
       },
       async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
         await app._interface.updateConfigOverride("branch", config);
-        await Promise.all([
-          app._configOverridesCache.refresh([]),
-          app._adminProjectCache.refresh([]),
-        ]);
+        await app._refreshProjectConfig();
       },
       async getPushedConfigSource(): Promise<PushedConfigSource> {
         const apiSource = await app._interface.getPushedConfigSource();
@@ -248,10 +239,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async unlinkPushedConfigSource(): Promise<void> {
         await app._interface.unlinkPushedConfigSource();
-        await Promise.all([
-          app._configOverridesCache.refresh([]),
-          app._adminProjectCache.refresh([]),
-        ]);
+        await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -494,6 +482,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   protected override async _refreshProject() {
     await Promise.all([
       super._refreshProject(),
+      this._adminProjectCache.refresh([]),
+    ]);
+  }
+
+  protected async _refreshProjectConfig() {
+    await Promise.all([
+      this._configOverridesCache.refresh([]),
       this._adminProjectCache.refresh([]),
     ]);
   }
