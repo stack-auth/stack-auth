@@ -91,7 +91,7 @@ it("cannot read events from other projects", async ({ expect }) => {
             "branch_id": "main",
             "event_type": "$token-refresh",
             "project_id": "<stripped UUID>",
-            "team_id": null,
+            "team_id": "",
             "user_id": "<stripped UUID>",
           },
         ],
