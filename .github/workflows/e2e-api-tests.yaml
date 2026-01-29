@@ -140,6 +140,15 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+      - name: Start run-cron-jobs in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-cron-jobs --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Wait 10 seconds
         run: sleep 10
