@@ -1,9 +1,11 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
-import { evaluateAndApplySignUpRules } from "./sign-up-rules";
+import { evaluateAndApplySignUpRules, logRuleTrigger } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -43,7 +45,8 @@ export async function createOrUpgradeAnonymousUserWithRules(
 ): Promise<UsersCrud["Admin"]["Read"]> {
   // Get email from create/update data
   // TypeScript doesn't know this field exists due to KeyIntersect, but it's always passed for signup
-  const email = (createOrUpdate as { primary_email?: string }).primary_email ?? '';
+  const email = (createOrUpdate as { primary_email?: string }).primary_email
+    ?? throwErr("primary_email is required for signup rule evaluation");
 
   // Create context for rule evaluation
   const context = createSignUpRuleContext({
@@ -123,12 +126,18 @@ export async function createOrUpgradeAnonymousUserWithRules(
   };
 
   // Proceed with user creation/upgrade
-  return await createOrUpgradeAnonymousUser(
+  const user = await createOrUpgradeAnonymousUser(
     tenancy,
     currentUser,
     enrichedCreateOrUpdate as KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
     allowedErrorTypes,
   );
+
+  if (ruleResult.ruleId) {
+    runAsynchronously(logRuleTrigger(tenancy.id, ruleResult.ruleId, context, ruleResult.action, user.id));
+  }
+
+  return user;
 }
 
 /**

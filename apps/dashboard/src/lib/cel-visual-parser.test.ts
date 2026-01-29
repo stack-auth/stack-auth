@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { visualTreeToCel, parseCelToVisualTree, createEmptyCondition } from './cel-visual-parser';
+import { describe, expect, it } from 'vitest';
+import { createEmptyCondition, parseCelToVisualTree, visualTreeToCel } from './cel-visual-parser';
 
 describe('cel-visual-parser', () => {
   describe('CEL string escaping', () => {
@@ -146,6 +146,24 @@ describe('cel-visual-parser', () => {
         expect(result.field).toBe('email');
         expect(result.operator).toBe('ends_with');
         expect(result.value).toBe('@gmail.com');
+      }
+    });
+
+    it('should parse escaped quotes in string values', () => {
+      const result = parseCelToVisualTree('email.contains("test\\"value")');
+      expect(result).toBeDefined();
+      if (result?.type === 'condition') {
+        expect(result.operator).toBe('contains');
+        expect(result.value).toBe('test"value');
+      }
+    });
+
+    it('should parse escaped backslashes in string values', () => {
+      const result = parseCelToVisualTree('email.contains("test\\\\value")');
+      expect(result).toBeDefined();
+      if (result?.type === 'condition') {
+        expect(result.operator).toBe('contains');
+        expect(result.value).toBe('test\\value');
       }
     });
   });

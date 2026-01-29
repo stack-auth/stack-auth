@@ -24,12 +24,14 @@ import {
   type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { useUpdateConfig } from "@/lib/config-update";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import type { SignUpRule, SignUpRuleAction, SignUpRuleMetadataEntry } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import React, { useMemo, useState } from "react";
@@ -43,26 +45,6 @@ type RuleAnalytics = {
   ruleId: string,
   totalCount: number,
   hourlyCounts: { hour: string, count: number }[],
-};
-
-// Types for sign-up rules from config
-type SignUpRuleMetadataEntry = {
-  value: string | number | boolean,
-  target: 'client' | 'client_read_only' | 'server',
-};
-
-type SignUpRuleAction = {
-  type: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
-  metadata?: Record<string, SignUpRuleMetadataEntry>,
-  message?: string,
-};
-
-type SignUpRule = {
-  enabled: boolean,
-  displayName: string,
-  priority: number,
-  condition: string,
-  action: SignUpRuleAction,
 };
 
 type SignUpRuleEntry = {
@@ -141,10 +123,13 @@ const ruleCardClassName = cn(
   "bg-background/60 backdrop-blur-xl ring-1 ring-foreground/[0.06]",
 );
 
+type MetadataValueType = 'string' | 'number' | 'boolean';
+
 // Individual metadata entry for the editor
 type MetadataEditorEntry = {
   key: string,
   value: string,
+  valueType: MetadataValueType,
   target: 'client' | 'client_read_only' | 'server',
 };
 
@@ -162,22 +147,29 @@ function RuleEditor({
   onSave: (ruleId: string, rule: SignUpRule) => Promise<void>,
   onCancel: () => void,
 }) {
+  const ruleAction = rule?.action;
   const [displayName, setDisplayName] = useState(rule?.displayName ?? '');
-  const [actionType, setActionType] = useState<SignUpRuleAction['type']>(rule?.action.type ?? 'allow');
-  const [actionMessage, setActionMessage] = useState(rule?.action.message ?? '');
+  const [actionType, setActionType] = useState<SignUpRuleAction['type']>(ruleAction?.type ?? 'allow');
+  const [actionMessage, setActionMessage] = useState(ruleAction?.message ?? '');
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
 
   // Metadata entries for add_metadata action
   const initialMetadata = useMemo((): MetadataEditorEntry[] => {
-    if (!rule?.action.metadata) return [{ key: '', value: '', target: 'server' }];
-    const entries: MetadataEditorEntry[] = Object.entries(rule.action.metadata).map(([key, entry]) => ({
-      key,
-      value: String(entry.value),
-      target: entry.target,
-    }));
-    return entries.length > 0 ? entries : [{ key: '', value: '', target: 'server' }];
-  }, [rule?.action.metadata]);
+    if (!ruleAction?.metadata) return [{ key: '', value: '', valueType: 'string', target: 'server' }];
+    const entries: MetadataEditorEntry[] = (Object.entries(ruleAction.metadata ?? {}) as [string, SignUpRuleMetadataEntry][])
+      .map(([key, entry]) => ({
+        key,
+        value: String(entry.value),
+        valueType: typeof entry.value === 'number'
+          ? 'number'
+          : typeof entry.value === 'boolean'
+            ? 'boolean'
+            : 'string',
+        target: entry.target,
+      }));
+    return entries.length > 0 ? entries : [{ key: '', value: '', valueType: 'string', target: 'server' }];
+  }, [ruleAction?.metadata]);
 
   const [metadataEntries, setMetadataEntries] = useState<MetadataEditorEntry[]>(initialMetadata);
 
@@ -199,7 +191,35 @@ function RuleEditor({
 
     setIsSaving(true);
     try {
-      const celCondition = visualTreeToCel(conditionTree);
+      const normalizedConditionTree = conditionTree.type === 'group' && conditionTree.children.length === 0
+        ? { ...conditionTree, children: [createEmptyCondition()] }
+        : conditionTree;
+      const celCondition = visualTreeToCel(normalizedConditionTree);
+
+      const parseMetadataEntryValue = (entry: MetadataEditorEntry): string | number | boolean => {
+        switch (entry.valueType) {
+          case 'number': {
+            if (!entry.value.trim()) {
+              throw new Error(`Metadata value for "${entry.key.trim() || 'entry'}" must be a valid number.`);
+            }
+            const parsed = Number(entry.value);
+            if (!Number.isFinite(parsed)) {
+              throw new Error(`Metadata value for "${entry.key.trim() || 'entry'}" must be a valid number.`);
+            }
+            return parsed;
+          }
+          case 'boolean': {
+            const normalized = entry.value.trim().toLowerCase();
+            if (normalized !== 'true' && normalized !== 'false') {
+              throw new Error(`Metadata value for "${entry.key.trim() || 'entry'}" must be "true" or "false".`);
+            }
+            return normalized === 'true';
+          }
+          default: {
+            return entry.value;
+          }
+        }
+      };
 
       // Build metadata from entries
       const metadata: Record<string, SignUpRuleMetadataEntry> | undefined =
@@ -207,7 +227,7 @@ function RuleEditor({
           ? metadataEntries
             .filter(e => e.key.trim())
             .reduce((acc, e) => {
-              acc[e.key.trim()] = { value: e.value, target: e.target };
+              acc[e.key.trim()] = { value: parseMetadataEntryValue(e), target: e.target };
               return acc;
             }, {} as Record<string, SignUpRuleMetadataEntry>)
           : undefined;
@@ -230,7 +250,7 @@ function RuleEditor({
   };
 
   const addMetadataEntry = () => {
-    setMetadataEntries([...metadataEntries, { key: '', value: '', target: 'server' }]);
+    setMetadataEntries([...metadataEntries, { key: '', value: '', valueType: 'string', target: 'server' }]);
   };
 
   const removeMetadataEntry = (index: number) => {
@@ -338,6 +358,8 @@ function RuleEditor({
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove metadata entry ${index + 1}`}
+                      title={`Remove metadata entry ${index + 1}`}
                       onClick={() => removeMetadataEntry(index)}
                       disabled={metadataEntries.length <= 1}
                     >
@@ -419,15 +441,17 @@ function SortableRuleRow({
     transition: isDragging ? undefined : transition,
   };
 
+  const actionType: SignUpRuleAction['type'] = entry.rule.action.type;
   const actionLabel = {
     'allow': 'Allow',
     'reject': 'Reject',
     'restrict': 'Restrict',
     'log': 'Log',
     'add_metadata': 'Add metadata',
-  }[entry.rule.action.type];
+  }[actionType];
 
   const conditionSummary = entry.rule.condition || '(no condition)';
+  const isEnabled = entry.rule.enabled !== false;
 
   // If editing, show the editor
   if (isEditing) {
@@ -456,7 +480,7 @@ function SortableRuleRow({
         // Only apply CSS transition when not dragging to avoid lag
         !isDragging && "transition-all duration-150 hover:transition-none",
         isDragging && "opacity-50 shadow-lg z-10",
-        !entry.rule.enabled && "opacity-40 grayscale",
+        !isEnabled && "opacity-40 grayscale",
       )}
       {...attributes}
       {...listeners}
@@ -467,7 +491,7 @@ function SortableRuleRow({
         onPointerDown={(e) => e.stopPropagation()}
       >
         <Switch
-          checked={entry.rule.enabled}
+          checked={isEnabled}
           onCheckedChange={onToggleEnabled}
         />
       </div>
@@ -477,17 +501,17 @@ function SortableRuleRow({
         <div className="flex items-center gap-2">
           <Typography className={cn(
             "font-medium text-sm truncate",
-            !entry.rule.enabled && "text-muted-foreground",
+          !isEnabled && "text-muted-foreground",
           )}>
             {entry.rule.displayName || 'Unnamed rule'}
           </Typography>
           <span className={cn(
             "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
-            entry.rule.action.type === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
-            entry.rule.action.type === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
-            entry.rule.action.type === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
-            entry.rule.action.type === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-            entry.rule.action.type === 'add_metadata' && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+          actionType === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
+          actionType === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
+          actionType === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+          actionType === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+          actionType === 'add_metadata' && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
           )}>
             {actionLabel}
           </span>
@@ -517,6 +541,8 @@ function SortableRuleRow({
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0"
+          aria-label={`Edit rule ${entry.rule.displayName || entry.id}`}
+          title={`Edit rule ${entry.rule.displayName || entry.id}`}
           onClick={onEdit}
         >
           <PencilSimpleIcon className="h-4 w-4" />
@@ -525,6 +551,8 @@ function SortableRuleRow({
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+          aria-label={`Delete rule ${entry.rule.displayName || entry.id}`}
+          title={`Delete rule ${entry.rule.displayName || entry.id}`}
           onClick={onDelete}
         >
           <TrashIcon className="h-4 w-4" />
@@ -614,54 +642,42 @@ function DeleteRuleDialog({
   );
 }
 
-// Internal symbol for accessing SDK internals
-const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
-
 // Custom hook to fetch sign-up rules analytics
 function useSignUpRulesAnalytics() {
   const stackAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
-  const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
     let cancelled = false;
 
     const fetchAnalytics = async () => {
-      try {
-        const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest('/internal/sign-up-rules', {
-          method: 'GET',
+      const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest('/internal/sign-up-rules', {
+        method: 'GET',
+      });
+      if (cancelled) return;
+
+      const data = await response.json();
+
+      const analyticsMap = new Map<string, RuleAnalytics>();
+      for (const trigger of data.rule_triggers ?? []) {
+        analyticsMap.set(trigger.rule_id, {
+          ruleId: trigger.rule_id,
+          totalCount: trigger.total_count,
+          hourlyCounts: trigger.hourly_counts,
         });
-        if (cancelled) return;
-
-        const data = await response.json();
-
-        const analyticsMap = new Map<string, RuleAnalytics>();
-        for (const trigger of data.rule_triggers ?? []) {
-          analyticsMap.set(trigger.rule_id, {
-            ruleId: trigger.rule_id,
-            totalCount: trigger.total_count,
-            hourlyCounts: trigger.hourly_counts,
-          });
-        }
-
-        setAnalytics(analyticsMap);
-      } catch (e) {
-        console.debug('Failed to fetch sign-up rules analytics:', e);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
       }
+
+      setAnalytics(analyticsMap);
     };
 
-    runAsynchronously(fetchAnalytics());
+    runAsynchronouslyWithAlert(fetchAnalytics);
 
     return () => {
       cancelled = true;
     };
   }, [stackAdminApp]);
 
-  return { analytics, isLoading };
+  return { analytics };
 }
 
 export default function PageClient() {

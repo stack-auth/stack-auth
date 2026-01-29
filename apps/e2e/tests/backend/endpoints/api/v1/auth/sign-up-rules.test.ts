@@ -1874,6 +1874,46 @@ describe("sign-up rules", () => {
     expect(afterResponse.body.is_restricted).toBe(false);
   });
 
+  it("should clear admin restriction details when restricted_by_admin is set to false", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    const { userId } = await Auth.Password.signUpWithEmail();
+
+    // Restrict with reason + details
+    const restrictResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        restricted_by_admin: true,
+        restricted_by_admin_reason: "Your account is under review",
+        restricted_by_admin_private_details: "Suspicious activity detected - flagged by fraud team",
+      },
+    });
+    expect(restrictResponse.status).toBe(200);
+
+    // Unrestrict without specifying reason/details - should clear them
+    const unrestrictResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "PATCH",
+      accessType: "admin",
+      body: {
+        restricted_by_admin: false,
+      },
+    });
+    expect(unrestrictResponse.status).toBe(200);
+
+    const afterResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(afterResponse.body.restricted_by_admin).toBe(false);
+    expect(afterResponse.body.restricted_by_admin_reason).toBe(null);
+    expect(afterResponse.body.restricted_by_admin_private_details).toBe(null);
+  });
+
   // ==========================================
   // METADATA WITH TARGET
   // ==========================================

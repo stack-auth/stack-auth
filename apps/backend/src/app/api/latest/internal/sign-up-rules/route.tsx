@@ -1,7 +1,6 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 const ANALYTICS_HOURS = 48;
 
@@ -41,7 +40,13 @@ export const GET = createSmartRouteHandler({
   }),
   handler: async (req) => {
     const tenancyId = req.auth.tenancy.id;
-    const since = new Date(Date.now() - ANALYTICS_HOURS * 60 * 60 * 1000);
+    const now = new Date();
+    now.setUTCMinutes(0, 0, 0);
+    const since = new Date(now.getTime() - (ANALYTICS_HOURS - 1) * 60 * 60 * 1000);
+    const hourKeys = Array.from({ length: ANALYTICS_HOURS }, (_, index) => {
+      const hour = new Date(since.getTime() + index * 60 * 60 * 1000);
+      return hour.toISOString().slice(0, 13) + ':00:00.000Z';
+    });
 
     // Get all triggers for this tenancy in the last 48 hours
     const triggers = await globalPrismaClient.signupRuleTrigger.findMany({
@@ -95,9 +100,10 @@ export const GET = createSmartRouteHandler({
     const ruleTriggers = Array.from(ruleTriggersMap.entries()).map(([ruleId, data]) => ({
       rule_id: ruleId,
       total_count: data.totalCount,
-      hourly_counts: Array.from(data.hourlyMap.entries())
-        .sort((a, b) => stringCompare(a[0], b[0]))
-        .map(([hour, count]) => ({ hour, count })),
+      hourly_counts: hourKeys.map((hour) => ({
+        hour,
+        count: data.hourlyMap.get(hour) ?? 0,
+      })),
     }));
 
     return {

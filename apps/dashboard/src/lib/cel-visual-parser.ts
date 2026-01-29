@@ -71,6 +71,10 @@ function escapeCelString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+function unescapeCelString(value: string): string {
+  return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+}
+
 function conditionToCel(condition: ConditionNode): string {
   const { field, operator, value } = condition;
 
@@ -257,74 +261,74 @@ function parseCondition(expr: string): ConditionNode | null {
   const trimmed = expr.trim();
 
   // Match patterns like: field == "value"
-  const equalsMatch = trimmed.match(/^(\w+)\s*==\s*"([^"]*)"$/);
+  const equalsMatch = trimmed.match(/^(\w+)\s*==\s*"((?:\\.|[^"\\])*)"$/);
   if (equalsMatch) {
     return {
       type: 'condition',
       id: generateNodeId(),
       field: equalsMatch[1] as ConditionField,
       operator: 'equals',
-      value: equalsMatch[2],
+      value: unescapeCelString(equalsMatch[2]),
     };
   }
 
   // Match patterns like: field != "value"
-  const notEqualsMatch = trimmed.match(/^(\w+)\s*!=\s*"([^"]*)"$/);
+  const notEqualsMatch = trimmed.match(/^(\w+)\s*!=\s*"((?:\\.|[^"\\])*)"$/);
   if (notEqualsMatch) {
     return {
       type: 'condition',
       id: generateNodeId(),
       field: notEqualsMatch[1] as ConditionField,
       operator: 'not_equals',
-      value: notEqualsMatch[2],
+      value: unescapeCelString(notEqualsMatch[2]),
     };
   }
 
   // Match patterns like: field.matches("regex")
-  const matchesMatch = trimmed.match(/^(\w+)\.matches\("([^"]*)"\)$/);
+  const matchesMatch = trimmed.match(/^(\w+)\.matches\("((?:\\.|[^"\\])*)"\)$/);
   if (matchesMatch) {
     return {
       type: 'condition',
       id: generateNodeId(),
       field: matchesMatch[1] as ConditionField,
       operator: 'matches',
-      value: matchesMatch[2],
+      value: unescapeCelString(matchesMatch[2]),
     };
   }
 
   // Match patterns like: field.endsWith("value")
-  const endsWithMatch = trimmed.match(/^(\w+)\.endsWith\("([^"]*)"\)$/);
+  const endsWithMatch = trimmed.match(/^(\w+)\.endsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (endsWithMatch) {
     return {
       type: 'condition',
       id: generateNodeId(),
       field: endsWithMatch[1] as ConditionField,
       operator: 'ends_with',
-      value: endsWithMatch[2],
+      value: unescapeCelString(endsWithMatch[2]),
     };
   }
 
   // Match patterns like: field.startsWith("value")
-  const startsWithMatch = trimmed.match(/^(\w+)\.startsWith\("([^"]*)"\)$/);
+  const startsWithMatch = trimmed.match(/^(\w+)\.startsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (startsWithMatch) {
     return {
       type: 'condition',
       id: generateNodeId(),
       field: startsWithMatch[1] as ConditionField,
       operator: 'starts_with',
-      value: startsWithMatch[2],
+      value: unescapeCelString(startsWithMatch[2]),
     };
   }
 
   // Match patterns like: field.contains("value")
-  const containsMatch = trimmed.match(/^(\w+)\.contains\("([^"]*)"\)$/);
+  const containsMatch = trimmed.match(/^(\w+)\.contains\("((?:\\.|[^"\\])*)"\)$/);
   if (containsMatch) {
     return {
       type: 'condition',
       id: generateNodeId(),
       field: containsMatch[1] as ConditionField,
       operator: 'contains',
-      value: containsMatch[2],
+      value: unescapeCelString(containsMatch[2]),
     };
   }
 
@@ -338,8 +342,8 @@ function parseCondition(expr: string): ConditionNode | null {
       .filter(s => s)
       .map(s => {
         // Remove surrounding quotes
-        const match = s.match(/^["'](.*)["']$/);
-        return match ? match[1] : s;
+        const match = s.match(/^["']((?:\\.|[^"\\])*)["']$/);
+        return match ? unescapeCelString(match[1]) : s;
       });
     return {
       type: 'condition',
@@ -382,44 +386,3 @@ export function createEmptyGroup(operator: 'and' | 'or' = 'and'): GroupNode {
 /**
  * Adds a child to a group node (returns a new group)
  */
-export function addChildToGroup(group: GroupNode, child: RuleNode): GroupNode {
-  return {
-    ...group,
-    children: [...group.children, child],
-  };
-}
-
-/**
- * Removes a child from a group by ID (returns a new group)
- */
-export function removeChildFromGroup(group: GroupNode, childId: string): GroupNode {
-  return {
-    ...group,
-    children: group.children.filter(c => c.id !== childId),
-  };
-}
-
-/**
- * Updates a node in the tree by ID
- */
-export function updateNodeInTree(tree: RuleNode, nodeId: string, updates: Partial<RuleNode>): RuleNode {
-  if (tree.id === nodeId) {
-    return { ...tree, ...updates } as RuleNode;
-  }
-
-  if (tree.type === 'group') {
-    return {
-      ...tree,
-      children: tree.children.map(child => updateNodeInTree(child, nodeId, updates)),
-    };
-  }
-
-  return tree;
-}
-
-/**
- * Checks if a CEL expression can be represented visually
- */
-export function isSimpleCel(cel: string): boolean {
-  return parseCelToVisualTree(cel) !== null;
-}

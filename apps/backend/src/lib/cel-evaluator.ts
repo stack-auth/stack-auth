@@ -1,4 +1,4 @@
-import { CelEvaluationError, CelParseError, CelTypeError, evaluate, parse } from "cel-js";
+import { evaluate } from "cel-js";
 import RE2 from "re2";
 
 /**
@@ -15,12 +15,6 @@ export type SignUpRuleContext = {
   oauthProvider: string,
 };
 
-// Extended context with helper functions for string operations
-type ExtendedContext = SignUpRuleContext & {
-  // Pre-computed helpers for common patterns
-  _email_lower: string,
-};
-
 /**
  * Pre-processes a CEL expression to transform method calls into function calls
  * that cel-js can evaluate.
@@ -33,28 +27,33 @@ type ExtendedContext = SignUpRuleContext & {
  * Since cel-js doesn't support method calls, we pre-compute these values
  * and add them to the context with unique keys to avoid collisions.
  */
+function unescapeCelString(escaped: string): string {
+  return escaped.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+}
+
 function preprocessExpression(
   expression: string,
   context: SignUpRuleContext
 ): { expression: string, context: Record<string, unknown> } {
   const extendedContext: Record<string, unknown> = { ...context };
 
-  // Pattern to match method calls: identifier.method("literal")
+  // Pattern to match method calls: identifier.method("literal with optional escaped quotes")
   // We handle: contains, startsWith, endsWith, matches
-  const methodPattern = /(\w+)\.(contains|startsWith|endsWith|matches)\s*\(\s*"([^"]+)"\s*\)/g;
+  const methodPattern = /(\w+)\.(contains|startsWith|endsWith|matches)\s*\(\s*"((?:\\.|[^"\\])*)"\s*\)/g;
 
-  let transformedExpr = expression;
   let counter = 0;
 
-  // Use replaceAll with a callback to handle each match uniquely
+  // Use replace with a callback to handle each match uniquely
   // This ensures each occurrence gets a unique key, even if the same expression appears multiple times
-  transformedExpr = expression.replace(methodPattern, (fullMatch, varName, method, arg) => {
+  const transformedExpr = expression.replace(methodPattern, (fullMatch, varName, method, arg) => {
     // Get the variable value from context
     const varValue = context[varName as keyof SignUpRuleContext];
     if (typeof varValue !== 'string') {
       // Return unchanged if variable is not a string
       return fullMatch;
     }
+
+    const unescapedArg = unescapeCelString(arg);
 
     // Use a counter-based key to avoid collisions between different arguments
     // that would otherwise sanitize to the same key (e.g., "test+1" and "test-1")
@@ -63,22 +62,22 @@ function preprocessExpression(
 
     switch (method) {
       case 'contains': {
-        result = varValue.includes(arg);
+        result = varValue.includes(unescapedArg);
         break;
       }
       case 'startsWith': {
-        result = varValue.startsWith(arg);
+        result = varValue.startsWith(unescapedArg);
         break;
       }
       case 'endsWith': {
-        result = varValue.endsWith(arg);
+        result = varValue.endsWith(unescapedArg);
         break;
       }
       case 'matches': {
         try {
           // Use RE2 for regex matching to prevent ReDoS attacks
           // RE2 uses a linear-time matching algorithm, preventing catastrophic backtracking
-          const regex = new RE2(arg);
+          const regex = new RE2(unescapedArg);
           result = regex.test(varValue);
         } catch {
           // Invalid regex pattern - treat as non-match
@@ -130,50 +129,6 @@ export function evaluateCelExpression(
 }
 
 /**
- * Validates a CEL expression without evaluating it.
- * This is useful for checking if an expression is syntactically correct
- * before saving it.
- *
- * @param expression - The CEL expression string to validate
- * @returns Object with valid: true if expression is valid, or valid: false with error message
- */
-export function validateCelExpression(expression: string): { valid: true } | { valid: false, error: string } {
-  try {
-    // First, transform the expression as we would during evaluation
-    // Use dummy context for validation
-    const dummyContext: SignUpRuleContext = {
-      email: 'test@example.com',
-      emailDomain: 'example.com',
-      authMethod: 'password',
-      oauthProvider: '',
-    };
-
-    const { expression: transformedExpr, context } = preprocessExpression(expression, dummyContext);
-
-    // Try to parse the transformed expression
-    parse(transformedExpr);
-
-    // Also try to evaluate it to catch type errors
-    evaluate(transformedExpr, context);
-
-    return { valid: true };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    // Provide a user-friendly error message
-    if (e instanceof CelParseError) {
-      return { valid: false, error: `Invalid expression syntax: ${message}` };
-    }
-    if (e instanceof CelTypeError) {
-      return { valid: false, error: `Type error in expression: ${message}` };
-    }
-    if (e instanceof CelEvaluationError) {
-      return { valid: false, error: `Expression evaluation error: ${message}` };
-    }
-    return { valid: false, error: message };
-  }
-}
-
-/**
  * Creates a SignUpRuleContext from raw request data.
  * This helper extracts and derives the context variables needed for rule evaluation.
  *
@@ -186,7 +141,7 @@ export function createSignUpRuleContext(params: {
   oauthProvider?: string,
 }): SignUpRuleContext {
   const email = params.email;
-  const emailDomain = email.includes('@') ? email.split('@').pop() ?? '' : '';
+  const emailDomain = email.includes('@') ? (email.split('@').pop() ?? '').toLowerCase() : '';
 
   return {
     email,

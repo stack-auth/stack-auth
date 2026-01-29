@@ -114,7 +114,6 @@
     "@types/nodemailer": "^6.4.14",
     "@types/oidc-provider": "^8.5.1",
     "@types/pg": "^8.16.0",
-    "@types/re2": "^1.10.8",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@types/semver": "^7.5.8",

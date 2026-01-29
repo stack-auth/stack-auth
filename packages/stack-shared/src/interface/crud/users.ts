@@ -25,16 +25,16 @@ export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
 }).defined().test(
   "restricted_by_admin_consistency",
-  "When restricted_by_admin is false, reason and private_details must be null",
+  "When restricted_by_admin is not true, reason and private_details must be null",
   function(this: yup.TestContext<any>, value: any) {
     if (value == null) return true;
-    // If restricted_by_admin is explicitly false, both reason and private_details must be null
-    if (value.restricted_by_admin === false) {
+    // If restricted_by_admin is false or missing, both reason and private_details must be null
+    if (value.restricted_by_admin !== true) {
       if (value.restricted_by_admin_reason != null) {
-        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is false" });
+        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
       }
       if (value.restricted_by_admin_private_details != null) {
-        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is false" });
+        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
       }
     }
     return true;
@@ -86,16 +86,16 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   return value.is_restricted === !!value.restricted_reason;
 }).test(
   "restricted_by_admin_consistency",
-  "When restricted_by_admin is false, reason and private_details must be null",
+  "When restricted_by_admin is not true, reason and private_details must be null",
   function(this: yup.TestContext<any>, value: any) {
     if (value == null) return true;
-    // If restricted_by_admin is false, both reason and private_details must be null
-    if (value.restricted_by_admin === false) {
+    // If restricted_by_admin is false or missing, both reason and private_details must be null
+    if (value.restricted_by_admin !== true) {
       if (value.restricted_by_admin_reason != null) {
-        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is false" });
+        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
       }
       if (value.restricted_by_admin_private_details != null) {
-        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is false" });
+        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
       }
     }
     return true;

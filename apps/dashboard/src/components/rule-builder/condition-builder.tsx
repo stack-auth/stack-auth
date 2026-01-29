@@ -11,6 +11,7 @@ import {
   type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import React from "react";
 
 // Field options with labels
@@ -43,7 +44,7 @@ function getOperatorsForField(field: ConditionField): ConditionOperator[] {
 // Predefined options for certain fields
 const PREDEFINED_VALUES: Partial<Record<ConditionField, string[]>> = {
   authMethod: ['password', 'otp', 'oauth', 'passkey'],
-  oauthProvider: ['google', 'github', 'microsoft', 'facebook', 'discord', 'apple', 'linkedin', 'gitlab', 'bitbucket', 'spotify', 'twitch', 'x'],
+  oauthProvider: Array.from(standardProviders),
 };
 
 // Single condition row component
@@ -149,6 +150,8 @@ function ConditionRow({
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+          aria-label="Remove condition"
+          title="Remove condition"
           onClick={onRemove}
         >
           <TrashIcon className="h-4 w-4" />
@@ -222,6 +225,8 @@ function ConditionGroup({
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+            aria-label="Remove group"
+            title="Remove group"
             onClick={onRemove}
           >
             <TrashIcon className="h-3.5 w-3.5" />
@@ -312,15 +317,14 @@ export function ConditionBuilder({
       children: [value],
     };
 
-  // If empty, add a default condition
-  if (rootGroup.children.length === 0) {
-    rootGroup.children = [createEmptyCondition()];
-  }
+  const normalizedGroup = rootGroup.children.length > 0
+    ? rootGroup
+    : { ...rootGroup, children: [createEmptyCondition()] };
 
   return (
     <div className="space-y-3">
       <ConditionGroup
-        group={rootGroup}
+        group={normalizedGroup}
         onChange={(updated) => onChange(updated)}
         depth={0}
       />

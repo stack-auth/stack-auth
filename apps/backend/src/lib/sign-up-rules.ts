@@ -1,50 +1,17 @@
+import { globalPrismaClient } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import type { SignUpRule, SignUpRuleAction, SignUpRuleMetadataEntry } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { evaluateCelExpression, SignUpRuleContext } from "./cel-evaluator";
 import { Tenancy } from "./tenancies";
-import { globalPrismaClient } from "@/prisma-client";
-
-/**
- * Metadata entry with value and target for where it should be stored.
- */
-export type SignUpRuleMetadataEntry = {
-  value: string | number | boolean,
-  target: 'client' | 'client_read_only' | 'server',
-};
-
-/**
- * The action to take when a sign-up rule matches.
- */
-export type SignUpRuleAction = {
-  type: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
-  metadata?: Record<string, SignUpRuleMetadataEntry>,
-  message?: string,
-};
-
-/**
- * A sign-up rule from the config.
- * Type definition for the signUpRules field in auth config.
- * Note: All fields except metadata are required after config defaults are applied.
- */
-type SignUpRuleConfig = {
-  enabled: boolean,
-  displayName: string | undefined,
-  priority: number,
-  condition: string | undefined,
-  action: {
-    type: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
-    message: string | undefined,
-    metadata: Record<string, SignUpRuleMetadataEntry> | undefined,
-  },
-};
 
 /**
  * Extended auth config type that includes sign-up rules.
  * Used for type assertions since the schema types may not be updated yet.
  */
 type AuthConfigWithSignUpRules = {
-  signUpRules?: Record<string, SignUpRuleConfig>,
+  signUpRules?: Record<string, SignUpRule>,
   signUpRulesDefaultAction?: 'allow' | 'reject',
 };
 
@@ -62,7 +29,7 @@ export type SignUpRuleResult = {
  * Logs a sign-up rule trigger to the database for analytics.
  * This runs asynchronously and doesn't block the signup flow.
  */
-async function logRuleTrigger(
+export async function logRuleTrigger(
   tenancyId: string,
   ruleId: string,
   context: SignUpRuleContext,
@@ -70,6 +37,9 @@ async function logRuleTrigger(
   userId?: string
 ): Promise<void> {
   try {
+    const normalizedEmail = context.email.trim().toLowerCase();
+    const normalizedDomain = context.emailDomain.trim().toLowerCase();
+
     await globalPrismaClient.signupRuleTrigger.create({
       data: {
         tenancyId,
@@ -77,8 +47,8 @@ async function logRuleTrigger(
         userId,
         action: action.type,
         metadata: {
-          email: context.email,
-          emailDomain: context.emailDomain,
+          email: normalizedEmail,
+          emailDomain: normalizedDomain || null,
           authMethod: context.authMethod,
           oauthProvider: context.oauthProvider,
         },
@@ -116,13 +86,13 @@ export async function evaluateSignUpRules(
   // Type assertion for sign-up rules fields that may not be in the generated types yet
   const authConfig = config.auth as typeof config.auth & AuthConfigWithSignUpRules;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
-  const rules = authConfig.signUpRules ?? {} as Record<string, SignUpRuleConfig>;
+  const rules = authConfig.signUpRules ?? {} as Record<string, SignUpRule>;
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
   const defaultActionType = authConfig.signUpRulesDefaultAction ?? 'allow';
 
   // Get all enabled rules and sort by priority (ascending), then by ID (alphabetically)
   const sortedRuleEntries = Object.entries(rules)
-    .filter(([, rule]) => rule.enabled)
+    .filter(([, rule]) => rule.enabled !== false)
     .sort((a, b) => {
       const priorityA = a[1].priority;
       const priorityB = b[1].priority;
@@ -137,15 +107,18 @@ export async function evaluateSignUpRules(
     try {
       const matches = evaluateCelExpression(rule.condition, context);
       if (matches) {
+        const actionConfig = rule.action;
+        const actionType = actionConfig.type;
         const action: SignUpRuleAction = {
-          type: rule.action.type,
-          metadata: rule.action.metadata,
-          message: rule.action.message,
+          type: actionType,
+          metadata: actionConfig.metadata,
+          message: actionConfig.message,
         };
 
-        // Log rule trigger to database for analytics (async, don't await)
-        // The userId will be set later after user creation if successful
-        runAsynchronously(logRuleTrigger(tenancy.id, ruleId, context, action));
+        if (action.type === 'reject') {
+          // Log rule trigger to database for analytics (async, don't await)
+          runAsynchronously(logRuleTrigger(tenancy.id, ruleId, context, action));
+        }
 
         return {
           ruleId,
@@ -193,7 +166,6 @@ export function applySignUpRuleAction(result: SignUpRuleResult): {
     }
     case 'log': {
       // Just log, don't restrict or reject
-      // The logging is already done in evaluateSignUpRules
       return { shouldRestrict: false };
     }
     case 'allow':
@@ -210,7 +182,7 @@ export function applySignUpRuleAction(result: SignUpRuleResult): {
  *
  * @param tenancy - The tenancy to evaluate rules for
  * @param context - The signup context with email, authMethod, etc.
- * @returns Object with shouldRestrict, optional metadata, and ruleId that triggered
+ * @returns Object with shouldRestrict, optional metadata, ruleId, and action
  * @throws KnownErrors.SignUpRejected if a rule rejects the signup
  */
 export async function evaluateAndApplySignUpRules(
@@ -220,11 +192,13 @@ export async function evaluateAndApplySignUpRules(
   shouldRestrict: boolean,
   metadata?: Record<string, SignUpRuleMetadataEntry>,
   ruleId: string | null,
+  action: SignUpRuleAction,
 }> {
   const result = await evaluateSignUpRules(tenancy, context);
   const applied = applySignUpRuleAction(result);
   return {
     ...applied,
     ruleId: result.ruleId,
+    action: result.action,
   };
 }

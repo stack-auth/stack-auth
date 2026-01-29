@@ -1078,6 +1078,27 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
       }
 
+      let restrictedByAdminReason = data.restricted_by_admin_reason === undefined
+        ? undefined
+        : (data.restricted_by_admin_reason || null);
+
+      let restrictedByAdminPrivateDetails = data.restricted_by_admin_private_details === undefined
+        ? undefined
+        : (data.restricted_by_admin_private_details || null);
+
+      if (data.restricted_by_admin !== true) {
+        if (restrictedByAdminReason != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_reason requires restricted_by_admin=true");
+        }
+        if (restrictedByAdminPrivateDetails != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_private_details requires restricted_by_admin=true");
+        }
+        if (data.restricted_by_admin === false) {
+          restrictedByAdminReason = null;
+          restrictedByAdminPrivateDetails = null;
+        }
+      }
+
       const db = await tx.projectUser.update({
         where: {
           tenancyId_projectUserId: {
@@ -1095,8 +1116,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           isAnonymous: data.is_anonymous ?? undefined,
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
-          restrictedByAdminReason: data.restricted_by_admin_reason === undefined ? undefined : (data.restricted_by_admin_reason || null),
-          restrictedByAdminPrivateDetails: data.restricted_by_admin_private_details === undefined ? undefined : (data.restricted_by_admin_private_details || null),
+          restrictedByAdminReason: restrictedByAdminReason,
+          restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
         },
         include: userFullInclude,
       });
