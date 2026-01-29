@@ -1921,11 +1921,13 @@ export class StackClientInterface {
     productIdOrInline: string | yup.InferType<typeof inlineProductSchema>,
     session: InternalSession | null,
     returnUrl?: string,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<string> {
     const productBody = typeof productIdOrInline === "string" ?
       { product_id: productIdOrInline } :
       { inline_product: productIdOrInline };
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       "/payments/purchases/create-purchase-url",
       {
         method: "POST",
@@ -1934,7 +1936,8 @@ export class StackClientInterface {
         },
         body: JSON.stringify({ customer_type, customer_id, ...productBody, return_url: returnUrl }),
       },
-      session
+      session,
+      requestType,
     );
     const { url } = await response.json() as { url: string };
     return url;
