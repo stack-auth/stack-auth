@@ -43,4 +43,4 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm run test --reporter=verbose
+      - run: pnpm test run --reporter=verbose
