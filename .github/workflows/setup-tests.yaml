@@ -48,7 +48,7 @@ jobs:
       - name: Run tests (debug cancellation)
         run: |
           set +e
-          trap 'echo "Received SIGTERM during tests"; pgrep -a node || true; ps -eo pid,ppid,pgid,comm | rg -n "node|vitest|pnpm|turbo" || true' TERM
+          trap 'echo "Received SIGTERM during tests"; pgrep -a node || true; ps -eo pid,ppid,pgid,comm | grep -E "node|vitest|pnpm|turbo" || true' TERM
           pnpm run test --reporter=verbose -- --run --watch=false
           status=$?
           echo "Test exit code: $status"
@@ -63,4 +63,4 @@ jobs:
           node -v
           pnpm -v
           pgrep -a node || true
-          ps -eo pid,ppid,pgid,comm | rg -n "node|vitest|pnpm|turbo" || true
+          ps -eo pid,ppid,pgid,comm | grep -E "node|vitest|pnpm|turbo" || true
