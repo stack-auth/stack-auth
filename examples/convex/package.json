@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/convex-example",
-  "version": "2.8.60",
+  "version": "2.8.62",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
@@ -21,7 +21,7 @@
     "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "convex": "^1.27.0",
-    "next": "15.2.7",
+    "next": "15.5.10",
     "react": "^19.0.1",
     "react-dom": "^19.0.1"
   },
