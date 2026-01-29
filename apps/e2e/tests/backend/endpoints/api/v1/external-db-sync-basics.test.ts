@@ -47,7 +47,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'insert-only@example.com' });
+    const user = await User.create({ primary_email: 'insert-only@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -80,7 +80,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'update-only@example.com' });
+    const user = await User.create({ primary_email: 'update-only@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -126,7 +126,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'delete-only@example.com' });
+    const user = await User.create({ primary_email: 'delete-only@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -184,7 +184,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       description: 'Testing that data only appears after sync is triggered'
     });
 
-    const user = await User.create({ emailAddress: 'sync-verify@example.com' });
+    const user = await User.create({ primary_email: 'sync-verify@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -225,7 +225,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'crud-test@example.com' });
+    const user = await User.create({ primary_email: 'crud-test@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -274,7 +274,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       }
     });
 
-    const user = await User.create({ emailAddress: 'auto-create@example.com' });
+    const user = await User.create({ primary_email: 'auto-create@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -320,7 +320,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       }
     });
 
-    const user = await User.create({ emailAddress: 'resilience@example.com' });
+    const user = await User.create({ primary_email: 'resilience@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -357,7 +357,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'primary@example.com' });
+    const user = await User.create({ primary_email: 'primary@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',
@@ -410,7 +410,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     const client = dbManager.getClient(dbName);
 
-    const user = await User.create({ emailAddress: 'update-test@example.com' });
+    const user = await User.create({ primary_email: 'update-test@example.com' });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
       method: 'PATCH',

@@ -11,6 +11,14 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertUuid(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || value.trim().length === 0 || !UUID_REGEX.test(value)) {
+    throw new StatusError(500, `${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
+  }
+}
+
 // Assigns sequence IDs to rows that need them and queues sync requests for affected tenants.
 // Processes up to 1000 rows at a time from each table.
 async function backfillSequenceIds() {
@@ -37,6 +45,7 @@ async function backfillSequenceIds() {
 
   // Enqueue sync for each affected tenant
   for (const { tenancyId } of projectUserTenants) {
+    assertUuid(tenancyId, "projectUserTenants.tenancyId");
     await enqueueTenantSync(tenancyId);
   }
 
@@ -63,6 +72,7 @@ async function backfillSequenceIds() {
   `;
 
   for (const { tenancyId } of contactChannelTenants) {
+    assertUuid(tenancyId, "contactChannelTenants.tenancyId");
     await enqueueTenantSync(tenancyId);
   }
 
@@ -87,6 +97,7 @@ async function backfillSequenceIds() {
   `;
 
   for (const { tenancyId } of deletedRowTenants) {
+    assertUuid(tenancyId, "deletedRowTenants.tenancyId");
     await enqueueTenantSync(tenancyId);
   }
 }
@@ -94,6 +105,7 @@ async function backfillSequenceIds() {
 // Queues a sync request for a specific tenant if one isn't already pending.
 // Prevents duplicate sync requests by checking for unfulfilled requests.
 async function enqueueTenantSync(tenancyId: string) {
+  assertUuid(tenancyId, "tenancyId");
   await globalPrismaClient.$executeRaw`
     INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt")
     SELECT
@@ -101,7 +113,7 @@ async function enqueueTenantSync(tenancyId: string) {
       NOW(),
       json_build_object(
         'url',  '/api/latest/internal/external-db-sync/sync-engine',
-        'body', json_build_object('tenancyId', ${tenancyId})
+        'body', json_build_object('tenancyId', ${tenancyId}::uuid)
       ),
       NULL
     WHERE NOT EXISTS (
@@ -173,4 +185,3 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
-

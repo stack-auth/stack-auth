@@ -49,7 +49,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
     });
 
     const client = dbManager.getClient(dbName);
-    const user = await User.create({ emailAddress: 'parallel-sync@example.com' });
+    const user = await User.create({ primary_email: 'parallel-sync@example.com' });
 
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
@@ -97,7 +97,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
     });
 
     const client = dbManager.getClient(dbName);
-    const user = await User.create({ emailAddress: 'update-delete@example.com' });
+    const user = await User.create({ primary_email: 'update-delete@example.com' });
 
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: 'admin',
@@ -284,7 +284,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
       });
 
       const externalClient = dbManager.getClient(dbName);
-      const user = await User.create({ emailAddress: `${dbName}@example.com` });
+      const user = await User.create({ primary_email: `${dbName}@example.com` });
 
       // Make sure the users row exists
       await waitForTable(externalClient, 'users');
@@ -570,8 +570,8 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
 
         const externalClient = dbManager.getClient(dbName);
 
-        const user1 = await User.create({ emailAddress: 'row1@example.com' });
-        const user2 = await User.create({ emailAddress: 'row2@example.com' });
+        const user1 = await User.create({ primary_email: 'row1@example.com' });
+        const user2 = await User.create({ primary_email: 'row2@example.com' });
 
         await waitForTable(externalClient, 'users');
 

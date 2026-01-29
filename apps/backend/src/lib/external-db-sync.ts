@@ -6,6 +6,62 @@ import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-s
 import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { Client } from 'pg';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertNonEmptyString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new StackAssertionError(`${label} must be a non-empty string.`);
+  }
+}
+
+function assertUuid(value: unknown, label: string): asserts value is string {
+  assertNonEmptyString(value, label);
+  if (!UUID_REGEX.test(value)) {
+    throw new StackAssertionError(`${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
+  }
+}
+
+type PgErrorLike = {
+  code?: string;
+  constraint?: string;
+  message?: string;
+};
+
+function isDuplicateTypeError(error: unknown): error is PgErrorLike {
+  if (!error || typeof error !== "object") return false;
+  const pgError = error as PgErrorLike;
+  return pgError.code === "23505" && pgError.constraint === "pg_type_typname_nsp_index";
+}
+
+async function ensureExternalSchema(
+  externalClient: Client,
+  tableSchemaSql: string,
+  tableName: string,
+) {
+  try {
+    await externalClient.query(tableSchemaSql);
+  } catch (error) {
+    if (!isDuplicateTypeError(error)) throw error;
+
+    // Concurrent CREATE TABLE can race and hit a duplicate type error.
+    // If the table now exists, we can safely continue.
+    const existsResult = await externalClient.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = $1
+      );
+    `, [tableName]);
+    if (existsResult.rows[0]?.exists === true) {
+      return;
+    }
+
+    throw new StackAssertionError(
+      `Duplicate type error while creating table ${JSON.stringify(tableName)}, but table does not exist.`
+    );
+  }
+}
+
 async function pushRowsToExternalDb(
   externalClient: Client,
   tableName: string,
@@ -14,6 +70,12 @@ async function pushRowsToExternalDb(
   expectedTenancyId: string,
   mappingId: string,
 ) {
+  assertNonEmptyString(tableName, "tableName");
+  assertNonEmptyString(mappingId, "mappingId");
+  assertUuid(expectedTenancyId, "expectedTenancyId");
+  if (!Array.isArray(newRows)) {
+    throw new StackAssertionError(`newRows must be an array for table ${JSON.stringify(tableName)}.`);
+  }
   if (newRows.length === 0) return;
   // Just for our own sanity, make sure that we have the right number of positional parameters
   // The last parameter is mapping_name for metadata tracking
@@ -73,12 +135,22 @@ async function syncMapping(
   tenancyId: string,
   dbType: 'postgres',
 ) {
+  assertNonEmptyString(mappingId, "mappingId");
+  assertNonEmptyString(mapping.targetTable, "mapping.targetTable");
+  assertUuid(tenancyId, "tenancyId");
   const fetchQuery = mapping.internalDbFetchQuery;
   const updateQuery = mapping.externalDbUpdateQueries[dbType];
   const tableName = mapping.targetTable;
+  assertNonEmptyString(fetchQuery, "internalDbFetchQuery");
+  assertNonEmptyString(updateQuery, "externalDbUpdateQueries");
+  if (!fetchQuery.includes("$1") || !fetchQuery.includes("$2")) {
+    throw new StackAssertionError(
+      `internalDbFetchQuery must reference $1 (tenancyId) and $2 (lastSequenceId). Mapping: ${mappingId}`
+    );
+  }
 
   const tableSchema = mapping.targetTableSchemas[dbType];
-  await externalClient.query(tableSchema);
+  await ensureExternalSchema(externalClient, tableSchema, tableName);
 
   let lastSequenceId = -1;
   const metadataResult = await externalClient.query(
@@ -88,10 +160,19 @@ async function syncMapping(
   if (metadataResult.rows.length > 0) {
     lastSequenceId = Number(metadataResult.rows[0].last_synced_sequence_id);
   }
+  if (!Number.isFinite(lastSequenceId)) {
+    throw new StackAssertionError(
+      `Invalid last_synced_sequence_id for mapping ${mappingId}: ${JSON.stringify(metadataResult.rows[0]?.last_synced_sequence_id)}`
+    );
+  }
 
   const BATCH_LIMIT = 1000;
 
   while (true) {
+    assertUuid(tenancyId, "tenancyId");
+    if (!Number.isFinite(lastSequenceId)) {
+      throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
+    }
     const rows = await internalPrisma.$queryRawUnsafe<any[]>(fetchQuery, tenancyId, lastSequenceId);
 
     if (rows.length === 0) {
@@ -132,6 +213,8 @@ async function syncDatabase(
   internalPrisma: PrismaClientTransaction,
   tenancyId: string,
 ) {
+  assertNonEmptyString(dbId, "dbId");
+  assertUuid(tenancyId, "tenancyId");
   if (dbConfig.type !== 'postgres') {
     throw new StackAssertionError(
       `Unsupported database type '${dbConfig.type}' for external DB ${dbId}. Only 'postgres' is currently supported.`
@@ -143,6 +226,7 @@ async function syncDatabase(
       `Invalid configuration for external DB ${dbId}: 'connectionString' is missing.`
     );
   }
+  assertNonEmptyString(dbConfig.connectionString, `external DB ${dbId} connectionString`);
 
   const externalClient = new Client({
     connectionString: dbConfig.connectionString,
@@ -176,6 +260,7 @@ async function syncDatabase(
 
 
 export async function syncExternalDatabases(tenancy: Tenancy) {
+  assertUuid(tenancy?.id, "tenancy.id");
   const externalDatabases = tenancy.config.dbSync.externalDatabases;
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
 
