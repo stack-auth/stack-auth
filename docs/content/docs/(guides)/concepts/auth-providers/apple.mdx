@@ -67,6 +67,23 @@ You will need to create an Apple Developer account, and generate an Apple Servic
   </Step>
 </Steps>
 
+## Native App Configuration (iOS/macOS)
+
+Native iOS and macOS apps using the Stack Auth Swift SDK require Bundle ID configuration in addition to the web OAuth setup above. Native apps use Apple's native Sign in with Apple flow (`ASAuthorizationController`) instead of web-based OAuth.
+
+<Info>
+Bundle IDs are only required for native iOS/macOS apps. Web applications only need the Service ID configuration described above.
+</Info>
+
+### Add Your Bundle IDs
+
+1. On the Stack Auth dashboard, navigate to **Auth Methods** and select your Apple provider.
+2. In the Apple configuration modal, add your app's **Bundle ID** (e.g., `com.yourdomain.app`). This is the same Bundle ID from your App ID in Apple Developer Portal (Step 1 above).
+3. If you have multiple apps (e.g., separate iOS and macOS apps), add all their Bundle IDs.
+4. Click **Save**.
+
+Your native app can now use `signInWithOAuth(provider: "apple")` from the Swift SDK.
+
 ### Need More Help?
 
 - Check the [Sign in with Apple Documentation](https://developer.apple.com/sign-in-with-apple/get-started/)
