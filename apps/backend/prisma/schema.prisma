@@ -225,7 +225,7 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
-  @@index([shouldUpdateSequenceId], name: "ProjectUser_shouldUpdateSequenceId_idx")
+  // Partial index for external db sync backfill lives in migration SQL.
 }
 
 // This should be renamed to "OAuthAccount" as it is not always bound to a user
@@ -290,8 +290,7 @@ model ContactChannel {
   @@unique([tenancyId, projectUserId, type, value])
   // only one contact channel per project with the same value and type can be used for auth
   @@unique([tenancyId, type, value, usedForAuth])
-  // partial index for external db sync backfill (WHERE shouldUpdateSequenceId = TRUE)
-  @@index([shouldUpdateSequenceId], name: "ContactChannel_shouldUpdateSequenceId_idx")
+  // Partial index for external db sync backfill lives in migration SQL (WHERE shouldUpdateSequenceId = TRUE).
 }
 
 model AuthMethod {
@@ -1092,6 +1091,5 @@ model DeletedRow {
   @@index([tenancyId])
   // composite index for efficient querying of deleted rows by tenant and table, ordered by sequence
   @@index([tenancyId, tableName, sequenceId])
-  // partial index for external db sync backfill (WHERE shouldUpdateSequenceId = TRUE)
-  @@index([shouldUpdateSequenceId], name: "DeletedRow_shouldUpdateSequenceId_idx")
+  // Partial index for external db sync backfill lives in migration SQL (WHERE shouldUpdateSequenceId = TRUE).
 }
