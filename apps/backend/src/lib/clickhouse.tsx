@@ -54,7 +54,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
       SELECT
         ProfileEvents['CPUTimeMicroseconds'] / 1000 AS cpu_time_ms,
         ProfileEvents['RealTimeMicroseconds'] / 1000 AS wall_clock_time_ms
-      FROM clusterAllReplicas('default', system.query_log)
+      FROM system.query_log
       WHERE query_id = {query_id:String} AND type = 'QueryFinish'
       ORDER BY event_time DESC
       LIMIT 1
