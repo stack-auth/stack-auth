@@ -3,11 +3,11 @@ import { RouterProvider } from '@/components/router';
 import { SiteLoadingIndicatorDisplay } from '@/components/site-loading-indicator';
 import { StyleLink } from '@/components/style-link';
 import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster, cn } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { stackServerApp } from '@/stack';
 import { StackProvider, StackTheme } from '@stackframe/stack';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { Toaster, cn } from '@/components/ui';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistMono } from "geist/font/mono";
@@ -66,6 +66,8 @@ export default function RootLayout({
     throw new Error(`STACK_DEVELOPMENT_TRANSLATION_LOCALE can only be used in development mode (found: ${JSON.stringify(translationLocale)})`);
   }
 
+  const enableReactScanInDevelopment = false as boolean;
+
   return (
     <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <head>
@@ -74,7 +76,7 @@ export default function RootLayout({
         <StyleLink defer href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.css" integrity="sha384-OH8qNTHoMMVNVcKdKewlipV4SErXqccxxlg6HC9Cwjr5oZu2AdBej1TndeCirael" crossOrigin="anonymous" />
 
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        {process.env.NODE_ENV === 'development' && <script
+        {process.env.NODE_ENV === 'development' && enableReactScanInDevelopment && <script
           crossOrigin="anonymous"
           src="//unpkg.com/react-scan/dist/auto.global.js"
         />}

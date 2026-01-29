@@ -230,6 +230,103 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
   );
 });
 
+// Analytics query mode placeholder component
+const AnalyticsQueryPlaceholder = memo(function AnalyticsQueryPlaceholder({
+  onSelectQuery,
+}: {
+  onSelectQuery?: (query: string) => void,
+}) {
+  const tables = [
+    { id: "events", name: "Events", description: "User events and actions", query: "SELECT * FROM events ORDER BY event_at DESC LIMIT 100" },
+  ];
+
+  const exampleQueries = [
+    "Show me all events from the last hour",
+    "Count events by type",
+    "SELECT event_type, COUNT(*) FROM events GROUP BY event_type",
+  ];
+
+  return (
+    <div className="h-full flex flex-col items-center select-none px-6">
+      {/* Top spacer */}
+      <div className="flex-1" />
+
+      <div className="relative w-fit max-w-md">
+        {/* Header */}
+        <div className="relative text-center mb-6">
+          <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
+            Analytics Query
+          </h2>
+          <p className="text-[11px] text-muted-foreground/50">
+            Query your data using English or ClickHouse SQL
+          </p>
+        </div>
+
+        {/* Tables section */}
+        <div className="mb-6">
+          <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-3 text-center">Available Tables</p>
+          <div className="space-y-2">
+            {tables.map((table) => (
+              <button
+                key={table.id}
+                type="button"
+                onClick={() => onSelectQuery?.(table.query)}
+                className="w-full flex items-center gap-3 rounded-lg px-4 py-3 transition-colors hover:transition-none hover:bg-foreground/[0.04] border border-foreground/[0.06]"
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <PlayIcon className="h-4 w-4 text-amber-500" />
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <h3 className="text-[12px] font-medium text-foreground font-mono">
+                    {table.name}
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground/50">
+                    {table.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Example queries */}
+        <div>
+          <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-3 text-center">Try something like</p>
+          <div className="space-y-1.5">
+            {exampleQueries.map((q, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => onSelectQuery?.(q)}
+                className="w-full text-left text-[11px] text-muted-foreground/60 hover:text-foreground px-3 py-2 rounded-md hover:bg-foreground/[0.04] transition-colors hover:transition-none font-mono truncate"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom spacer */}
+      <div className="flex-1" />
+
+      {/* Footer */}
+      <div className="w-full shrink-0 -mx-6 px-6">
+        <div className="py-3 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
+            <span>run query</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
+            <span>close</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // Reusable Results List Component
 export const CmdKResultsList = memo(function CmdKResultsList({
   commands,
@@ -240,6 +337,7 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   showCyclingPlaceholder = false,
   onSelectExampleQuery,
   isParentColumn = false,
+  analyticsQueryMode = false,
 }: {
   commands: CmdKCommand[],
   selectedIndex: number,
@@ -253,6 +351,8 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   onSelectExampleQuery?: (query: string) => void,
   /** When true, selection shows as outline only (for parent columns) */
   isParentColumn?: boolean,
+  /** When true, show analytics query placeholder instead of cycling placeholder */
+  analyticsQueryMode?: boolean,
 }) {
   const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const hasResults = commands.length > 0;
@@ -266,6 +366,9 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   }, [selectedIndex]);
 
   if (!hasResults) {
+    if (analyticsQueryMode) {
+      return <AnalyticsQueryPlaceholder onSelectQuery={onSelectExampleQuery} />;
+    }
     if (showCyclingPlaceholder) {
       return <CyclingPlaceholder onSelectQuery={onSelectExampleQuery} />;
     }
@@ -402,6 +505,8 @@ export function CmdKSearch({
   const [activeDepth, setActiveDepth] = useState(0); // Which column is active (0 = main list)
   const [selectedIndices, setSelectedIndices] = useState<number[]>([0]); // Selected index in each column
   const [nestedBlurHandlers, setNestedBlurHandlers] = useState<(() => void)[]>([]); // onBlur handlers for each depth
+  // Analytics query mode state
+  const [analyticsQueryMode, setAnalyticsQueryMode] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -423,15 +528,23 @@ export function CmdKSearch({
       setOpen((prev) => !prev);
     };
 
+    const handleAnalyticsQuery = () => {
+      setAnalyticsQueryMode(true);
+      setQuery("");
+      setOpen(true);
+    };
+
     document.addEventListener("keydown", down);
     window.addEventListener("spotlight-toggle", handleToggle);
+    window.addEventListener("spotlight-analytics-query", handleAnalyticsQuery);
     return () => {
       document.removeEventListener("keydown", down);
       window.removeEventListener("spotlight-toggle", handleToggle);
+      window.removeEventListener("spotlight-analytics-query", handleAnalyticsQuery);
     };
   }, []);
 
-  // Focus and select input when opening
+  // Focus and select input when opening, reset analytics mode when closing
   useEffect(() => {
     if (open) {
       setSelectedIndex(0);
@@ -440,6 +553,9 @@ export function CmdKSearch({
         inputRef.current?.focus();
         inputRef.current?.select();
       });
+    } else {
+      // Reset analytics mode when closing
+      setAnalyticsQueryMode(false);
     }
   }, [open]);
 
@@ -756,7 +872,7 @@ export function CmdKSearch({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search or ask AI..."
+                placeholder={analyticsQueryMode ? "Type your query... (English or ClickHouse SQL)" : "Search or ask AI..."}
                 className="flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/50"
                 autoComplete="off"
                 autoCorrect="off"
@@ -818,6 +934,7 @@ export function CmdKSearch({
                     showCyclingPlaceholder={true}
                     onSelectExampleQuery={setQuery}
                     isParentColumn={activeDepth > 0}
+                    analyticsQueryMode={analyticsQueryMode}
                   />
                 </div>
 
@@ -980,7 +1097,7 @@ export function CmdKTrigger() {
           "rounded-[12px]",
           "ring-2 ring-inset ring-foreground/[0.06]",
           "transition-all duration-300 hover:transition-none",
-          "hover:ring-blue-500/20 hover:shadow-[0_0_24px_rgba(59,130,246,0.15),inset_0_1px_0_rgba(255,255,255,0.05)]"
+          "hover:ring-blue-500/15 hover:shadow-[0_0_16px_rgba(59,130,246,0.08),inset_0_1px_0_rgba(255,255,255,0.03)]"
         )}
       >
         <div
