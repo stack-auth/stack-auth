@@ -37,9 +37,20 @@ jobs:
       - name: Start dev environment
         run: pnpm run restart-dev-environment
 
-      - name: Run tests
-        run: pnpm test run --reporter=verbose
+      - name: Run tests (no watch)
+        env:
+          CI: "1"
+        run: pnpm run test --reporter=verbose -- --run --watch=false
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt
         if: always()
+
+      - name: Debug running processes
+        if: always()
+        run: |
+          echo "CI=$CI"
+          node -v
+          pnpm -v
+          pgrep -a node || true
+          ps -eo pid,ppid,pgid,comm | rg -n "node|vitest|pnpm|turbo" || true
