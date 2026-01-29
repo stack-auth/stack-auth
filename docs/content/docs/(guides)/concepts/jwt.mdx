@@ -86,7 +86,7 @@ Anonymous user tokens have the same shape, but:
 
 Restricted user tokens (e.g., users who haven't verified their email when verification is required) have:
 
-- `iss` remains unchanged (same as regular users)
+- `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
 - `aud` becomes `<project-id>:restricted`
 - `is_restricted` is `true`
 - `restricted_reason` is `{ "type": "email_not_verified" }`

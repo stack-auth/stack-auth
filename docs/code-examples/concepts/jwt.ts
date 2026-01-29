@@ -124,12 +124,12 @@ const jwks = jose.createRemoteJWKSet(
   new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json?include_anonymous=true&include_restricted=true')
 );
 
-// Restricted (non-anonymous) users use the same issuer as regular users,
-// so only two issuers are needed even though there are three audiences
+// All three user types have different issuers
 const { payload } = await jose.jwtVerify(token, jwks, {
   issuer: [
     'https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID',
     'https://api.stack-auth.com/api/v1/projects-anonymous-users/YOUR_PROJECT_ID',
+    'https://api.stack-auth.com/api/v1/projects-restricted-users/YOUR_PROJECT_ID',
   ],
   audience: ['YOUR_PROJECT_ID', 'YOUR_PROJECT_ID:anon', 'YOUR_PROJECT_ID:restricted'],
 });`,
