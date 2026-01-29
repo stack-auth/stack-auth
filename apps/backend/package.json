@@ -10,7 +10,7 @@
     "with-env": "dotenv -c --",
     "with-env:dev": "dotenv -c development --",
     "with-env:prod": "dotenv -c production --",
-    "dev": "concurrently -n \"dev,codegen,prisma-studio,email-queue\" -k \"next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 ${STACK_BACKEND_DEV_EXTRA_ARGS:-}\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\" \"pnpm run run-email-queue\"",
+    "dev": "concurrently -n \"dev,codegen,prisma-studio,email-queue,cron-jobs\" -k \"next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 ${STACK_BACKEND_DEV_EXTRA_ARGS:-}\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\" \"pnpm run run-email-queue\" \"pnpm run run-cron-jobs\"",
     "dev:inspect": "STACK_BACKEND_DEV_EXTRA_ARGS=\"--inspect\" pnpm run dev",
     "dev:profile": "STACK_BACKEND_DEV_EXTRA_ARGS=\"--experimental-cpu-prof\" pnpm run dev",
     "build": "pnpm run codegen && next build",
@@ -42,7 +42,7 @@
     "codegen-docs:watch": "pnpm run with-env tsx watch --exclude '**/node_modules/**' --clear-screen=false scripts/generate-openapi-fumadocs.ts",
     "generate-keys": "pnpm run with-env tsx scripts/generate-keys.ts",
     "db-seed-script": "pnpm run db:seed",
-    "run-cron-jobs": "pnpm run with-env tsx scripts/run-cron-jobs.ts",
+    "run-cron-jobs": "pnpm run with-env:dev tsx scripts/run-cron-jobs.ts",
     "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity/index.ts",
     "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts"
   },
