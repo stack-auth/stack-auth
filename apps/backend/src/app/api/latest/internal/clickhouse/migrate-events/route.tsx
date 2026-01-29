@@ -1,10 +1,11 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { getClickhouseAdminClient, isClickhouseConfigured } from "@/lib/clickhouse";
+import { endUserIpInfoSchema, type EndUserIpInfo } from "@/lib/events";
 import { DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import type { Prisma } from "@/generated/prisma/client";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 type Cursor = {
   created_at_millis: number,
@@ -22,41 +23,86 @@ const parseMillisOrThrow = (value: number | undefined, field: string) => {
   return parsed;
 };
 
-const createClickhouseRows = (event: {
+type EventWithIpInfo = {
   id: string,
   systemEventTypeIds: string[],
-  data: any,
+  data: unknown,
   eventEndedAt: Date,
   eventStartedAt: Date,
   isWide: boolean,
-}) => {
+  isEndUserIpInfoGuessTrusted: boolean,
+  endUserIpInfoGuess: {
+    ip: string,
+    countryCode: string | null,
+    regionCode: string | null,
+    cityName: string | null,
+    latitude: number | null,
+    longitude: number | null,
+    tzIdentifier: string | null,
+  } | null,
+};
+
+/**
+ * Transforms a $session-activity event from Postgres into a $token-refresh event for ClickHouse.
+ *
+ * The $session-activity event has:
+ * - sessionId (from SessionActivityEventType)
+ * - userId, branchId, isAnonymous, teamId (from UserActivityEventType)
+ * - projectId (from ProjectEventType via inheritance)
+ *
+ * The $token-refresh event needs:
+ * - projectId, branchId, organizationId (null), userId, refreshTokenId, isAnonymous, ipInfo
+ */
+const createClickhouseRow = (event: EventWithIpInfo) => {
   const dataRecord = typeof event.data === "object" && event.data !== null ? event.data as Record<string, unknown> : {};
-  const clickhouseEventData = {
-    ...dataRecord,
-    is_wide: event.isWide,
-    event_started_at: event.eventStartedAt,
-    event_ended_at: event.eventEndedAt,
-  };
-  const projectId = typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";
-  const branchId = DEFAULT_BRANCH_ID;
-  const userId = typeof dataRecord.userId === "string" ? dataRecord.userId : "";
-  const teamId = typeof dataRecord.teamId === "string" ? dataRecord.teamId : "";
-  const sessionId = typeof dataRecord.sessionId === "string" ? dataRecord.sessionId : "";
+
+  // Extract fields from the old $session-activity format
+  const projectId = typeof dataRecord.projectId === "string" ? dataRecord.projectId : throwErr(new StackAssertionError("projectId is required"));
+  const branchId = typeof dataRecord.branchId === "string" ? dataRecord.branchId : DEFAULT_BRANCH_ID;
+  const userId = typeof dataRecord.userId === "string" && dataRecord.userId ? dataRecord.userId : throwErr(new StackAssertionError("userId is required"));
+  // sessionId becomes refreshTokenId in the new schema
+  const refreshTokenId = typeof dataRecord.sessionId === "string" ? dataRecord.sessionId : throwErr(new StackAssertionError("sessionId is required"));
+  // isAnonymous may not exist on old events, default to false
   const isAnonymous = typeof dataRecord.isAnonymous === "boolean" ? dataRecord.isAnonymous : false;
 
-  const eventTypes = [...new Set(event.systemEventTypeIds)];
+  // Build ipInfo from the event's endUserIpInfoGuess relation
+  let ipInfo: EndUserIpInfo | null = null;
+  if (event.endUserIpInfoGuess) {
+    const ip = event.endUserIpInfoGuess;
+    ipInfo = {
+      ip: ip.ip,
+      isTrusted: event.isEndUserIpInfoGuessTrusted,
+      countryCode: ip.countryCode ?? undefined,
+      regionCode: ip.regionCode ?? undefined,
+      cityName: ip.cityName ?? undefined,
+      latitude: ip.latitude ?? undefined,
+      longitude: ip.longitude ?? undefined,
+      tzIdentifier: ip.tzIdentifier ?? undefined,
+    };
+    // Validate against schema
+    ipInfo = endUserIpInfoSchema.nullable().defined().validateSync(ipInfo, { stripUnknown: true });
+  }
 
-  return eventTypes.map(eventType => ({
-    event_type: eventType,
+  // Build the data object matching TokenRefreshEventType schema
+  const tokenRefreshData = {
+    projectId,
+    branchId,
+    organizationId: null,
+    userId: userId,
+    refreshTokenId,
+    isAnonymous,
+    ipInfo,
+  };
+
+  return {
+    event_type: '$token-refresh',
     event_at: event.eventEndedAt,
-    data: clickhouseEventData,
+    data: tokenRefreshData,
     project_id: projectId,
     branch_id: branchId,
     user_id: userId,
-    team_id: teamId,
-    session_id: sessionId,
-    is_anonymous: isAnonymous,
-  }));
+    team_id: null,
+  };
 };
 
 export const POST = createSmartRouteHandler({
@@ -88,13 +134,8 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      total_events: yupNumber().defined(),
-      processed_events: yupNumber().defined(),
-      remaining_events: yupNumber().defined(),
       migrated_events: yupNumber().defined(),
-      skipped_existing_events: yupNumber().defined(),
       inserted_rows: yupNumber().defined(),
-      progress: yupNumber().min(0).max(1).defined(),
       next_cursor: yupObject({
         created_at_millis: yupNumber().integer().defined(),
         id: yupString().defined(),
@@ -111,10 +152,16 @@ export const POST = createSmartRouteHandler({
     const cursorId = body.cursor?.id;
     const limit = body.limit;
 
+    const laterOfMinCreatedAtOrCursorCreatedAt = !cursorCreatedAt || minCreatedAt > cursorCreatedAt ? minCreatedAt : cursorCreatedAt;
+
     const baseWhere: Prisma.EventWhereInput = {
       createdAt: {
-        gte: minCreatedAt,
+        gte: laterOfMinCreatedAtOrCursorCreatedAt,
         lt: maxCreatedAt,
+      },
+      // Only migrate $session-activity events (translated to $token-refresh in ClickHouse)
+      systemEventTypeIds: {
+        has: '$session-activity',
       },
     };
 
@@ -129,8 +176,6 @@ export const POST = createSmartRouteHandler({
       ? { AND: [baseWhere, cursorFilter] }
       : baseWhere;
 
-    const totalEvents = await globalPrismaClient.event.count({ where: baseWhere });
-
     const events = await globalPrismaClient.event.findMany({
       where,
       orderBy: [
@@ -138,6 +183,9 @@ export const POST = createSmartRouteHandler({
         { id: "asc" },
       ],
       take: limit,
+      include: {
+        endUserIpInfoGuess: true,
+      },
     });
 
     let insertedRows = 0;
@@ -148,22 +196,19 @@ export const POST = createSmartRouteHandler({
         throw new StatusError(StatusError.ServiceUnavailable, "ClickHouse is not configured");
       }
       const clickhouseClient = getClickhouseAdminClient();
-      const rowsByEvent = events.map(createClickhouseRows);
-      const rowsToInsert = rowsByEvent.flat();
-      migratedEvents = rowsByEvent.reduce((acc, rows) => acc + (rows.length ? 1 : 0), 0);
+      const rowsToInsert = events.map(createClickhouseRow);
+      migratedEvents = events.length;
 
-      if (rowsToInsert.length) {
-        await clickhouseClient.insert({
-          table: "analytics_internal.events",
-          values: rowsToInsert,
-          format: "JSONEachRow",
-          clickhouse_settings: {
-            date_time_input_format: "best_effort",
-            async_insert: 1,
-          },
-        });
-        insertedRows = rowsToInsert.length;
-      }
+      await clickhouseClient.insert({
+        table: "analytics_internal.events",
+        values: rowsToInsert,
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          date_time_input_format: "best_effort",
+          async_insert: 1,
+        },
+      });
+      insertedRows = rowsToInsert.length;
     }
 
     const lastEvent = events.at(-1);
@@ -171,39 +216,13 @@ export const POST = createSmartRouteHandler({
       created_at_millis: lastEvent.createdAt.getTime(),
       id: lastEvent.id,
     } : null;
-    const progressCursor: Cursor | null = nextCursor ?? (cursorCreatedAt && body.cursor ? {
-      created_at_millis: body.cursor.created_at_millis,
-      id: body.cursor.id,
-    } : null);
-
-    const progressCursorCreatedAt = progressCursor ? new Date(progressCursor.created_at_millis) : null;
-    const remainingWhere = progressCursor ? {
-      AND: [
-        baseWhere,
-        {
-          OR: [
-            { createdAt: { gt: progressCursorCreatedAt! } },
-            { createdAt: progressCursorCreatedAt!, id: { gt: progressCursor.id } },
-          ],
-        },
-      ],
-    } : baseWhere;
-
-    const remainingEvents = await globalPrismaClient.event.count({ where: remainingWhere });
-    const processedEvents = totalEvents - remainingEvents;
-    const progress = totalEvents === 0 ? 1 : processedEvents / totalEvents;
 
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        total_events: totalEvents,
-        processed_events: processedEvents,
-        remaining_events: remainingEvents,
         migrated_events: migratedEvents,
-        skipped_existing_events: 0,
         inserted_rows: insertedRows,
-        progress,
         next_cursor: nextCursor,
       },
     };

@@ -21,8 +21,6 @@ const USE_MOCK_STRIPE_API = STRIPE_SECRET_KEY === "sk_test_mockstripekey";
 let targetOutputData: OutputData | undefined = undefined;
 const currentOutputData: OutputData = {};
 
-const recurse = createRecurse();
-
 async function main() {
   console.log();
   console.log();
@@ -80,6 +78,13 @@ async function main() {
   const shouldVerifyOutput = flags.includes("--verify-output");
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
+  const noBail = flags.includes("--no-bail");
+
+  const { recurse, collectedErrors } = createRecurse({ noBail });
+
+  if (noBail) {
+    console.log(`Running in no-bail mode: will continue on errors and report all at the end.`);
+  }
 
   if (shouldSaveOutput) {
     console.log(`Will save output to ${OUTPUT_FILE_PATH}`);
@@ -316,6 +321,27 @@ async function main() {
   if (shouldSaveOutput) {
     fs.writeFileSync(OUTPUT_FILE_PATH, JSON.stringify(currentOutputData, null, 2));
     console.log(`Output saved to ${OUTPUT_FILE_PATH}`);
+  }
+
+  // Report collected errors if in no-bail mode
+  if (collectedErrors.length > 0) {
+    console.log();
+    console.log();
+    console.log();
+    console.log();
+    console.log("===================================================");
+    console.log(`\x1b[41mFAILED\x1b[0m! Found ${collectedErrors.length} error(s):`);
+    console.log();
+    for (let i = 0; i < collectedErrors.length; i++) {
+      const { context, error } = collectedErrors[i];
+      console.log(`--- Error ${i + 1}/${collectedErrors.length} ---`);
+      console.log(`Context: ${context}`);
+      console.error(error);
+      console.log();
+    }
+    console.log("===================================================");
+    console.log();
+    process.exit(1);
   }
 
   console.log();

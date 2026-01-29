@@ -53,6 +53,7 @@
     "start:mock-oauth-server": "pnpm pre && turbo run start --concurrency 99999 --filter=@stackframe/mock-oauth-server",
     "lint": "pnpm pre && turbo run lint --continue -- --max-warnings=0",
     "release": "pnpm pre && release",
+    "dotenv": "dotenv",
     "peek": "pnpm pre && pnpm release --peek",
     "changeset": "pnpm pre && changeset",
     "test": "pnpm pre && vitest",
@@ -90,7 +91,8 @@
     "typescript": "5.3.3",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^1.6.0",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.1",
+    "dotenv-cli": "^7.3.0"
   },
   "pnpm": {
     "overrides": {

@@ -13,7 +13,7 @@ const queryEvents = async (params: {
       SELECT event_type, project_id, branch_id, user_id, team_id
       FROM events
       WHERE 1
-        ${params.userId ? "AND user_id = {user_id:String}" : ""}
+        ${params.userId ? "AND user_id = {user_id:Nullable(String)}" : ""}
         ${params.eventType ? "AND event_type = {event_type:String}" : ""}
       ORDER BY event_at DESC
       LIMIT 10
@@ -55,17 +55,18 @@ it("stores backend events in ClickHouse", async ({ expect }) => {
 
   const queryResponse = await fetchEventsWithRetry({
     userId,
-    eventType: "$session-activity",
+    eventType: "$token-refresh",
   });
 
   expect(queryResponse.status).toBe(200);
   const results = Array.isArray(queryResponse.body?.result) ? queryResponse.body.result : [];
   expect(results.length).toBeGreaterThan(0);
   expect(results[0]).toMatchObject({
-    event_type: "$session-activity",
+    event_type: "$token-refresh",
     project_id: projectId,
     branch_id: "main",
     user_id: userId,
+    team_id: null,
   });
 });
 
@@ -79,7 +80,7 @@ it("cannot read events from other projects", async ({ expect }) => {
   const { userId: projectBUserId } = await Auth.Otp.signIn();
   const projectBResponse = await fetchEventsWithRetry({
     userId: projectBUserId,
-    eventType: "$session-activity",
+    eventType: "$token-refresh",
   });
   expect(projectBResponse).toMatchInlineSnapshot(`
     NiceResponse {
@@ -88,9 +89,9 @@ it("cannot read events from other projects", async ({ expect }) => {
         "result": [
           {
             "branch_id": "main",
-            "event_type": "$session-activity",
+            "event_type": "$token-refresh",
             "project_id": "<stripped UUID>",
-            "team_id": "",
+            "team_id": null,
             "user_id": "<stripped UUID>",
           },
         ],
@@ -109,7 +110,7 @@ it("cannot read events from other projects", async ({ expect }) => {
 
   const queryResponse = await queryEvents({
     userId: projectBUserId,
-    eventType: "$session-activity",
+    eventType: "$token-refresh",
   });
   expect(queryResponse).toMatchInlineSnapshot(`
     NiceResponse {
@@ -134,7 +135,7 @@ it("filters analytics events by user within a project", async ({ expect }) => {
 
   const userAResponse = await fetchEventsWithRetry({
     userId: userA,
-    eventType: "$session-activity",
+    eventType: "$token-refresh",
   });
   expect(userAResponse.status).toBe(200);
   const userAResults = Array.isArray(userAResponse.body?.result) ? userAResponse.body.result : [];
@@ -143,7 +144,7 @@ it("filters analytics events by user within a project", async ({ expect }) => {
 
   const userBResponse = await fetchEventsWithRetry({
     userId: userB,
-    eventType: "$session-activity",
+    eventType: "$token-refresh",
   });
   expect(userBResponse.status).toBe(200);
   const userBResults = Array.isArray(userBResponse.body?.result) ? userBResponse.body.result : [];
