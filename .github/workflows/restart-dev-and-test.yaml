@@ -16,7 +16,7 @@ env:
 
 jobs:
   restart-dev-and-test:
-    runs-on: ubicloud-standard-8
+    runs-on: ubicloud-standard-16
     env:
       CI: "1"
 

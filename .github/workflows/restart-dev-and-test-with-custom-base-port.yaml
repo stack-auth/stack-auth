@@ -16,7 +16,7 @@ env:
 
 jobs:
   restart-dev-and-test-with-custom-base-port:
-    runs-on: ubicloud-standard-8
+    runs-on: ubicloud-standard-16
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
       CI: "1"
