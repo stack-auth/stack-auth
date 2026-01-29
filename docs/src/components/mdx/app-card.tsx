@@ -2,7 +2,7 @@
 
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { ChartLineIcon, ClipboardList, CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
+import { BarChart3, ClipboardList, CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";
 
@@ -37,8 +37,8 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
     </>
   )),
   vercel: Triangle,
-  analytics: ChartLineIcon,
   onboarding: ClipboardList,
+  analytics: BarChart3,
 };
 
 function createSvgIcon(ChildrenComponent: () => React.ReactNode): (props: React.SVGProps<SVGSVGElement>) => React.ReactNode {
