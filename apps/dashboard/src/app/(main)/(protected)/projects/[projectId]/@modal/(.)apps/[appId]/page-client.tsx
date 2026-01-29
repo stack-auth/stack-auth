@@ -7,10 +7,12 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui";
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(true);
   const [navigateTo, setNavigateTo] = useState<string | null>(null);
   const hasNavigatedRef = useRef(false);
@@ -21,6 +23,15 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
   const updateConfig = useUpdateConfig();
 
   const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+
+  useEffect(() => {
+    const isModalRoute = /\/apps\/[^/]+$/.test(pathname);
+    if (isModalRoute) {
+      setIsOpen(true);
+      setNavigateTo(null);
+      hasNavigatedRef.current = true;
+    }
+  }, [pathname]);
 
   useEffect(() => {
     if (!isOpen && navigateTo && !hasNavigatedRef.current) {
@@ -39,6 +50,7 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
 
   const handleOpen = () => {
     const path = getAppPath(project.id, ALL_APPS_FRONTEND[appId]);
+    hasNavigatedRef.current = false;
     setNavigateTo(path);
     setIsOpen(false);
   };
