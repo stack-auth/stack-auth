@@ -1,7 +1,7 @@
 import { upstash } from "@/lib/upstash";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { OutgoingRequest } from "@prisma/client";
+import type { OutgoingRequest } from "@/generated/prisma/client";
 import {
   yupBoolean,
   yupNumber,
@@ -12,6 +12,7 @@ import {
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -71,6 +72,7 @@ export const GET = createSmartRouteHandler({
 
       for (const request of requests) {
         try {
+          // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
           const options = request.qstashOptions as any;
           const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 

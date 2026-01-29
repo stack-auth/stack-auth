@@ -3,8 +3,8 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 const endpoints = [
-    "/api/latest/internal/external-db-sync/sequencer",
-    "/api/latest/internal/external-db-sync/poller",
+  "/api/latest/internal/external-db-sync/sequencer",
+  "/api/latest/internal/external-db-sync/poller",
 ];
 
 async function main() {
@@ -29,7 +29,7 @@ async function main() {
         // Vercel only guarantees minute-granularity for cron jobs, so we randomize the interval
         await wait(Math.random() * 120_000);
       }
-    }); 
+    });
   }
 }
 
