@@ -63,7 +63,8 @@
     "qrcode": "^1.5.4",
     "rimraf": "^6.1.2",
     "tsx": "^4.21.0",
-    "yup": "^1.7.1"
+    "yup": "^1.7.1",
+    "i18next": "^23.14.0"
   },
   "devDependencies": {
     "@quetzallabs/i18n": "^0.1.19",
@@ -75,7 +76,6 @@
     "autoprefixer": "^10.4.17",
     "chokidar-cli": "^3.0.0",
     "esbuild": "^0.20.2",
-    "i18next": "^23.14.0",
     "i18next-parser": "^9.0.2",
     "postcss": "^8.4.38",
     "postcss-nested": "^6.0.1",
