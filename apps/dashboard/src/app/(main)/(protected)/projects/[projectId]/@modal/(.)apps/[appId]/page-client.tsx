@@ -26,7 +26,7 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
   const isEnabled = config.apps.installed[appId]?.enabled ?? false;
 
   useEffect(() => {
-    const isModalRoute = /\/apps\/[^/]+$/.test(pathname);
+    const isModalRoute = /^\/projects\/[^/]+\/apps\/[^/]+$/.test(pathname);
     if (isModalRoute) {
       setIsOpen(true);
       setNavigateTo(null);
