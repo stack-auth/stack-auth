@@ -125,6 +125,11 @@ export const POST = createSmartRouteHandler({
           email: appleUser.email,
           emailVerified: appleUser.emailVerified,
           primaryEmailAuthEnabled,
+          signUpRuleOptions: {
+            authMethod: 'oauth',
+            oauthProvider: 'apple',
+            // Note: Request context not easily available in native OAuth callback
+          },
         });
         projectUserId = result.projectUserId;
         isNewUser = true;
