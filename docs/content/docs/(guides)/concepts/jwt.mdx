@@ -86,6 +86,7 @@ Anonymous user tokens have the same shape, but:
 
 Restricted user tokens (e.g., users who haven't verified their email when verification is required) have:
 
+- `iss` remains unchanged (same as regular users)
 - `aud` becomes `<project-id>:restricted`
 - `is_restricted` is `true`
 - `restricted_reason` is `{ "type": "email_not_verified" }`
