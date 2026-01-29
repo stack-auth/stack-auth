@@ -22,9 +22,9 @@ function assertUuid(value: unknown, label: string): asserts value is string {
 }
 
 type PgErrorLike = {
-  code?: string;
-  constraint?: string;
-  message?: string;
+  code?: string,
+  constraint?: string,
+  message?: string,
 };
 
 function isDuplicateTypeError(error: unknown): error is PgErrorLike {
@@ -260,7 +260,7 @@ async function syncDatabase(
 
 
 export async function syncExternalDatabases(tenancy: Tenancy) {
-  assertUuid(tenancy?.id, "tenancy.id");
+  assertUuid(tenancy.id, "tenancy.id");
   const externalDatabases = tenancy.config.dbSync.externalDatabases;
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
 
