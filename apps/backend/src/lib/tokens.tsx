@@ -165,25 +165,23 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
   });
 }
 
-export async function isRefreshTokenValid(options: {
+type RefreshTokenOptions = {
   tenancy: Tenancy,
   refreshTokenObj: null | {
     projectUserId: string,
     id: string,
     expiresAt: Date | null,
   },
-}) {
-  return !!await generateAccessTokenFromRefreshTokenIfValid(options);
-}
+};
 
-export async function generateAccessTokenFromRefreshTokenIfValid(options: {
-  tenancy: Tenancy,
-  refreshTokenObj: null | {
-    projectUserId: string,
-    id: string,
-    expiresAt: Date | null,
-  },
-}) {
+/**
+ * Validates a refresh token and returns the user if valid.
+ * This function has NO side effects - it doesn't log events or update timestamps.
+ * Use this when you just need to check validity without triggering analytics.
+ *
+ * @returns The user object if the token is valid, null otherwise.
+ */
+async function validateRefreshTokenAndGetUser(options: RefreshTokenOptions) {
   if (!options.refreshTokenObj) {
     return null;
   }
@@ -192,13 +190,13 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     return null;
   }
 
-  let user;
   try {
-    user = await usersCrudHandlers.adminRead({
+    const user = await usersCrudHandlers.adminRead({
       tenancy: options.tenancy,
       user_id: options.refreshTokenObj.projectUserId,
       allowedErrorTypes: [KnownErrors.UserNotFound],
     });
+    return user;
   } catch (error) {
     if (error instanceof KnownErrors.UserNotFound) {
       // The user was deleted — their refresh token still exists because we don't cascade deletes across source-of-truth/global tables.
@@ -206,6 +204,29 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       return null;
     }
     throw error;
+  }
+}
+
+/**
+ * Checks if a refresh token is valid.
+ */
+export async function isRefreshTokenValid(options: RefreshTokenOptions) {
+  return !!(await validateRefreshTokenAndGetUser(options));
+}
+
+/**
+ * Generates an access token from a refresh token if the token is valid.
+ *
+ * This function has side effects:
+ * - Updates last active timestamps on the user and session
+ * - Logs session activity and token refresh events for analytics
+ *
+ * @returns The access token string if valid, null otherwise.
+ */
+export async function generateAccessTokenFromRefreshTokenIfValid(options: RefreshTokenOptions) {
+  const user = await validateRefreshTokenAndGetUser(options);
+  if (!user || !options.refreshTokenObj) {
+    return null;
   }
 
   // Update last active at on user and session
