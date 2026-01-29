@@ -17,6 +17,8 @@ env:
 jobs:
   setup-tests:
     runs-on: ubicloud-standard-8
+    env:
+      CI: "1"
     steps:
       - uses: actions/checkout@v6
 
@@ -43,15 +45,21 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - name: Run tests (no watch)
-        env:
-          CI: "1"
-        run: pnpm run test --reporter=verbose -- --run --watch=false
+      - name: Run tests (debug cancellation)
+        run: |
+          set +e
+          trap 'echo "Received SIGTERM during tests"; pgrep -a node || true; ps -eo pid,ppid,pgid,comm | rg -n "node|vitest|pnpm|turbo" || true' TERM
+          pnpm run test --reporter=verbose -- --run --watch=false
+          status=$?
+          echo "Test exit code: $status"
+          exit $status
 
       - name: Debug running processes
         if: always()
         run: |
           echo "CI=$CI"
+          echo "Runner: $RUNNER_NAME $RUNNER_OS $RUNNER_ARCH"
+          echo "GitHub event: $GITHUB_EVENT_NAME"
           node -v
           pnpm -v
           pgrep -a node || true

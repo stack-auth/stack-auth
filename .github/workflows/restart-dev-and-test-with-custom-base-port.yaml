@@ -19,6 +19,7 @@ jobs:
     runs-on: ubicloud-standard-8
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
+      CI: "1"
 
     steps:
       - uses: actions/checkout@v6
@@ -37,10 +38,14 @@ jobs:
       - name: Start dev environment
         run: pnpm run restart-dev-environment
 
-      - name: Run tests (no watch)
-        env:
-          CI: "1"
-        run: pnpm run test --reporter=verbose -- --run --watch=false
+      - name: Run tests (debug cancellation)
+        run: |
+          set +e
+          trap 'echo "Received SIGTERM during tests"; pgrep -a node || true; ps -eo pid,ppid,pgid,comm | rg -n "node|vitest|pnpm|turbo" || true' TERM
+          pnpm run test --reporter=verbose -- --run --watch=false
+          status=$?
+          echo "Test exit code: $status"
+          exit $status
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt
@@ -50,6 +55,8 @@ jobs:
         if: always()
         run: |
           echo "CI=$CI"
+          echo "Runner: $RUNNER_NAME $RUNNER_OS $RUNNER_ARCH"
+          echo "GitHub event: $GITHUB_EVENT_NAME"
           node -v
           pnpm -v
           pgrep -a node || true
