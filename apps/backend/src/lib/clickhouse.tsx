@@ -73,7 +73,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
     }>();
   };
 
-  const retryDelaysMs = [75, 150, 300];
+  const retryDelaysMs = [75, 150, 300, 600, 1200];
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     const stats = await queryProfile();
     if (stats.data.length === 1) {
