@@ -88,3 +88,206 @@ it("should allow adding and updating email templates with custom email config", 
     }
   `);
 });
+
+it("should reject template that throws an error", async ({ expect }) => {
+  await Auth.fastSignUp();
+  await Project.createAndSwitch({
+    config: {
+      email_config: {
+        type: 'standard',
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'test@example.com',
+        password: 'password123',
+        sender_name: 'Test App',
+        sender_email: 'noreply@example.com'
+      }
+    }
+  });
+
+  const updateResponse = await niceBackendFetch("/api/v1/internal/email-templates/a70fb3a4-56c1-4e42-af25-49d25603abd0", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      tsx_source: `
+        import { Subject, NotificationCategory } from '@stackframe/emails';
+        export const variablesSchema = (v) => v;
+        export function EmailTemplate() {
+          throw new Error('Intentional error from template');
+        }
+      `,
+    },
+  });
+
+  expect(updateResponse.status).toBe(400);
+  expect(updateResponse.body).toMatchInlineSnapshot(`
+    {
+      "code": "EMAIL_RENDERING_ERROR",
+      "details": { "error": "{\\"message\\":\\"Intentional error from template\\",\\"stack\\":\\"Error: Intentional error from template\\\\n    at EmailTemplate (/app/tmp/job-<stripped UUID>/script.ts:100:13)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:226:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
+      "error": "Failed to render email with theme: {\\"message\\":\\"Intentional error from template\\",\\"stack\\":\\"Error: Intentional error from template\\\\n    at EmailTemplate (/app/tmp/job-<stripped UUID>/script.ts:100:13)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:226:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
+    }
+  `);
+});
+
+it("should reject template that does not export EmailTemplate function", async ({ expect }) => {
+  await Auth.fastSignUp();
+  await Project.createAndSwitch({
+    config: {
+      email_config: {
+        type: 'standard',
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'test@example.com',
+        password: 'password123',
+        sender_name: 'Test App',
+        sender_email: 'noreply@example.com'
+      }
+    }
+  });
+
+  const updateResponse = await niceBackendFetch("/api/v1/internal/email-templates/a70fb3a4-56c1-4e42-af25-49d25603abd0", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      tsx_source: `
+        import { Subject, NotificationCategory } from '@stackframe/emails';
+        export const variablesSchema = (v) => v;
+        export function WrongFunctionName() {
+          return <div>This should fail</div>;
+        }
+      `,
+    },
+  });
+
+  expect(updateResponse.status).toBe(400);
+  expect(updateResponse.body).toMatchInlineSnapshot(`
+    {
+      "code": "EMAIL_RENDERING_ERROR",
+      "details": { "error": "{\\"message\\":\\"undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\",\\"stack\\":\\"TypeError: undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:217:95)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:45:61)\\\\n    at new Promise (native:1:11)\\\\n    at __async (/app/tmp/job-<stripped UUID>/script.ts:29:14)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:238:26)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
+      "error": "Failed to render email with theme: {\\"message\\":\\"undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\",\\"stack\\":\\"TypeError: undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:217:95)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:45:61)\\\\n    at new Promise (native:1:11)\\\\n    at __async (/app/tmp/job-<stripped UUID>/script.ts:29:14)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:238:26)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
+    }
+  `);
+});
+
+it("should reject template with invalid JSX syntax", async ({ expect }) => {
+  await Auth.fastSignUp();
+  await Project.createAndSwitch({
+    config: {
+      email_config: {
+        type: 'standard',
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'test@example.com',
+        password: 'password123',
+        sender_name: 'Test App',
+        sender_email: 'noreply@example.com'
+      }
+    }
+  });
+
+  const updateResponse = await niceBackendFetch("/api/v1/internal/email-templates/a70fb3a4-56c1-4e42-af25-49d25603abd0", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      tsx_source: `
+        export function EmailTemplate() {
+          return <div><span>unclosed tag
+        }
+      `,
+    },
+  });
+
+  expect(updateResponse.status).toBe(400);
+  expect(updateResponse.body).toMatchInlineSnapshot(`
+    {
+      "code": "EMAIL_RENDERING_ERROR",
+      "details": {
+        "error": deindent\`
+          Build failed with 2 errors:
+          virtual:/template.tsx:4:8: ERROR: The character "}" is not valid inside a JSX element
+          virtual:/template.tsx:5:6: ERROR: Unexpected end of file before a closing "span" tag
+        \`,
+      },
+      "error": deindent\`
+        Failed to render email with theme: Build failed with 2 errors:
+        virtual:/template.tsx:4:8: ERROR: The character "}" is not valid inside a JSX element
+        virtual:/template.tsx:5:6: ERROR: Unexpected end of file before a closing "span" tag
+      \`,
+    }
+  `);
+});
+
+it.todo("should reject template that causes infinite loop during rendering", async ({ expect }) => {
+  await Auth.fastSignUp();
+  await Project.createAndSwitch({
+    config: {
+      email_config: {
+        type: 'standard',
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'test@example.com',
+        password: 'password123',
+        sender_name: 'Test App',
+        sender_email: 'noreply@example.com'
+      }
+    }
+  });
+
+  const updateResponse = await niceBackendFetch("/api/v1/internal/email-templates/a70fb3a4-56c1-4e42-af25-49d25603abd0", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      tsx_source: `
+        import { Subject, NotificationCategory } from '@stackframe/emails';
+        export const variablesSchema = (v) => v;
+        export function EmailTemplate() {
+          while (true) {}
+          return <div>Never reached</div>;
+        }
+      `,
+    },
+  });
+
+  // Should timeout or return an error, not hang indefinitely
+  expect(updateResponse.status).toBe(400);
+  expect(updateResponse.body).toMatchInlineSnapshot("todo");
+});
+
+it.todo("should reject template that allocates too much memory", async ({ expect }) => {
+  await Auth.fastSignUp();
+  await Project.createAndSwitch({
+    config: {
+      email_config: {
+        type: 'standard',
+        host: 'smtp.example.com',
+        port: 587,
+        username: 'test@example.com',
+        password: 'password123',
+        sender_name: 'Test App',
+        sender_email: 'noreply@example.com'
+      }
+    }
+  });
+
+  const updateResponse = await niceBackendFetch("/api/v1/internal/email-templates/a70fb3a4-56c1-4e42-af25-49d25603abd0", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      tsx_source: `
+        import { Subject, NotificationCategory } from '@stackframe/emails';
+        export const variablesSchema = (v) => v;
+        export function EmailTemplate() {
+          const arr = [];
+          for (let i = 0; i < 1e9; i++) {
+            arr.push(new Array(1e6).fill('x'));
+          }
+          return <div>{arr.length}</div>;
+        }
+      `,
+    },
+  });
+
+  // Should fail due to memory limits, not hang or crash the server
+  expect(updateResponse.status).toBe(400);
+  expect(updateResponse.body).toMatchInlineSnapshot("todo");
+});
