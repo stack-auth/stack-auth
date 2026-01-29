@@ -1,4 +1,4 @@
-import { executeJavascript } from '@/lib/js-execution';
+import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
 import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -70,12 +70,10 @@ const entryJs = deindent`
 `;
 
 type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
-type ExecuteResult =
-  | { status: "ok", data: unknown }
-  | { status: "error", error: unknown };
 
 async function bundleAndExecute<T>(
-  files: Record<string, string> & { '/entry.js': string }
+  files: Record<string, string> & { '/entry.js': string },
+  shouldCaptureErrors: boolean = true,
 ): Promise<Result<T, string>> {
   const bundle = await bundleJavaScript(files, {
     keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
@@ -100,24 +98,28 @@ async function bundleAndExecute<T>(
   if (executeResult.status === "error") {
     const vercelResult = await executeJavascript(bundle.data, { nodeModules, engine: 'vercel-sandbox' }) as ExecuteResult;
     if (vercelResult.status === "error") {
-      captureError("email-rendering-freestyle-and-vercel-runtime-error", new StackAssertionError(
-        "Email rendering failed with both freestyle and vercel-sandbox engines",
-        {
-          freestyleError: executeResult.error,
-          vercelError: vercelResult.error,
-          innerCode: bundle.data,
-          innerOptions: [
-            { nodeModules, engine: 'freestyle' },
-            { nodeModules, engine: 'vercel-sandbox' },
-          ],
-        },
-      ));
+      if (shouldCaptureErrors) {
+        captureError("email-rendering-freestyle-and-vercel-runtime-error", new StackAssertionError(
+          "Email rendering failed with both freestyle and vercel-sandbox engines",
+          {
+            freestyleError: executeResult.error,
+            vercelError: vercelResult.error,
+            innerCode: bundle.data,
+            innerOptions: [
+              { nodeModules, engine: 'freestyle' },
+              { nodeModules, engine: 'vercel-sandbox' },
+            ],
+          },
+        ));
+      }
       return Result.error(JSON.stringify(vercelResult.error));
     }
-    captureError("email-rendering-freestyle-runtime-error", new StackAssertionError(
-      "Email rendering failed with freestyle but succeeded with vercel-sandbox",
-      { freestyleError: executeResult.error, innerCode: bundle.data, innerOptions: { nodeModules, engine: 'freestyle' } }
-    ));
+    if (shouldCaptureErrors) {
+      captureError("email-rendering-freestyle-runtime-error", new StackAssertionError(
+        "Email rendering failed with freestyle but succeeded with vercel-sandbox",
+        { freestyleError: executeResult.error, innerCode: bundle.data, innerOptions: { nodeModules, engine: 'freestyle' } }
+      ));
+    }
     return Result.ok(vercelResult.data as T);
   }
 
@@ -195,7 +197,7 @@ export async function renderEmailWithTemplate(
     "/entry.js": entryJs,
   };
 
-  return await bundleAndExecute<EmailRenderResult>(files);
+  return await bundleAndExecute<EmailRenderResult>(files, !previewMode);
 }
 
 export type RenderEmailRequestForTenancy = {
