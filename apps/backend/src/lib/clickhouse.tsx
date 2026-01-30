@@ -10,14 +10,6 @@ const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PAS
 const clickhouseDefaultDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default");
 const HAS_CLICKHOUSE = !!clickhouseUrl && !!clickhouseAdminPassword && !!clickhouseExternalPassword;
 
-if (!HAS_CLICKHOUSE) {
-  console.warn("ClickHouse is not configured. Analytics features will not be available.");
-}
-
-export function isClickhouseConfigured() {
-  return HAS_CLICKHOUSE;
-}
-
 export function createClickhouseClient(authType: "admin" | "external", database?: string) {
   if (!HAS_CLICKHOUSE) {
     throw new StackAssertionError("ClickHouse is not configured");

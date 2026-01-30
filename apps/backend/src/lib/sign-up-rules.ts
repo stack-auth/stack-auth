@@ -1,37 +1,33 @@
-import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import type { SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { CelEvaluationError, evaluateCelExpression, SignUpRuleContext } from "./cel-evaluator";
+import { logEvent, SystemEventTypes } from "./events";
 import { Tenancy } from "./tenancies";
 
 /**
- * Logs a sign-up rule trigger to the database for analytics.
+ * Logs a sign-up rule trigger as a ClickHouse event for analytics.
  * This runs asynchronously and doesn't block the signup flow.
  */
 async function logRuleTrigger(
-  tenancyId: string,
+  tenancy: Tenancy,
   ruleId: string,
   context: SignUpRuleContext,
   action: SignUpRuleAction,
   userId?: string
 ): Promise<void> {
   try {
-    // Context is already normalized via createSignUpRuleContext
-    await globalPrismaClient.signupRuleTrigger.create({
-      data: {
-        tenancyId,
-        ruleId,
-        userId,
-        action: action.type,
-        metadata: {
-          email: context.email,
-          emailDomain: context.emailDomain || null,
-          authMethod: context.authMethod,
-          oauthProvider: context.oauthProvider,
-        },
-      },
+    await logEvent([SystemEventTypes.SignUpRuleTrigger], {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      ruleId,
+      action: action.type,
+      userId: userId ?? null,
+      email: context.email,
+      emailDomain: context.emailDomain,
+      authMethod: context.authMethod,
+      oauthProvider: context.oauthProvider,
     });
   } catch (e) {
     // Don't fail the signup if logging fails
@@ -89,7 +85,7 @@ export async function evaluateSignUpRules(
       };
 
       // log asynchronously
-      runAsynchronouslyAndWaitUntil(logRuleTrigger(tenancy.id, ruleId, context, action));
+      runAsynchronouslyAndWaitUntil(logRuleTrigger(tenancy, ruleId, context, action));
 
       // apply the action
       if (actionType === 'restrict') {

@@ -61,7 +61,7 @@ type ConfigWithSignUpRules = CompleteConfig & {
   },
 };
 
-// Sparkline component for rule analytics
+// Compact sparkline component for rule analytics (inline next to buttons)
 function RuleSparkline({
   data,
   totalCount,
@@ -69,36 +69,26 @@ function RuleSparkline({
   data: { hour: string, count: number }[],
   totalCount: number,
 }) {
-  if (data.length === 0) {
-    return (
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <span className="text-xs">No activity</span>
-      </div>
-    );
+  if (data.length === 0 || totalCount === 0) {
+    return null;
   }
 
-  // Use full 48h window for accurate per-hour rate
-  const avgPerHour = totalCount / 48;
-  const rateLabel = avgPerHour < 1
-    ? `${totalCount}/48h`
-    : `${avgPerHour.toFixed(1)}/h`;
-
   return (
-    <div className="flex items-center gap-2">
-      <ResponsiveContainer width={60} height={24}>
+    <div className="flex items-center gap-1">
+      <ResponsiveContainer width={40} height={20}>
         <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
           <Area
             type="monotone"
             dataKey="count"
             stroke="currentColor"
-            strokeWidth={1.5}
+            strokeWidth={1}
             fill="currentColor"
-            fillOpacity={0.1}
-            className="text-primary"
+            fillOpacity={0.15}
+            className="text-muted-foreground"
           />
         </AreaChart>
       </ResponsiveContainer>
-      <span className="text-xs text-muted-foreground whitespace-nowrap">{rateLabel}</span>
+      <span className="text-[10px] text-muted-foreground tabular-nums">{totalCount}</span>
     </div>
   );
 }
@@ -368,22 +358,21 @@ function SortableRuleRow({
         </Typography>
       </div>
 
-      {/* Sparkline chart for analytics */}
-      {analytics && (
-        <div className="hidden sm:block w-28">
-          <RuleSparkline
-            data={analytics.hourlyCounts}
-            totalCount={analytics.totalCount}
-          />
-        </div>
-      )}
-
-      {/* Actions - edit and delete */}
+      {/* Actions - sparkline, edit, and delete */}
       <div
         className="flex items-center gap-1"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
+        {/* Sparkline chart inline */}
+        {analytics && analytics.totalCount > 0 && (
+          <div className="hidden sm:flex items-center mr-1" title={`${analytics.totalCount} triggers in last 48h`}>
+            <RuleSparkline
+              data={analytics.hourlyCounts}
+              totalCount={analytics.totalCount}
+            />
+          </div>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -499,7 +488,7 @@ function useSignUpRulesAnalytics() {
 
     const fetchAnalytics = async () => {
       const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
-        '/internal/sign-up-rules',
+        '/internal/sign-up-rules-stats',
         { method: 'GET' },
         'admin' // Required for internal endpoints
       );

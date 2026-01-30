@@ -1,4 +1,4 @@
-import { getClickhouseExternalClient, getQueryTimingStats, isClickhouseConfigured } from "@/lib/clickhouse";
+import { getClickhouseExternalClient, getQueryTimingStats } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -34,9 +34,6 @@ export const POST = createSmartRouteHandler({
   async handler({ body, auth }) {
     if (body.include_all_branches) {
       throw new StackAssertionError("include_all_branches is not supported yet");
-    }
-    if (!isClickhouseConfigured()) {
-      throw new StackAssertionError("ClickHouse is not configured");
     }
     const client = getClickhouseExternalClient();
     const queryId = randomUUID();

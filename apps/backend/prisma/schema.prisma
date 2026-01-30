@@ -200,8 +200,8 @@ model ProjectUser {
   isAnonymous            Boolean @default(false)
 
   // Admin restriction fields - can be set by signup rules or manually by admins
-  restrictedByAdmin              Boolean @default(false)
-  restrictedByAdminReason        String? // Publicly viewable reason (shown to user)
+  restrictedByAdmin               Boolean @default(false)
+  restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
@@ -1057,20 +1057,4 @@ model SubscriptionInvoice {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeInvoiceId])
-}
-
-// Signup Rules Analytics
-model SignupRuleTrigger {
-  id        String   @default(uuid()) @db.Uuid
-  tenancyId String   @db.Uuid
-  ruleId    String
-  userId    String?  @db.Uuid // User ID if created, null if rejected
-  action    String   // allow, reject, restrict, log, add_metadata
-  metadata  Json?    // matched conditions, IP, country, etc.
-
-  triggeredAt DateTime @default(now())
-
-  @@id([tenancyId, id])
-  @@index([tenancyId, ruleId, triggeredAt])
-  @@index([tenancyId, triggeredAt])
 }
