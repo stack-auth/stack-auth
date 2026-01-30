@@ -100,6 +100,9 @@ jobs:
 
       - name: Wait on Svix
         run: pnpx wait-on tcp:localhost:8113
+      
+      - name: Wait on QStash
+        run: pnpx wait-on tcp:localhost:8125
 
       - name: Initialize database
         run: pnpm run db:init
@@ -153,16 +156,31 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
+      - name: Prime external DB sync
+        run: |
+          set -euo pipefail
+          set -a
+          source apps/backend/.env.test.local
+          set +a
+          baseUrl="http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02"
+          for _ in 1 2 3; do
+            curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${baseUrl}/api/latest/internal/external-db-sync/sequencer" >/dev/null
+            curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${baseUrl}/api/latest/internal/external-db-sync/poller" >/dev/null
+            sleep 2
+          done
+
       - name: Run tests
-        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Run tests again, to make sure they are stable (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Run tests again, to make sure they are stable (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
