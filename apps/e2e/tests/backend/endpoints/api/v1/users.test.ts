@@ -673,7 +673,6 @@ describe("with client access", () => {
           "profile_image_url": null,
           "requires_totp_mfa": false,
           "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
           "selected_team": {
