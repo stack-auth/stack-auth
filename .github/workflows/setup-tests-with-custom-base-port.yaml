@@ -20,7 +20,9 @@ jobs:
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
       STACK_FORCE_EXTERNAL_DB_SYNC: "true"
-      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "5000"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "true"
+      NEXT_PUBLIC_STACK_API_URL: "http://host.docker.internal:6902"
 
     steps:
       - uses: actions/checkout@v6
@@ -48,4 +50,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
+      - run: pnpx wait-on tcp:localhost:6925 -t 60000
       - run: pnpm run test run --reporter=verbose

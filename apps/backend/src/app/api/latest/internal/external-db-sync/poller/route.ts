@@ -14,6 +14,7 @@ import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/e
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
+const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -22,6 +23,15 @@ function parseMaxDurationMs(value: string | undefined): number {
     throw new StatusError(400, "maxDurationMs must be a positive integer");
   }
   return parsed;
+}
+
+function directSyncEnabled(): boolean {
+  return getEnvVariable(DIRECT_SYNC_ENV, "") === "true";
+}
+
+function getLocalApiBaseUrl(): string {
+  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+  return `http://localhost:${prefix}02`;
 }
 
 export const GET = createSmartRouteHandler({
@@ -113,11 +123,25 @@ export const GET = createSmartRouteHandler({
             }
           }
 
-
-          await upstash.publishJSON({
-            url: fullUrl,
-            body: options.body,
-          });
+          if (directSyncEnabled()) {
+            const directUrl = new URL(options.url, getLocalApiBaseUrl()).toString();
+            const res = await fetch(directUrl, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "upstash-signature": "test-bypass",
+              },
+              body: JSON.stringify(options.body),
+            });
+            if (!res.ok) {
+              throw new StatusError(res.status, `Direct sync failed: ${res.status} ${res.statusText}`);
+            }
+          } else {
+            await upstash.publishJSON({
+              url: fullUrl,
+              body: options.body,
+            });
+          }
 
           await deleteOutgoingRequest(request.id);
         }),

@@ -20,7 +20,9 @@ jobs:
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       STACK_FORCE_EXTERNAL_DB_SYNC: "true"
-      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "5000"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "true"
+      NEXT_PUBLIC_STACK_API_URL: "http://host.docker.internal:8102"
 
     strategy:
       matrix:
@@ -49,6 +51,9 @@ jobs:
           tail: true
           wait-for: 3s
           log-output-if: true
+
+      - name: Wait for QStash
+        run: pnpx wait-on tcp:localhost:8125 -t 60000
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
