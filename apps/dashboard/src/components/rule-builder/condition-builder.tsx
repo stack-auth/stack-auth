@@ -66,8 +66,8 @@ function ConditionRow({
     const newOperators = getOperatorsForField(field);
     const operator = newOperators.includes(condition.operator) ? condition.operator : newOperators[0];
 
-    // Reset value
-    const value: string | string[] = '';
+    // Reset value - use array for in_list, string otherwise
+    const value: string | string[] = operator === 'in_list' ? [] : '';
 
     onChange({ ...condition, field, operator, value });
   };

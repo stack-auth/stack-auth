@@ -1,5 +1,25 @@
 import { evaluate } from "cel-js";
 import RE2 from "re2";
+import { normalizeEmail } from "./emails";
+
+/**
+ * Custom error class for CEL evaluation failures.
+ * Used to distinguish CEL-specific errors from other unexpected errors.
+ */
+export class CelEvaluationError extends Error {
+  public readonly customCaptureExtraArgs: unknown[];
+
+  constructor(
+    message: string,
+    public readonly expression: string,
+    public readonly cause?: unknown
+  ) {
+    super(message);
+    this.name = 'CelEvaluationError';
+    // Extra context for structured logging via captureError
+    this.customCaptureExtraArgs = [{ expression, cause }];
+  }
+}
 
 /**
  * Context variables available for sign-up rule CEL expressions.
@@ -122,9 +142,13 @@ export function evaluateCelExpression(
     const result = evaluate(transformedExpr, extendedContext);
     return Boolean(result);
   } catch (e) {
-    // Log the error but return false for safety
-    console.error('CEL evaluation error:', e);
-    return false;
+    // Wrap CEL evaluation errors with context and rethrow
+    // Callers should catch CelEvaluationError specifically
+    throw new CelEvaluationError(
+      `Failed to evaluate CEL expression: ${expression}`,
+      expression,
+      e
+    );
   }
 }
 
@@ -136,12 +160,21 @@ export function evaluateCelExpression(
  * @returns SignUpRuleContext ready for CEL evaluation
  */
 export function createSignUpRuleContext(params: {
-  email: string,
+  email?: string,
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider?: string,
 }): SignUpRuleContext {
-  const email = params.email;
-  const emailDomain = email.includes('@') ? (email.split('@').pop() ?? '').toLowerCase() : '';
+  // Handle missing email (e.g., OAuth providers that don't return email)
+  // Use empty string so email-based rules don't match
+  let email = '';
+  let emailDomain = '';
+
+  if (params.email) {
+    // Normalize email to match how it's stored in the database
+    email = normalizeEmail(params.email);
+    // Extract domain from normalized email
+    emailDomain = email.includes('@') ? (email.split('@').pop() ?? '') : '';
+  }
 
   return {
     email,
@@ -150,3 +183,74 @@ export function createSignUpRuleContext(params: {
     oauthProvider: params.oauthProvider ?? '',
   };
 }
+
+// Unit tests
+import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
+  // Should normalize email
+  expect(createSignUpRuleContext({
+    email: 'Test.User@Example.COM',
+    authMethod: 'password',
+  })).toEqual({
+    email: 'test.user@example.com',
+    emailDomain: 'example.com',
+    authMethod: 'password',
+    oauthProvider: '',
+  });
+
+  // Should handle missing email (OAuth providers without email)
+  expect(createSignUpRuleContext({
+    email: undefined,
+    authMethod: 'oauth',
+    oauthProvider: 'discord',
+  })).toEqual({
+    email: '',
+    emailDomain: '',
+    authMethod: 'oauth',
+    oauthProvider: 'discord',
+  });
+
+  // Should handle empty string email
+  expect(createSignUpRuleContext({
+    email: '',
+    authMethod: 'oauth',
+    oauthProvider: 'twitter',
+  })).toEqual({
+    email: '',
+    emailDomain: '',
+    authMethod: 'oauth',
+    oauthProvider: 'twitter',
+  });
+
+  // Should handle OAuth with email
+  expect(createSignUpRuleContext({
+    email: 'oauth.user@gmail.com',
+    authMethod: 'oauth',
+    oauthProvider: 'google',
+  })).toEqual({
+    email: 'oauth.user@gmail.com',
+    emailDomain: 'gmail.com',
+    authMethod: 'oauth',
+    oauthProvider: 'google',
+  });
+});
+
+import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ expect }) => {
+  // When email is empty, email-based conditions should not match
+  const context = createSignUpRuleContext({
+    email: undefined,
+    authMethod: 'oauth',
+    oauthProvider: 'discord',
+  });
+
+  // Email-based conditions should fail when email is empty
+  expect(evaluateCelExpression('email == "test@example.com"', context)).toBe(false);
+  expect(evaluateCelExpression('email.contains("@")', context)).toBe(false);
+  expect(evaluateCelExpression('emailDomain == "example.com"', context)).toBe(false);
+
+  // But authMethod-based conditions should still work
+  expect(evaluateCelExpression('authMethod == "oauth"', context)).toBe(true);
+  expect(evaluateCelExpression('oauthProvider == "discord"', context)).toBe(true);
+
+  // Empty email should match empty string
+  expect(evaluateCelExpression('email == ""', context)).toBe(true);
+});

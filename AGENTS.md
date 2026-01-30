@@ -96,6 +96,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
+- Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible. 
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

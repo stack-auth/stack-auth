@@ -34,7 +34,6 @@ export const GET = createSmartRouteHandler({
         reject: yupNumber().integer().defined(),
         restrict: yupNumber().integer().defined(),
         log: yupNumber().integer().defined(),
-        add_metadata: yupNumber().integer().defined(),
       }).defined(),
     }).defined(),
   }),
@@ -73,7 +72,6 @@ export const GET = createSmartRouteHandler({
       reject: 0,
       restrict: 0,
       log: 0,
-      add_metadata: 0,
     };
 
     for (const trigger of triggers) {

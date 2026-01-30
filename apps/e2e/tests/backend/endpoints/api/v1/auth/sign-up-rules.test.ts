@@ -760,6 +760,117 @@ describe("sign-up rules", () => {
     expect(passwordRes.signUpResponse.status).toBe(200);
   });
 
+  it("should match authMethod condition for OAuth signup", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        oauth_providers: [{ id: "spotify", type: "shared" }],
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.block-oauth': {
+        enabled: true,
+        displayName: 'Block OAuth signups',
+        priority: 0,
+        condition: 'authMethod == "oauth"',
+        action: {
+          type: 'reject',
+          message: 'OAuth signups are not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // OAuth signup should be rejected
+    const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      code: 'SIGN_UP_REJECTED',
+    });
+  });
+
+  it("should match oauthProvider condition for specific OAuth provider", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        oauth_providers: [{ id: "spotify", type: "shared" }],
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.block-spotify': {
+        enabled: true,
+        displayName: 'Block Spotify signups',
+        priority: 0,
+        condition: 'oauthProvider == "spotify"',
+        action: {
+          type: 'reject',
+          message: 'Spotify signups are not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Spotify OAuth signup should be rejected
+    const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      code: 'SIGN_UP_REJECTED',
+    });
+  });
+
+  it("should allow OAuth signup when rule blocks different provider", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        oauth_providers: [{ id: "spotify", type: "shared" }],
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.block-google': {
+        enabled: true,
+        displayName: 'Block Google signups',
+        priority: 0,
+        condition: 'oauthProvider == "google"',
+        action: {
+          type: 'reject',
+          message: 'Google signups are not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Spotify OAuth signup should work (rule targets Google)
+    const response = await Auth.OAuth.signIn();
+    expect(response.tokenResponse.status).toBe(200);
+  });
+
+  it("should allow OAuth signup when email-based rule exists but email does not match", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        oauth_providers: [{ id: "spotify", type: "shared" }],
+      },
+    });
+
+    // Rule that blocks a specific email domain
+    await Project.updateConfig({
+      'auth.signUpRules.block-example-domain': {
+        enabled: true,
+        displayName: 'Block example.com domain',
+        priority: 0,
+        condition: 'emailDomain == "blocked-domain.com"',
+        action: {
+          type: 'reject',
+          message: 'This domain is not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // OAuth signup should work (email from OAuth mock uses different domain)
+    const response = await Auth.OAuth.signIn();
+    expect(response.tokenResponse.status).toBe(200);
+  });
+
   // ==========================================
   // COMPOUND CONDITIONS (AND/OR)
   // ==========================================
@@ -1912,125 +2023,6 @@ describe("sign-up rules", () => {
     expect(afterResponse.body.restricted_by_admin).toBe(false);
     expect(afterResponse.body.restricted_by_admin_reason).toBe(null);
     expect(afterResponse.body.restricted_by_admin_private_details).toBe(null);
-  });
-
-  // ==========================================
-  // METADATA WITH TARGET
-  // ==========================================
-
-  it("should add metadata to correct target when add_metadata action matches", async ({ expect }) => {
-    await Project.createAndSwitch({
-      config: {
-        credential_enabled: true,
-      },
-    });
-
-    await Project.updateConfig({
-      'auth.signUpRules.add-metadata-rule': {
-        enabled: true,
-        displayName: 'Add metadata for test domain',
-        priority: 0,
-        condition: 'emailDomain == "metadata-test.com"',
-        action: {
-          type: 'add_metadata',
-          metadata: {
-            'signup_source': { value: 'test_domain', target: 'server' },
-            'user_tier': { value: 'standard', target: 'client_read_only' },
-            'preferences': { value: 'default', target: 'client' },
-          },
-        },
-      },
-      'auth.signUpRulesDefaultAction': 'allow',
-    });
-
-    const email = `user-${generateSecureRandomString(8)}@metadata-test.com`;
-    const password = generateSecureRandomString();
-
-    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-      method: "POST",
-      accessType: "client",
-      body: { email, password },
-    });
-
-    expect(response.status).toBe(200);
-    const userId = response.body.user_id;
-
-    // Get user with admin access to see all metadata
-    const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
-      method: "GET",
-      accessType: "admin",
-    });
-
-    expect(userResponse.status).toBe(200);
-    expect(userResponse.body.server_metadata).toMatchObject({
-      signup_source: 'test_domain',
-    });
-    expect(userResponse.body.client_read_only_metadata).toMatchObject({
-      user_tier: 'standard',
-    });
-    expect(userResponse.body.client_metadata).toMatchObject({
-      preferences: 'default',
-    });
-  });
-
-  it("should merge metadata from sign-up rule with existing metadata", async ({ expect }) => {
-    await Project.createAndSwitch({
-      config: {
-        credential_enabled: true,
-      },
-    });
-
-    await Project.updateConfig({
-      'auth.signUpRules.add-tag': {
-        enabled: true,
-        displayName: 'Add signup tag',
-        priority: 0,
-        condition: 'true',
-        action: {
-          type: 'add_metadata',
-          metadata: {
-            'signup_tag': { value: 'via_rule', target: 'server' },
-          },
-        },
-      },
-      'auth.signUpRulesDefaultAction': 'allow',
-    });
-
-    // First, sign up a user
-    const email = `user-${generateSecureRandomString(8)}@example.com`;
-    const password = generateSecureRandomString();
-
-    const signUpResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-      method: "POST",
-      accessType: "client",
-      body: { email, password },
-    });
-    expect(signUpResponse.status).toBe(200);
-    const userId = signUpResponse.body.user_id;
-
-    // Then add some additional metadata manually
-    const updateResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
-      method: "PATCH",
-      accessType: "admin",
-      body: {
-        server_metadata: {
-          signup_tag: 'via_rule',  // Keep the original
-          manual_tag: 'added_later',  // Add new
-        },
-      },
-    });
-    expect(updateResponse.status).toBe(200);
-
-    // Verify both metadata exist
-    const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
-      method: "GET",
-      accessType: "admin",
-    });
-
-    expect(userResponse.body.server_metadata).toMatchObject({
-      signup_tag: 'via_rule',
-      manual_tag: 'added_later',
-    });
   });
 
   // ==========================================

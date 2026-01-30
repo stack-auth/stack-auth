@@ -14,6 +14,7 @@ import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
+import { stringCompare } from "../utils/strings";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
@@ -121,30 +122,6 @@ const branchAppsSchema = yupObject({
 // --- END NEW Apps Schema ---
 
 
-const branchSignUpRuleSchema = yupObject({
-  enabled: yupBoolean(),
-  displayName: yupString(),
-  // Priority for rule ordering (lower = higher priority, evaluated first)
-  // Rules with same priority are sorted alphabetically by ID
-  priority: yupNumber().integer().min(0),
-  // CEL expression string - evaluated against signup context
-  // Example: 'email.endsWith("@gmail.com") && authMethod == "password"'
-  condition: yupString(),
-  action: yupObject({
-    type: yupString().oneOf(['allow', 'reject', 'restrict', 'log', 'add_metadata']).defined(),
-    // For add_metadata action: each entry has a value and a target (client, client_read_only, or server)
-    metadata: yupRecord(yupString(), yupObject({
-      value: yupUnion(
-        yupString().defined(),
-        yupNumber().defined(),
-        yupBoolean().defined(),
-      ),
-      target: yupString().oneOf(['client', 'client_read_only', 'server']).defined(),
-    })).optional(),
-    message: yupString().optional(), // for reject action custom message (internal use, not shown to user)
-  }),
-});
-
 const branchAuthSchema = yupObject({
   allowSignUp: yupBoolean(),
   password: yupObject({
@@ -167,12 +144,23 @@ const branchAuthSchema = yupObject({
       }),
     ),
   }),
-  // Sign-up rules - CEL-based rules for controlling who can sign up
   signUpRules: yupRecord(
     userSpecifiedIdSchema("signUpRuleId"),
-    branchSignUpRuleSchema,
+    yupObject({
+      enabled: yupBoolean(),
+      displayName: yupString(),
+      // Priority for rule ordering (lower = higher priority, evaluated first)
+      // Rules with same priority are sorted alphabetically by ID
+      priority: yupNumber().integer().min(0),
+      // CEL expression string - evaluated against signup context
+      // Example: 'email.endsWith("@gmail.com") && authMethod == "password"'
+      condition: yupString(),
+      action: yupObject({
+        type: yupString().oneOf(['allow', 'reject', 'restrict', 'log']).defined(),
+        message: yupString().optional(), // for reject action custom message (internal use, not shown to user)
+      }),
+    }),
   ),
-  // Default action when no sign-up rules match
   signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
 });
 
@@ -895,6 +883,16 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
 
+  // Get all enabled sign-up rules and sort by priority (descending), then by ID (alphabetically)
+  const sortedRuleEntries = typedEntries(prepared.auth.signUpRules)
+    .filter(([, rule]) => rule.enabled !== false)
+    .sort((a, b) => {
+      const priorityA = a[1].priority;
+      const priorityB = b[1].priority;
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      return stringCompare(a[0], b[0]);
+    });
+
   return {
     ...prepared,
     auth: {
@@ -903,6 +901,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
         ...prepared.auth.oauth,
         providers: typedFromEntries(typedEntries(prepared.auth.oauth.providers).filter(([key, value]) => value.type !== undefined)),
       },
+      signUpRules: typedFromEntries(sortedRuleEntries),
     },
     emails: {
       ...prepared.emails,

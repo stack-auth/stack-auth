@@ -603,6 +603,23 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       const config = auth.tenancy.config;
 
+      // Validate restricted_by_admin fields consistency
+      const restrictedByAdmin = data.restricted_by_admin ?? false;
+      let restrictedByAdminReason = data.restricted_by_admin_reason === undefined
+        ? undefined
+        : (data.restricted_by_admin_reason || null);
+      let restrictedByAdminPrivateDetails = data.restricted_by_admin_private_details === undefined
+        ? undefined
+        : (data.restricted_by_admin_private_details || null);
+
+      if (!restrictedByAdmin) {
+        if (restrictedByAdminReason != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_reason requires restricted_by_admin=true");
+        }
+        if (restrictedByAdminPrivateDetails != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_private_details requires restricted_by_admin=true");
+        }
+      }
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -616,9 +633,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
-          restrictedByAdmin: data.restricted_by_admin ?? false,
-          restrictedByAdminReason: data.restricted_by_admin_reason === undefined ? undefined : (data.restricted_by_admin_reason || null),
-          restrictedByAdminPrivateDetails: data.restricted_by_admin_private_details === undefined ? undefined : (data.restricted_by_admin_private_details || null),
+          restrictedByAdmin,
+          restrictedByAdminReason,
+          restrictedByAdminPrivateDetails,
         },
         include: userFullInclude,
       });
@@ -1086,17 +1103,20 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         ? undefined
         : (data.restricted_by_admin_private_details || null);
 
-      if (data.restricted_by_admin !== true) {
+      // Compute effective restricted flag considering existing value for PATCH updates
+      const effectiveRestrictedByAdmin = data.restricted_by_admin ?? oldUser.restrictedByAdmin;
+
+      if (!effectiveRestrictedByAdmin) {
+        // User is not (or will not be) restricted - reason/details must not be provided
         if (restrictedByAdminReason != null) {
           throw new StatusError(StatusError.BadRequest, "restricted_by_admin_reason requires restricted_by_admin=true");
         }
         if (restrictedByAdminPrivateDetails != null) {
           throw new StatusError(StatusError.BadRequest, "restricted_by_admin_private_details requires restricted_by_admin=true");
         }
-        if (data.restricted_by_admin === false) {
-          restrictedByAdminReason = null;
-          restrictedByAdminPrivateDetails = null;
-        }
+        // Clear reason and details when unrestricting
+        restrictedByAdminReason = null;
+        restrictedByAdminPrivateDetails = null;
       }
 
       const db = await tx.projectUser.update({

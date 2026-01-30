@@ -55,14 +55,8 @@ const branchSchemaFuzzerConfig = [{
         priority: [0, 1, 100],
         condition: ['email.endsWith("@test.com")', 'emailDomain == "company.com"'],
         action: [{
-          type: ["allow", "reject", "restrict", "log", "add_metadata"] as const,
+          type: ["allow", "reject", "restrict", "log"] as const,
           message: ["", "Sign up is not allowed for this email"],
-          metadata: [{
-            "some-key": [{
-              value: ["some-value", 123, true],
-              target: ["client", "client_read_only", "server"] as const,
-            }],
-          }],
         }],
       }],
     }],

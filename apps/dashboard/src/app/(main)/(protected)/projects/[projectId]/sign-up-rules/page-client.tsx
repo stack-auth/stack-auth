@@ -30,9 +30,9 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities';
 import { CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import type { SignUpRule, SignUpRuleAction, SignUpRuleMetadataEntry } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import React, { useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
@@ -60,20 +60,6 @@ type ConfigWithSignUpRules = CompleteConfig & {
     signUpRulesDefaultAction?: 'allow' | 'reject',
   },
 };
-
-function getSortedRules(config: CompleteConfig): SignUpRuleEntry[] {
-  const configWithRules = config as ConfigWithSignUpRules;
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
-  const rules = configWithRules.auth.signUpRules ?? {};
-  return Object.entries(rules)
-    .map(([id, rule]) => ({ id, rule: rule as SignUpRule }))
-    .sort((a, b) => {
-      const priorityA = a.rule.priority;
-      const priorityB = b.rule.priority;
-      if (priorityA !== priorityB) return priorityA - priorityB;
-      return stringCompare(a.id, b.id);
-    });
-}
 
 // Sparkline component for rule analytics
 function RuleSparkline({
@@ -123,16 +109,6 @@ const ruleCardClassName = cn(
   "bg-background/60 backdrop-blur-xl ring-1 ring-foreground/[0.06]",
 );
 
-type MetadataValueType = 'string' | 'number' | 'boolean';
-
-// Individual metadata entry for the editor
-type MetadataEditorEntry = {
-  key: string,
-  value: string,
-  valueType: MetadataValueType,
-  target: 'client' | 'client_read_only' | 'server',
-};
-
 // Inline rule editor component
 function RuleEditor({
   rule,
@@ -153,25 +129,6 @@ function RuleEditor({
   const [actionMessage, setActionMessage] = useState(ruleAction?.message ?? '');
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
-
-  // Metadata entries for add_metadata action
-  const initialMetadata = useMemo((): MetadataEditorEntry[] => {
-    if (!ruleAction?.metadata) return [{ key: '', value: '', valueType: 'string', target: 'server' }];
-    const entries: MetadataEditorEntry[] = (Object.entries(ruleAction.metadata ?? {}) as [string, SignUpRuleMetadataEntry][])
-      .map(([key, entry]) => ({
-        key,
-        value: String(entry.value),
-        valueType: typeof entry.value === 'number'
-          ? 'number'
-          : typeof entry.value === 'boolean'
-            ? 'boolean'
-            : 'string',
-        target: entry.target,
-      }));
-    return entries.length > 0 ? entries : [{ key: '', value: '', valueType: 'string', target: 'server' }];
-  }, [ruleAction?.metadata]);
-
-  const [metadataEntries, setMetadataEntries] = useState<MetadataEditorEntry[]>(initialMetadata);
 
   // Parse existing condition or create empty group
   const initialConditionTree = useMemo((): RuleNode => {
@@ -196,42 +153,6 @@ function RuleEditor({
         : conditionTree;
       const celCondition = visualTreeToCel(normalizedConditionTree);
 
-      const parseMetadataEntryValue = (entry: MetadataEditorEntry): string | number | boolean => {
-        switch (entry.valueType) {
-          case 'number': {
-            if (!entry.value.trim()) {
-              throw new Error(`Metadata value for "${entry.key.trim() || 'entry'}" must be a valid number.`);
-            }
-            const parsed = Number(entry.value);
-            if (!Number.isFinite(parsed)) {
-              throw new Error(`Metadata value for "${entry.key.trim() || 'entry'}" must be a valid number.`);
-            }
-            return parsed;
-          }
-          case 'boolean': {
-            const normalized = entry.value.trim().toLowerCase();
-            if (normalized !== 'true' && normalized !== 'false') {
-              throw new Error(`Metadata value for "${entry.key.trim() || 'entry'}" must be "true" or "false".`);
-            }
-            return normalized === 'true';
-          }
-          default: {
-            return entry.value;
-          }
-        }
-      };
-
-      // Build metadata from entries
-      const metadata: Record<string, SignUpRuleMetadataEntry> | undefined =
-        actionType === 'add_metadata'
-          ? metadataEntries
-            .filter(e => e.key.trim())
-            .reduce((acc, e) => {
-              acc[e.key.trim()] = { value: parseMetadataEntryValue(e), target: e.target };
-              return acc;
-            }, {} as Record<string, SignUpRuleMetadataEntry>)
-          : undefined;
-
       const newRule: SignUpRule = {
         displayName: displayName.trim(),
         condition: celCondition,
@@ -240,29 +161,12 @@ function RuleEditor({
         action: {
           type: actionType,
           message: actionType === 'reject' ? actionMessage || undefined : undefined,
-          metadata: metadata && Object.keys(metadata).length > 0 ? metadata : undefined,
         },
       };
       await onSave(ruleId, newRule);
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const addMetadataEntry = () => {
-    setMetadataEntries([...metadataEntries, { key: '', value: '', valueType: 'string', target: 'server' }]);
-  };
-
-  const removeMetadataEntry = (index: number) => {
-    if (metadataEntries.length > 1) {
-      setMetadataEntries(metadataEntries.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateMetadataEntry = (index: number, updates: Partial<MetadataEditorEntry>) => {
-    setMetadataEntries(metadataEntries.map((entry, i) =>
-      i === index ? { ...entry, ...updates } : entry
-    ));
   };
 
   return (
@@ -307,7 +211,6 @@ function RuleEditor({
                   <SelectItem value="reject">Reject</SelectItem>
                   <SelectItem value="restrict">Restrict</SelectItem>
                   <SelectItem value="log">Log only</SelectItem>
-                  <SelectItem value="add_metadata">Add metadata</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -321,64 +224,6 @@ function RuleEditor({
               />
             )}
           </div>
-
-          {/* Metadata entries for add_metadata action */}
-          {actionType === 'add_metadata' && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Metadata entries</label>
-              <div className="space-y-2">
-                {metadataEntries.map((entry, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Input
-                      value={entry.key}
-                      onChange={(e) => updateMetadataEntry(index, { key: e.target.value })}
-                      placeholder="Key"
-                      className="flex-1"
-                    />
-                    <Input
-                      value={entry.value}
-                      onChange={(e) => updateMetadataEntry(index, { value: e.target.value })}
-                      placeholder="Value"
-                      className="flex-1"
-                    />
-                    <Select
-                      value={entry.target}
-                      onValueChange={(v) => updateMetadataEntry(index, { target: v as 'client' | 'client_read_only' | 'server' })}
-                    >
-                      <SelectTrigger className="w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="client">Client</SelectItem>
-                        <SelectItem value="client_read_only">Client (read-only)</SelectItem>
-                        <SelectItem value="server">Server</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                      aria-label={`Remove metadata entry ${index + 1}`}
-                      title={`Remove metadata entry ${index + 1}`}
-                      onClick={() => removeMetadataEntry(index)}
-                      disabled={metadataEntries.length <= 1}
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={addMetadataEntry}
-                  className="text-muted-foreground"
-                >
-                  <PlusIcon className="h-4 w-4 mr-1.5" />
-                  Add entry
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Save/Cancel buttons */}
           <div className="flex items-center gap-2 pt-2">
@@ -441,14 +286,14 @@ function SortableRuleRow({
     transition: isDragging ? undefined : transition,
   };
 
-  const actionType: SignUpRuleAction['type'] = entry.rule.action.type;
-  const actionLabel = {
+  const actionType = entry.rule.action.type;
+  const actionLabels: Record<string, string> = {
     'allow': 'Allow',
     'reject': 'Reject',
     'restrict': 'Restrict',
     'log': 'Log',
-    'add_metadata': 'Add metadata',
-  }[actionType];
+  };
+  const actionLabel = actionLabels[actionType] ?? actionType;
 
   const conditionSummary = entry.rule.condition || '(no condition)';
   const isEnabled = entry.rule.enabled !== false;
@@ -511,7 +356,6 @@ function SortableRuleRow({
           actionType === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
           actionType === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
           actionType === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-          actionType === 'add_metadata' && "bg-purple-500/10 text-purple-600 dark:text-purple-400",
           )}>
             {actionLabel}
           </span>
@@ -703,7 +547,7 @@ export default function PageClient() {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
   const defaultAction = configWithRules.auth.signUpRulesDefaultAction ?? 'allow';
 
-  const sortedRules = useMemo(() => getSortedRules(config), [config]);
+  const signUpRules = typedEntries(configWithRules.auth.signUpRules).map(([id, rule]) => ({ id, rule }));
 
   // DnD sensors
   const sensors = useSensors(
@@ -717,15 +561,15 @@ export default function PageClient() {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = sortedRules.findIndex((r) => r.id === active.id);
-      const newIndex = sortedRules.findIndex((r) => r.id === over.id);
-      const newOrder = arrayMove(sortedRules, oldIndex, newIndex);
+      const oldIndex = signUpRules.findIndex((r) => r.id === active.id);
+      const newIndex = signUpRules.findIndex((r) => r.id === over.id);
+      const newOrder = arrayMove(signUpRules, oldIndex, newIndex);
 
       setIsReordering(true);
 
       const configUpdate: Record<string, number> = {};
       newOrder.forEach((entry, index) => {
-        configUpdate[`auth.signUpRules.${entry.id}.priority`] = index;
+        configUpdate[`auth.signUpRules.${entry.id}.priority`] = signUpRules.length - index;
       });
 
       try {
@@ -750,7 +594,7 @@ export default function PageClient() {
   const handleSaveRule = async (ruleId: string, rule: SignUpRule) => {
     // For new rules, set priority to be at the end
     if (isCreatingNew) {
-      rule.priority = sortedRules.length;
+      rule.priority = signUpRules.length;
     }
 
     await updateConfig({
@@ -843,17 +687,17 @@ export default function PageClient() {
             />
           )}
 
-          {sortedRules.length > 0 ? (
+          {signUpRules.length > 0 ? (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={(e) => runAsynchronouslyWithAlert(handleDragEnd(e))}
             >
               <SortableContext
-                items={sortedRules.map((r) => r.id)}
+                items={signUpRules.map((r) => r.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {sortedRules.map((entry) => (
+                {signUpRules.map((entry) => (
                   <SortableRuleRow
                     key={entry.id}
                     entry={entry}

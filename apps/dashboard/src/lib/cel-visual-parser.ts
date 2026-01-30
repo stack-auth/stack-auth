@@ -383,6 +383,3 @@ export function createEmptyGroup(operator: 'and' | 'or' = 'and'): GroupNode {
   };
 }
 
-/**
- * Adds a child to a group node (returns a new group)
- */

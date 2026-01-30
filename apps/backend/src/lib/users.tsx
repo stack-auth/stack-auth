@@ -1,11 +1,9 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
-import { evaluateAndApplySignUpRules, logRuleTrigger } from "./sign-up-rules";
+import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -43,99 +41,33 @@ export async function createOrUpgradeAnonymousUserWithRules(
   allowedErrorTypes: (new (...args: any) => any)[],
   signUpRuleOptions: SignUpRuleOptions,
 ): Promise<UsersCrud["Admin"]["Read"]> {
-  // Get email from create/update data
-  // TypeScript doesn't know this field exists due to KeyIntersect, but it's always passed for signup
-  const email = (createOrUpdate as { primary_email?: string }).primary_email
-    ?? throwErr("primary_email is required for signup rule evaluation");
-
-  // Create context for rule evaluation
-  const context = createSignUpRuleContext({
+  const email = createOrUpdate.primary_email ?? currentUser?.primary_email ?? undefined;
+  const ruleResult = await evaluateSignUpRules(tenancy, createSignUpRuleContext({
     email,
     authMethod: signUpRuleOptions.authMethod,
     oauthProvider: signUpRuleOptions.oauthProvider,
-  });
+  }));
 
-  // Evaluate and apply sign-up rules (may throw if rejected)
-  const ruleResult = await evaluateAndApplySignUpRules(tenancy, context);
-
-  // Build metadata objects for each target from sign-up rule metadata
-  let clientMetadata: Record<string, unknown> | undefined;
-  let clientReadOnlyMetadata: Record<string, unknown> | undefined;
-  let serverMetadata: Record<string, unknown> | undefined;
-
-  if (ruleResult.metadata) {
-    for (const [key, entry] of Object.entries(ruleResult.metadata)) {
-      switch (entry.target) {
-        case 'client': {
-          clientMetadata = { ...clientMetadata, [key]: entry.value };
-          break;
-        }
-        case 'client_read_only': {
-          clientReadOnlyMetadata = { ...clientReadOnlyMetadata, [key]: entry.value };
-          break;
-        }
-        case 'server': {
-          serverMetadata = { ...serverMetadata, [key]: entry.value };
-          break;
-        }
-      }
-    }
-  }
-
-  // Merge sign-up rule data into createOrUpdate
-  // Use type assertion as we know the structure from UsersCrud
-  const createOrUpdateWithMeta = createOrUpdate as Record<string, unknown>;
-
-  // Build the private restriction details if shouldRestrict is true
-  // The public reason is left empty - admins can set it manually if they want to show something to the user
-  const restrictionPrivateDetails = ruleResult.shouldRestrict && ruleResult.ruleId
-    ? `Restricted by sign-up rule: ${ruleResult.ruleId}`
-    : ruleResult.shouldRestrict
-      ? 'Restricted by sign-up rules'
-      : undefined;
+  const existingRestrictionPrivateDetails = createOrUpdate.restricted_by_admin_private_details ?? currentUser?.restricted_by_admin_private_details;
+  const restrictionPrivateDetails = ruleResult.restrictedBecauseOfSignUpRuleId
+    ? `Restricted by sign-up rule: ${ruleResult.restrictedBecauseOfSignUpRuleId}`
+    : undefined;
 
   const enrichedCreateOrUpdate = {
     ...createOrUpdate,
-    // Merge client_metadata (sign-up rule metadata overwrites existing keys)
-    ...(clientMetadata && {
-      client_metadata: {
-        ...(createOrUpdateWithMeta.client_metadata as Record<string, unknown> | undefined),
-        ...clientMetadata,
-      },
-    }),
-    // Merge client_read_only_metadata
-    ...(clientReadOnlyMetadata && {
-      client_read_only_metadata: {
-        ...(createOrUpdateWithMeta.client_read_only_metadata as Record<string, unknown> | undefined),
-        ...clientReadOnlyMetadata,
-      },
-    }),
-    // Merge server_metadata
-    ...(serverMetadata && {
-      server_metadata: {
-        ...(createOrUpdateWithMeta.server_metadata as Record<string, unknown> | undefined),
-        ...serverMetadata,
-      },
-    }),
-    // Handle shouldRestrict by setting restricted_by_admin fields
-    // Note: reason (public) is left null, private_details contains the rule info
-    ...(ruleResult.shouldRestrict && {
+    ...!!ruleResult.restrictedBecauseOfSignUpRuleId ? {
       restricted_by_admin: true,
-      restricted_by_admin_private_details: restrictionPrivateDetails,
-    }),
+      restricted_by_admin_private_details: existingRestrictionPrivateDetails ? `${existingRestrictionPrivateDetails}\n\n${restrictionPrivateDetails}` : restrictionPrivateDetails,
+    } : {},
   };
 
   // Proceed with user creation/upgrade
-  const user = await createOrUpgradeAnonymousUser(
+  const user = await createOrUpgradeAnonymousUserWithoutRules(
     tenancy,
     currentUser,
     enrichedCreateOrUpdate as KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
     allowedErrorTypes,
   );
-
-  if (ruleResult.ruleId) {
-    runAsynchronously(logRuleTrigger(tenancy.id, ruleResult.ruleId, context, ruleResult.action, user.id));
-  }
 
   return user;
 }
@@ -149,7 +81,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
  *
  * For all signup paths, use createOrUpgradeAnonymousUserWithRules instead.
  */
-export async function createOrUpgradeAnonymousUser(
+export async function createOrUpgradeAnonymousUserWithoutRules(
   tenancy: Tenancy,
   currentUser: UsersCrud["Admin"]["Read"] | null,
   createOrUpdate: KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,

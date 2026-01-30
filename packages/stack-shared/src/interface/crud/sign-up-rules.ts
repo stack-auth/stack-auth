@@ -1,11 +1,5 @@
-export type SignUpRuleMetadataEntry = {
-  value: string | number | boolean,
-  target: 'client' | 'client_read_only' | 'server',
-};
-
 export type SignUpRuleAction = {
-  type: 'allow' | 'reject' | 'restrict' | 'log' | 'add_metadata',
-  metadata?: Record<string, SignUpRuleMetadataEntry>,
+  type: 'allow' | 'reject' | 'restrict' | 'log',
   message?: string,
 };
 
