@@ -2,28 +2,31 @@
 
 ---
 
-## 2026.01.23
+## 1/23/26
 
 ### Payments
 Introduced a redesigned payments onboarding flow
+![Payments Onboarding]()
 
-## 2026.01.21
+## 1/21/26
 
 ### Payments
 - Payments page updated with new UI changes
+![Create Product]()
 - Added a new Payments Settings page with an option to temporarily disable all payments
+![Payments Setting]()
 - Subscription renewal emails are now sent automatically to users
 - Past payment invoices are now visible on the Account Settings page
 
 ### Documentation
 - Updated JWT documentation to include `isRestricted` and `restrictedReason`
 
-## 2026.01.19
+## 1/19/26
 - Updated package dependencies to their newest versions.
 
-## 2025.12.19
+## 12/19/25
 - Introduces new changelog and deprecates all older changelogs. 
-- Moved away from semantic versioning in favor of CalVer.
+- Date versioning for public view.
 
 ---
 
