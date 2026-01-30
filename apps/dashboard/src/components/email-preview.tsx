@@ -407,7 +407,8 @@ const WYSIWYG_EDITOR_SCRIPT = `
     const parent = region.editSpan.parentElement;
     const htmlContext = parent ? parent.outerHTML.slice(0, 500) : '';
 
-    // Send to parent
+    // Send to parent - srcDoc iframes have 'null' origin, so use '*' for cross-origin messaging
+    // This is safe because the iframe content is controlled by us (injected script)
     window.parent.postMessage({
       type: 'stack_edit_commit',
       id: region.id,
@@ -622,13 +623,16 @@ function EmailPreviewEditableContent({
     const handleMessage = (e: MessageEvent) => {
       if (e.data?.type !== 'stack_edit_commit') return;
       if (!onWysiwygEditCommit || !editableRegions) return;
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow || e.source !== iframeWindow) return;
 
       const { id, oldText, newText, domPath, htmlContext } = e.data;
       const metadata = editableRegions[id] as EditableMetadata | undefined;
 
       if (!metadata) {
         console.error('[WYSIWYG] No metadata found for id:', id);
-        iframeRef.current?.contentWindow?.postMessage({
+        // srcDoc iframes have null origin, so use '*' - this is safe since we control the iframe content
+        iframeWindow.postMessage({
           type: 'stack_edit_error',
           id,
           message: 'No metadata found for this editable region',
@@ -638,25 +642,26 @@ function EmailPreviewEditableContent({
 
       // Handle async operation without returning a promise to the event listener
       runAsynchronouslyWithAlert(async () => {
-        try {
-          const updatedSource = await onWysiwygEditCommit({
-            id,
-            oldText,
-            newText,
-            metadata,
-            domPath,
-            htmlContext,
-          });
-          // Success - the parent will update the source and re-render
-          console.log('[WYSIWYG] Edit committed, new source length:', updatedSource.length);
-        } catch (error) {
+        const updatedSource = await onWysiwygEditCommit({
+          id,
+          oldText,
+          newText,
+          metadata,
+          domPath,
+          htmlContext,
+        });
+        // Success - the parent will update the source and re-render
+        console.log('[WYSIWYG] Edit committed, new source length:', updatedSource.length);
+      }, {
+        onError: (error) => {
           console.error('[WYSIWYG] Edit failed:', error);
-          iframeRef.current?.contentWindow?.postMessage({
+          // srcDoc iframes have null origin, so use '*' - this is safe since we control the iframe content
+          iframeWindow.postMessage({
             type: 'stack_edit_error',
             id,
             message: error instanceof Error ? error.message : 'Unknown error',
           }, '*');
-        }
+        },
       });
     };
 

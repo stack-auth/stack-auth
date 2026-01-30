@@ -47,7 +47,33 @@ import {
   XCircle
 } from "@phosphor-icons/react";
 import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+// Bridge component to capture table instance without violating React rules
+// (setState during render is not allowed, so we use useEffect instead)
+function TableInstanceBridge<T>({
+  tableInstance,
+  onTableInstance,
+  onVisibilityChange,
+}: {
+  tableInstance: TableType<T>,
+  onTableInstance: (table: TableType<T>) => void,
+  onVisibilityChange: (visibility: Record<string, boolean>) => void,
+}) {
+  useEffect(() => {
+    onTableInstance(tableInstance);
+  }, [tableInstance, onTableInstance]);
+
+  const currentVisibility = tableInstance.getState().columnVisibility;
+  // Serialize visibility to avoid unnecessary re-renders from object reference changes
+  const visibilityKey = JSON.stringify(currentVisibility);
+  useEffect(() => {
+    onVisibilityChange(currentVisibility as Record<string, boolean>);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally using serialized key for comparison
+  }, [visibilityKey, onVisibilityChange]);
+
+  return null;
+}
 import {
   TimeRange,
   TimeRangeToggle
@@ -62,12 +88,10 @@ function ComponentDemo({
   title,
   description,
   children,
-  code,
 }: {
   title: string,
   description?: string,
   children: React.ReactNode,
-  code?: string,
 }) {
   return (
     <div className="space-y-4">
@@ -149,12 +173,12 @@ function GlassCard({
 
   return (
     <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+      "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+      "ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md",
       className
     )}>
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
       <div className={cn(
         "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
         hoverTints[gradientColor]
@@ -187,12 +211,12 @@ function GlassCardWithTint({
 
   return (
     <div className={cn(
-      "group/tint relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+      "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+      "ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md",
       className
     )}>
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
       <div className={cn(
         "absolute inset-0 transition-colors duration-150 group-hover/tint:transition-none pointer-events-none rounded-2xl overflow-hidden",
         hoverTints[gradientColor]
@@ -213,8 +237,8 @@ function GlassCardWithTint({
 function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+        <Icon className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
       </div>
       <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
         {title}
@@ -239,7 +263,7 @@ function DesignSection({
   return (
     <section
       id={id}
-      className="space-y-6 border-b border-foreground/[0.06] pb-12 last:border-b-0 last:pb-0 scroll-mt-24"
+      className="space-y-6 border-b border-foreground/[0.1] dark:border-foreground/[0.06] pb-12 last:border-b-0 last:pb-0 scroll-mt-24"
     >
       <div className="space-y-2">
         <SectionHeader icon={Icon} title={title} />
@@ -272,12 +296,12 @@ type DemoEmailRow = {
 };
 
 const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
-  blue: "text-blue-600 dark:text-blue-400 bg-blue-500/10 ring-1 ring-blue-500/20",
-  cyan: "text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 ring-1 ring-cyan-500/20",
-  purple: "text-purple-600 dark:text-purple-400 bg-purple-500/10 ring-1 ring-purple-500/20",
-  green: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20",
-  orange: "text-orange-600 dark:text-orange-400 bg-orange-500/10 ring-1 ring-orange-500/20",
-  red: "text-red-600 dark:text-red-400 bg-red-500/10 ring-1 ring-red-500/20",
+  blue: "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20",
+  cyan: "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20",
+  purple: "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20",
+  green: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 ring-1 ring-emerald-500/30 dark:ring-emerald-500/20",
+  orange: "text-orange-700 dark:text-orange-400 bg-orange-500/20 dark:bg-orange-500/10 ring-1 ring-orange-500/30 dark:ring-orange-500/20",
+  red: "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20",
 };
 
 const DEMO_STATUS_MAP: Record<DemoEmailRow["status"], { label: string, color: StatusBadgeColor }> = {
@@ -329,7 +353,7 @@ function CategoryTabs({
   onSelect: (id: string) => void,
 }) {
   return (
-    <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden">
+    <div className="flex items-center gap-1 border-b border-gray-300 dark:border-gray-800 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden">
       {categories.map((category) => {
         const isActive = selectedCategory === category.id;
         return (
@@ -339,7 +363,7 @@ function CategoryTabs({
             className={cn(
               "px-4 py-3 text-sm font-medium transition-all relative flex-shrink-0 whitespace-nowrap",
               "hover:text-gray-900 dark:hover:text-gray-100",
-              isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"
+              isActive ? "text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-400"
             )}
           >
             <span className="flex items-center gap-2">
@@ -347,14 +371,14 @@ function CategoryTabs({
               <span className={cn(
                 "text-xs px-1.5 py-0.5 rounded-full",
                 isActive
-                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                  : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
               )}>
                 {category.count}
               </span>
             </span>
             {isActive && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-700 dark:bg-blue-400" />
             )}
           </button>
         );
@@ -370,7 +394,7 @@ function CategoryTabs({
 function UnderlineTabsDemo() {
   const [activeTab, setActiveTab] = useState<"chart" | "list">("chart");
   return (
-    <div className="flex items-center gap-1 border-b border-foreground/[0.05]">
+    <div className="flex items-center gap-1 border-b border-black/[0.12] dark:border-white/[0.06]">
       {[
         { id: "chart", label: "Daily Active Users" },
         { id: "list", label: "Recently Active" },
@@ -380,7 +404,7 @@ function UnderlineTabsDemo() {
           onClick={() => setActiveTab(tab.id as "chart" | "list")}
           className={cn(
             "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
-            activeTab === tab.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            activeTab === tab.id ? "text-foreground" : "text-foreground/70 dark:text-muted-foreground hover:text-foreground"
           )}
         >
           {tab.label}
@@ -410,7 +434,7 @@ function ViewportSelector({
   onSelect: (id: string) => void,
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
+    <div className="inline-flex items-center gap-1 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] p-1 backdrop-blur-sm">
       {options.map((option) => {
         const isActive = selected === option.id;
         const Icon = option.icon;
@@ -421,8 +445,8 @@ function ViewportSelector({
             className={cn(
               "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
               isActive
-                ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                ? "bg-background text-foreground shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]"
+                : "text-muted-foreground hover:text-foreground hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
             )}
           >
             <Icon className="h-4 w-4" />
@@ -454,12 +478,12 @@ function ListItemRow({
   return (
     <div className={cn(
       "group relative flex items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none",
-      "bg-background/60 backdrop-blur-xl ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+      "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md"
     )}>
       <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
       <div className="relative flex items-center gap-4">
-        <div className="p-2.5 rounded-xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] transition-colors duration-150 group-hover:bg-foreground/[0.08] group-hover:transition-none">
+        <div className="p-2.5 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] ring-1 ring-black/[0.1] dark:ring-white/[0.06] transition-colors duration-150 group-hover:bg-black/[0.12] dark:group-hover:bg-white/[0.08] group-hover:transition-none">
           <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
         </div>
         <Typography className="font-semibold text-foreground">{title}</Typography>
@@ -505,7 +529,7 @@ function UserListItemDemo() {
           key={user.email}
           className={cn(
             "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
-            user.color === "cyan" ? "hover:bg-cyan-500/[0.06]" : "hover:bg-blue-500/[0.06]"
+            user.color === "cyan" ? "hover:bg-cyan-500/[0.1]" : "hover:bg-blue-500/[0.1]"
           )}
         >
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-medium shrink-0">
@@ -742,7 +766,7 @@ export default function PageClient() {
                   </div>
                 </div>
               </div>
-              <div className="border-t border-foreground/[0.05] px-5 py-4">
+              <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 py-4">
                 <Typography variant="secondary" className="text-sm">
                   Placeholder content for the card body.
                 </Typography>
@@ -755,7 +779,7 @@ export default function PageClient() {
             description="Small header row with an optional icon"
           >
             <GlassCard gradientColor="default">
-              <div className="p-5 flex items-center gap-2 border-b border-foreground/[0.05]">
+              <div className="p-5 flex items-center gap-2 border-b border-black/[0.12] dark:border-white/[0.06]">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
@@ -802,7 +826,7 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "variant", type: "'header' | 'compact' | 'bodyOnly' | 'glassmorphic'", default: "'header'", description: "Layout style for the card header." },
@@ -836,7 +860,7 @@ export default function PageClient() {
             />
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "categories", type: "Array<{ id: string, label: string, count: number }>", description: "Tab items with counts for category tabs." },
@@ -950,7 +974,7 @@ export default function PageClient() {
             </DropdownMenu>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, radio selector menu, or checkbox settings menu." },
@@ -992,7 +1016,7 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "value", type: "string", description: "Currently selected value." },
@@ -1036,7 +1060,7 @@ export default function PageClient() {
                   )}
                 </div>
               </div>
-              <div className="border-t border-foreground/[0.05] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
+              <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
                 <DataTable
                   data={demoEmailRows}
                   columns={demoTableColumns}
@@ -1044,22 +1068,19 @@ export default function PageClient() {
                   defaultSorting={[{ id: "sentAt", desc: true }]}
                   showDefaultToolbar={false}
                   showResetFilters={false}
-                  toolbarRender={(tableInstance) => {
-                    if (tableDemo !== tableInstance) {
-                      setTableDemo(tableInstance);
-                    }
-                    const currentVisibility = tableInstance.getState().columnVisibility;
-                    if (JSON.stringify(currentVisibility) !== JSON.stringify(tableDemoVisibility)) {
-                      setTableDemoVisibility(currentVisibility);
-                    }
-                    return null;
-                  }}
+                  toolbarRender={(tableInstance) => (
+                    <TableInstanceBridge
+                      tableInstance={tableInstance}
+                      onTableInstance={setTableDemo}
+                      onVisibilityChange={setTableDemoVisibility}
+                    />
+                  )}
                 />
               </div>
             </GlassCard>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
@@ -1103,7 +1124,7 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "size", type: "'sm' | 'md' | 'lg'", default: "'md'", description: "Controls input height and text size." },
@@ -1128,7 +1149,7 @@ export default function PageClient() {
             title="Product Attribute Grid"
             description="Editable rows with inline select and dropdown fields."
           >
-            <div className="relative rounded-2xl overflow-hidden bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)] border border-border/50 dark:border-foreground/[0.12] shadow-sm">
+            <div className="relative rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
               <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
               <div className="relative p-5">
                 <EditableGrid items={editableGridItems} columns={2} className="gap-x-6 gap-y-3" />
@@ -1136,7 +1157,7 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "items", type: "EditableGridItem[]", description: "Defines editable rows and their input types." },
@@ -1234,7 +1255,7 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "variant", type: "'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'plain'", default: "'default'", description: "Visual style for the button." },
@@ -1259,14 +1280,6 @@ export default function PageClient() {
           <ComponentDemo
             title="Standard Pill Toggle"
             description="Default segmented control"
-            code={`<ViewportSelector
-  options={[
-    { id: "phone", label: "Phone", icon: Envelope },
-    { id: "desktop", label: "Desktop", icon: HardDrive }
-  ]}
-  selected={selected}
-  onSelect={setSelected}
-/>`}
           >
             <ViewportSelector options={viewportOptions} selected={selectedViewport} onSelect={setSelectedViewport} />
           </ComponentDemo>
@@ -1278,7 +1291,7 @@ export default function PageClient() {
             <TimeRangeToggle timeRange={timeRange} onTimeRangeChange={setTimeRange} />
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "options", type: "Array<{ id: string, label: string, icon?: ReactElement }>", description: "Available toggle options." },
@@ -1346,7 +1359,7 @@ export default function PageClient() {
             </Alert>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
@@ -1369,9 +1382,6 @@ export default function PageClient() {
           <ComponentDemo
             title="Status Badges"
             description="Gradient status colors with optional icons"
-            code={`<StatusBadge label="Success" color="green" icon={CheckCircle} />
-<StatusBadge label="Warning" color="orange" />
-<StatusBadge label="Error" color="red" icon={XCircle} />`}
           >
             <div className="flex flex-wrap gap-2">
               <StatusBadge label="Success" color="green" icon={CheckCircle} />
@@ -1383,7 +1393,7 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "label", type: "string", description: "Text for the badge" },
@@ -1428,7 +1438,7 @@ export default function PageClient() {
             <UserListItemDemo />
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-foreground/[0.05]">
+          <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "icon", type: "ReactElement", description: "Optional leading icon for list rows." },

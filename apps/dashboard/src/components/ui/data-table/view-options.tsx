@@ -16,20 +16,26 @@ import {
 
 type DataTableViewOptionsProps<TData> = {
   table: Table<TData>,
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link",
+  className?: string,
+  iconClassName?: string,
 }
 
 export function DataTableViewOptions<TData>({
   table,
+  variant = "secondary",
+  className = "ml-auto hidden h-8 px-3 text-xs gap-1.5 lg:flex",
+  iconClassName = "h-3.5 w-3.5",
 }: DataTableViewOptionsProps<TData>) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="secondary"
+          variant={variant}
           size="sm"
-          className="ml-auto hidden h-8 px-3 text-xs gap-1.5 lg:flex"
+          className={className}
         >
-          <MixerHorizontalIcon className="h-3.5 w-3.5" />
+          <MixerHorizontalIcon className={iconClassName} />
           View
         </Button>
       </DropdownMenuTrigger>

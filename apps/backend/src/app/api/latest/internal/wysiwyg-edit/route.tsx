@@ -4,12 +4,19 @@ import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateText } from "ai";
 
-const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key");
-const isMockMode = apiKey === "mock-openrouter-api-key";
-const openai = createOpenAI({
+// Mock mode sentinel value - when API key is not configured, we return mock responses
+const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
+const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
+
+// Only create OpenAI client if not in mock mode
+const openai = isMockMode ? null : createOpenAI({
   apiKey,
   baseURL: "https://openrouter.ai/api/v1",
 });
+
+// AI request timeout in milliseconds (2 minutes)
+const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 const WYSIWYG_SYSTEM_PROMPT = `You are an expert at editing React/JSX code. Your task is to update a specific text string in the source code.
 
@@ -114,9 +121,34 @@ export const POST = createSmartRouteHandler({
       };
     }
 
-    // Mock mode: perform simple string replacement without calling AI
+    // Mock mode: perform string replacement at the correct occurrence index without calling AI
     if (isMockMode) {
-      const updatedSource = `// NOTE: You haven't specified a STACK_OPENROUTER_API_KEY, so we're using a mock mode where we just replace the old text with the new text instead of calling AI.\n\n${source_code.replace(old_text, new_text)}`;
+      let replacedSource: string;
+
+      // Handle edge case: empty old_text can't be meaningfully replaced
+      if (old_text === "") {
+        // Just return original source with the note
+        replacedSource = source_code;
+      } else {
+        // Use occurrence index from metadata to replace the correct occurrence
+        const occurrenceIndex = metadata.occurrenceIndex;
+        const parts = source_code.split(old_text);
+
+        // Validate that the occurrence index is valid (1-based index from metadata)
+        // parts.length - 1 equals the number of occurrences of old_text in source_code
+        if (occurrenceIndex < 1 || occurrenceIndex > parts.length - 1) {
+          // Fallback to first occurrence if index is invalid
+          replacedSource = source_code.replace(old_text, new_text);
+        } else {
+          // Replace only the occurrence at the specified index (convert 1-based to 0-based)
+          const zeroBasedIndex = occurrenceIndex - 1;
+          replacedSource = parts.slice(0, zeroBasedIndex + 1).join(old_text) +
+            new_text +
+            parts.slice(zeroBasedIndex + 1).join(old_text);
+        }
+      }
+
+      const updatedSource = `// NOTE: You haven't specified a STACK_OPENROUTER_API_KEY, so we're using a mock mode where we just replace the old text with the new text instead of calling AI.\n\n${replacedSource}`;
       return {
         statusCode: 200,
         bodyType: "json",
@@ -165,13 +197,29 @@ ${html_context.slice(0, 500)}
 Please update the source code to change "${old_text}" to "${new_text}" at the specified location. Return ONLY the complete updated source code.
 `;
 
-    const modelName = "google/gemini-3-flash-preview";
+    // Model is configurable via env var; no default to surface missing config errors
+    const modelName = getEnvVariable("STACK_AI_MODEL");
 
-    const result = await generateText({
-      model: openai(modelName),
-      system: WYSIWYG_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    if (!openai) {
+      // This shouldn't happen since we check isMockMode above, but guard anyway
+      throw new Error("OpenAI client not initialized - STACK_OPENROUTER_API_KEY may be missing");
+    }
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+
+    let result;
+    try {
+      result = await generateText({
+        model: openai(modelName),
+        system: WYSIWYG_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt }],
+        abortSignal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // Extract the updated source code from the response
     let updatedSource = result.text.trim();

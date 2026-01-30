@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ChatAdapterContext } from "./adapter-registry";
 
 const EMAIL_DRAFT_SYSTEM_PROMPT = `
+Do not include <Html>, <Head>, <Body>, or <Preview> components (the theme provides those).
 You are an expert email copywriter and designer.
 Your goal is to create high-converting, professional, and visually appealing email drafts.
 
@@ -15,6 +16,7 @@ PRINCIPLES:
 TECHNICAL RULES:
 - YOU MUST WRITE A FULL REACT COMPONENT WHEN CALLING THE createEmailTemplate TOOL.
 - Always include a <Subject />.
+- Do NOT include <Html>, <Head>, <Body>, or <Preview> components (the theme provides those).
 - Use only tailwind classes for styling.
 - Export 'EmailTemplate' component.
 `;

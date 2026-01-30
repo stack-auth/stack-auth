@@ -2,6 +2,7 @@ import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
+import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -458,7 +459,7 @@ export class StackAdminInterface extends StackServerInterface {
     sourceCode: string,
     oldText: string,
     newText: string,
-    metadata: any,
+    metadata: EditableMetadata,
     domPath: Array<{ tagName: string, index: number }>,
     htmlContext: string,
   }): Promise<{ updatedSource: string }> {

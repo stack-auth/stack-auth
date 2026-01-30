@@ -236,7 +236,7 @@ export function PriceEditDialog({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={editingPrice ? () => runAsynchronouslyWithAlert(onSave(editingPrice, isAdding)) : undefined}>
+          <Button onClick={editingPrice ? () => runAsynchronouslyWithAlert(() => onSave(editingPrice, isAdding)) : undefined}>
             {isAdding ? "Add Price" : "Save Changes"}
           </Button>
         </DialogFooter>

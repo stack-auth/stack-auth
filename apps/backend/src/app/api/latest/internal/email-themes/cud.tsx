@@ -179,6 +179,12 @@ export const internalEmailThemesCudHandlers = createCudHandlers(createCrud({
   onDelete: async ({ auth, params, data }) => {
     const ids = new Set([params.id, ...data.map((d) => d.id)].filter(Boolean));
 
+    // Guard: prevent deletion of the currently selected/active theme
+    const selectedThemeId = auth.tenancy.config.emails.selectedThemeId;
+    if (ids.has(selectedThemeId)) {
+      throw new StatusError(400, "Cannot delete the currently active email theme. Please select a different theme first.");
+    }
+
     const themes = { ...auth.tenancy.config.emails.themes };
     for (const id of ids) {
       getThemeOrThrow(auth.tenancy, id);

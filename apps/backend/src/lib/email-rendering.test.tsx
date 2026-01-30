@@ -520,6 +520,19 @@ describe('renderEmailWithTemplate', () => {
     }
   `;
 
+  const editableTemplate = `
+    export const variablesSchema = (v: any) => v;
+    export function EmailTemplate() {
+      return <div>Hello Template</div>;
+    }
+  `;
+
+  const editableTheme = `
+    export function EmailTheme({ children }: any) {
+      return <div>Theme Wrapper {children}</div>;
+    }
+  `;
+
   it('preview mode: uses default user and project when not provided', async () => {
     const result = await renderEmailWithTemplate(simpleTemplate, simpleTheme, {
       previewMode: true,
@@ -549,6 +562,57 @@ describe('renderEmailWithTemplate', () => {
     expect(result.status).toBe('ok');
     if (result.status === 'ok') {
       expect(result.data.html).toContain('Hello from preview!');
+    }
+  });
+
+  it('editable markers: disabled by default', async () => {
+    const result = await renderEmailWithTemplate(editableTemplate, editableTheme, {
+      previewMode: true,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.editableRegions).toBeUndefined();
+      expect(result.data.html).not.toContain('STACK_EDITABLE_START');
+    }
+  });
+
+  it('editable markers: template only', async () => {
+    const result = await renderEmailWithTemplate(editableTemplate, editableTheme, {
+      previewMode: true,
+      editableMarkers: true,
+      editableSource: 'template',
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.html).toContain('<!-- STACK_EDITABLE_START');
+      const regions = Object.values(result.data.editableRegions ?? {});
+      expect(regions.length).toBeGreaterThan(0);
+      expect(regions.every(region => region.sourceFile === 'template')).toBe(true);
+    }
+  });
+
+  it('editable markers: theme only', async () => {
+    const templateWithoutText = `
+      export const variablesSchema = (v: any) => v;
+      export function EmailTemplate() {
+        return <div>{null}</div>;
+      }
+    `;
+
+    const result = await renderEmailWithTemplate(templateWithoutText, editableTheme, {
+      previewMode: true,
+      editableMarkers: true,
+      editableSource: 'theme',
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.html).toContain('<!-- STACK_EDITABLE_START');
+      const regions = Object.values(result.data.editableRegions ?? {});
+      expect(regions.length).toBeGreaterThan(0);
+      expect(regions.every(region => region.sourceFile === 'theme')).toBe(true);
     }
   });
 });

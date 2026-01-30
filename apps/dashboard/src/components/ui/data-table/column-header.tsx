@@ -4,7 +4,6 @@ import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { Column } from "@tanstack/react-table";
 import type { HTMLAttributes, ReactNode } from "react";
 import { Button } from "../button";
-
 import { cn } from "@/lib/utils";
 
 type DataTableColumnHeaderProps<TData, TValue> = {

@@ -21,6 +21,7 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
@@ -621,7 +622,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     sourceCode: string,
     oldText: string,
     newText: string,
-    metadata: any,
+    metadata: EditableMetadata,
     domPath: Array<{ tagName: string, index: number }>,
     htmlContext: string,
   }): Promise<{ updatedSource: string }> {

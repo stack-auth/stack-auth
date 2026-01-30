@@ -17,11 +17,11 @@ export const Input = forwardRefIfNeeded<HTMLInputElement, InputProps>(
         ? "h-10 px-4 text-sm"
         : "h-9 px-3 text-sm";
     const baseClasses = cn(
-      "stack-scope flex w-full rounded-xl border border-border/10 dark:border-foreground/[0.06] bg-background/60 dark:bg-foreground/[0.03] shadow-sm ring-1 ring-foreground/[0.06]",
+      "stack-scope flex w-full rounded-xl border border-black/[0.08] dark:border-white/[0.06] bg-white/80 dark:bg-foreground/[0.03] shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
       "file:border-0 file:bg-transparent file:text-sm file:font-medium",
       "placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
       "disabled:cursor-not-allowed disabled:opacity-50",
-      "transition-all duration-150 hover:transition-none hover:bg-background dark:hover:bg-foreground/[0.06]",
+      "transition-all duration-150 hover:transition-none hover:bg-white dark:hover:bg-foreground/[0.06]",
       sizeClasses
     );
 

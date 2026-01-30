@@ -39,10 +39,7 @@ export const PATCH = createSmartRouteHandler({
       throw new StatusError(StatusError.NotFound, "No template found with given id");
     }
 
-    // Validate theme_id to prevent object injection
-    if (body.theme_id !== undefined && body.theme_id !== null && body.theme_id !== false && typeof body.theme_id !== 'string') {
-      throw new StatusError(StatusError.BadRequest, "theme_id must be a string, null, or false");
-    }
+    // Note: theme_id validation is handled by templateThemeIdSchema in the request schema
 
     const theme = getActiveEmailTheme(tenancy);
     const result = await renderEmailWithTemplate(body.tsx_source, theme.tsxSource, {

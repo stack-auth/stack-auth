@@ -3,7 +3,7 @@
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
-import { Button, Skeleton, toast } from "@/components/ui";
+import { Alert, AlertDescription, AlertTitle, Button, Skeleton } from "@/components/ui";
 import {
   AssistantChat,
   CodeEditor,
@@ -32,6 +32,11 @@ export default function PageClient(props: { templateId: string }) {
   const [isLoading, setIsLoading] = useState(!templateFromHook);
   const [fetchError, setFetchError] = useState<Error | null>(null);
   const [fetchedTemplate, setFetchedTemplate] = useState<{ id: string, displayName: string, themeId?: string, tsxSource: string } | null>(null);
+  const [saveAlert, setSaveAlert] = useState<{
+    variant: "destructive" | "success",
+    title: string,
+    description?: string,
+  } | null>(null);
 
   // Use either the template from the hook or the manually fetched one
   const template = templateFromHook ?? fetchedTemplate;
@@ -98,15 +103,16 @@ export default function PageClient(props: { templateId: string }) {
   };
 
   const handleSaveTemplate = async () => {
+    setSaveAlert(null);
     try {
       await stackAdminApp.updateEmailTemplate(props.templateId, currentCode, selectedThemeId === undefined ? null : selectedThemeId);
-      toast({ title: "Template saved", variant: "success" });
+      setSaveAlert({ variant: "success", title: "Template saved" });
     } catch (error) {
-      if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
-        toast({ title: "Failed to save template", variant: "destructive", description: error.message });
-        return;
-      }
-      throw error;
+      setSaveAlert({
+        variant: "destructive",
+        title: "Failed to save template",
+        description: getErrorMessage(error),
+      });
     }
   };
 
@@ -199,47 +205,74 @@ export default function PageClient(props: { templateId: string }) {
 
   return (
     <AppEnabledGuard appId="emails">
-      <VibeCodeLayout
-        viewport={viewport}
-        onViewportChange={setViewport}
-        onSave={handleSaveTemplate}
-        saveLabel="Save template"
-        onUndo={handleUndo}
-        isDirty={isDirty}
-        previewActions={previewActions}
-        editorTitle="Template Source Code"
-        editModeEnabled
-        wysiwygDebugInfo={wysiwygDebugInfo}
-        headerAction={
-          <EmailThemeSelector
-            selectedThemeId={selectedThemeId}
-            onThemeChange={setSelectedThemeId}
+      <div className="flex h-full flex-col">
+        {saveAlert && (
+          <div className="px-3 pt-3 md:px-6 md:pt-4">
+            <Alert variant={saveAlert.variant}>
+              <AlertTitle>{saveAlert.title}</AlertTitle>
+              {saveAlert.description && (
+                <AlertDescription>{saveAlert.description}</AlertDescription>
+              )}
+            </Alert>
+          </div>
+        )}
+        <div className="flex-1 min-h-0">
+          <VibeCodeLayout
+            viewport={viewport}
+            onViewportChange={setViewport}
+            onSave={handleSaveTemplate}
+            saveLabel="Save template"
+            onUndo={handleUndo}
+            isDirty={isDirty}
+            previewActions={previewActions}
+            editorTitle="Template Source Code"
+            editModeEnabled
+            wysiwygDebugInfo={wysiwygDebugInfo}
+            headerAction={
+              <EmailThemeSelector
+                selectedThemeId={selectedThemeId}
+                onThemeChange={setSelectedThemeId}
+              />
+            }
+            previewComponent={
+              <EmailPreview
+                themeId={selectedThemeId}
+                templateTsxSource={currentCode}
+                editMode={viewport === 'edit'}
+                viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+                onDebugInfoChange={setWysiwygDebugInfo}
+                onWysiwygEditCommit={handleWysiwygEditCommit}
+              />
+            }
+            editorComponent={
+              <CodeEditor
+                code={currentCode}
+                onCodeChange={setCurrentCode}
+              />
+            }
+            chatComponent={
+              <AssistantChat
+                chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate)}
+                historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
+                toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
+              />
+            }
           />
-        }
-        previewComponent={
-          <EmailPreview
-            themeId={selectedThemeId}
-            templateTsxSource={currentCode}
-            editMode={viewport === 'edit'}
-            viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
-            onDebugInfoChange={setWysiwygDebugInfo}
-            onWysiwygEditCommit={handleWysiwygEditCommit}
-          />
-        }
-        editorComponent={
-          <CodeEditor
-            code={currentCode}
-            onCodeChange={setCurrentCode}
-          />
-        }
-        chatComponent={
-          <AssistantChat
-            chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate)}
-            historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
-            toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
-          />
-        }
-      />
+        </div>
+      </div>
     </AppEnabledGuard>
   );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof KnownErrors.EmailRenderingError) {
+    return error.message;
+  }
+  if (error instanceof KnownErrors.RequiresCustomEmailServer) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
 }

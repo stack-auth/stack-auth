@@ -28,12 +28,19 @@ const messageSchema = yupObject({
   content: yupMixed().defined(),
 });
 
-const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "mock-openrouter-api-key");
-const isMockMode = apiKey === "mock-openrouter-api-key";
-const openai = createOpenAI({
+// Mock mode sentinel value - when API key is not configured, we return mock responses
+const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
+const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
+
+// Only create OpenAI client if not in mock mode
+const openai = isMockMode ? null : createOpenAI({
   apiKey,
   baseURL: "https://openrouter.ai/api/v1",
 });
+
+// AI request timeout in milliseconds (2 minutes)
+const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -75,46 +82,61 @@ export const POST = createSmartRouteHandler({
     }
 
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
-    const modelName = "google/gemini-3-flash-preview";
+    // Model is configurable via env var; no default to surface missing config errors
+    const modelName = getEnvVariable("STACK_AI_MODEL");
+
+    if (!openai) {
+      // This shouldn't happen since we check isMockMode above, but guard anyway
+      throw new Error("OpenAI client not initialized - STACK_OPENROUTER_API_KEY may be missing");
+    }
 
     // Validate messages structure before passing to AI
     const validatedMessages = body.messages.map(msg => ({
       role: msg.role,
       content: msg.content,
-    })) as any; // Cast to bypass strict typing since content is mixed
+    })) as any; // Cast needed: content is a mixed type from yup schema that doesn't map to AI SDK's strict typing
 
-    const result = await generateText({
-      model: openai(modelName),
-      system: adapter.systemPrompt,
-      messages: validatedMessages,
-      tools: adapter.tools,
-    });
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
-    const contentBlocks: InferType<typeof contentSchema> = [];
-    result.steps.forEach((step) => {
-      if (step.text) {
-        contentBlocks.push({
-          type: "text",
-          text: step.text,
-        });
-      }
-      step.toolCalls.forEach(toolCall => {
-        contentBlocks.push({
-          type: "tool-call",
-          toolName: toolCall.toolName,
-          toolCallId: toolCall.toolCallId,
-          args: toolCall.args,
-          argsText: JSON.stringify(toolCall.args),
-          result: "success",
+    try {
+      const result = await generateText({
+        model: openai(modelName),
+        system: adapter.systemPrompt,
+        messages: validatedMessages,
+        tools: adapter.tools,
+        abortSignal: controller.signal,
+      });
+
+      const contentBlocks: InferType<typeof contentSchema> = [];
+      result.steps.forEach((step) => {
+        if (step.text) {
+          contentBlocks.push({
+            type: "text",
+            text: step.text,
+          });
+        }
+        step.toolCalls.forEach(toolCall => {
+          contentBlocks.push({
+            type: "tool-call",
+            toolName: toolCall.toolName,
+            toolCallId: toolCall.toolCallId,
+            args: toolCall.args,
+            argsText: JSON.stringify(toolCall.args),
+            result: "success",
+          });
         });
       });
-    });
 
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: { content: contentBlocks },
-    };
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { content: contentBlocks },
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 });
 

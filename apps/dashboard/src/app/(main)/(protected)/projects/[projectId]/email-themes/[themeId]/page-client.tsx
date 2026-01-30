@@ -2,7 +2,7 @@
 
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { useRouterConfirm } from "@/components/router";
-import { toast } from "@/components/ui";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui";
 import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import {
   createChatAdapter,
@@ -23,6 +23,11 @@ export default function PageClient({ themeId }: { themeId: string }) {
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
   const [viewport, setViewport] = useState<ViewportMode>('edit');
   const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
+  const [saveAlert, setSaveAlert] = useState<{
+    variant: "destructive" | "success",
+    title: string,
+    description?: string,
+  } | null>(null);
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
@@ -50,15 +55,16 @@ export default function PageClient({ themeId }: { themeId: string }) {
   };
 
   const handleSaveTheme = async () => {
+    setSaveAlert(null);
     try {
       await stackAdminApp.updateEmailTheme(themeId, currentCode);
-      toast({ title: "Theme saved", variant: "success" });
+      setSaveAlert({ variant: "success", title: "Theme saved" });
     } catch (error) {
-      if (error instanceof KnownErrors.EmailRenderingError) {
-        toast({ title: "Failed to save theme", variant: "destructive", description: error.message });
-        return;
-      }
-      throw error;
+      setSaveAlert({
+        variant: "destructive",
+        title: "Failed to save theme",
+        description: getErrorMessage(error),
+      });
     }
   };
 
@@ -71,42 +77,66 @@ export default function PageClient({ themeId }: { themeId: string }) {
 
   return (
     <AppEnabledGuard appId="emails">
-      <VibeCodeLayout
-        viewport={viewport}
-        onViewportChange={setViewport}
-        onSave={handleSaveTheme}
-        saveLabel="Save theme"
-        onUndo={handleUndo}
-        isDirty={isDirty}
-        previewActions={previewActions}
-        editorTitle="Theme Source Code"
-        editModeEnabled
-        wysiwygDebugInfo={wysiwygDebugInfo}
-        previewComponent={
-          <EmailPreview
-            themeTsxSource={currentCode}
-            templateTsxSource={previewTemplateSource}
-            editMode={viewport === 'edit'}
-            editableSource="theme"
-            viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
-            onDebugInfoChange={setWysiwygDebugInfo}
-            onWysiwygEditCommit={handleWysiwygEditCommit}
+      <div className="flex h-full flex-col">
+        {saveAlert && (
+          <div className="px-3 pt-3 md:px-6 md:pt-4">
+            <Alert variant={saveAlert.variant}>
+              <AlertTitle>{saveAlert.title}</AlertTitle>
+              {saveAlert.description && (
+                <AlertDescription>{saveAlert.description}</AlertDescription>
+              )}
+            </Alert>
+          </div>
+        )}
+        <div className="flex-1 min-h-0">
+          <VibeCodeLayout
+            viewport={viewport}
+            onViewportChange={setViewport}
+            onSave={handleSaveTheme}
+            saveLabel="Save theme"
+            onUndo={handleUndo}
+            isDirty={isDirty}
+            previewActions={previewActions}
+            editorTitle="Theme Source Code"
+            editModeEnabled
+            wysiwygDebugInfo={wysiwygDebugInfo}
+            previewComponent={
+              <EmailPreview
+                themeTsxSource={currentCode}
+                templateTsxSource={previewTemplateSource}
+                editMode={viewport === 'edit'}
+                editableSource="theme"
+                viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+                onDebugInfoChange={setWysiwygDebugInfo}
+                onWysiwygEditCommit={handleWysiwygEditCommit}
+              />
+            }
+            editorComponent={
+              <CodeEditor
+                code={currentCode}
+                onCodeChange={setCurrentCode}
+              />
+            }
+            chatComponent={
+              <AssistantChat
+                chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate)}
+                historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
+                toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
+              />
+            }
           />
-        }
-        editorComponent={
-          <CodeEditor
-            code={currentCode}
-            onCodeChange={setCurrentCode}
-          />
-        }
-        chatComponent={
-          <AssistantChat
-            chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate)}
-            historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
-            toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
-          />
-        }
-      />
+        </div>
+      </div>
     </AppEnabledGuard>
   );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof KnownErrors.EmailRenderingError) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
 }

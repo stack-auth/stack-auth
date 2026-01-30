@@ -67,12 +67,12 @@ export function EditableInput({
       }
     }}
     onMouseDown={(ev) => {
-      // Allow direct input focus, prevent blur for outer clicks.
+      // Prevent blur when clicking on buttons inside the container (except input, which has stopPropagation).
+      // This keeps focus on input while user clicks accept/reject buttons.
       if (containerRef.current?.contains(ev.target as Node)) {
-        return;
+        ev.preventDefault();
+        return false;
       }
-      ev.preventDefault();
-      return false;
     }}
   >
     <Input
@@ -127,8 +127,8 @@ export function EditableInput({
           size="plain"
           className={cn(
             "h-7 w-7 rounded-lg flex items-center justify-center transition-all duration-150 hover:transition-none backdrop-blur-sm",
-            action === "accept" 
-              ? "bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 hover:bg-emerald-500/[0.15] hover:ring-emerald-500/30" 
+            action === "accept"
+              ? "bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 hover:bg-emerald-500/[0.15] hover:ring-emerald-500/30"
               : "bg-red-500/[0.08] text-red-600 dark:text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/[0.15] hover:ring-red-500/30"
           )}
           onClick={() => runAsynchronouslyWithAlert(async () => {

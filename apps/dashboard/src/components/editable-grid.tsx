@@ -168,7 +168,7 @@ function EditableBooleanField({
 
   if (readOnly) {
     return (
-      <span className="inline-flex h-8 items-center rounded-xl bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-foreground/[0.06]">
+      <span className="inline-flex h-8 items-center rounded-xl bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]">
         {value ? trueLabel : falseLabel}
       </span>
     );
@@ -183,9 +183,9 @@ function EditableBooleanField({
       <SelectTrigger
         className={cn(
           "h-8 w-full rounded-xl px-3 text-sm text-foreground",
-          "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
-          "shadow-sm ring-1 ring-foreground/[0.06]",
-          "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06]",
+          "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
+          "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+          "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
           "transition-colors duration-150 hover:transition-none",
           "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50"
         )}
@@ -230,7 +230,7 @@ function EditableDropdownField({
 
   if (readOnly) {
     return (
-      <span className="inline-flex h-8 items-center rounded-xl bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-foreground/[0.06]">
+      <span className="inline-flex h-8 items-center rounded-xl bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]">
         {selectedOption?.label ?? value}
       </span>
     );
@@ -245,9 +245,9 @@ function EditableDropdownField({
       <SelectTrigger
         className={cn(
           "h-8 w-full rounded-xl px-3 text-sm text-foreground",
-          "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
-          "shadow-sm ring-1 ring-foreground/[0.06]",
-          "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06]",
+          "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
+          "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+          "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
           "transition-colors duration-150 hover:transition-none",
           "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50"
         )}
@@ -311,9 +311,9 @@ function CustomButtonField({
       disabled={disabled}
       className={cn(
         "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground",
-        "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
-        "shadow-sm ring-1 ring-foreground/[0.06]",
-        !disabled && "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
+        "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
+        "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+        !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
         "focus:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
         "transition-colors duration-150 hover:transition-none",
         disabled && "opacity-50 cursor-not-allowed"
@@ -337,9 +337,9 @@ function CustomDropdownField({
       disabled={disabled}
       className={cn(
         "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground",
-        "bg-background/60 dark:bg-foreground/[0.03] border border-border/10 dark:border-foreground/[0.06]",
-        "shadow-sm ring-1 ring-foreground/[0.06]",
-        !disabled && "hover:text-foreground hover:bg-background dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
+        "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
+        "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+        !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
         "focus:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
         "transition-colors duration-150 hover:transition-none",
         disabled && "opacity-50 cursor-not-allowed"

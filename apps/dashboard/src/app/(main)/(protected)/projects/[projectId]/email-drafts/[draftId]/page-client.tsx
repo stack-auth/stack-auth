@@ -4,7 +4,7 @@ import { TeamMemberSearchTable } from "@/components/data-table/team-member-searc
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
-import { Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast, useToast } from "@/components/ui";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { type WysiwygDebugInfo as EmailDebugInfo } from "@/components/email-preview";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
@@ -17,7 +17,11 @@ import { useAdminApp } from "../../use-admin-app";
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
   const { setNeedConfirm } = useRouterConfirm();
-  const { toast } = useToast();
+  const [saveAlert, setSaveAlert] = useState<{
+    variant: "destructive" | "success",
+    title: string,
+    description?: string,
+  } | null>(null);
 
   const drafts = stackAdminApp.useEmailDrafts();
   const draft = useMemo(() => drafts.find((d) => d.id === draftId), [drafts, draftId]);
@@ -42,28 +46,30 @@ export default function PageClient({ draftId }: { draftId: string }) {
   };
 
   const handleSave = async () => {
+    setSaveAlert(null);
     try {
       await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
-      toast({ title: "Draft saved", variant: "success" });
+      setSaveAlert({ variant: "success", title: "Draft saved" });
     } catch (error) {
-      if (error instanceof KnownErrors.EmailRenderingError) {
-        toast({ title: "Failed to save draft", variant: "destructive", description: error.message });
-        return;
-      }
-      toast({ title: "Failed to save draft", variant: "destructive", description: "Unknown error" });
+      setSaveAlert({
+        variant: "destructive",
+        title: "Failed to save draft",
+        description: getErrorMessage(error),
+      });
     }
   };
 
   const handleNext = async () => {
+    setSaveAlert(null);
     try {
       await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
       setStage("send");
     } catch (error) {
-      if (error instanceof KnownErrors.EmailRenderingError) {
-        toast({ title: "Failed to save draft", variant: "destructive", description: error.message });
-        return;
-      }
-      toast({ title: "Failed to save draft", variant: "destructive", description: "Unknown error" });
+      setSaveAlert({
+        variant: "destructive",
+        title: "Failed to save draft",
+        description: getErrorMessage(error),
+      });
     }
   };
 
@@ -95,52 +101,66 @@ export default function PageClient({ draftId }: { draftId: string }) {
   return (
     <AppEnabledGuard appId="emails">
       {stage === "edit" ? (
-        <VibeCodeLayout
-          viewport={viewport}
-          onViewportChange={setViewport}
-          onSave={handleSave}
-          saveLabel="Save draft"
-          onUndo={handleUndo}
-          isDirty={isDirty}
-          previewActions={previewActions}
-          editorTitle="Draft Source Code"
-          editModeEnabled
-          wysiwygDebugInfo={wysiwygDebugInfo}
-          headerAction={
-            <EmailThemeSelector
-              selectedThemeId={selectedThemeId}
-              onThemeChange={setSelectedThemeId}
+        <div className="flex h-full flex-col">
+          {saveAlert && (
+            <div className="px-3 pt-3 md:px-6 md:pt-4">
+              <Alert variant={saveAlert.variant}>
+                <AlertTitle>{saveAlert.title}</AlertTitle>
+                {saveAlert.description && (
+                  <AlertDescription>{saveAlert.description}</AlertDescription>
+                )}
+              </Alert>
+            </div>
+          )}
+          <div className="flex-1 min-h-0">
+            <VibeCodeLayout
+              viewport={viewport}
+              onViewportChange={setViewport}
+              onSave={handleSave}
+              saveLabel="Save draft"
+              onUndo={handleUndo}
+              isDirty={isDirty}
+              previewActions={previewActions}
+              editorTitle="Draft Source Code"
+              editModeEnabled
+              wysiwygDebugInfo={wysiwygDebugInfo}
+              headerAction={
+                <EmailThemeSelector
+                  selectedThemeId={selectedThemeId}
+                  onThemeChange={setSelectedThemeId}
+                />
+              }
+              primaryAction={{
+                label: "Next: Recipients",
+                onClick: handleNext,
+              }}
+              previewComponent={
+                <EmailPreview
+                  themeId={selectedThemeId}
+                  templateTsxSource={currentCode}
+                  editMode={viewport === 'edit'}
+                  viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
+                  emailSubject={draft?.displayName}
+                  onDebugInfoChange={setWysiwygDebugInfo}
+                  onWysiwygEditCommit={handleWysiwygEditCommit}
+                />
+              }
+              editorComponent={
+                <CodeEditor
+                  code={currentCode}
+                  onCodeChange={setCurrentCode}
+                />
+              }
+              chatComponent={
+                <AssistantChat
+                  historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
+                  chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
+                  toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
+                />
+              }
             />
-          }
-          primaryAction={{
-            label: "Next: Recipients",
-            onClick: handleNext,
-          }}
-          previewComponent={
-            <EmailPreview
-              themeId={selectedThemeId}
-              templateTsxSource={currentCode}
-              editMode={viewport === 'edit'}
-              viewport={viewport === 'desktop' || viewport === 'edit' ? undefined : (viewport === 'tablet' ? { id: 'tablet', name: 'Tablet', width: 820, height: 1180, type: 'tablet' } : { id: 'phone', name: 'Phone', width: 390, height: 844, type: 'phone' })}
-              emailSubject={draft?.displayName}
-              onDebugInfoChange={setWysiwygDebugInfo}
-              onWysiwygEditCommit={handleWysiwygEditCommit}
-            />
-          }
-          editorComponent={
-            <CodeEditor
-              code={currentCode}
-              onCodeChange={setCurrentCode}
-            />
-          }
-          chatComponent={
-            <AssistantChat
-              historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-              chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
-              toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
-            />
-          }
-        />
+          </div>
+        </div>
       ) : (
         <SendStage draftId={draftId} />
       )}
@@ -150,20 +170,44 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
 function SendStage({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
+  const [sendAlert, setSendAlert] = useState<{
+    variant: "destructive" | "success",
+    title: string,
+    description?: string,
+  } | null>(null);
   const [scope, setScope] = useState<"all" | "users">("all");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
   const handleSubmit = async () => {
-    await stackAdminApp.sendEmail(
-      scope === "users"
-        ? { draftId, userIds: selectedUserIds }
-        : { draftId, allUsers: true }
-    );
-    toast({ title: "Email sent", variant: "success" });
+    setSendAlert(null);
+    try {
+      await stackAdminApp.sendEmail(
+        scope === "users"
+          ? { draftId, userIds: selectedUserIds }
+          : { draftId, allUsers: true }
+      );
+      setSendAlert({ variant: "success", title: "Email sent" });
+    } catch (error) {
+      setSendAlert({
+        variant: "destructive",
+        title: "Failed to send email",
+        description: getErrorMessage(error),
+      });
+    }
   };
 
   return (
     <div className="mx-auto w-full max-w-4xl p-4">
+      {sendAlert && (
+        <div className="mb-4">
+          <Alert variant={sendAlert.variant}>
+            <AlertTitle>{sendAlert.title}</AlertTitle>
+            {sendAlert.description && (
+              <AlertDescription>{sendAlert.description}</AlertDescription>
+            )}
+          </Alert>
+        </div>
+      )}
       <Card className="p-4">
         <CardContent className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
@@ -217,4 +261,14 @@ function SendStage({ draftId }: { draftId: string }) {
       </Card>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof KnownErrors.EmailRenderingError) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
 }

@@ -1199,7 +1199,7 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
                       variant="ghost"
                       size="sm"
                       className="h-5 w-5 p-0"
-                      onClick={() => runAsynchronouslyWithAlert(handleCopyPrompt(itemId, displayName))}
+                      onClick={() => runAsynchronouslyWithAlert(() => handleCopyPrompt(itemId, displayName))}
                     >
                       <CopyIcon className="h-3 w-3" />
                     </Button>
