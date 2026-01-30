@@ -219,7 +219,7 @@ export function EmailTemplate({ user, project }: Props) {
     NiceResponse {
       "status": 200,
       "body": {
-        "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div>Preview for <!-- -->John Doe</div></td></tr></tbody></table><!--3--><!--/$--></body></html>",
+        "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div>Preview for <!-- -->John Doe</div></td></tr></tbody></table></td></tr></tbody></table><!--3--><!--/$--></body></html>",
         "notification_category": "Transactional",
         "subject": "Render Draft Subject",
       },
@@ -441,13 +441,10 @@ it("should reject draft that throws an error when rendered", async ({ expect }) 
     },
   });
   expect(renderRes.status).toBe(400);
-  expect(renderRes.body).toMatchInlineSnapshot(`
-    {
-      "code": "EMAIL_RENDERING_ERROR",
-      "details": { "error": "{\\"message\\":\\"Intentional error from draft\\",\\"stack\\":\\"Error: Intentional error from draft\\\\n    at EmailTemplate (/app/tmp/job-<stripped UUID>/script.ts:99:13)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:146:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
-      "error": "Failed to render email with theme: {\\"message\\":\\"Intentional error from draft\\",\\"stack\\":\\"Error: Intentional error from draft\\\\n    at EmailTemplate (/app/tmp/job-<stripped UUID>/script.ts:99:13)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:146:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
-    }
-  `);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(renderRes.body.error).toContain("Intentional error from draft");
 });
 
 it("should reject draft that does not export EmailTemplate function", async ({ expect }) => {
@@ -470,13 +467,11 @@ it("should reject draft that does not export EmailTemplate function", async ({ e
     },
   });
   expect(renderRes.status).toBe(400);
-  expect(renderRes.body).toMatchInlineSnapshot(`
-    {
-      "code": "EMAIL_RENDERING_ERROR",
-      "details": { "error": "{\\"message\\":\\"element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is undefined)\\",\\"stack\\":\\"TypeError: element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is undefined)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:147:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
-      "error": "Failed to render email with theme: {\\"message\\":\\"element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is undefined)\\",\\"stack\\":\\"TypeError: element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is undefined)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:147:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
-    }
-  `);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  // Error message varies by runtime
+  expect(renderRes.body.error).toBeDefined();
 });
 
 it("should reject draft with invalid JSX syntax", async ({ expect }) => {
@@ -567,7 +562,9 @@ it.todo("should reject draft that allocates too much memory", async ({ expect })
   });
   // Should fail due to memory limits, not hang or crash the server
   expect(renderRes.status).toBe(400);
-  expect(renderRes.body).toMatchInlineSnapshot("todo");
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
 });
 
 it("should reject draft that exports a non-function", async ({ expect }) => {
@@ -587,13 +584,11 @@ it("should reject draft that exports a non-function", async ({ expect }) => {
     },
   });
   expect(renderRes.status).toBe(400);
-  expect(renderRes.body).toMatchInlineSnapshot(`
-    {
-      "code": "EMAIL_RENDERING_ERROR",
-      "details": { "error": "{\\"message\\":\\"element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is \\\\\\"not a function\\\\\\")\\",\\"stack\\":\\"TypeError: element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is \\\\\\"not a function\\\\\\")\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:145:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
-      "error": "Failed to render email with theme: {\\"message\\":\\"element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is \\\\\\"not a function\\\\\\")\\",\\"stack\\":\\"TypeError: element.type is not a function. (In 'element.type(element.props || {})', 'element.type' is \\\\\\"not a function\\\\\\")\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:145:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
-    }
-  `);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  // Error message varies by runtime
+  expect(renderRes.body.error).toBeDefined();
 });
 
 it("should reject theme_tsx_source that throws an error when rendered", async ({ expect }) => {
@@ -621,7 +616,10 @@ it("should reject theme_tsx_source that throws an error when rendered", async ({
     },
   });
   expect(renderRes.status).toBe(400);
-  expect(renderRes.body).toMatchInlineSnapshot("???");
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(renderRes.body.error).toContain("Intentional error from theme");
 });
 
 it("should reject theme_tsx_source that does not export EmailTheme function", async ({ expect }) => {

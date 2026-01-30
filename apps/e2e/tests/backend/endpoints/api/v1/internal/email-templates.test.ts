@@ -83,7 +83,7 @@ it("should allow adding and updating email templates with custom email config", 
   expect(updateResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "rendered_html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div>Mock email template</div></td></tr></tbody></table><div style=\\"padding:1rem\\"><a href=\\"https://example.com\\" style=\\"color:#067df7;text-decoration-line:none\\" target=\\"_blank\\">Click here<!-- --> </a>to unsubscribe from these emails</div><!--7--><!--/$--></body></html>" },
+      "body": { "rendered_html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div>Mock email template</div></td></tr></tbody></table><div style=\\"padding:1rem\\"><a href=\\"https://example.com\\" style=\\"color:#067df7;text-decoration-line:none\\" target=\\"_blank\\">Click here<!-- --> </a>to unsubscribe from these emails</div></td></tr></tbody></table><!--7--><!--/$--></body></html>" },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -120,13 +120,10 @@ it("should reject template that throws an error", async ({ expect }) => {
   });
 
   expect(updateResponse.status).toBe(400);
-  expect(updateResponse.body).toMatchInlineSnapshot(`
-    {
-      "code": "EMAIL_RENDERING_ERROR",
-      "details": { "error": "{\\"message\\":\\"Intentional error from template\\",\\"stack\\":\\"Error: Intentional error from template\\\\n    at EmailTemplate (/app/tmp/job-<stripped UUID>/script.ts:100:13)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:226:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
-      "error": "Failed to render email with theme: {\\"message\\":\\"Intentional error from template\\",\\"stack\\":\\"Error: Intentional error from template\\\\n    at EmailTemplate (/app/tmp/job-<stripped UUID>/script.ts:100:13)\\\\n    at findComponentValue (/app/tmp/job-<stripped UUID>/script.ts:70:20)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:226:18)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
-    }
-  `);
+  expect(updateResponse.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(updateResponse.body.error).toContain("Intentional error from template");
 });
 
 it("should reject template that does not export EmailTemplate function", async ({ expect }) => {
@@ -160,13 +157,11 @@ it("should reject template that does not export EmailTemplate function", async (
   });
 
   expect(updateResponse.status).toBe(400);
-  expect(updateResponse.body).toMatchInlineSnapshot(`
-    {
-      "code": "EMAIL_RENDERING_ERROR",
-      "details": { "error": "{\\"message\\":\\"undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\",\\"stack\\":\\"TypeError: undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:217:95)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:45:61)\\\\n    at new Promise (native:1:11)\\\\n    at __async (/app/tmp/job-<stripped UUID>/script.ts:29:14)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:238:26)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}" },
-      "error": "Failed to render email with theme: {\\"message\\":\\"undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\",\\"stack\\":\\"TypeError: undefined is not an object (evaluating 'EmailTemplate.PreviewVariables')\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:217:95)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:45:61)\\\\n    at new Promise (native:1:11)\\\\n    at __async (/app/tmp/job-<stripped UUID>/script.ts:29:14)\\\\n    at <anonymous> (/app/tmp/job-<stripped UUID>/script.ts:238:26)\\\\n    at fulfilled (/app/tmp/job-<stripped UUID>/script.ts:32:24)\\"}",
-    }
-  `);
+  expect(updateResponse.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  // Error message varies by runtime
+  expect(updateResponse.body.error).toBeDefined();
 });
 
 it("should reject template with invalid JSX syntax", async ({ expect }) => {

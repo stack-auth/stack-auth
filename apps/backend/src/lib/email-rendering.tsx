@@ -1,7 +1,6 @@
 import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -50,7 +49,7 @@ export function createTemplateComponentFromHtml(html: string) {
 const nodeModules = {
   "react-dom": "19.1.1",
   "react": "19.1.1",
-  "@react-email/components": "0.1.1",
+  "@react-email/components": "1.0.6",
   "arktype": "2.1.20",
 };
 
