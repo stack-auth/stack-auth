@@ -48,5 +48,4 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpx wait-on tcp:localhost:8125 -t 60000
       - run: pnpm run test run --reporter=verbose

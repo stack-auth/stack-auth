@@ -52,9 +52,6 @@ jobs:
           wait-for: 3s
           log-output-if: true
 
-      - name: Wait for QStash
-        run: pnpx wait-on tcp:localhost:8125 -t 60000
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

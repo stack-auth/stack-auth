@@ -41,9 +41,6 @@ jobs:
       - name: Start dev environment
         run: pnpm run restart-dev-environment
 
-      - name: Wait for QStash
-        run: pnpx wait-on tcp:localhost:6925 -t 60000
-
       - name: Run tests
         run: pnpm run test run --reporter=verbose
       
