@@ -21,6 +21,7 @@ jobs:
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/source-of-truth-db?schema=sot-schema"}'
       STACK_TEST_SOURCE_OF_TRUTH: true
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_FORCE_EXTERNAL_DB_SYNC: "true"
 
     strategy:
       matrix:

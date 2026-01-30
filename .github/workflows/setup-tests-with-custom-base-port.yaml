@@ -19,6 +19,7 @@ jobs:
     runs-on: ubicloud-standard-16
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
+      STACK_FORCE_EXTERNAL_DB_SYNC: "true"
 
     steps:
       - uses: actions/checkout@v6

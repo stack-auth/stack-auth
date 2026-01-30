@@ -10,6 +10,9 @@ export const POSTGRES_USER = process.env.EXTERNAL_DB_TEST_USER || 'postgres';
 export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSWORD-PLACEHOLDER--uqfEC1hmmv';
 export const TEST_TIMEOUT = 120000;
 export const HIGH_VOLUME_TIMEOUT = 600000; // 10 minutes for 1500+ users
+const SHOULD_FORCE_EXTERNAL_DB_SYNC = process.env.STACK_FORCE_EXTERNAL_DB_SYNC === 'true';
+const FORCE_SYNC_INTERVAL_MS = 2000;
+let lastForcedSyncAt = -Infinity;
 
 // Connection settings to prevent connection leaks
 const CLIENT_CONFIG: Partial<ClientConfig> = {
@@ -126,10 +129,11 @@ export async function waitForCondition(
   options: { timeoutMs?: number, intervalMs?: number, description?: string } = {}
 ): Promise<void> {
   const { timeoutMs = 10000, intervalMs = 100, description = 'condition' } = options;
-  const startTime = Date.now();
+  const startTime = performance.now();
 
-  while (Date.now() - startTime < timeoutMs) {
+  while (performance.now() - startTime < timeoutMs) {
     try {
+      await maybeForceExternalDbSync();
       if (await checkFn()) {
         return;
       }
@@ -146,6 +150,30 @@ export async function waitForCondition(
   }
 
   throw new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`);
+}
+
+async function maybeForceExternalDbSync() {
+  if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return;
+
+  const now = performance.now();
+  if (now - lastForcedSyncAt < FORCE_SYNC_INTERVAL_MS) return;
+  lastForcedSyncAt = now;
+
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    throw new Error('CRON_SECRET is required when STACK_FORCE_EXTERNAL_DB_SYNC=true');
+  }
+
+  await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
+    headers: {
+      Authorization: `Bearer ${cronSecret}`,
+    },
+  });
+  await niceFetch(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
+    headers: {
+      Authorization: `Bearer ${cronSecret}`,
+    },
+  });
 }
 
 /**

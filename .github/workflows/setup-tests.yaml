@@ -17,6 +17,8 @@ env:
 jobs:
   setup-tests:
     runs-on: ubicloud-standard-16
+    env:
+      STACK_FORCE_EXTERNAL_DB_SYNC: "true"
     steps:
       - uses: actions/checkout@v6
 
