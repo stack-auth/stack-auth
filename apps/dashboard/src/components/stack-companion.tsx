@@ -23,8 +23,9 @@ function isNewerVersion(version1: string, version2: string): boolean {
     const match = version.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
     if (!match) return null;
     const [, month, day, year] = match;
-    // Convert 2-digit year to 4-digit (assumes 2000s)
-    const fullYear = 2000 + parseInt(year);
+    const twoDigitYear = parseInt(year);
+    // Sliding window: 70-99 → 1970-1999, 00-69 → 2000-2069
+    const fullYear = twoDigitYear >= 70 ? 1900 + twoDigitYear : 2000 + twoDigitYear;
     return new Date(fullYear, parseInt(month) - 1, parseInt(day));
   };
 
