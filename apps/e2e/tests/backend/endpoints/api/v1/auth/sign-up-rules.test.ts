@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../backend-helpers";
 
 describe("sign-up rules", () => {
   // ==========================================
@@ -241,7 +241,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.reject-rule': {
         enabled: true,
         displayName: 'Reject all',
-        priority: 0,
+        priority: 2,
         condition: 'true',
         action: {
           type: 'reject',
@@ -261,7 +261,20 @@ describe("sign-up rules", () => {
     });
 
     expect(response.status).toBe(403);
-    expect(response).toMatchInlineSnapshot("TODO");
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 403,
+        "body": {
+          "code": "SIGN_UP_REJECTED",
+          "details": { "message": "Your sign up was rejected. Please contact us for more information." },
+          "error": "Your sign up was rejected. Please contact us for more information.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "SIGN_UP_REJECTED",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
   });
 
   it("should sort rules with same priority alphabetically by ID", async ({ expect }) => {
@@ -319,7 +332,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.first-allow': {
         enabled: true,
         displayName: 'Allow specific domain',
-        priority: 0,
+        priority: 10, // Higher priority = evaluated first
         condition: 'emailDomain == "special.com"',
         action: {
           type: 'allow',
@@ -328,7 +341,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.second-reject': {
         enabled: true,
         displayName: 'Reject all',
-        priority: 1,
+        priority: 5, // Lower priority = evaluated second
         condition: 'true',
         action: {
           type: 'reject',
@@ -372,7 +385,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.first-reject': {
         enabled: true,
         displayName: 'Reject bad domain',
-        priority: 0,
+        priority: 10, // Higher priority = evaluated first
         condition: 'emailDomain == "bad.com"',
         action: {
           type: 'reject',
@@ -381,7 +394,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.second-allow': {
         enabled: true,
         displayName: 'Allow all (should not reach for bad.com)',
-        priority: 1,
+        priority: 5, // Lower priority = evaluated second
         condition: 'true',
         action: {
           type: 'allow',
@@ -424,7 +437,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.first-log': {
         enabled: true,
         displayName: 'Log all signups',
-        priority: 0,
+        priority: 10, // Higher priority = evaluated first
         condition: 'true',
         action: {
           type: 'log',
@@ -433,7 +446,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.second-reject': {
         enabled: true,
         displayName: 'Reject bad domain',
-        priority: 1,
+        priority: 5, // Lower priority = evaluated second
         condition: 'emailDomain == "bad.com"',
         action: {
           type: 'reject',
@@ -476,7 +489,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.first-restrict': {
         enabled: true,
         displayName: 'Restrict suspicious domain',
-        priority: 0,
+        priority: 10, // Higher priority = evaluated first
         condition: 'emailDomain == "suspicious.com"',
         action: {
           type: 'restrict',
@@ -485,7 +498,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.second-allow': {
         enabled: true,
         displayName: 'Allow all',
-        priority: 1,
+        priority: 5, // Lower priority = evaluated second
         condition: 'true',
         action: {
           type: 'allow',
@@ -526,7 +539,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.first-restrict': {
         enabled: true,
         displayName: 'Restrict all',
-        priority: 0,
+        priority: 10, // Higher priority = evaluated first
         condition: 'true',
         action: {
           type: 'restrict',
@@ -535,7 +548,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.second-reject': {
         enabled: true,
         displayName: 'Reject bad domain',
-        priority: 1,
+        priority: 5, // Lower priority = evaluated second
         condition: 'emailDomain == "bad.com"',
         action: {
           type: 'reject',
@@ -584,7 +597,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.a-first-restrict': {
         enabled: true,
         displayName: 'First restrict rule',
-        priority: 0,
+        priority: 10, // Higher priority = evaluated first
         condition: 'true',
         action: {
           type: 'restrict',
@@ -593,7 +606,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.b-second-restrict': {
         enabled: true,
         displayName: 'Second restrict rule',
-        priority: 1,
+        priority: 5, // Lower priority = evaluated second
         condition: 'true',
         action: {
           type: 'restrict',
@@ -634,7 +647,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.a-log': {
         enabled: true,
         displayName: 'Log all',
-        priority: 0,
+        priority: 30, // Highest priority = evaluated first
         condition: 'true',
         action: {
           type: 'log',
@@ -643,7 +656,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.b-restrict': {
         enabled: true,
         displayName: 'Restrict test domain',
-        priority: 1,
+        priority: 20, // Middle priority
         condition: 'emailDomain == "test.com"',
         action: {
           type: 'restrict',
@@ -652,7 +665,7 @@ describe("sign-up rules", () => {
       'auth.signUpRules.c-allow': {
         enabled: true,
         displayName: 'Allow all',
-        priority: 2,
+        priority: 10, // Lowest priority = evaluated last
         condition: 'true',
         action: {
           type: 'allow',
@@ -1150,6 +1163,7 @@ describe("sign-up rules", () => {
         oauth_providers: [{ id: "spotify", type: "shared" }],
       },
     });
+    await InternalApiKey.createAndSetProjectKeys();
 
     await Project.updateConfig({
       'auth.signUpRules.block-oauth': {
@@ -1179,6 +1193,7 @@ describe("sign-up rules", () => {
         oauth_providers: [{ id: "spotify", type: "shared" }],
       },
     });
+    await InternalApiKey.createAndSetProjectKeys();
 
     await Project.updateConfig({
       'auth.signUpRules.block-spotify': {
@@ -1208,6 +1223,7 @@ describe("sign-up rules", () => {
         oauth_providers: [{ id: "spotify", type: "shared" }],
       },
     });
+    await InternalApiKey.createAndSetProjectKeys();
 
     await Project.updateConfig({
       'auth.signUpRules.block-google': {
@@ -1234,6 +1250,7 @@ describe("sign-up rules", () => {
         oauth_providers: [{ id: "spotify", type: "shared" }],
       },
     });
+    await InternalApiKey.createAndSetProjectKeys();
 
     // Rule that blocks a specific email domain
     await Project.updateConfig({

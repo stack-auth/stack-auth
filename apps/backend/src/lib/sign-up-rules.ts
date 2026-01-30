@@ -35,13 +35,13 @@ async function logRuleTrigger(
     });
   } catch (e) {
     // Don't fail the signup if logging fails
-    console.error('Failed to log sign-up rule trigger:', e);
+    captureError(`sign-up-rule-trigger-log-error`, new StackAssertionError(`Failed to log sign-up rule trigger for rule ${ruleId}`, { cause: e }));
   }
 }
 
 /**
  * Evaluates all sign-up rules for a tenancy against the given context.
- * Rules are evaluated in order of priority (lowest first), then alphabetically by ID.
+ * Rules are evaluated in order of priority (highest first), then alphabetically by ID.
  * Returns the first matching rule's action, or the default action if no rules match.
  *
  * This function should be called from all signup paths:
@@ -65,7 +65,7 @@ export async function evaluateSignUpRules(
 
   let restrictedBecauseOfSignUpRuleId: string | null = null;
   for (const [ruleId, rule] of typedEntries(config.auth.signUpRules)) {
-    if (!rule.condition) continue;
+    if (!rule.enabled || !rule.condition) continue;
 
     let matches = false;
     try {
@@ -93,7 +93,10 @@ export async function evaluateSignUpRules(
 
       // apply the action
       if (actionType === 'restrict') {
-        restrictedBecauseOfSignUpRuleId = ruleId;
+        // Only record the first restrict rule (highest priority)
+        if (restrictedBecauseOfSignUpRuleId === null) {
+          restrictedBecauseOfSignUpRuleId = ruleId;
+        }
       }
       if (actionType === 'allow' || actionType === 'reject') {
         return {

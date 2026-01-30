@@ -149,7 +149,7 @@ const branchAuthSchema = yupObject({
     yupObject({
       enabled: yupBoolean(),
       displayName: yupString(),
-      // Priority for rule ordering (lower = higher priority, evaluated first)
+      // Priority for rule ordering (higher number = higher priority, evaluated first)
       // Rules with same priority are sorted alphabetically by ID
       priority: yupNumber().integer().min(0),
       // CEL expression string - evaluated against signup context
