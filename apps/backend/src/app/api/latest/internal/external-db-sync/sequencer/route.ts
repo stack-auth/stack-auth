@@ -1,4 +1,4 @@
-import { globalPrismaClient } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
   yupBoolean,
@@ -10,6 +10,7 @@ import {
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { getTenancy, type Tenancy } from "@/lib/tenancies";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -102,6 +103,112 @@ async function backfillSequenceIds() {
   }
 }
 
+async function backfillSequenceIdsForTenancy(prisma: PrismaClientTransaction, tenancyId: string): Promise<boolean> {
+  assertUuid(tenancyId, "tenancyId");
+  let didUpdate = false;
+
+  const projectUserRows = await prisma.$queryRaw<{ tenancyId: string }[]>`
+    WITH rows_to_update AS (
+      SELECT "tenancyId", "projectUserId"
+      FROM "ProjectUser"
+      WHERE ("shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)
+      AND "tenancyId" = ${tenancyId}::uuid
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "ProjectUser" pu
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE pu."tenancyId"     = r."tenancyId"
+        AND pu."projectUserId" = r."projectUserId"
+      RETURNING pu."tenancyId"
+    )
+    SELECT DISTINCT "tenancyId" FROM updated_rows
+  `;
+  if (projectUserRows.length > 0) {
+    didUpdate = true;
+  }
+
+  const contactChannelRows = await prisma.$queryRaw<{ tenancyId: string }[]>`
+    WITH rows_to_update AS (
+      SELECT "tenancyId", "projectUserId", "id"
+      FROM "ContactChannel"
+      WHERE ("shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)
+      AND "tenancyId" = ${tenancyId}::uuid
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "ContactChannel" cc
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE cc."tenancyId"     = r."tenancyId"
+        AND cc."projectUserId" = r."projectUserId"
+        AND cc."id"            = r."id"
+      RETURNING cc."tenancyId"
+    )
+    SELECT DISTINCT "tenancyId" FROM updated_rows
+  `;
+  if (contactChannelRows.length > 0) {
+    didUpdate = true;
+  }
+
+  const deletedRowRows = await prisma.$queryRaw<{ tenancyId: string }[]>`
+    WITH rows_to_update AS (
+      SELECT "id", "tenancyId"
+      FROM "DeletedRow"
+      WHERE ("shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)
+      AND "tenancyId" = ${tenancyId}::uuid
+      LIMIT 1000
+      FOR UPDATE SKIP LOCKED
+    ),
+    updated_rows AS (
+      UPDATE "DeletedRow" dr
+      SET "sequenceId" = nextval('global_seq_id'),
+          "shouldUpdateSequenceId" = FALSE
+      FROM rows_to_update r
+      WHERE dr."id" = r."id"
+      RETURNING dr."tenancyId"
+    )
+    SELECT DISTINCT "tenancyId" FROM updated_rows
+  `;
+  if (deletedRowRows.length > 0) {
+    didUpdate = true;
+  }
+
+  return didUpdate;
+}
+
+async function getNonHostedTenancies(): Promise<Tenancy[]> {
+  const tenancyIds = await globalPrismaClient.tenancy.findMany({
+    select: { id: true },
+  });
+
+  const tenancies: Tenancy[] = [];
+  for (const { id } of tenancyIds) {
+    const tenancy = await getTenancy(id);
+    if (!tenancy) continue;
+    if (tenancy.config.sourceOfTruth.type !== "hosted") {
+      tenancies.push(tenancy);
+    }
+  }
+
+  return tenancies;
+}
+
+async function backfillSequenceIdsForNonHostedTenancies(tenancies: Tenancy[]): Promise<void> {
+  for (const tenancy of tenancies) {
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const didUpdate = await backfillSequenceIdsForTenancy(prisma, tenancy.id);
+    if (didUpdate) {
+      await enqueueTenantSync(tenancy.id);
+    }
+  }
+}
+
 // Queues a sync request for a specific tenant if one isn't already pending.
 // Prevents duplicate sync requests by checking for unfulfilled requests.
 async function enqueueTenantSync(tenancyId: string) {
@@ -155,6 +262,10 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(401, "Unauthorized");
     }
 
+    let nonHostedTenancies = await getNonHostedTenancies();
+    let lastTenancyRefreshMs = performance.now();
+    const tenancyRefreshIntervalMs = 5_000;
+
     const startTime = performance.now();
     const maxDurationMs = 3 * 60 * 1000;
     const pollIntervalMs = 50;
@@ -163,7 +274,12 @@ export const GET = createSmartRouteHandler({
 
     while (performance.now() - startTime < maxDurationMs) {
       try {
+        if (performance.now() - lastTenancyRefreshMs >= tenancyRefreshIntervalMs) {
+          nonHostedTenancies = await getNonHostedTenancies();
+          lastTenancyRefreshMs = performance.now();
+        }
         await backfillSequenceIds();
+        await backfillSequenceIdsForNonHostedTenancies(nonHostedTenancies);
       } catch (error) {
         captureError(
           `sequencer-iteration-error`,

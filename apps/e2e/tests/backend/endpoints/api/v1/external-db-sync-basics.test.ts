@@ -194,13 +194,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     // Wait for sync to create the table and populate data
     await waitForTable(client, 'users');
 
-    await waitForCondition(
-      async () => {
-        const res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['sync-verify@example.com']);
-        return res.rows.length > 0;
-      },
-      { description: 'data to appear in external DB', timeoutMs: 90000 }
-    );
+    await waitForSyncedData(client, 'sync-verify@example.com', 'Sync Verify User');
     await verifyInExternalDb(client, 'sync-verify@example.com', 'Sync Verify User');
   }, TEST_TIMEOUT);
 
