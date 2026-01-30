@@ -192,15 +192,12 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+
       - name: Start run-cron-jobs in background
         uses: JarvusInnovations/background-action@v1.0.7
+        if: ${{ hashFiles('apps/backend/scripts/run-cron-jobs.ts') != '' }}
         with:
-          run: |
-            if [ -f apps/backend/scripts/run-cron-jobs.ts ]; then
-              pnpm -C apps/backend run with-env:dev tsx scripts/run-cron-jobs.ts --log-order=stream &
-            else
-              echo "scripts/run-cron-jobs.ts missing on this branch; skipping cron runner."
-            fi
+          run: pnpm -C apps/backend run with-env:dev tsx scripts/run-cron-jobs.ts --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true
