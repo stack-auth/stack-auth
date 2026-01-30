@@ -130,6 +130,8 @@ describe("getConfig", () => {
           "otp": { "allowSignIn": false },
           "passkey": { "allowSignIn": false },
           "password": { "allowSignIn": true },
+          "signUpRules": {},
+          "signUpRulesDefaultAction": "allow",
         },
         "teams": {
           "allowClientTeamCreation": false,
@@ -157,6 +159,8 @@ describe("updateConfig", () => {
         "otp": { "allowSignIn": false },
         "passkey": { "allowSignIn": false },
         "password": { "allowSignIn": true },
+        "signUpRules": {},
+        "signUpRulesDefaultAction": "allow",
       }
     `);
 
