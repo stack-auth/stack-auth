@@ -19,7 +19,7 @@
     "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && pnpx wait-on http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && pnpm run build:packages && pnpm run codegen && pnpm run restart-deps && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
-    "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf node_modules && rimraf --glob **/node_modules",
+    "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules && rimraf node_modules",
     "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks",
     "codegen:backend": "pnpm pre && turbo run codegen --filter=@stackframe/stack-backend...",
     "deps-compose": "docker compose -p stack-dependencies-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81} -f docker/dependencies/docker.compose.yaml",

@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
@@ -47,6 +48,10 @@ export async function createOrUpgradeAnonymousUserWithRules(
     authMethod: signUpRuleOptions.authMethod,
     oauthProvider: signUpRuleOptions.oauthProvider,
   }));
+
+  if (!ruleResult.shouldAllow) {
+    throw new KnownErrors.SignUpRejected();
+  }
 
   const existingRestrictionPrivateDetails = createOrUpdate.restricted_by_admin_private_details ?? currentUser?.restricted_by_admin_private_details;
   const restrictionPrivateDetails = ruleResult.restrictedBecauseOfSignUpRuleId

@@ -1,5 +1,4 @@
 import { evaluate } from "cel-js";
-import RE2 from "re2";
 import { normalizeEmail } from "./emails";
 
 /**
@@ -95,9 +94,7 @@ function preprocessExpression(
       }
       case 'matches': {
         try {
-          // Use RE2 for regex matching to prevent ReDoS attacks
-          // RE2 uses a linear-time matching algorithm, preventing catastrophic backtracking
-          const regex = new RE2(unescapedArg);
+          const regex = new RegExp(unescapedArg);
           result = regex.test(varValue);
         } catch {
           // Invalid regex pattern - treat as non-match

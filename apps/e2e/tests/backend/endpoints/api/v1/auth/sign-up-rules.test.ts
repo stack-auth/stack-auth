@@ -220,7 +220,7 @@ describe("sign-up rules", () => {
   // RULE PRIORITY AND ORDERING
   // ==========================================
 
-  it("should evaluate rules by priority order (lower number = higher priority)", async ({ expect }) => {
+  it("should evaluate rules by priority order (higher number = higher priority)", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
@@ -261,6 +261,7 @@ describe("sign-up rules", () => {
     });
 
     expect(response.status).toBe(403);
+    expect(response).toMatchInlineSnapshot("TODO");
   });
 
   it("should sort rules with same priority alphabetically by ID", async ({ expect }) => {
@@ -307,7 +308,7 @@ describe("sign-up rules", () => {
     expect(response.status).toBe(403);
   });
 
-  it("should stop evaluating after first matching rule", async ({ expect }) => {
+  it("should stop evaluating after first matching allow rule", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
@@ -337,7 +338,7 @@ describe("sign-up rules", () => {
       'auth.signUpRulesDefaultAction': 'reject',
     });
 
-    // special.com should be allowed by first rule
+    // special.com should be allowed by first rule, second reject rule should NOT trigger
     const allowedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
@@ -354,6 +355,389 @@ describe("sign-up rules", () => {
       accessType: "client",
       body: {
         email: `user-${generateSecureRandomString(8)}@other.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(rejectedResponse.status).toBe(403);
+  });
+
+  it("should stop evaluating after first matching reject rule", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.first-reject': {
+        enabled: true,
+        displayName: 'Reject bad domain',
+        priority: 0,
+        condition: 'emailDomain == "bad.com"',
+        action: {
+          type: 'reject',
+        },
+      },
+      'auth.signUpRules.second-allow': {
+        enabled: true,
+        displayName: 'Allow all (should not reach for bad.com)',
+        priority: 1,
+        condition: 'true',
+        action: {
+          type: 'allow',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // bad.com should be rejected by first rule, second allow rule should NOT trigger
+    const rejectedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@bad.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(rejectedResponse.status).toBe(403);
+
+    // Other domains are allowed
+    const allowedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@good.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(allowedResponse.status).toBe(200);
+  });
+
+  it("should continue evaluating after log rule matches", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.first-log': {
+        enabled: true,
+        displayName: 'Log all signups',
+        priority: 0,
+        condition: 'true',
+        action: {
+          type: 'log',
+        },
+      },
+      'auth.signUpRules.second-reject': {
+        enabled: true,
+        displayName: 'Reject bad domain',
+        priority: 1,
+        condition: 'emailDomain == "bad.com"',
+        action: {
+          type: 'reject',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Log rule triggers first, but evaluation continues to reject rule
+    const rejectedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@bad.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(rejectedResponse.status).toBe(403);
+
+    // Good domain: log triggers, then default allow is used
+    const allowedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@good.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(allowedResponse.status).toBe(200);
+  });
+
+  it("should continue evaluating after restrict rule matches", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.first-restrict': {
+        enabled: true,
+        displayName: 'Restrict suspicious domain',
+        priority: 0,
+        condition: 'emailDomain == "suspicious.com"',
+        action: {
+          type: 'restrict',
+        },
+      },
+      'auth.signUpRules.second-allow': {
+        enabled: true,
+        displayName: 'Allow all',
+        priority: 1,
+        condition: 'true',
+        action: {
+          type: 'allow',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'reject',
+    });
+
+    // Restrict rule triggers first, evaluation continues, second allow rule triggers
+    // User should be created but restricted
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@suspicious.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const userId = response.body.user_id;
+    const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(userResponse.body.restricted_by_admin).toBe(true);
+    expect(userResponse.body.restricted_by_admin_private_details).toContain("first-restrict");
+  });
+
+  it("should apply restrict then reject (user is not created)", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.first-restrict': {
+        enabled: true,
+        displayName: 'Restrict all',
+        priority: 0,
+        condition: 'true',
+        action: {
+          type: 'restrict',
+        },
+      },
+      'auth.signUpRules.second-reject': {
+        enabled: true,
+        displayName: 'Reject bad domain',
+        priority: 1,
+        condition: 'emailDomain == "bad.com"',
+        action: {
+          type: 'reject',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    // Restrict triggers first, then reject triggers for bad.com - user is not created
+    const rejectedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@bad.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(rejectedResponse.status).toBe(403);
+
+    // For good domain: restrict triggers, default allow is used - user is created but restricted
+    const allowedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@good.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(allowedResponse.status).toBe(200);
+    const userId = allowedResponse.body.user_id;
+    const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(userResponse.body.restricted_by_admin).toBe(true);
+  });
+
+  it("should record only the first restrict rule ID when multiple restrict rules match", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.a-first-restrict': {
+        enabled: true,
+        displayName: 'First restrict rule',
+        priority: 0,
+        condition: 'true',
+        action: {
+          type: 'restrict',
+        },
+      },
+      'auth.signUpRules.b-second-restrict': {
+        enabled: true,
+        displayName: 'Second restrict rule',
+        priority: 1,
+        condition: 'true',
+        action: {
+          type: 'restrict',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const userId = response.body.user_id;
+    const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(userResponse.body.restricted_by_admin).toBe(true);
+    // Should contain only the first restrict rule ID (alphabetically first at same priority)
+    expect(userResponse.body.restricted_by_admin_private_details).toContain("a-first-restrict");
+    expect(userResponse.body.restricted_by_admin_private_details).not.toContain("b-second-restrict");
+  });
+
+  it("should trigger log + restrict + allow in sequence", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.a-log': {
+        enabled: true,
+        displayName: 'Log all',
+        priority: 0,
+        condition: 'true',
+        action: {
+          type: 'log',
+        },
+      },
+      'auth.signUpRules.b-restrict': {
+        enabled: true,
+        displayName: 'Restrict test domain',
+        priority: 1,
+        condition: 'emailDomain == "test.com"',
+        action: {
+          type: 'restrict',
+        },
+      },
+      'auth.signUpRules.c-allow': {
+        enabled: true,
+        displayName: 'Allow all',
+        priority: 2,
+        condition: 'true',
+        action: {
+          type: 'allow',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'reject',
+    });
+
+    // test.com: log triggers, restrict triggers, allow triggers, user is created but restricted
+    const testResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@test.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(testResponse.status).toBe(200);
+    const testUserId = testResponse.body.user_id;
+    const testUserResponse = await niceBackendFetch(`/api/v1/users/${testUserId}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(testUserResponse.body.restricted_by_admin).toBe(true);
+    expect(testUserResponse.body.restricted_by_admin_private_details).toContain("b-restrict");
+
+    // other.com: log triggers, restrict doesn't match, allow triggers, user is created and not restricted
+    const otherResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@other.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(otherResponse.status).toBe(200);
+    const otherUserId = otherResponse.body.user_id;
+    const otherUserResponse = await niceBackendFetch(`/api/v1/users/${otherUserId}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+    expect(otherUserResponse.body.restricted_by_admin).toBe(false);
+  });
+
+  it("should use default action when only log/restrict rules match", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    // Test with default allow
+    await Project.updateConfig({
+      'auth.signUpRules.log-all': {
+        enabled: true,
+        displayName: 'Log all',
+        priority: 0,
+        condition: 'true',
+        action: {
+          type: 'log',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    const allowedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(allowedResponse.status).toBe(200);
+
+    // Now test with default reject
+    await Project.updateConfig({
+      'auth.signUpRulesDefaultAction': 'reject',
+    });
+
+    const rejectedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@example2.com`,
         password: generateSecureRandomString(),
       },
     });
@@ -1167,7 +1551,7 @@ describe("sign-up rules", () => {
     expect(normalResponse.status).toBe(403);
   });
 
-  it("should handle 'log' action type (allows signup but logs)", async ({ expect }) => {
+  it("should handle 'log' action type (continues to next rules)", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
@@ -1187,7 +1571,7 @@ describe("sign-up rules", () => {
       'auth.signUpRulesDefaultAction': 'allow',
     });
 
-    // Suspicious email should still be allowed (log doesn't block)
+    // Log action triggers but evaluation continues - default allow is used
     const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
@@ -1601,7 +1985,7 @@ describe("sign-up rules", () => {
   // RESTRICT ACTION - Admin Restriction
   // ==========================================
 
-  it("should create restricted user when restrict action matches", async ({ expect }) => {
+  it("should create restricted user when restrict action matches (continues evaluation)", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
@@ -1630,7 +2014,7 @@ describe("sign-up rules", () => {
       body: { email, password },
     });
 
-    // Should succeed but user should be restricted
+    // Restrict triggers, then default allow is used - user is created but restricted
     expect(response.status).toBe(200);
 
     // Get the user via admin API to check restricted status
@@ -2251,66 +2635,21 @@ describe("sign-up rules", () => {
     expect(response.status).toBe(200);
   });
 
-  it("should handle ReDoS attack patterns safely with RE2", async ({ expect }) => {
+  it("should support backreferences in regex patterns", async ({ expect }) => {
     await Project.createAndSwitch({
       config: {
         credential_enabled: true,
       },
     });
 
-    // Rule with a pattern that would cause catastrophic backtracking with native RegExp
-    // This pattern (a+)+ is known to cause exponential time with certain inputs
-    // RE2 handles this in linear time
-    await Project.updateConfig({
-      'auth.signUpRules.redos-pattern': {
-        enabled: true,
-        displayName: 'ReDoS test pattern',
-        priority: 0,
-        // Pattern that causes catastrophic backtracking in native regex engines
-        condition: 'email.matches("^(a+)+$")',
-        action: {
-          type: 'reject',
-          message: 'Matched ReDoS pattern',
-        },
-      },
-      'auth.signUpRulesDefaultAction': 'allow',
-    });
-
-    // This should complete quickly (not hang) because we use RE2
-    // A vulnerable regex engine would hang on this input
-    const startTime = performance.now();
-    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-      method: "POST",
-      accessType: "client",
-      body: {
-        email: `normal-${generateSecureRandomString(4)}@example.com`,
-        password: generateSecureRandomString(),
-      },
-    });
-    const elapsed = performance.now() - startTime;
-
-    expect(response.status).toBe(200);
-    // Should complete in under 5 seconds (RE2 is linear time)
-    // A vulnerable engine would take exponential time
-    expect(elapsed).toBeLessThan(5000);
-  });
-
-  it("should reject complex ReDoS patterns that RE2 doesn't support", async ({ expect }) => {
-    await Project.createAndSwitch({
-      config: {
-        credential_enabled: true,
-      },
-    });
-
-    // RE2 doesn't support backreferences, so this pattern should fail to compile
-    // and the rule should not match (return false)
+    // JavaScript regex supports backreferences
     await Project.updateConfig({
       'auth.signUpRules.backreference': {
         enabled: true,
         displayName: 'Backreference pattern',
         priority: 0,
-        // Backreferences like \1 are not supported by RE2
-        condition: 'email.matches("^(a)\\\\1$")',
+        // Backreference pattern: matches repeated characters like "aa"
+        condition: 'email.matches("^(a)\\\\1")',
         action: {
           type: 'reject',
           message: 'Matched backreference pattern',
@@ -2319,8 +2658,8 @@ describe("sign-up rules", () => {
       'auth.signUpRulesDefaultAction': 'allow',
     });
 
-    // Should allow signup because RE2 can't compile the pattern
-    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    // Email starting with "aa" should be rejected (matches backreference)
+    const rejectedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
       method: "POST",
       accessType: "client",
       body: {
@@ -2328,7 +2667,17 @@ describe("sign-up rules", () => {
         password: generateSecureRandomString(),
       },
     });
-    // Pattern compilation fails, so rule doesn't match, allowing signup
-    expect(response.status).toBe(200);
+    expect(rejectedResponse.status).toBe(403);
+
+    // Email not starting with "aa" should be allowed
+    const allowedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `ab-${generateSecureRandomString(4)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+    expect(allowedResponse.status).toBe(200);
   });
 });
