@@ -1714,7 +1714,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       // END_PLATFORM
       async createCheckoutUrl(options: { productId: string, returnUrl?: string }) {
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, options.productId, effectiveSession, options.returnUrl, "client");
       },
       async switchSubscription(options: { fromProductId: string, toProductId: string, priceId?: string, quantity?: number }) {
         await app._interface.switchSubscription({

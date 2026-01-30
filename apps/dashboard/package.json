@@ -65,6 +65,7 @@
     "@stripe/react-stripe-js": "^3.8.1",
     "@stripe/stripe-js": "^7.7.0",
     "@tanstack/react-table": "^8.20.5",
+    "@tanstack/react-virtual": "^3.13.18",
     "@vercel/analytics": "^1.2.2",
     "@vercel/speed-insights": "^1.0.12",
     "ai": "^4.3.17",

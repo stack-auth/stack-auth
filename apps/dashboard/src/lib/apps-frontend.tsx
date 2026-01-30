@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -303,6 +303,20 @@ export const ALL_APPS_FRONTEND = {
     ],
     screenshots: getScreenshots('vercel', 2),
     storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
+  },
+  analytics: {
+    icon: ChartLineIcon,
+    href: "analytics",
+    navigationItems: [
+      { displayName: "Tables", href: "./tables" },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
+        <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+      </>
+    ),
   },
 } as const satisfies Record<AppId, AppFrontend>;
 

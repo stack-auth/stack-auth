@@ -1182,6 +1182,64 @@ describe('getSubscriptions - defaults behavior', () => {
     expect(ids).toContain('freeUngrouped');
   });
 
+  it('includes include-by-default product when only inactive subscription exists in line', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      productLines: { g1: { displayName: 'G1', customerType: 'user' } },
+      products: {
+        freeG1: {
+          displayName: 'Free',
+          productLineId: 'g1',
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+        paidG1: {
+          displayName: 'Paid',
+          productLineId: 'g1',
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          id: 'sub-1',
+          productId: 'paidG1',
+          product: tenancy.config.payments.products['paidG1'],
+          quantity: 1,
+          currentPeriodStart: new Date('2025-01-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-02-01T00:00:00.000Z'),
+          cancelAtPeriodEnd: false,
+          status: 'canceled',
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+          stripeSubscriptionId: null,
+        }],
+      },
+    } as any);
+
+    const subs = await getSubscriptions({
+      prisma,
+      tenancy,
+      customerType: 'user',
+      customerId: 'user-1',
+    });
+
+    const ids = subs.map(s => s.productId);
+    expect(ids).toContain('freeG1');
+  });
+
   it('throws error when multiple include-by-default products exist in same line', async () => {
     const tenancy = createMockTenancy({
       items: {},
