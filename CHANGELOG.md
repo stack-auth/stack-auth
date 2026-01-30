@@ -17,6 +17,7 @@ Introduced a redesigned payments onboarding flow
 ![Payments Setting]()
 - Subscription renewal emails are now sent automatically to users
 - Past payment invoices are now visible on the Account Settings page
+![Past Payments Invoices]()
 
 ### Documentation
 - Updated JWT documentation to include `isRestricted` and `restrictedReason`
