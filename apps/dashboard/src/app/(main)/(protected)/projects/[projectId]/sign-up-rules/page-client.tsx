@@ -12,7 +12,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Spinner,
   Switch,
   Typography,
 } from "@/components/ui";
@@ -28,8 +27,9 @@ import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -325,7 +325,6 @@ function SortableRuleRow({
         // Only apply CSS transition when not dragging to avoid lag
         !isDragging && "transition-all duration-150 hover:transition-none",
         isDragging && "opacity-50 shadow-lg z-10",
-        !isEnabled && "opacity-40 grayscale",
       )}
       {...attributes}
       {...listeners}
@@ -346,21 +345,25 @@ function SortableRuleRow({
         <div className="flex items-center gap-2">
           <Typography className={cn(
             "font-medium text-sm truncate",
-          !isEnabled && "text-muted-foreground",
+            !isEnabled && "text-muted-foreground line-through",
           )}>
             {entry.rule.displayName || 'Unnamed rule'}
           </Typography>
           <span className={cn(
             "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
-          actionType === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
-          actionType === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
-          actionType === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
-          actionType === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+            actionType === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
+            actionType === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
+            actionType === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+            actionType === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+            !isEnabled && "opacity-50",
           )}>
             {actionLabel}
           </span>
         </div>
-        <Typography variant="secondary" className="text-xs truncate mt-0.5">
+        <Typography variant="secondary" className={cn(
+          "text-xs truncate mt-0.5",
+          !isEnabled && "line-through",
+        )}>
           {conditionSummary}
         </Typography>
       </div>
@@ -495,9 +498,11 @@ function useSignUpRulesAnalytics() {
     let cancelled = false;
 
     const fetchAnalytics = async () => {
-      const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest('/internal/sign-up-rules', {
-        method: 'GET',
-      });
+      const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+        '/internal/sign-up-rules',
+        { method: 'GET' },
+        'admin' // Required for internal endpoints
+      );
       if (cancelled) return;
 
       const data = await response.json();
@@ -536,18 +541,38 @@ export default function PageClient() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<SignUpRuleEntry | null>(null);
 
-  // Reordering loading state
-  const [isReordering, setIsReordering] = useState(false);
-
   // Fetch analytics data
   const { analytics: ruleAnalytics } = useSignUpRulesAnalytics();
 
   // Type assertion needed because schema changes take effect at build time
   const configWithRules = config as ConfigWithSignUpRules;
+
+  // Server state (source of truth)
+  const serverRules = useMemo(() =>
+    typedEntries(configWithRules.auth.signUpRules ?? {}).map(([id, rule]) => ({ id, rule })),
+    [configWithRules.auth.signUpRules]
+  );
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
   const defaultAction = configWithRules.auth.signUpRulesDefaultAction ?? 'allow';
 
-  const signUpRules = typedEntries(configWithRules.auth.signUpRules).map(([id, rule]) => ({ id, rule }));
+  // ===== LOCAL STATE FOR REORDERING ONLY =====
+  // When user drags to reorder, we store the new order locally until they save
+  const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
+
+  // Compute the displayed rules: if we have a pending order, reorder server rules accordingly
+  const signUpRules: SignUpRuleEntry[] = useMemo(() => {
+    if (pendingOrder === null) return serverRules;
+    // Reorder server rules based on pending order
+    const ruleMap = new Map(serverRules.map(r => [r.id, r]));
+    const result: SignUpRuleEntry[] = [];
+    for (const id of pendingOrder) {
+      const rule = ruleMap.get(id);
+      if (rule) result.push(rule);
+    }
+    return result;
+  }, [serverRules, pendingOrder]);
+
+  const hasOrderChanges = pendingOrder !== null;
 
   // DnD sensors
   const sensors = useSensors(
@@ -557,30 +582,15 @@ export default function PageClient() {
     })
   );
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = signUpRules.findIndex((r) => r.id === active.id);
-      const newIndex = signUpRules.findIndex((r) => r.id === over.id);
-      const newOrder = arrayMove(signUpRules, oldIndex, newIndex);
-
-      setIsReordering(true);
-
-      const configUpdate: Record<string, number> = {};
-      newOrder.forEach((entry, index) => {
-        configUpdate[`auth.signUpRules.${entry.id}.priority`] = signUpRules.length - index;
-      });
-
-      try {
-        await updateConfig({
-          adminApp: stackAdminApp,
-          configUpdate,
-          pushable: true,
-        });
-      } finally {
-        setIsReordering(false);
-      }
+      const currentOrder = pendingOrder ?? serverRules.map(r => r.id);
+      const oldIndex = currentOrder.indexOf(active.id as string);
+      const newIndex = currentOrder.indexOf(over.id as string);
+      const newOrder = arrayMove(currentOrder, oldIndex, newIndex);
+      setPendingOrder(newOrder);
     }
   };
 
@@ -591,16 +601,17 @@ export default function PageClient() {
     setEditingRuleId(null);
   };
 
+  // Save rule immediately to config
   const handleSaveRule = async (ruleId: string, rule: SignUpRule) => {
-    // For new rules, set priority to be at the end
-    if (isCreatingNew) {
-      rule.priority = signUpRules.length;
-    }
+    // For new rules, set priority to be at the top (don't mutate the input)
+    const ruleToSave: SignUpRule = isCreatingNew
+      ? { ...rule, priority: serverRules.length + 1 }
+      : rule;
 
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
-        [`auth.signUpRules.${ruleId}`]: rule,
+        [`auth.signUpRules.${ruleId}`]: ruleToSave,
       },
       pushable: true,
     });
@@ -615,6 +626,7 @@ export default function PageClient() {
     setNewRuleId(null);
   };
 
+  // Delete rule immediately
   const handleDeleteRule = async () => {
     if (!ruleToDelete) return;
     await updateConfig({
@@ -624,10 +636,15 @@ export default function PageClient() {
       },
       pushable: true,
     });
+    // Clear from pending order if present
+    if (pendingOrder) {
+      setPendingOrder(pendingOrder.filter(id => id !== ruleToDelete.id));
+    }
     setDeleteDialogOpen(false);
     setRuleToDelete(null);
   };
 
+  // Toggle enabled immediately
   const handleToggleEnabled = async (ruleId: string, enabled: boolean) => {
     await updateConfig({
       adminApp: stackAdminApp,
@@ -638,6 +655,7 @@ export default function PageClient() {
     });
   };
 
+  // Change default action immediately
   const handleDefaultActionChange = async (value: 'allow' | 'reject') => {
     await updateConfig({
       adminApp: stackAdminApp,
@@ -647,6 +665,30 @@ export default function PageClient() {
       pushable: true,
     });
   };
+
+  // Save reorder changes
+  const handleSaveOrder = async () => {
+    if (!pendingOrder) return;
+
+    const configUpdate: Record<string, number> = {};
+    pendingOrder.forEach((ruleId, index) => {
+      configUpdate[`auth.signUpRules.${ruleId}.priority`] = pendingOrder.length - index;
+    });
+
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate,
+      pushable: true,
+    });
+
+    setPendingOrder(null);
+  };
+
+  const handleDiscardOrder = () => {
+    setPendingOrder(null);
+  };
+
+  const [handleSaveOrderAsync, isSavingOrder] = useAsyncCallback(handleSaveOrder, [handleSaveOrder]);
 
   const isAnyEditing = editingRuleId !== null || isCreatingNew;
 
@@ -658,7 +700,7 @@ export default function PageClient() {
         actions={
           <Button
             onClick={handleAddRule}
-            disabled={isAnyEditing}
+            disabled={isAnyEditing || hasOrderChanges}
           >
             <PlusIcon className="h-4 w-4 mr-2" />
             Add rule
@@ -667,16 +709,6 @@ export default function PageClient() {
       >
         {/* Rules list and default action */}
         <div className="relative space-y-2">
-          {/* Blocking loading overlay */}
-          {isReordering && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-xl">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Spinner size={20} />
-                <span>Saving order...</span>
-              </div>
-            </div>
-          )}
-
           {/* New rule editor (at the top when creating) */}
           {isCreatingNew && newRuleId && (
             <RuleEditor
@@ -687,11 +719,77 @@ export default function PageClient() {
             />
           )}
 
-          {signUpRules.length > 0 ? (
+          {/* Pending order banner */}
+          {hasOrderChanges && (
+            <div className="rounded-xl border-2 border-primary/50 bg-primary/5 p-4">
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                  <ArrowsDownUpIcon className="h-4 w-4" />
+                  <span>Rule order has been changed</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDiscardOrder}
+                    disabled={isSavingOrder}
+                  >
+                    <XIcon className="h-4 w-4 mr-1.5" />
+                    Discard
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveOrderAsync}
+                    loading={isSavingOrder}
+                  >
+                    <CheckIcon className="h-4 w-4 mr-1.5" />
+                    Save order
+                  </Button>
+                </div>
+              </div>
+
+              {/* Rules list inside the banner */}
+              <div className="space-y-2">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={signUpRules.map((r) => r.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {signUpRules.map((entry) => (
+                      <SortableRuleRow
+                        key={entry.id}
+                        entry={entry}
+                        analytics={ruleAnalytics.get(entry.id)}
+                        isEditing={editingRuleId === entry.id}
+                        onEdit={() => {
+                          setEditingRuleId(entry.id);
+                          setIsCreatingNew(false);
+                        }}
+                        onDelete={() => {
+                          setRuleToDelete(entry);
+                          setDeleteDialogOpen(true);
+                        }}
+                        onToggleEnabled={(enabled) => runAsynchronouslyWithAlert(handleToggleEnabled(entry.id, enabled))}
+                        onSave={handleSaveRule}
+                        onCancelEdit={handleCancelEdit}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </div>
+            </div>
+          )}
+
+          {/* Normal rules list (when no pending order) */}
+          {!hasOrderChanges && signUpRules.length > 0 && (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
-              onDragEnd={(e) => runAsynchronouslyWithAlert(handleDragEnd(e))}
+              onDragEnd={handleDragEnd}
             >
               <SortableContext
                 items={signUpRules.map((r) => r.id)}
@@ -718,11 +816,14 @@ export default function PageClient() {
                 ))}
               </SortableContext>
             </DndContext>
-          ) : !isCreatingNew ? (
+          )}
+
+          {/* Empty state */}
+          {!hasOrderChanges && signUpRules.length === 0 && !isCreatingNew && (
             <Alert>
               No sign-up rules configured. Click &quot;Add rule&quot; to create your first rule.
             </Alert>
-          ) : null}
+          )}
 
           {/* Default action card - always at the bottom */}
           <DefaultActionCard

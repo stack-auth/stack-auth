@@ -883,9 +883,10 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
 
-  // Get all enabled sign-up rules and sort by priority (descending), then by ID (alphabetically)
+  // Get all sign-up rules and sort by priority (descending), then by ID (alphabetically)
+  // Note: We don't filter out disabled rules here because the dashboard needs to show them
+  // The runtime evaluation in sign-up-rules.ts handles skipping disabled rules
   const sortedRuleEntries = typedEntries(prepared.auth.signUpRules)
-    .filter(([, rule]) => rule.enabled !== false)
     .sort((a, b) => {
       const priorityA = a[1].priority;
       const priorityB = b[1].priority;
