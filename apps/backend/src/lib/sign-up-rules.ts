@@ -25,7 +25,6 @@ async function logRuleTrigger(
       action: action.type,
       userId: userId ?? null,
       email: context.email,
-      emailDomain: context.emailDomain,
       authMethod: context.authMethod,
       oauthProvider: context.oauthProvider,
     });

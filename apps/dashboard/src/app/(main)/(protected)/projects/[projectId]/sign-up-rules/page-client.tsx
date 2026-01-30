@@ -31,11 +31,12 @@ import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIc
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import React, { useMemo, useState } from "react";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -65,18 +66,32 @@ type ConfigWithSignUpRules = CompleteConfig & {
 function RuleSparkline({
   data,
   totalCount,
+  isLoading,
 }: {
   data: { hour: string, count: number }[],
   totalCount: number,
+  isLoading: boolean,
 }) {
-  if (data.length === 0 || totalCount === 0) {
-    return null;
+  // Show skeleton while loading
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-1">
+        <div className="w-10 h-4 bg-muted animate-pulse rounded" />
+        <div className="w-4 h-3 bg-muted animate-pulse rounded" />
+      </div>
+    );
   }
 
+  // Ensure we have at least 2 data points for the chart to render a line
+  const chartData = data.length >= 2 ? data : [{ hour: '0', count: 0 }, { hour: '1', count: 0 }];
+  // Calculate max for Y domain - use at least 1 to avoid divide-by-zero
+  const maxCount = Math.max(1, ...chartData.map(d => d.count));
+
   return (
-    <div className="flex items-center gap-1">
-      <ResponsiveContainer width={40} height={20}>
-        <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
+    <div className="flex items-center gap-1" title="past 48h">
+      <ResponsiveContainer width={40} height={16}>
+        <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
+          <YAxis hide domain={[0, maxCount]} />
           <Area
             type="monotone"
             dataKey="count"
@@ -85,6 +100,7 @@ function RuleSparkline({
             fill="currentColor"
             fillOpacity={0.15}
             className="text-muted-foreground"
+            isAnimationActive={false}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -245,6 +261,7 @@ function RuleEditor({
 function SortableRuleRow({
   entry,
   analytics,
+  isAnalyticsLoading,
   isEditing,
   onEdit,
   onDelete,
@@ -254,6 +271,7 @@ function SortableRuleRow({
 }: {
   entry: SignUpRuleEntry,
   analytics?: RuleAnalytics,
+  isAnalyticsLoading: boolean,
   isEditing: boolean,
   onEdit: () => void,
   onDelete: () => void,
@@ -364,15 +382,14 @@ function SortableRuleRow({
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {/* Sparkline chart inline */}
-        {analytics && analytics.totalCount > 0 && (
-          <div className="hidden sm:flex items-center mr-1" title={`${analytics.totalCount} triggers in last 48h`}>
-            <RuleSparkline
-              data={analytics.hourlyCounts}
-              totalCount={analytics.totalCount}
-            />
-          </div>
-        )}
+        {/* Sparkline and trigger count */}
+        <div className="hidden sm:flex items-center mr-1">
+          <RuleSparkline
+            data={analytics?.hourlyCounts ?? []}
+            totalCount={analytics?.totalCount ?? 0}
+            isLoading={isAnalyticsLoading}
+          />
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -482,9 +499,11 @@ function DeleteRuleDialog({
 function useSignUpRulesAnalytics() {
   const stackAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
+  const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
     let cancelled = false;
+    setIsLoading(true);
 
     const fetchAnalytics = async () => {
       const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
@@ -494,6 +513,10 @@ function useSignUpRulesAnalytics() {
       );
       if (cancelled) return;
 
+      if (!response.ok) {
+        throw new StackAssertionError(`Failed to fetch sign-up rules stats: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json();
 
       const analyticsMap = new Map<string, RuleAnalytics>();
@@ -501,11 +524,12 @@ function useSignUpRulesAnalytics() {
         analyticsMap.set(trigger.rule_id, {
           ruleId: trigger.rule_id,
           totalCount: trigger.total_count,
-          hourlyCounts: trigger.hourly_counts,
+          hourlyCounts: trigger.hourly_counts ?? [],
         });
       }
 
       setAnalytics(analyticsMap);
+      setIsLoading(false);
     };
 
     runAsynchronouslyWithAlert(fetchAnalytics);
@@ -515,7 +539,7 @@ function useSignUpRulesAnalytics() {
     };
   }, [stackAdminApp]);
 
-  return { analytics };
+  return { analytics, isLoading };
 }
 
 export default function PageClient() {
@@ -531,14 +555,14 @@ export default function PageClient() {
   const [ruleToDelete, setRuleToDelete] = useState<SignUpRuleEntry | null>(null);
 
   // Fetch analytics data
-  const { analytics: ruleAnalytics } = useSignUpRulesAnalytics();
+  const { analytics: ruleAnalytics, isLoading: isAnalyticsLoading } = useSignUpRulesAnalytics();
 
   // Type assertion needed because schema changes take effect at build time
   const configWithRules = config as ConfigWithSignUpRules;
 
   // Server state (source of truth)
   const serverRules = useMemo(() =>
-    typedEntries(configWithRules.auth.signUpRules ?? {}).map(([id, rule]) => ({ id, rule })),
+    typedEntries(configWithRules.auth.signUpRules).map(([id, rule]) => ({ id, rule })),
     [configWithRules.auth.signUpRules]
   );
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- TypeScript may not see these as optional due to type assertion
@@ -753,6 +777,7 @@ export default function PageClient() {
                         key={entry.id}
                         entry={entry}
                         analytics={ruleAnalytics.get(entry.id)}
+                        isAnalyticsLoading={isAnalyticsLoading}
                         isEditing={editingRuleId === entry.id}
                         onEdit={() => {
                           setEditingRuleId(entry.id);
@@ -789,6 +814,7 @@ export default function PageClient() {
                     key={entry.id}
                     entry={entry}
                     analytics={ruleAnalytics.get(entry.id)}
+                    isAnalyticsLoading={isAnalyticsLoading}
                     isEditing={editingRuleId === entry.id}
                     onEdit={() => {
                       setEditingRuleId(entry.id);
