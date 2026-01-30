@@ -329,7 +329,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
     const res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['special@example.com']);
     expect(res.rows.length).toBe(1);
     expect(res.rows[0].display_name).toBe(specialName);
-  });
+  }, TEST_TIMEOUT);
 
   /**
    * What it does:

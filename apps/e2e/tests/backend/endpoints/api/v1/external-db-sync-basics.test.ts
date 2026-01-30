@@ -288,7 +288,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     `);
     expect(tableCheck.rows[0].exists).toBe(true);
     await verifyInExternalDb(client, 'auto-create@example.com', 'Auto Create User');
-  });
+  }, TEST_TIMEOUT);
 
   /**
    * What it does:

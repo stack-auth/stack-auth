@@ -47,6 +47,7 @@ export const GET = createSmartRouteHandler({
     const startTime = performance.now();
     const maxDurationMs = 3 * 60 * 1000;
     const pollIntervalMs = 50;
+    const staleClaimIntervalMinutes = 5;
 
     let totalRequestsProcessed = 0;
     async function claimPendingRequests(): Promise<OutgoingRequest[]> {
@@ -58,6 +59,7 @@ export const GET = createSmartRouteHandler({
             SELECT id
             FROM "OutgoingRequest"
             WHERE "startedFulfillingAt" IS NULL
+              OR "startedFulfillingAt" < NOW() - (${staleClaimIntervalMinutes} * INTERVAL '1 minute')
             ORDER BY "createdAt"
             LIMIT 100
             FOR UPDATE SKIP LOCKED
@@ -67,11 +69,22 @@ export const GET = createSmartRouteHandler({
         return rows;
       });
     }
+    async function deleteOutgoingRequest(id: string): Promise<void> {
+      await retryTransaction(globalPrismaClient, async (tx) => {
+        await tx.outgoingRequest.delete({ where: { id } });
+      });
+    }
+    async function releaseOutgoingRequest(id: string): Promise<void> {
+      await retryTransaction(globalPrismaClient, async (tx) => {
+        await tx.outgoingRequest.updateMany({
+          where: { id, startedFulfillingAt: { not: null } },
+          data: { startedFulfillingAt: null },
+        });
+      });
+    }
     async function processRequests(requests: OutgoingRequest[]): Promise<number> {
-      let processed = 0;
-
-      for (const request of requests) {
-        try {
+      const results = await Promise.allSettled(
+        requests.map(async (request) => {
           // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
           const options = request.qstashOptions as any;
           const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
@@ -94,13 +107,21 @@ export const GET = createSmartRouteHandler({
             body: options.body,
           });
 
+          await deleteOutgoingRequest(request.id);
+        }),
+      );
+
+      let processed = 0;
+      for (const [index, result] of results.entries()) {
+        if (result.status === "fulfilled") {
           processed++;
-        } catch (error) {
-          captureError(
-            `poller-iteration-error`,
-            error,
-          );
+          continue;
         }
+        captureError(
+          "poller-iteration-error",
+          result.reason,
+        );
+        await releaseOutgoingRequest(requests[index].id);
       }
 
       return processed;
