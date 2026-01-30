@@ -173,6 +173,20 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
     ));
   };
 
+  // Handle Escape key to close the image preview
+  useEffect(() => {
+    if (!previewImage) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPreviewImage(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [previewImage]);
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -265,7 +279,6 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setPreviewImage(null)}
-          onKeyDown={(e) => e.key === 'Escape' && setPreviewImage(null)}
           role="dialog"
           aria-modal="true"
           aria-label="Image preview"
