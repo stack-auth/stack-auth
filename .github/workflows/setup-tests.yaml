@@ -19,6 +19,7 @@ jobs:
     runs-on: ubicloud-standard-16
     env:
       STACK_FORCE_EXTERNAL_DB_SYNC: "true"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "5000"
     steps:
       - uses: actions/checkout@v6
 

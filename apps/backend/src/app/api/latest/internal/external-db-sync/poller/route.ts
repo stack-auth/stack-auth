@@ -28,7 +28,9 @@ export const GET = createSmartRouteHandler({
     headers: yupObject({
       authorization: yupTuple([yupString()]).defined(),
     }).defined(),
-    query: yupObject({}).defined(),
+    query: yupObject({
+      maxDurationMs: yupNumber().integer().min(1).optional(),
+    }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -38,14 +40,14 @@ export const GET = createSmartRouteHandler({
       requests_processed: yupNumber().defined(),
     }).defined(),
   }),
-  handler: async ({ headers }) => {
+  handler: async ({ headers, query }) => {
     const authHeader = headers.authorization[0];
     if (authHeader !== `Bearer ${getEnvVariable("CRON_SECRET")}`) {
       throw new StatusError(401, "Unauthorized");
     }
 
     const startTime = performance.now();
-    const maxDurationMs = 3 * 60 * 1000;
+    const maxDurationMs = query.maxDurationMs ?? 3 * 60 * 1000;
     const pollIntervalMs = 50;
     const staleClaimIntervalMinutes = 5;
 

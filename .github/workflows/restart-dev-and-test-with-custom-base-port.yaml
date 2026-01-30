@@ -20,6 +20,7 @@ jobs:
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
       STACK_FORCE_EXTERNAL_DB_SYNC: "true"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "5000"
 
     steps:
       - uses: actions/checkout@v6
