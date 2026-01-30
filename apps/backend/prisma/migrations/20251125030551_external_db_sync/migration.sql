@@ -127,6 +127,53 @@ EXECUTE FUNCTION reset_sequence_id_on_update();
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
+-- Marks the related ProjectUser for re-sync when a ContactChannel changes.
+CREATE FUNCTION mark_project_user_on_contact_channel_change()
+RETURNS TRIGGER AS $function$
+BEGIN
+  UPDATE "ProjectUser"
+  SET "shouldUpdateSequenceId" = TRUE
+  WHERE "tenancyId" = NEW."tenancyId"
+    AND "projectUserId" = NEW."projectUserId";
+  RETURN NEW;
+END;
+$function$ LANGUAGE plpgsql;
+
+-- SPLIT_STATEMENT_SENTINEL
+CREATE TRIGGER mark_project_user_on_contact_channel_insert
+AFTER INSERT ON "ContactChannel"
+FOR EACH ROW
+EXECUTE FUNCTION mark_project_user_on_contact_channel_change();
+
+-- SPLIT_STATEMENT_SENTINEL
+CREATE TRIGGER mark_project_user_on_contact_channel_update
+AFTER UPDATE ON "ContactChannel"
+FOR EACH ROW
+WHEN (OLD."tenancyId" = NEW."tenancyId" AND OLD."projectUserId" = NEW."projectUserId")
+EXECUTE FUNCTION mark_project_user_on_contact_channel_change();
+
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- Marks the related ProjectUser for re-sync when a ContactChannel is deleted.
+CREATE FUNCTION mark_project_user_on_contact_channel_delete()
+RETURNS TRIGGER AS $function$
+BEGIN
+  UPDATE "ProjectUser"
+  SET "shouldUpdateSequenceId" = TRUE
+  WHERE "tenancyId" = OLD."tenancyId"
+    AND "projectUserId" = OLD."projectUserId";
+  RETURN OLD;
+END;
+$function$ LANGUAGE plpgsql;
+
+-- SPLIT_STATEMENT_SENTINEL
+CREATE TRIGGER mark_project_user_on_contact_channel_delete
+AFTER DELETE ON "ContactChannel"
+FOR EACH ROW
+EXECUTE FUNCTION mark_project_user_on_contact_channel_delete();
+
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
 -- Creates function that logs deleted rows to the DeletedRow table with their full data.
 -- Extracts the primary key and row data so external databases can process the deletion.
 CREATE FUNCTION log_deleted_row()
@@ -184,5 +231,4 @@ CREATE TRIGGER log_deleted_row_contact_channel
 BEFORE DELETE ON "ContactChannel"
 FOR EACH ROW
 EXECUTE FUNCTION log_deleted_row();
-
 

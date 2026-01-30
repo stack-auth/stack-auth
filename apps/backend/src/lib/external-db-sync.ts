@@ -4,6 +4,7 @@ import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/d
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Client } from 'pg';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -215,9 +216,10 @@ async function syncDatabase(
 ) {
   assertNonEmptyString(dbId, "dbId");
   assertUuid(tenancyId, "tenancyId");
-  if (dbConfig.type !== 'postgres') {
+  const dbType = dbConfig.type;
+  if (dbType !== 'postgres') {
     throw new StackAssertionError(
-      `Unsupported database type '${dbConfig.type}' for external DB ${dbId}. Only 'postgres' is currently supported.`
+      `Unsupported database type '${String(dbType)}' for external DB ${dbId}. Only 'postgres' is currently supported.`
     );
   }
 
@@ -232,7 +234,7 @@ async function syncDatabase(
     connectionString: dbConfig.connectionString,
   });
 
-  try {
+  const syncResult = await Result.fromPromise((async () => {
     await externalClient.connect();
 
     // Always use DEFAULT_DB_SYNC_MAPPINGS - users cannot customize mappings
@@ -245,17 +247,20 @@ async function syncDatabase(
         internalPrisma,
         dbId,
         tenancyId,
-        dbConfig.type,
+        dbType,
       );
     }
+  })());
 
-  } catch (error) {
-    await externalClient.end();
-    captureError(`external-db-sync-${dbId}`, error);
-    return;
+  const closeResult = await Result.fromPromise(externalClient.end());
+  if (closeResult.status === "error") {
+    captureError(`external-db-sync-${dbId}-close`, closeResult.error);
   }
 
-  await externalClient.end();
+  if (syncResult.status === "error") {
+    captureError(`external-db-sync-${dbId}`, syncResult.error);
+    return;
+  }
 }
 
 
