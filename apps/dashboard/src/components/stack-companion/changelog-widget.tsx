@@ -111,7 +111,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
             alt={alt || ''}
             width={800}
             height={600}
-            className="rounded-lg border border-border max-w-full h-auto my-4 transition-opacity hover:opacity-90"
+            className="rounded-lg border border-border max-w-full h-auto my-4 transition-opacity hover:transition-none hover:opacity-90"
           />
         </button>
       );
@@ -286,7 +286,7 @@ export function ChangelogWidget({ isActive, initialData }: ChangelogWidgetProps)
           <button
             type="button"
             onClick={() => setPreviewImage(null)}
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white transition-colors hover:transition-none hover:bg-black/70"
             aria-label="Close preview"
           >
             <XIcon className="h-6 w-6" />
