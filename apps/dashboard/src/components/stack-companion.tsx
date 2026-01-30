@@ -15,19 +15,21 @@ import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
 /**
- * Compare two CalVer versions in YYYY.MM.DD format
+ * Compare two US date versions in M/D/YY format
  * Returns true if version1 is newer than version2
  */
-function isNewerCalVer(version1: string, version2: string): boolean {
-  const parseCalVer = (version: string): Date | null => {
-    const match = version.match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
+function isNewerVersion(version1: string, version2: string): boolean {
+  const parseUsDate = (version: string): Date | null => {
+    const match = version.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
     if (!match) return null;
-    const [, year, month, day] = match;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const [, month, day, year] = match;
+    // Convert 2-digit year to 4-digit (assumes 2000s)
+    const fullYear = 2000 + parseInt(year);
+    return new Date(fullYear, parseInt(month) - 1, parseInt(day));
   };
 
-  const date1 = parseCalVer(version1);
-  const date2 = parseCalVer(version2);
+  const date1 = parseUsDate(version1);
+  const date2 = parseUsDate(version2);
 
   if (!date1 || !date2) {
     // Fallback to string comparison if parsing fails
@@ -193,7 +195,7 @@ export function StackCompanion({ className }: { className?: string }) {
         } else {
           const hasNewer = entries.some((entry: ChangelogEntry) => {
             if (entry.isUnreleased) return false;
-            return isNewerCalVer(entry.version, lastSeen);
+            return isNewerVersion(entry.version, lastSeen);
           });
           setHasNewVersions(hasNewer);
         }
@@ -231,7 +233,7 @@ export function StackCompanion({ className }: { className?: string }) {
         } else {
           const hasNewer = changelogData.some((entry: ChangelogEntry) => {
             if (entry.isUnreleased) return false;
-            return isNewerCalVer(entry.version, lastSeen);
+            return isNewerVersion(entry.version, lastSeen);
           });
           setHasNewVersions(hasNewer);
         }
