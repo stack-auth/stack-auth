@@ -13,6 +13,16 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
+
+function parseMaxDurationMs(value: string | undefined): number {
+  if (!value) return DEFAULT_MAX_DURATION_MS;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new StatusError(400, "maxDurationMs must be a positive integer");
+  }
+  return parsed;
+}
 
 function assertUuid(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0 || !UUID_REGEX.test(value)) {
@@ -244,10 +254,10 @@ export const GET = createSmartRouteHandler({
     auth: yupObject({}).nullable().optional(),
     method: yupString().oneOf(["GET"]).defined(),
     headers: yupObject({
-      authorization: yupTuple([yupString()]).defined(),
+      authorization: yupTuple([yupString().defined()]).defined(),
     }).defined(),
     query: yupObject({
-      maxDurationMs: yupNumber().integer().min(1).optional(),
+      maxDurationMs: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -269,7 +279,7 @@ export const GET = createSmartRouteHandler({
     const tenancyRefreshIntervalMs = 5_000;
 
     const startTime = performance.now();
-    const maxDurationMs = query.maxDurationMs ?? 3 * 60 * 1000;
+    const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
     const pollIntervalMs = 50;
 
     let iterations = 0;
