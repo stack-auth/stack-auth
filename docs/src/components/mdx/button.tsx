@@ -3,20 +3,26 @@ import * as React from "react";
 import { cn } from "../../lib/cn";
 import { buttonVariants } from "../ui/button";
 
+type ColorVariant = 'primary' | 'default' | 'secondary' | 'outline' | 'ghost';
+type SizeVariant = 'default' | 'sm' | 'lg' | 'icon' | 'icon-sm';
+
 type BaseButtonProps = {
-  color?: 'primary' | 'secondary' | 'outline' | 'ghost',
-  size?: 'sm' | 'icon' | 'icon-sm',
+  /** @deprecated Use `variant` instead */
+  color?: ColorVariant,
+  /** Alias for `color` - preferred prop name */
+  variant?: ColorVariant,
+  size?: SizeVariant,
   icon?: React.ReactNode,
   children: React.ReactNode,
 }
 
 type ButtonAsButton = BaseButtonProps &
-  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'color'> & {
     href?: never,
   };
 
 type ButtonAsLink = BaseButtonProps &
-  React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+  Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'color'> & {
     href: string,
   };
 
@@ -25,7 +31,10 @@ type ButtonProps = ButtonAsButton | ButtonAsLink;
 export const Button = React.forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
   ButtonProps
->(({ className, color = 'secondary', size = 'sm', icon, href, children, ...props }, ref) => {
+>(({ className, color, variant, size = 'sm', icon, href, children, ...props }, ref) => {
+  // Support both `variant` and `color` props (variant takes precedence)
+  const resolvedColor = variant ?? color ?? 'secondary';
+
   const buttonContent = (
     <>
       {icon && <span className="inline-flex items-center justify-center w-3.5 h-3.5">{icon}</span>}
@@ -35,7 +44,7 @@ export const Button = React.forwardRef<
 
   const buttonClasses = cn(
     buttonVariants({
-      color,
+      color: resolvedColor,
       size,
       className: 'gap-2 no-underline hover:no-underline'
     }),
@@ -68,3 +77,5 @@ export const Button = React.forwardRef<
 });
 
 Button.displayName = "Button";
+
+export type { ButtonProps };

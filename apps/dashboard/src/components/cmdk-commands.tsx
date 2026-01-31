@@ -4,6 +4,7 @@ import { AppIcon } from "@/components/app-square";
 import { Badge, Button, ScrollArea } from "@/components/ui";
 import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
+import { classifyClickHouseSqlVsPrompt } from "@/lib/classify-query";
 import { cn } from "@/lib/utils";
 import { CheckIcon, CubeIcon, DownloadSimpleIcon, GearIcon, GlobeIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, PlayIcon, ShieldCheckIcon, SparkleIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
@@ -11,6 +12,7 @@ import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";
 import { AIChatPreview } from "./commands/ask-ai";
+import { RunQueryPreview } from "./commands/run-query";
 
 export type CmdKPreviewProps = {
   isSelected: boolean,
@@ -28,38 +30,6 @@ export type CmdKPreviewProps = {
   /** Current pathname for checking active state */
   pathname: string,
 };
-
-// Run Query Preview Component - shows a TODO message for now
-const RunQueryPreview = memo(function RunQueryPreview({
-  query,
-}: CmdKPreviewProps) {
-  return (
-    <div className="flex flex-col h-full w-full items-center justify-center p-6">
-      <div className="flex flex-col items-center gap-4 max-w-md text-center">
-        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-          <PlayIcon className="h-8 w-8 text-amber-500" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-foreground mb-2">Run Query</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Execute actions using natural language commands.
-          </p>
-        </div>
-        <div className="w-full p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
-          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-2">Your query:</p>
-          <p className="text-sm text-foreground italic">&ldquo;{query}&rdquo;</p>
-        </div>
-        <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border">
-          <p className="text-xs text-muted-foreground">
-            🚧 <span className="font-medium">Coming Soon</span> — This feature is under development.
-            Soon you&apos;ll be able to run queries like &ldquo;create a new user&rdquo;,
-            &ldquo;list all teams&rdquo;, or &ldquo;update project settings&rdquo;.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // Create Dashboard Preview Component - shows a TODO message for now
 const CreateDashboardPreview = memo(function CreateDashboardPreview({
@@ -351,6 +321,8 @@ export function useCmdKCommands({
 }): CmdKCommand[] {
   return useMemo(() => {
     const commands: CmdKCommand[] = [];
+    const queryClassification = classifyClickHouseSqlVsPrompt(query, { readonlyOnly: true });
+    const shouldPrioritizeRunQuery = queryClassification.kind === "sql";
 
     // Overview
     commands.push({
@@ -453,7 +425,7 @@ export function useCmdKCommands({
 
     // AI-powered options (only when there's a query)
     if (query.trim()) {
-      commands.push({
+      const askAiCommand: CmdKCommand = {
         id: "ai/ask",
         icon: <SparkleIcon className="h-3.5 w-3.5 text-purple-400" />,
         label: `Ask AI`,
@@ -463,19 +435,25 @@ export function useCmdKCommands({
         preview: AIChatPreview,
         hasVisualPreview: true,
         highlightColor: "purple",
-      });
+      };
 
-      commands.push({
+      const runQueryCommand: CmdKCommand = {
         id: "query/run",
         icon: <PlayIcon className="h-3.5 w-3.5 text-amber-500" />,
         label: `Run Query`,
-        description: "Execute actions using natural language",
-        keywords: ["run", "execute", "query", "action", "command", "vibecode"],
+        description: "Execute ClickHouse SQL analytics queries",
+        keywords: ["run", "execute", "query", "action", "command", "vibecode", "sql", "clickhouse", "analytics"],
         onAction: { type: "focus" },
         preview: RunQueryPreview,
         hasVisualPreview: true,
         highlightColor: "gold",
-      });
+      };
+
+      const orderedQueryCommands = shouldPrioritizeRunQuery
+        ? [runQueryCommand, askAiCommand]
+        : [askAiCommand, runQueryCommand];
+
+      commands.push(...orderedQueryCommands);
 
       commands.push({
         id: "create/dashboard",

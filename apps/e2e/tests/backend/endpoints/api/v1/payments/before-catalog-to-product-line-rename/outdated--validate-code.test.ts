@@ -3,7 +3,7 @@
  * still work correctly for code validation after the rename to `productLines` and `productLineId`.
  */
 import { it } from "../../../../../../helpers";
-import { Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should validate purchase code with old catalogs config", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -33,7 +33,7 @@ it("should validate purchase code with old catalogs config", async ({ expect }) 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -105,7 +105,7 @@ it("should detect conflicting products with old catalogs config", async ({ expec
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // First, purchase productA in test mode
   const createUrlA = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {

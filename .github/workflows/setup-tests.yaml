@@ -16,7 +16,7 @@ env:
 
 jobs:
   setup-tests:
-    runs-on: ubicloud-standard-8
+    runs-on: ubicloud-standard-16
     steps:
       - uses: actions/checkout@v6
 

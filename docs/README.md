@@ -1,46 +1,90 @@
-# stack-docs
+# Stack Auth Documentation
 
-This is a Next.js application generated with
-[Create Fumadocs](https://github.com/fuma-nama/fumadocs).
+This is the documentation site for Stack Auth, built with [Next.js](https://nextjs.org) and [Fumadocs](https://fumadocs.dev).
 
-Run development server:
+## Development
 
 ```bash
-npm run dev
-# or
 pnpm dev
-# or
-yarn dev
 ```
 
-Open http://localhost:3000 with your browser to see the result.
+The docs server runs on port `8104` by default (or `${NEXT_PUBLIC_STACK_PORT_PREFIX}04`).
 
-## Explore
+## Project Structure
 
-In the project, you can see:
+### Content (`/content`)
 
-- `lib/source.ts`: Code for content source adapter, [`loader()`](https://fumadocs.dev/docs/headless/source-api) provides the interface to access your content.
-- `app/layout.config.tsx`: Shared options for layouts, optional but preferred to keep.
+| Directory | Description |
+|-----------|-------------|
+| `content/docs/` | Main documentation (guides, SDK reference, components) |
+| `content/api/` | REST API reference documentation |
 
-| Route                     | Description                                            |
-| ------------------------- | ------------------------------------------------------ |
-| `app/(home)`              | The route group for your landing page and other pages. |
-| `app/docs`                | The documentation layout and pages.                    |
-| `app/api`                 | The documentation for API pages.                       |
-| `app/api/search/route.ts` | The Route Handler for search.                          |
+### App Routes (`/src/app`)
 
-### Fumadocs MDX
+| Route | Description |
+|-------|-------------|
+| `/docs` | Main documentation pages |
+| `/api` | API reference pages (rendered from OpenAPI specs) |
+| `/docs-embed` | Embedded docs for dashboard companion widget |
+| `/api-embed` | Embedded API docs for dashboard companion widget |
+| `/mcp-browser` | MCP documentation browser |
+| `/handler/[...stack]` | Stack Auth handler route |
+| `/api/search` | Search API endpoint |
+| `/api/chat` | AI documentation chat endpoint |
+| `/llms.txt` | LLM-friendly documentation (plain text) |
+| `/llms.mdx` | LLM-friendly documentation (MDX format) |
 
-A `source.config.ts` config file has been included, you can customise different options like frontmatter schema.
+### SDK Route Handlers
 
-Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
+These routes serve SDK-specific documentation:
+
+- `/js/[...path]` - JavaScript SDK
+- `/next/[...path]` - Next.js SDK
+- `/react/[...path]` - React SDK
+- `/python/[...path]` - Python SDK
+- `/rest-api/[...path]` - REST API
+
+### Key Files
+
+| File | Description |
+|------|-------------|
+| `lib/source.ts` | Content source adapter using Fumadocs `loader()` |
+| `source.config.ts` | Fumadocs MDX configuration (frontmatter schema, etc.) |
+| `app/layout.config.tsx` | Shared layout options |
+| `lib/platform-config.ts` | Platform/framework configuration for code examples |
+
+### Components (`/src/components`)
+
+| Directory | Description |
+|-----------|-------------|
+| `api/` | API playground components |
+| `chat/` | AI chat interface |
+| `layout/` | Layout UI components (search, navigation) |
+| `layouts/` | Page layouts (docs, API) |
+| `mdx/` | Custom MDX components |
+| `stack-auth/` | Stack Auth demo components |
+| `ui/` | Base UI components (button, etc.) |
+
+### OpenAPI Specs (`/openapi`)
+
+Contains OpenAPI JSON specifications organized by access level:
+- `client-*.json` - Client-side API endpoints
+- `server-*.json` - Server-side API endpoints
+- `admin-*.json` - Admin API endpoints
+- `webhooks-*.json` - Webhook event schemas
+
+## Scripts
+
+```bash
+# Generate API docs from OpenAPI specs
+pnpm generate-openapi-docs
+
+# Clear generated docs
+pnpm clear-docs
+```
 
 ## Learn More
 
-To learn more about Next.js and Fumadocs, take a look at the following
-resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js
-  features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [Fumadocs](https://fumadocs.dev) - learn about Fumadocs
+- [Fumadocs Documentation](https://fumadocs.dev)
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Stack Auth Documentation](https://docs.stack-auth.com)

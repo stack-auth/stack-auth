@@ -156,7 +156,7 @@ jobs:
         run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Verify data integrity
-        run: pnpm run verify-data-integrity
+        run: pnpm run verify-data-integrity --no-bail
 
       - name: Print Docker Compose logs
         if: always()

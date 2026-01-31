@@ -26,7 +26,7 @@ import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptio
 import { ConvexCtx, GetCurrentUserOptions } from "../../common";
 import { OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, InlineProduct, ServerItem } from "../../customers";
+import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
@@ -184,19 +184,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([teamId, itemId]) => {
-      return await this._interface.getItem({ teamId, itemId }, null);
+      return await this._interface.getItem({ teamId, itemId }, null, "server");
     }
   );
 
   private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([userId, itemId]) => {
-      return await this._interface.getItem({ userId, itemId }, null);
+      return await this._interface.getItem({ userId, itemId }, null, "server");
     }
   );
 
   private readonly _serverCustomItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([customCustomerId, itemId]) => {
-      return await this._interface.getItem({ customCustomerId, itemId }, null);
+      return await this._interface.getItem({ customCustomerId, itemId }, null, "server");
     }
   );
 
@@ -207,7 +207,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: userId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -218,7 +218,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: teamId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -229,7 +229,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: customCustomerId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -265,7 +265,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
         const productIdOrInline = "productId" in options ? options.productId : options.product;
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl, "server");
       },
     };
   }
@@ -1221,6 +1221,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       const result = Result.orThrow(await this._serverCustomItemsCache.getOrWait([options.customCustomerId, options.itemId], "write-only"));
       return this._serverItemFromCrud({ type: "custom", id: options.customCustomerId }, result);
     }
+  }
+
+  async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    } else if ("teamId" in options) {
+      const response = Result.orThrow(await this._serverTeamProductsCache.getOrWait([options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    }
+    const response = Result.orThrow(await this._serverCustomProductsCache.getOrWait([options.customCustomerId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerProductsFromResponse(response);
   }
 
   // IF_PLATFORM react-like

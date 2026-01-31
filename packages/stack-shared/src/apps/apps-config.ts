@@ -144,4 +144,10 @@ export const ALL_APPS = {
     tags: ["integration", "developers"],
     stage: "stable",
   },
+  "analytics": {
+    displayName: "Analytics",
+    subtitle: "View and explore analytics data",
+    tags: ["developers", "operations"],
+    stage: "alpha",
+  },
 } as const satisfies Record<string, App>;

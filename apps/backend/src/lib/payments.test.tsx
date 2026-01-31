@@ -162,6 +162,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'off1',
+          product: tenancy.config.payments.products['off1'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-02-28T23:59:59.000Z'),
           quantity: 2,
@@ -200,6 +201,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offW',
+          product: tenancy.config.payments.products['offW'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -239,6 +241,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offW',
+          product: tenancy.config.payments.products['offW'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -278,6 +281,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offR',
+          product: tenancy.config.payments.products['offR'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -317,6 +321,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offN',
+          product: tenancy.config.payments.products['offN'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 3,
@@ -352,6 +357,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offRC',
+          product: tenancy.config.payments.products['offRC'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -400,6 +406,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
           const end = inFirstPeriod ? new Date('2025-03-01T00:00:00.000Z') : new Date('2025-04-01T00:00:00.000Z');
           return [{
             productId: 'offRR',
+            product: tenancy.config.payments.products['offRR'],
             currentPeriodStart: start,
             currentPeriodEnd: end,
             quantity: 1,
@@ -444,6 +451,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offMD',
+          product: tenancy.config.payments.products['offMD'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -492,6 +500,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offBF',
+          product: tenancy.config.payments.products['offBF'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -547,6 +556,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
         findMany: async () => [
           {
             productId: 'off1',
+            product: tenancy.config.payments.products['off1'],
             currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
             currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
             quantity: 3,
@@ -554,6 +564,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
           },
           {
             productId: 'off2',
+            product: tenancy.config.payments.products['off2'],
             currentPeriodStart: new Date('2025-01-15T00:00:00.000Z'),
             currentPeriodEnd: new Date('2025-03-15T00:00:00.000Z'),
             quantity: 5,
@@ -594,6 +605,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offBundle',
+          product: tenancy.config.payments.products['offBundle'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 2,
@@ -631,6 +643,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offT',
+          product: tenancy.config.payments.products['offT'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 3,
@@ -666,6 +679,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offC',
+          product: tenancy.config.payments.products['offC'],
           currentPeriodStart: new Date('2024-12-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-01-01T00:00:00.000Z'),
           quantity: 1,
@@ -706,6 +720,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: {
         findMany: async () => [{
           productId: 'offU',
+          product: tenancy.config.payments.products['offU'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 2,
@@ -975,6 +990,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       subscription: {
         findMany: async () => [{
           productId: 'product-sub',
+          product: tenancy.config.payments.products['product-sub'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -1030,6 +1046,7 @@ describe('validatePurchaseSession - one-time purchase rules', () => {
       subscription: {
         findMany: async () => [{
           productId: 'product-sub-stackable',
+          product: tenancy.config.payments.products['product-sub-stackable'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 1,
@@ -1102,6 +1119,7 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
       subscription: {
         findMany: async () => [{
           productId: 'offSub',
+          product: tenancy.config.payments.products['offSub'],
           currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
           currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
           quantity: 2,
@@ -1162,6 +1180,64 @@ describe('getSubscriptions - defaults behavior', () => {
 
     const ids = subs.map(s => s.productId);
     expect(ids).toContain('freeUngrouped');
+  });
+
+  it('includes include-by-default product when only inactive subscription exists in line', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      productLines: { g1: { displayName: 'G1', customerType: 'user' } },
+      products: {
+        freeG1: {
+          displayName: 'Free',
+          productLineId: 'g1',
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: {},
+          isAddOnTo: false,
+        },
+        paidG1: {
+          displayName: 'Paid',
+          productLineId: 'g1',
+          customerType: 'user',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: {},
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          id: 'sub-1',
+          productId: 'paidG1',
+          product: tenancy.config.payments.products['paidG1'],
+          quantity: 1,
+          currentPeriodStart: new Date('2025-01-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-02-01T00:00:00.000Z'),
+          cancelAtPeriodEnd: false,
+          status: 'canceled',
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+          stripeSubscriptionId: null,
+        }],
+      },
+    } as any);
+
+    const subs = await getSubscriptions({
+      prisma,
+      tenancy,
+      customerType: 'user',
+      customerId: 'user-1',
+    });
+
+    const ids = subs.map(s => s.productId);
+    expect(ids).toContain('freeG1');
   });
 
   it('throws error when multiple include-by-default products exist in same line', async () => {

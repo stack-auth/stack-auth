@@ -1,7 +1,7 @@
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { bumpEmailAddress, niceBackendFetch, Payments, Project, User } from "../../../backend-helpers";
+import { Auth, bumpEmailAddress, niceBackendFetch, Payments, Project } from "../../../backend-helpers";
 import { getOutboxEmails } from "./emails/email-helpers";
 
 async function waitForOutboxEmail(subject: string) {
@@ -139,7 +139,7 @@ it("deduplicates one-time purchase on payment_intent.succeeded retry", async ({ 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // Before webhook: quantity should be 0
   const getBefore = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
@@ -240,7 +240,7 @@ it("sends a payment receipt email for one-time purchases", async ({ expect }) =>
   });
 
   const mailbox = await bumpEmailAddress();
-  const { userId } = await User.create({
+  const { userId } = await Auth.fastSignUp({
     primary_email: mailbox.emailAddress,
     primary_email_verified: true,
   });
@@ -337,7 +337,7 @@ it("sends a payment failed email for invoice.payment_failed", async ({ expect })
   });
 
   const mailbox = await bumpEmailAddress();
-  const { userId } = await User.create({
+  const { userId } = await Auth.fastSignUp({
     primary_email: mailbox.emailAddress,
     primary_email_verified: true,
   });
@@ -430,7 +430,7 @@ it("skips payment failed email when invoice is not uncollectible", async ({ expe
   });
 
   const mailbox = await bumpEmailAddress();
-  const { userId } = await User.create({
+  const { userId } = await Auth.fastSignUp({
     primary_email: mailbox.emailAddress,
     primary_email_verified: true,
   });
@@ -519,7 +519,7 @@ it("syncs subscriptions from webhook and is idempotent", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   const getBefore = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
     accessType: "client",
@@ -632,7 +632,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   const before = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/${itemId}`, {
     accessType: "client",

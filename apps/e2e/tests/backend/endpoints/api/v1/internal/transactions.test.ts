@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { expect } from "vitest";
 import { it } from "../../../../../helpers";
-import { Payments as PaymentsHelper, Project, Team, User, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, Payments as PaymentsHelper, Project, Team, User, niceBackendFetch } from "../../../../backend-helpers";
 
 type PaymentsConfigOptions = {
   extraProducts?: Record<string, any>,
@@ -117,7 +117,7 @@ it("returns empty list for fresh project", async () => {
 
 it("includes TEST_MODE subscription", async () => {
   await setupProjectWithPaymentsConfig();
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const code = await createPurchaseCode({ userId, productId: "sub-product" });
 
   const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
@@ -179,7 +179,7 @@ it("includes TEST_MODE subscription", async () => {
 
 it("includes TEST_MODE one-time purchase", async () => {
   await setupProjectWithPaymentsConfig();
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const code = await createPurchaseCode({ userId, productId: "otp-product" });
 
   const testModeRes = await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
@@ -233,7 +233,7 @@ it("includes TEST_MODE one-time purchase", async () => {
 
 it("includes item quantity change entries", async () => {
   await setupProjectWithPaymentsConfig();
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   const changeRes = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/credits/update-quantity`, {
     accessType: "server",
@@ -274,7 +274,7 @@ it("includes item quantity change entries", async () => {
 
 it("supports concatenated cursor pagination", async () => {
   await setupProjectWithPaymentsConfig();
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // Make a few entries across tables
   {
@@ -318,7 +318,7 @@ it("supports concatenated cursor pagination", async () => {
 it("omits subscription-renewal entries for subscription creation invoices", async () => {
   const config = await setupProjectWithPaymentsConfig();
   const subProduct = config.products["sub-product"];
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   const accountInfo = await niceBackendFetch("/api/latest/internal/payments/stripe/account-info", {
     accessType: "admin",
@@ -421,7 +421,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
 
 it("filters results by transaction type", async () => {
   await setupProjectWithPaymentsConfig();
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   const subCode = await createPurchaseCode({ userId, productId: "sub-product" });
   await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
@@ -472,8 +472,8 @@ it("filters results by customer_type across sources", async () => {
       "team-credits": { displayName: "Team Credits", customerType: "team" },
     },
   });
-  const { userId } = await User.create();
-  const { teamId } = await Team.create();
+  const { userId } = await Auth.fastSignUp();
+  const { teamId } = await Team.create({ accessType: "server", creatorUserId: userId });
 
   const userCode = await createPurchaseCode({ userId, productId: "sub-product" });
   await niceBackendFetch("/api/latest/internal/payments/test-mode-purchase-session", {
@@ -534,7 +534,7 @@ it("returns server-granted subscriptions in transactions", async () => {
       },
     },
   });
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   const grantResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
     accessType: "server",

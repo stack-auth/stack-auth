@@ -25,7 +25,7 @@ it("should block create-purchase-url when blockNewPurchases is enabled", async (
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -74,7 +74,7 @@ it("should block purchase-session when blockNewPurchases is enabled", async ({ e
   });
 
   // Create purchase URL before enabling blockNewPurchases
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -91,9 +91,7 @@ it("should block purchase-session when blockNewPurchases is enabled", async ({ e
 
   // Now enable blockNewPurchases
   await Project.updateConfig({
-    payments: {
-      blockNewPurchases: true,
-    },
+    "payments.blockNewPurchases": true,
   });
 
   // Try to use the purchase session
@@ -146,7 +144,7 @@ it("should block test-mode-purchase-session when blockNewPurchases is enabled", 
   });
 
   // Create purchase URL before enabling blockNewPurchases
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -163,9 +161,7 @@ it("should block test-mode-purchase-session when blockNewPurchases is enabled", 
 
   // Now enable blockNewPurchases
   await Project.updateConfig({
-    payments: {
-      blockNewPurchases: true,
-    },
+    "payments.blockNewPurchases": true,
   });
 
   // Try to use the test-mode purchase session
@@ -279,7 +275,7 @@ it("should allow purchases when blockNewPurchases is false (default)", async ({ 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -316,7 +312,7 @@ it("should allow purchases when blockNewPurchases is not set (defaults to false)
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -354,7 +350,7 @@ it("should allow disabling blockNewPurchases to resume purchases", async ({ expe
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // First, verify purchases are blocked
   const blockedResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {

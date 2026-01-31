@@ -132,6 +132,7 @@ export class StackServerInterface extends StackClientInterface {
     return await response.json();
   }
 
+
   protected async sendServerRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
     path: string,
     requestOptions: RequestInit,

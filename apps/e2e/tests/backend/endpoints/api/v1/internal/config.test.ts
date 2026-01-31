@@ -505,6 +505,122 @@ describe("domain config", () => {
     // Second domain should still be there
     expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
   });
+
+  it("supports both nested object and dot notation formats for trusted domains", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Test nested object format
+    const nestedFormatResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          domains: {
+            trustedDomains: {
+              '1': { baseUrl: 'http://*:*', handlerPath: '/' },
+            },
+          },
+        }),
+      },
+    });
+
+    expect(nestedFormatResponse.status).toBe(200);
+
+    // Verify the nested format was applied correctly
+    const configResponse1 = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const config1 = JSON.parse(configResponse1.body.config_string);
+    expect(config1.domains.trustedDomains['1']).toEqual({
+      baseUrl: 'http://*:*',
+      handlerPath: '/',
+    });
+
+    // Clear the config for the next test
+    const clearResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PUT",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_string: JSON.stringify({}),
+      },
+    });
+    expect(clearResponse.status).toBe(200);
+
+    // Test dot notation format
+    const dotNotationResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          'domains.trustedDomains.2.baseUrl': 'https://example.com',
+          'domains.trustedDomains.2.handlerPath': '/handler',
+        }),
+      },
+    });
+
+    expect(dotNotationResponse.status).toBe(200);
+
+    // Verify the dot notation format was applied correctly
+    const configResponse2 = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const config2 = JSON.parse(configResponse2.body.config_string);
+    expect(config2.domains.trustedDomains).toMatchInlineSnapshot(`
+      {
+        "2": {
+          "baseUrl": "https://example.com",
+          "handlerPath": "/handler",
+        },
+      }
+    `);
+
+    // Test mixing both formats in a single request
+    const mixedFormatResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          domains: {
+            trustedDomains: {
+              '3': { baseUrl: 'http://nested.example.com', handlerPath: '/nested' },
+            },
+          },
+          'domains.trustedDomains.4.baseUrl': 'http://dotted.example.com',
+          'domains.trustedDomains.4.handlerPath': '/dotted',
+        }),
+      },
+    });
+
+    expect(mixedFormatResponse.status).toBe(200);
+
+    // Verify both formats work together
+    const configResponse3 = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const config3 = JSON.parse(configResponse3.body.config_string);
+    expect(config3.domains.trustedDomains).toMatchInlineSnapshot(`
+      {
+        "3": {
+          "baseUrl": "http://nested.example.com",
+          "handlerPath": "/nested",
+        },
+        "4": {
+          "baseUrl": "http://dotted.example.com",
+          "handlerPath": "/dotted",
+        },
+      }
+    `);
+  });
 });
 
 

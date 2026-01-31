@@ -1,6 +1,7 @@
-import { ArrowSquareOutIcon, CheckIcon, CopyIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { cn } from "@/components/ui";
+import { useDebouncedAction } from "@/hooks/use-debounced-action";
+import { ArrowSquareOutIcon, CheckIcon, CopyIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useChat } from "ai/react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -334,7 +335,6 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
-  const hasSentInitialQuery = useRef(false);
 
   const trimmedQuery = query.trim();
 
@@ -347,21 +347,14 @@ const AIChatPreviewInner = memo(function AIChatPreview({
     api: "/api/ai-search",
   });
 
-  // Send initial query on mount (once)
-  useEffect(() => {
-    let cancelled = false;
-    runAsynchronously(async () => {
-      await wait(400);
-      if (cancelled) return;
-      if (trimmedQuery && !hasSentInitialQuery.current) {
-        hasSentInitialQuery.current = true;
-        await append({ role: "user", content: trimmedQuery });
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [trimmedQuery, append]);
+  // Send initial query on mount (once) with debounce
+  useDebouncedAction({
+    action: async () => {
+      await append({ role: "user", content: trimmedQuery });
+    },
+    delayMs: 400,
+    skip: !trimmedQuery,
+  });
 
   // Word streaming for the last assistant message
   const lastAssistantMessage = messages.slice(1).findLast(m => m.role === "assistant");
@@ -521,7 +514,6 @@ const AIChatPreviewInner = memo(function AIChatPreview({
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
-            disabled={aiLoading}
           />
           <button
             onClick={() => runAsynchronously(handleFollowUp())}

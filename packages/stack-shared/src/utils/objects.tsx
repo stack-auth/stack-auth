@@ -443,11 +443,11 @@ import.meta.vitest?.test("split", ({ expect }) => {
   expect(split({} as Record<string, unknown>, ["a"])).toEqual([{}, {}]);
 });
 
-export function mapValues<T extends object, U>(obj: T, fn: (value: T extends (infer E)[] ? E : T[keyof T]) => U): Record<keyof T, U> {
+export function mapValues<T extends object, U>(obj: T, fn: (value: T extends (infer E)[] ? E : T[keyof T], key: keyof T) => U): Record<keyof T, U> {
   if (Array.isArray(obj)) {
-    return obj.map(v => fn(v)) as any;
+    return obj.map((v, i) => fn(v, i as keyof T)) as any;
   }
-  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, fn(v)])) as any;
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, fn(v, k as keyof T)])) as any;
 }
 import.meta.vitest?.test("mapValues", ({ expect }) => {
   expect(mapValues({ a: 1, b: 2 }, v => v * 2)).toEqual({ a: 2, b: 4 });
@@ -530,24 +530,24 @@ import.meta.vitest?.test("deepSortKeys", ({ expect }) => {
   ]);
 });
 
-export function set<T extends object, K extends keyof T>(obj: T, key: K, value: T[K]) {
+export function set<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K, value: T[K & keyof T]) {
   if (!isObjectLike(obj)) throw new StackAssertionError(`set: obj is not an object (found: ${(obj as any) === null ? "null" : typeof obj})`, { obj, key, value });
   Object.defineProperty(obj, key, { value, writable: true, configurable: true, enumerable: true });
 }
 
-export function get<T extends object, K extends keyof T>(obj: T, key: K): T[K] {
+export function get<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K): T[K & keyof T] {
   if ((obj as any) == null) throw new StackAssertionError("get: obj is null or undefined", { obj, key });
   const descriptor = Object.getOwnPropertyDescriptor(obj, key);
   if (!descriptor) throw new StackAssertionError(`get: key ${String(key)} does not exist`, { obj, key });
   return descriptor.value;
 }
 
-export function getOrUndefined<T extends object, K extends keyof T>(obj: T, key: K): T[K] | undefined {
+export function getOrUndefined<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K): T[K & keyof T] | undefined {
   if ((obj as any) == null) throw new StackAssertionError("getOrUndefined: obj is null or undefined", { obj, key });
   return has(obj, key) ? get(obj, key) : undefined;
 }
 
-export function has<T extends object, K extends keyof T>(obj: T, key: K): obj is T & { [k in K]: unknown } {
+export function has<T extends object, K extends PropertyKey = keyof T>(obj: T, key: K): obj is T & { [k in K & keyof T]: unknown } {
   if ((obj as any) == null) throw new StackAssertionError("has: obj is null or undefined", { obj, key });
   return Object.prototype.hasOwnProperty.call(obj, key);
 }

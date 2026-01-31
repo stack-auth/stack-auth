@@ -1,5 +1,6 @@
 import "../polyfills";
 
+import { recordRequestStats } from "@/lib/dev-request-stats";
 import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@stackframe/stack-shared/dist/crud";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -10,7 +11,6 @@ import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/pro
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
-import { recordRequestStats } from "@/lib/dev-request-stats";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -103,7 +103,8 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           }
 
           // request duration warning
-          if (req.nextUrl.pathname !== "/api/latest/internal/email-queue-step") {
+          const allowedLongRequestPaths = ["/api/latest/internal/email-queue-step", "/api/latest/internal/analytics/query", "/health/email", "/api/latest/internal/metrics"];
+          if (!allowedLongRequestPaths.includes(req.nextUrl.pathname)) {
             const warnAfterSeconds = 12;
             runAsynchronously(async () => {
               await wait(warnAfterSeconds * 1000);

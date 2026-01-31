@@ -1,15 +1,15 @@
 "use client";
 
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
+import { Button } from "../ui/button";
 import {
-  Button,
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@stackframe/stack-ui";
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Table } from "@tanstack/react-table";
 
 type DataTableViewOptionsProps<TData> = {

@@ -11,6 +11,22 @@ import posthog from "posthog-js";
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
+const postHogKey = getPublicEnvVar('NEXT_PUBLIC_POSTHOG_KEY') ?? "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
+if (postHogKey.length > 5) {
+  posthog.init(postHogKey, {
+    session_recording: {
+      maskAllInputs: false,
+      maskInputOptions: {
+        password: true,
+      },
+    },
+    defaults: '2025-11-30',
+    api_host: "/consume",
+    ui_host: "https://eu.i.posthog.com",
+  });
+}
+
+
 Sentry.init({
   ...sentryBaseConfig,
 

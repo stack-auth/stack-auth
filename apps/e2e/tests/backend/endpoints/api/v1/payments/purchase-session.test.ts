@@ -28,7 +28,42 @@ it("should error on invalid code", async ({ expect }) => {
 });
 
 it("should error on invalid price_id", async ({ expect }) => {
-  const { code } = await Payments.createPurchaseUrlAndGetCode();
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
     method: "POST",
     accessType: "client",
@@ -47,7 +82,42 @@ it("should error on invalid price_id", async ({ expect }) => {
 });
 
 it("should properly create subscription", async ({ expect }) => {
-  const { code } = await Payments.createPurchaseUrlAndGetCode();
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      testMode: false,
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+  const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+    body: {
+      customer_type: "user",
+      customer_id: userId,
+      product_id: "test-product",
+    },
+  });
+  expect(createUrlResponse.status).toBe(200);
+  const code = (createUrlResponse.body as { url: string }).url.match(/\/purchase\/([a-z0-9-_]+)/)?.[1]!;
+
   const response = await niceBackendFetch("/api/latest/payments/purchases/purchase-session", {
     method: "POST",
     accessType: "client",
@@ -83,7 +153,7 @@ it("should return client secret for one-time price (no interval)", async ({ expe
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -129,7 +199,7 @@ it("should error on one-time price quantity > 1 when product is not stackable", 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -190,7 +260,7 @@ it("should return client secret for one-time price even if a conflicting group s
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // Create test-mode DB-only subscription for subProduct
   const createUrlRespA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -257,7 +327,7 @@ it("test-mode should error on one-time price quantity > 1 when product is not st
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const urlRes = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -397,10 +467,11 @@ it("creates subscription in test mode and increases included item quantity", asy
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
     body: {
       customer_type: "user",
       customer_id: userId,
@@ -415,6 +486,7 @@ it("creates subscription in test mode and increases included item quantity", asy
 
   const getBefore = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getBefore.status).toBe(200);
   expect(getBefore.body.quantity).toBe(0);
@@ -432,6 +504,7 @@ it("creates subscription in test mode and increases included item quantity", asy
 
   const getAfter = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(2);
@@ -591,10 +664,11 @@ it("allows stackable quantity in test mode and multiplies included items", async
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
     body: {
       customer_type: "user",
       customer_id: userId,
@@ -609,6 +683,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
 
   const getBefore = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getBefore.status).toBe(200);
   expect(getBefore.body.quantity).toBe(0);
@@ -627,6 +702,7 @@ it("allows stackable quantity in test mode and multiplies included items", async
 
   const getAfter = await niceBackendFetch(`/api/latest/payments/items/user/${userId}/test-item`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(getAfter.status).toBe(200);
   expect(getAfter.body.quantity).toBe(6);
@@ -674,7 +750,7 @@ it("should update existing stripe subscription when switching products within a 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // First purchase: Product A
   const createUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -781,7 +857,7 @@ it("should cancel DB-only subscription then create Stripe subscription when swit
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // Create test-mode DB-only subscription for productA
   const resUrlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
@@ -859,7 +935,7 @@ it("should block one-time purchase for same product after prior one-time purchas
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   // First: create code and complete in TEST_MODE (persists OneTimePurchase)
   const createUrl1 = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -932,7 +1008,7 @@ it("should block one-time purchase in same group after prior one-time purchase i
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   // Purchase productA in TEST_MODE (persists OneTimePurchase)
   const urlA = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
