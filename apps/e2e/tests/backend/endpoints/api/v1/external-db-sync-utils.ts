@@ -176,6 +176,7 @@ async function maybeForceExternalDbSync() {
   await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
     query: {
       maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
+      stopWhenIdle: "true",
     },
     headers: {
       Authorization: `Bearer ${cronSecret}`,
@@ -184,6 +185,7 @@ async function maybeForceExternalDbSync() {
   await niceFetch(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
     query: {
       maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
+      stopWhenIdle: "true",
     },
     headers: {
       Authorization: `Bearer ${cronSecret}`,

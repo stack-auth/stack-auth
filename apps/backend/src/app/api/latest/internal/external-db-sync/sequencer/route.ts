@@ -11,6 +11,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
@@ -24,6 +25,13 @@ function parseMaxDurationMs(value: string | undefined): number {
   return parsed;
 }
 
+function parseStopWhenIdle(value: string | undefined): boolean {
+  if (!value) return false;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new StatusError(400, "stopWhenIdle must be 'true' or 'false'");
+}
+
 function assertUuid(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0 || !UUID_REGEX.test(value)) {
     throw new StatusError(500, `${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
@@ -32,7 +40,8 @@ function assertUuid(value: unknown, label: string): asserts value is string {
 
 // Assigns sequence IDs to rows that need them and queues sync requests for affected tenants.
 // Processes up to 1000 rows at a time from each table.
-async function backfillSequenceIds() {
+async function backfillSequenceIds(): Promise<boolean> {
+  let didUpdate = false;
   const projectUserTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
     WITH rows_to_update AS (
       SELECT "tenancyId", "projectUserId"
@@ -57,7 +66,10 @@ async function backfillSequenceIds() {
   // Enqueue sync for each affected tenant
   for (const { tenancyId } of projectUserTenants) {
     assertUuid(tenancyId, "projectUserTenants.tenancyId");
-    await enqueueTenantSync(tenancyId);
+    await enqueueExternalDbSync(tenancyId);
+  }
+  if (projectUserTenants.length > 0) {
+    didUpdate = true;
   }
 
   const contactChannelTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
@@ -84,7 +96,10 @@ async function backfillSequenceIds() {
 
   for (const { tenancyId } of contactChannelTenants) {
     assertUuid(tenancyId, "contactChannelTenants.tenancyId");
-    await enqueueTenantSync(tenancyId);
+    await enqueueExternalDbSync(tenancyId);
+  }
+  if (contactChannelTenants.length > 0) {
+    didUpdate = true;
   }
 
   const deletedRowTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
@@ -109,8 +124,13 @@ async function backfillSequenceIds() {
 
   for (const { tenancyId } of deletedRowTenants) {
     assertUuid(tenancyId, "deletedRowTenants.tenancyId");
-    await enqueueTenantSync(tenancyId);
+    await enqueueExternalDbSync(tenancyId);
   }
+  if (deletedRowTenants.length > 0) {
+    didUpdate = true;
+  }
+
+  return didUpdate;
 }
 
 async function backfillSequenceIdsForTenancy(prisma: PrismaClientTransaction, tenancyId: string): Promise<boolean> {
@@ -209,37 +229,17 @@ async function getNonHostedTenancies(): Promise<Tenancy[]> {
   return tenancies;
 }
 
-async function backfillSequenceIdsForNonHostedTenancies(tenancies: Tenancy[]): Promise<void> {
+async function backfillSequenceIdsForNonHostedTenancies(tenancies: Tenancy[]): Promise<boolean> {
+  let didUpdate = false;
   for (const tenancy of tenancies) {
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const didUpdate = await backfillSequenceIdsForTenancy(prisma, tenancy.id);
-    if (didUpdate) {
-      await enqueueTenantSync(tenancy.id);
+    const tenancyDidUpdate = await backfillSequenceIdsForTenancy(prisma, tenancy.id);
+    if (tenancyDidUpdate) {
+      await enqueueExternalDbSync(tenancy.id);
+      didUpdate = true;
     }
   }
-}
-
-// Queues a sync request for a specific tenant if one isn't already pending.
-// Prevents duplicate sync requests by checking for unfulfilled requests.
-async function enqueueTenantSync(tenancyId: string) {
-  assertUuid(tenancyId, "tenancyId");
-  await globalPrismaClient.$executeRaw`
-    INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt")
-    SELECT
-      gen_random_uuid(),
-      NOW(),
-      json_build_object(
-        'url',  '/api/latest/internal/external-db-sync/sync-engine',
-        'body', json_build_object('tenancyId', ${tenancyId}::uuid)
-      ),
-      NULL
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM "OutgoingRequest"
-      WHERE "startedFulfillingAt" IS NULL
-        AND ("qstashOptions"->'body'->>'tenancyId')::uuid = ${tenancyId}::uuid
-    )
-  `;
+  return didUpdate;
 }
 
 export const GET = createSmartRouteHandler({
@@ -258,6 +258,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     query: yupObject({
       maxDurationMs: yupString().optional(),
+      stopWhenIdle: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -280,6 +281,7 @@ export const GET = createSmartRouteHandler({
 
     const startTime = performance.now();
     const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
+    const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
     const pollIntervalMs = 50;
 
     let iterations = 0;
@@ -290,8 +292,11 @@ export const GET = createSmartRouteHandler({
           nonHostedTenancies = await getNonHostedTenancies();
           lastTenancyRefreshMs = performance.now();
         }
-        await backfillSequenceIds();
-        await backfillSequenceIdsForNonHostedTenancies(nonHostedTenancies);
+        const didUpdateHosted = await backfillSequenceIds();
+        const didUpdateNonHosted = await backfillSequenceIdsForNonHostedTenancies(nonHostedTenancies);
+        if (stopWhenIdle && !didUpdateHosted && !didUpdateNonHosted) {
+          break;
+        }
       } catch (error) {
         captureError(
           `sequencer-iteration-error`,

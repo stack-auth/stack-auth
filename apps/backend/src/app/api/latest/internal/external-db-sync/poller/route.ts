@@ -25,6 +25,13 @@ function parseMaxDurationMs(value: string | undefined): number {
   return parsed;
 }
 
+function parseStopWhenIdle(value: string | undefined): boolean {
+  if (!value) return false;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new StatusError(400, "stopWhenIdle must be 'true' or 'false'");
+}
+
 function directSyncEnabled(): boolean {
   return getEnvVariable(DIRECT_SYNC_ENV, "") === "true";
 }
@@ -50,6 +57,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     query: yupObject({
       maxDurationMs: yupString().optional(),
+      stopWhenIdle: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -68,6 +76,7 @@ export const GET = createSmartRouteHandler({
 
     const startTime = performance.now();
     const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
+    const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
     const pollIntervalMs = 50;
     const staleClaimIntervalMinutes = 5;
 
@@ -96,68 +105,68 @@ export const GET = createSmartRouteHandler({
         await tx.outgoingRequest.delete({ where: { id } });
       });
     }
-    async function releaseOutgoingRequest(id: string): Promise<void> {
-      await retryTransaction(globalPrismaClient, async (tx) => {
-        await tx.outgoingRequest.updateMany({
-          where: { id, startedFulfillingAt: { not: null } },
-          data: { startedFulfillingAt: null },
+    async function processRequest(request: OutgoingRequest): Promise<void> {
+      // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
+      const options = request.qstashOptions as any;
+      const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+
+      let fullUrl = new URL(options.url, baseUrl).toString();
+
+      // In dev/test, QStash runs in Docker so "localhost" won't work.
+      // Replace with "host.docker.internal" to reach the host machine.
+      if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
+        const url = new URL(fullUrl);
+        if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+          url.hostname = "host.docker.internal";
+          fullUrl = url.toString();
+        }
+      }
+
+      if (directSyncEnabled()) {
+        const directUrl = new URL(options.url, getLocalApiBaseUrl()).toString();
+        const res = await fetch(directUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "upstash-signature": "test-bypass",
+          },
+          body: JSON.stringify(options.body),
         });
-      });
+        if (!res.ok) {
+          throw new StatusError(res.status, `Direct sync failed: ${res.status} ${res.statusText}`);
+        }
+      } else {
+        await upstash.publishJSON({
+          url: fullUrl,
+          body: options.body,
+        });
+      }
+
+      await deleteOutgoingRequest(request.id);
     }
+
     async function processRequests(requests: OutgoingRequest[]): Promise<number> {
-      const results = await Promise.allSettled(
-        requests.map(async (request) => {
-          // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
-          const options = request.qstashOptions as any;
-          const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
-
-          let fullUrl = new URL(options.url, baseUrl).toString();
-
-          // In dev/test, QStash runs in Docker so "localhost" won't work.
-          // Replace with "host.docker.internal" to reach the host machine.
-          if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
-            const url = new URL(fullUrl);
-            if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-              url.hostname = "host.docker.internal";
-              fullUrl = url.toString();
-            }
-          }
-
-          if (directSyncEnabled()) {
-            const directUrl = new URL(options.url, getLocalApiBaseUrl()).toString();
-            const res = await fetch(directUrl, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                "upstash-signature": "test-bypass",
-              },
-              body: JSON.stringify(options.body),
-            });
-            if (!res.ok) {
-              throw new StatusError(res.status, `Direct sync failed: ${res.status} ${res.statusText}`);
-            }
-          } else {
-            await upstash.publishJSON({
-              url: fullUrl,
-              body: options.body,
-            });
-          }
-
-          await deleteOutgoingRequest(request.id);
-        }),
-      );
-
       let processed = 0;
-      for (const [index, result] of results.entries()) {
+
+      if (directSyncEnabled()) {
+        for (const request of requests) {
+          try {
+            await processRequest(request);
+            processed++;
+          } catch (error) {
+            captureError("poller-iteration-error", error);
+          }
+        }
+        return processed;
+      }
+
+      const results = await Promise.allSettled(requests.map(processRequest));
+      for (const result of results) {
         if (result.status === "fulfilled") {
           processed++;
           continue;
         }
-        captureError(
-          "poller-iteration-error",
-          result.reason,
-        );
-        await releaseOutgoingRequest(requests[index].id);
+        captureError("poller-iteration-error", result.reason);
       }
 
       return processed;
@@ -165,6 +174,10 @@ export const GET = createSmartRouteHandler({
 
     while (performance.now() - startTime < maxDurationMs) {
       const pendingRequests = await claimPendingRequests();
+
+      if (stopWhenIdle && pendingRequests.length === 0) {
+        break;
+      }
 
       totalRequestsProcessed += await processRequests(pendingRequests);
 
