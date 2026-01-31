@@ -84,7 +84,7 @@ it("should send email notification to user when revoking an API key through cred
           "attachments": [],
           "body": {
             "html": deindent\`
-              <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><div>
+              <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><table border="0" width="100%" cellPadding="0" cellSpacing="0" role="presentation" align="center"><tbody><tr><td><div>
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                       <h2 style="color: #333;">API Key Revoked</h2>
                       <p style="color: #555; font-size: 16px; line-height: 1.5;">
@@ -97,16 +97,14 @@ it("should send email notification to user when revoking an API key through cred
                         Please create a new API key if needed.
                       </p>
                     </div>
-                  </div><!--3--><!--/$--></body></html>
+                  </div></td></tr></tbody></table><!--3--><!--/$--></body></html>
             \`,
             "text": deindent\`
               API KEY REVOKED
               
-              Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been
-              automatically revoked because it was found in a public repository.
+              Your API key "Test API Key to Revoke <HTML Test &>" for New Project has been automatically revoked because it was found in a public repository.
               
-              This is an automated security measure to protect your api keys from being
-              leaked. If you believe this was a mistake, please contact support.
+              This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
               
               Please create a new API key if needed.
             \`,
@@ -231,7 +229,7 @@ it("should send email notification to team members when revoking a team API key 
             "attachments": [],
             "body": {
               "html": deindent\`
-                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><div>
+                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><table border="0" width="100%" cellPadding="0" cellSpacing="0" role="presentation" align="center"><tbody><tr><td><div>
                       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                         <h2 style="color: #333;">API Key Revoked</h2>
                         <p style="color: #555; font-size: 16px; line-height: 1.5;">
@@ -244,16 +242,14 @@ it("should send email notification to team members when revoking a team API key 
                           Please create a new API key if needed.
                         </p>
                       </div>
-                    </div><!--3--><!--/$--></body></html>
+                    </div></td></tr></tbody></table><!--3--><!--/$--></body></html>
               \`,
               "text": deindent\`
                 API KEY REVOKED
                 
-                Your API key "Test Team API Key to Revoke" for New Project has been
-                automatically revoked because it was found in a public repository.
+                Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
                 
-                This is an automated security measure to protect your api keys from being
-                leaked. If you believe this was a mistake, please contact support.
+                This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
                 
                 Please create a new API key if needed.
               \`,
@@ -271,7 +267,7 @@ it("should send email notification to team members when revoking a team API key 
             "attachments": [],
             "body": {
               "html": deindent\`
-                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><div>
+                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html dir="ltr" lang="en"><head></head><body><!--$--><table border="0" width="100%" cellPadding="0" cellSpacing="0" role="presentation" align="center"><tbody><tr><td><div>
                       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                         <h2 style="color: #333;">API Key Revoked</h2>
                         <p style="color: #555; font-size: 16px; line-height: 1.5;">
@@ -284,16 +280,14 @@ it("should send email notification to team members when revoking a team API key 
                           Please create a new API key if needed.
                         </p>
                       </div>
-                    </div><!--3--><!--/$--></body></html>
+                    </div></td></tr></tbody></table><!--3--><!--/$--></body></html>
               \`,
               "text": deindent\`
                 API KEY REVOKED
                 
-                Your API key "Test Team API Key to Revoke" for New Project has been
-                automatically revoked because it was found in a public repository.
+                Your API key "Test Team API Key to Revoke" for New Project has been automatically revoked because it was found in a public repository.
                 
-                This is an automated security measure to protect your api keys from being
-                leaked. If you believe this was a mistake, please contact support.
+                This is an automated security measure to protect your api keys from being leaked. If you believe this was a mistake, please contact support.
                 
                 Please create a new API key if needed.
               \`,
