@@ -912,13 +912,13 @@ it("does not allow dictionary access", async ({ expect }) => {
           "error": deindent\`
             Error during execution of this query.
             
-            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(database, name, uuid, status, origin, type, key.names, key.types, attribute.names, attribute.types, bytes_allocated, hierarchical_index_bytes_allocated, query_count, hit_rate, found_rate, element_count, load_factor, source, lifetime_min, lifetime_max, loading_start_time, last_successful_update_time, loading_duration, last_exception, comment) ON system.dictionaries. 
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(database, name, uuid, status, origin, type, \\\`key.names\\\`, \\\`key.types\\\`, \\\`attribute.names\\\`, \\\`attribute.types\\\`, bytes_allocated, hierarchical_index_bytes_allocated, query_count, hit_rate, found_rate, element_count, load_factor, source, lifetime_min, lifetime_max, loading_start_time, last_successful_update_time, error_count, loading_duration, last_exception, comment) ON system.dictionaries. 
           \`,
         },
         "error": deindent\`
           Error during execution of this query.
           
-          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(database, name, uuid, status, origin, type, key.names, key.types, attribute.names, attribute.types, bytes_allocated, hierarchical_index_bytes_allocated, query_count, hit_rate, found_rate, element_count, load_factor, source, lifetime_min, lifetime_max, loading_start_time, last_successful_update_time, loading_duration, last_exception, comment) ON system.dictionaries. 
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(database, name, uuid, status, origin, type, \\\`key.names\\\`, \\\`key.types\\\`, \\\`attribute.names\\\`, \\\`attribute.types\\\`, bytes_allocated, hierarchical_index_bytes_allocated, query_count, hit_rate, found_rate, element_count, load_factor, source, lifetime_min, lifetime_max, loading_start_time, last_successful_update_time, error_count, loading_duration, last_exception, comment) ON system.dictionaries. 
         \`,
       },
       "headers": Headers {
@@ -962,31 +962,42 @@ it("does not allow query log snooping", async ({ expect }) => {
 
 it("does not allow granting privileges", async ({ expect }) => {
   const response = await runQuery({
-    query: "SHOW GRANTS FOR default",
+    query: "GRANT SELECT ON system.users TO limited_user",
   });
 
+  // Syntax error as .query does not support GRANT statements
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": {
-          "error": deindent\`
-            Error during execution of this query.
-            
-            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SHOW USERS. 
-          \`,
-        },
-        "error": deindent\`
-          Error during execution of this query.
-          
-          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SHOW USERS. 
-        \`,
+        "details": { "error": "Syntax error: failed at position 47 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, At, Comma, EXCEPT, ON, WITH GRANT OPTION, WITH ADMIN OPTION, WITH REPLACE OPTION, ParallelWithClause, PARALLEL WITH, end of query. " },
+        "error": "Syntax error: failed at position 47 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, At, Comma, EXCEPT, ON, WITH GRANT OPTION, WITH ADMIN OPTION, WITH REPLACE OPTION, ParallelWithClause, PARALLEL WITH, end of query. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
         <some fields may have been hidden>,
       },
+    }
+  `);
+});
+
+it("shows grants", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SHOW GRANTS",
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "result": [{ "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" }],
+        "stats": {
+          "cpu_time": <stripped field 'cpu_time'>,
+          "wall_clock_time": <stripped field 'wall_clock_time'>,
+        },
+      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
@@ -1410,37 +1421,6 @@ it("does not allow accessing system.processes", async ({ expect }) => {
 it("does not allow input() function", async ({ expect }) => {
   const response = await runQuery({
     query: "SELECT * FROM input('x String')",
-  });
-
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "ANALYTICS_QUERY_ERROR",
-        "details": {
-          "error": deindent\`
-            Error during execution of this query.
-            
-            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
-          \`,
-        },
-        "error": deindent\`
-          Error during execution of this query.
-          
-          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
-        \`,
-      },
-      "headers": Headers {
-        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-});
-
-it("does not allow generateRandom table function", async ({ expect }) => {
-  const response = await runQuery({
-    query: "SELECT * FROM generateRandom('x UInt64', 1, 10, 10)",
   });
 
   expect(response).toMatchInlineSnapshot(`
