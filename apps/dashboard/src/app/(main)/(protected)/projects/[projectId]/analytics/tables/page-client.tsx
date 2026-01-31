@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -619,6 +620,7 @@ function TableContent({ tableId }: { tableId: TableId }) {
 
 export default function PageClient() {
   const [selectedTable, setSelectedTable] = useState<TableId | null>("events");
+  const [queryDialogOpen, setQueryDialogOpen] = useState(false);
 
   return (
     <AppEnabledGuard appId="analytics">
@@ -647,7 +649,7 @@ export default function PageClient() {
             </div>
             <div className="py-4 px-4">
               <button
-                onClick={() => window.dispatchEvent(new CustomEvent("spotlight-toggle"))}
+                onClick={() => setQueryDialogOpen(true)}
                 className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
               >
                 <SparkleIcon className="h-4 w-4" />
@@ -667,6 +669,23 @@ export default function PageClient() {
             )}
           </div>
         </div>
+
+        {/* Query moved dialog */}
+        <Dialog open={queryDialogOpen} onOpenChange={setQueryDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Analytics Queries have moved to the Control Center</DialogTitle>
+            </DialogHeader>
+            <DialogBody>
+              <Typography variant="secondary">
+                You can now do analytics queries directly from the Control Center. To open the Control Center, press <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">⌘</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">K</kbd>
+              </Typography>
+            </DialogBody>
+            <DialogFooter>
+              <Button onClick={() => setQueryDialogOpen(false)}>OK</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </PageLayout>
     </AppEnabledGuard>
   );
