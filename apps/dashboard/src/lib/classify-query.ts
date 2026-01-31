@@ -11,7 +11,9 @@ export function classifyClickHouseSqlVsPrompt(input: unknown): {
   const raw = (input ?? "").toString();
   const s = raw.trim();
 
-  if (!s) return { kind: "prompt", confidence: 0.5, reasons: ["empty"] };
+  if (!s) {
+    return { kind: "prompt", confidence: 0.5, reasons: ["empty"] };
+  }
 
   // Strip code fences if someone pasted markdown
   const unfenced = s.replace(/^```[\w-]*\n([\s\S]*?)\n```$/m, "$1").trim();
@@ -25,15 +27,28 @@ export function classifyClickHouseSqlVsPrompt(input: unknown): {
   const reasons: string[] = [];
 
   // 1) Strong starts (high signal)
-  const startsWithSql = /^(with|select|insert|update|delete|alter|create|drop|truncate|show|describe|desc|explain|use|set)\b/i.test(unfenced);
-  if (startsWithSql) { sql += 3; reasons.push("starts-with-sql-keyword"); }
+  const startsWithSqlKeyword = /^(with|select|insert|update|delete|alter|create|drop|truncate|describe|desc|explain|use|set)\b/i.test(unfenced);
+  const showEnglishLead = /^show\s+(me|us|my|our|your|them|him|her)\b/i.test(unfenced);
+  const showHasSqlTarget = /^show\s+(tables?|databases?|columns?|create|processlist|functions?|settings|grants|roles|quotas|dictionary|dictionaries|clusters|indexes|partitions|privileges|users?)\b/i.test(unfenced);
+  const startsWithShowSql = /^show\b/i.test(unfenced) && showHasSqlTarget && !showEnglishLead;
+  const startsWithSql = startsWithSqlKeyword || startsWithShowSql;
+  if (startsWithSql) {
+    sql += 3;
+    reasons.push("starts-with-sql-keyword");
+  }
 
   // 2) Structural patterns (very strong)
   const hasSelectFrom = /\bselect\b[\s\S]{0,300}\bfrom\b/i.test(unfenced);
-  if (hasSelectFrom) { sql += 4; reasons.push("select-from-structure"); }
+  if (hasSelectFrom) {
+    sql += 4;
+    reasons.push("select-from-structure");
+  }
 
   const hasInsertInto = /\binsert\b[\s\S]{0,80}\binto\b/i.test(unfenced);
-  if (hasInsertInto) { sql += 4; reasons.push("insert-into-structure"); }
+  if (hasInsertInto) {
+    sql += 4;
+    reasons.push("insert-into-structure");
+  }
 
   // 3) Common SQL clauses
   const clauseHits = [
@@ -49,44 +64,64 @@ export function classifyClickHouseSqlVsPrompt(input: unknown): {
     "prewhere", "final", "sample", "array", "engine", "partition", "ttl", "distributed", "merge", "replacing", "collapsing",
     "materialized", "view", "database", "table", "cluster"
   ].filter(k => wordSet.has(k));
-  if (chHits.length) { sql += 2; reasons.push("clickhouse-ish:" + chHits.join(",")); }
+  if (chHits.length) {
+    sql += 2;
+    reasons.push("clickhouse-ish:" + chHits.join(","));
+  }
 
   // 5) Operator / punctuation density
   const opCount = (unfenced.match(/(<=|>=|!=|=|<|>|\b(in|like|ilike|between|and|or)\b)/gi) ?? []).length;
-  if (opCount >= 2) { sql += 2; reasons.push("many-operators"); }
-  else if (opCount === 1) { sql += 1; reasons.push("some-operators"); }
+  if (opCount >= 2) {
+    sql += 2;
+    reasons.push("many-operators");
+  } else if (opCount === 1) {
+    sql += 1;
+    reasons.push("some-operators");
+  }
 
   const punct = (unfenced.match(/[(),;*]/g) ?? []).length;
   const punctRatio = punct / Math.max(1, unfenced.length);
-  if (punctRatio > 0.03) { sql += 1; reasons.push("sql-punctuation-density"); }
+  if (punctRatio > 0.03) {
+    sql += 1;
+    reasons.push("sql-punctuation-density");
+  }
 
   // 6) Identifier-ish things
   if (/`[^`]+`/.test(unfenced) || /"[^"]+"\."[^"]+"/.test(unfenced)) {
-    sql += 1; reasons.push("quoted-identifiers");
+    sql += 1;
+    reasons.push("quoted-identifiers");
   }
   if (/\b[a-z_]+\.[a-z_]+\b/i.test(unfenced)) {
-    sql += 1; reasons.push("dot-identifiers");
+    sql += 1;
+    reasons.push("dot-identifiers");
   }
   if (/--|\/\*/.test(unfenced)) {
-    sql += 1; reasons.push("sql-comments");
+    sql += 1;
+    reasons.push("sql-comments");
   }
 
   // Prompt-ish features
-  if (/[?]\s*$/.test(unfenced)) { prompt += 2; reasons.push("ends-with-question-mark"); }
+  if (/[?]\s*$/.test(unfenced)) {
+    prompt += 2;
+    reasons.push("ends-with-question-mark");
+  }
   if (/\b(please|could you|can you|what|why|how|explain|help)\b/i.test(unfenced)) {
-    prompt += 2; reasons.push("prompt-words");
+    prompt += 2;
+    reasons.push("prompt-words");
   }
 
   // If it's mostly letters/spaces and barely any operators, lean prompt.
   const symbolChars = (unfenced.match(/[^a-z0-9_\s]/gi) ?? []).length;
   const symbolRatio = symbolChars / Math.max(1, unfenced.length);
   if (symbolRatio < 0.06 && opCount === 0 && !startsWithSql) {
-    prompt += 2; reasons.push("low-symbol-low-operator");
+    prompt += 2;
+    reasons.push("low-symbol-low-operator");
   }
 
   // Avoid the classic false positive: "select ..." in English without any SQL structure
   if (/^select\b/i.test(unfenced) && !hasSelectFrom && clauseHits.length === 0 && opCount === 0) {
-    prompt += 3; reasons.push("english-select-false-positive-guard");
+    prompt += 3;
+    reasons.push("english-select-false-positive-guard");
   }
 
   const margin = sql - prompt;
