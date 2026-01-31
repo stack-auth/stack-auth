@@ -66,7 +66,7 @@ export default function RootLayout({
     throw new Error(`STACK_DEVELOPMENT_TRANSLATION_LOCALE can only be used in development mode (found: ${JSON.stringify(translationLocale)})`);
   }
 
-  const enableReactScanInDevelopment = false as boolean;
+  const enableReactScanInDevelopment = getPublicEnvVar('NEXT_PUBLIC_STACK_ENABLE_REACT_SCAN_IN_DEVELOPMENT') === 'true';
 
   return (
     <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
