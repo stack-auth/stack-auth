@@ -69,7 +69,7 @@ const performSignUp = async (email: string, password: string) => {
       "Content-Type": "application/json",
       "X-Stack-Access-Type": "client",
       "X-Stack-Publishable-Client-Key": getEnvVariable("STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY"),
-      "X-Stack-Project-Id": "internal",
+      "X-Stack-Project-Id": getEnvVariable("STACK_EMAIL_MONITOR_PROJECT_ID"),
     },
     body: JSON.stringify({
       email,
