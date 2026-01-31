@@ -23,11 +23,18 @@ export function createChatAdapter(
       try {
         const formattedMessages = [];
         for (const msg of messages) {
-          formattedMessages.push({
-            role: msg.role,
-            content: [...msg.content]
-          });
-          msg.content.filter(isToolCall).forEach(toolCall => {
+          // Separate tool calls from other content
+          const toolCalls = msg.content.filter(isToolCall);
+          const nonToolContent = msg.content.filter(c => !isToolCall(c));
+          // Only add the message if it has non-tool content
+          if (nonToolContent.length > 0) {
+            formattedMessages.push({
+              role: msg.role,
+              content: nonToolContent
+            });
+          }
+          // Add tool results as separate messages
+          toolCalls.forEach(toolCall => {
             formattedMessages.push({
               role: "tool",
               content: [{

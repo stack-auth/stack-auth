@@ -2,6 +2,7 @@
 
 import { CheckIcon, XIcon } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, cn } from "./ui";
 
 /**
@@ -41,7 +42,7 @@ export function InlineSaveDiscard({
       </Button>
       <Button
         size="sm"
-        onClick={handleSave}
+        onClick={() => runAsynchronouslyWithAlert(handleSave)}
         disabled={isSaving}
         className="text-xs h-7 px-3"
       >
