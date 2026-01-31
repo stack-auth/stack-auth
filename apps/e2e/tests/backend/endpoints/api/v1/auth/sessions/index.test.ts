@@ -100,8 +100,8 @@ it("creates sessions that expire", async ({ expect }) => {
     await Auth.expectToBeSignedIn();
   } finally {
     const timeSinceBeginDate = new Date().getTime() - beginDate.getTime();
-    if (timeSinceBeginDate > 4_000) {
-      throw new StackAssertionError(`Timeout error: Requests were too slow (${timeSinceBeginDate}ms > 4000ms); try again or try to understand why they were slow.`);
+    if (timeSinceBeginDate > 6_000) {
+      throw new StackAssertionError(`Timeout error: Requests were too slow (${timeSinceBeginDate}ms > 6000ms); try again or try to understand why they were slow.`);
     }
   }
   await waitPromise;

@@ -12,6 +12,8 @@ services:
       POSTGRES_DB: stackframe
       POSTGRES_DELAY_MS: ${POSTGRES_DELAY_MS:-0}
       POSTGRES_INITDB_ARGS: --nosync
+    # Increase max_connections for E2E tests that create many databases
+    command: postgres -c max_connections=500
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"
     volumes:
