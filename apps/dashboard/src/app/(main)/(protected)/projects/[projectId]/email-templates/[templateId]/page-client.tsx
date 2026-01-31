@@ -17,7 +17,7 @@ import {
 import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -61,19 +61,25 @@ export default function PageClient(props: { templateId: string }) {
     setIsLoading(true);
 
     const fetchTemplate = async () => {
-      const allTemplates = await stackAdminApp.listEmailTemplates();
+      try {
+        const allTemplates = await stackAdminApp.listEmailTemplates();
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      const found = allTemplates.find((t) => t.id === props.templateId);
+        const found = allTemplates.find((t) => t.id === props.templateId);
 
-      if (found) {
-        setFetchedTemplate(found);
-        setCurrentCode(found.tsxSource);
-        setSelectedThemeId(found.themeId);
+        if (found) {
+          setFetchedTemplate(found);
+          setCurrentCode(found.tsxSource);
+          setSelectedThemeId(found.themeId);
+        }
+      } catch (error) {
+        const fetchError = error instanceof Error ? error : new Error(String(error));
+        setFetchError(fetchError);
+        throw fetchError;
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     };
 
     runAsynchronously(fetchTemplate);
@@ -83,12 +89,16 @@ export default function PageClient(props: { templateId: string }) {
     };
   }, [templateFromHook, fetchedTemplate, stackAdminApp, props.templateId]);
 
+  const hasSyncedTemplateFromHook = useRef(false);
+
   // When the template appears in the hook (e.g., after cache updates), sync state
   useEffect(() => {
-    if (templateFromHook && !currentCode) {
+    if (!templateFromHook || hasSyncedTemplateFromHook.current) return;
+    if (!currentCode) {
       setCurrentCode(templateFromHook.tsxSource);
       setSelectedThemeId(templateFromHook.themeId);
     }
+    hasSyncedTemplateFromHook.current = true;
   }, [templateFromHook, currentCode]);
 
   useEffect(() => {

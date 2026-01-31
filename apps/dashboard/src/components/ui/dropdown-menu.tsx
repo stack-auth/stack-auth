@@ -5,9 +5,9 @@ import { CheckIcon, ChevronRightIcon, DotFilledIcon } from "@radix-ui/react-icon
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import React from "react";
 
+import { cn } from "@/lib/utils";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { cn } from "@/lib/utils";
 import { Spinner } from "./spinner";
 
 const DropdownMenuContext = React.createContext<{
@@ -120,6 +120,24 @@ const DropdownMenuItem = forwardRefIfNeeded<
   const { setOpen } = React.useContext(DropdownMenuContext) ?? throwErr("No DropdownMenuContext found");
   const [isLoading, setIsLoading] = React.useState(false);
 
+  // Share activation logic so keyboard onSelect matches mouse clicks.
+  const handleItemAction = (event: { preventDefault: () => void, stopPropagation: () => void }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const result = props.onClick?.(event as React.MouseEvent<HTMLDivElement, MouseEvent>);
+    if (result && typeof (result as Promise<void>).then === "function") {
+      setIsLoading(true);
+      runAsynchronouslyWithAlert(
+        Promise.resolve(result).finally(() => {
+          setIsLoading(false);
+          setOpen(false);
+        })
+      );
+    } else {
+      setOpen(false);
+    }
+  };
+
   return <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
@@ -129,25 +147,8 @@ const DropdownMenuItem = forwardRefIfNeeded<
     )}
     {...props}
     disabled={isLoading || props.disabled}
-    onSelect={props.onClick ? (event) => {
-      event.preventDefault();
-    } : undefined}
-    onClick={props.onClick ? (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const result = props.onClick?.(e);
-      if (result && typeof (result as Promise<void>).then === "function") {
-        setIsLoading(true);
-        runAsynchronouslyWithAlert(
-          Promise.resolve(result).finally(() => {
-            setIsLoading(false);
-            setOpen(false);
-          })
-        );
-      } else {
-        setOpen(false);
-      }
-    } : undefined}
+    onSelect={props.onClick ? handleItemAction : undefined}
+    onClick={props.onClick ? handleItemAction : undefined}
   >
     <div style={{ visibility: isLoading ? "visible" : "hidden", position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
       <Spinner />

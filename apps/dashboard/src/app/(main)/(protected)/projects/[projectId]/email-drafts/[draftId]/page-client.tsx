@@ -6,7 +6,6 @@ import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
-import { type WysiwygDebugInfo as EmailDebugInfo } from "@/components/email-preview";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -51,11 +50,15 @@ export default function PageClient({ draftId }: { draftId: string }) {
       await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
       setSaveAlert({ variant: "success", title: "Draft saved" });
     } catch (error) {
-      setSaveAlert({
-        variant: "destructive",
-        title: "Failed to save draft",
-        description: getErrorMessage(error),
-      });
+      if (error instanceof KnownErrors.EmailRenderingError) {
+        setSaveAlert({
+          variant: "destructive",
+          title: "Failed to save draft",
+          description: error.message,
+        });
+        return;
+      }
+      throw error;
     }
   };
 
@@ -81,7 +84,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
   };
 
   const previewActions = null;
-  const isDirty = currentCode !== draft?.tsxSource || selectedThemeId !== draft.themeId;
+  const isDirty = draft ? (currentCode !== draft.tsxSource || selectedThemeId !== draft.themeId) : false;
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {

@@ -1,7 +1,9 @@
+import { Prisma } from "@/generated/prisma/client";
+import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -25,7 +27,15 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, params }) {
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const d = await prisma.emailDraft.findFirstOrThrow({ where: { tenancyId: tenancy.id, id: params.id } });
+    let d;
+    try {
+      d = await prisma.emailDraft.findFirstOrThrow({ where: { tenancyId: tenancy.id, id: params.id } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new StatusError(StatusError.NotFound, "No draft found with given id");
+      }
+      throw error;
+    }
     return {
       statusCode: 200,
       bodyType: "json",
@@ -94,9 +104,16 @@ export const DELETE = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, params }) {
     const prisma = await getPrismaClientForTenancy(tenancy);
-    await prisma.emailDraft.delete({
-      where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
-    });
+    try {
+      await prisma.emailDraft.delete({
+        where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new StatusError(StatusError.NotFound, "No draft found with given id");
+      }
+      throw error;
+    }
     return {
       statusCode: 200,
       bodyType: "json",

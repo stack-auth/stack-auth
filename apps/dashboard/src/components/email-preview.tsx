@@ -572,9 +572,10 @@ const WYSIWYG_EDITOR_SCRIPT = `
 `;
 
 /**
- * Debug info for WYSIWYG editing
+ * Debug info for WYSIWYG editing.
+ * Renamed to avoid colliding with VibeCodeLayout's debug type with the same name.
  */
-export type WysiwygDebugInfo = {
+export type EmailPreviewDebugInfo = {
   renderedHtml?: string,
   editableRegions?: Record<string, unknown>,
 };
@@ -598,7 +599,7 @@ function EmailPreviewEditableContent({
   templateId?: string,
   templateTsxSource?: string,
   editableSource?: 'template' | 'theme' | 'both',
-  onDebugInfoChange?: (info: WysiwygDebugInfo) => void,
+  onDebugInfoChange?: (info: EmailPreviewDebugInfo) => void,
   onWysiwygEditCommit?: OnWysiwygEditCommit,
 }) {
   const stackAdminApp = useAdminApp();
@@ -756,7 +757,7 @@ type EmailPreviewProps =
     /** Callback when user commits a WYSIWYG edit. Should return updated source code. */
     onWysiwygEditCommit?: OnWysiwygEditCommit,
     /** Callback when debug info changes (edit mode only, dev mode only) */
-    onDebugInfoChange?: (info: WysiwygDebugInfo) => void,
+    onDebugInfoChange?: (info: EmailPreviewDebugInfo) => void,
   };
 
 export default function EmailPreview({

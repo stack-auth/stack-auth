@@ -460,12 +460,12 @@ export function EmailTemplate({ user, project }: Props) {
     }
   `);
 
-  // Verify it no longer exists - Prisma throws NotFoundError which becomes 500
+  // Verify it no longer exists - return 404 instead of a Prisma error
   const getRes2 = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
     method: "GET",
     accessType: "admin",
   });
-  expect(getRes2.status).toBe(500);
+  expect(getRes2.status).toBe(404);
 
   // Verify it's not in the list
   const listRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
@@ -492,6 +492,6 @@ it("should return error when deleting non-existent draft", async ({ expect }) =>
     method: "DELETE",
     accessType: "admin",
   });
-  // Prisma throws an error when the record doesn't exist
-  expect(deleteRes.status).toBe(500);
+  // Return a proper 404 so niceBackendFetch doesn't throw
+  expect(deleteRes.status).toBe(404);
 });
