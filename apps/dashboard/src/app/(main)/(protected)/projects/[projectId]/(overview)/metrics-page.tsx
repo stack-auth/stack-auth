@@ -5,6 +5,7 @@ import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { cn, Typography } from '@/components/ui';
 import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { CaretUpIcon, CompassIcon, DotsThreeIcon, GlobeIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from '@stackframe/stack';
@@ -112,8 +113,6 @@ const dauConfig = {
     },
   }
 } satisfies LineChartDisplayConfig;
-
-const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
 function TotalUsersDisplay({ includeAnonymous, minimal = false }: { includeAnonymous: boolean, minimal?: boolean }) {
   const adminApp = useAdminApp();

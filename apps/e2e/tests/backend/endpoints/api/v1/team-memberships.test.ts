@@ -83,6 +83,9 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,
@@ -115,6 +118,9 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,
@@ -178,6 +184,9 @@ it("creates a team and allows managing users on the server", async ({ expect }) 
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,
@@ -245,6 +254,9 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,
@@ -277,6 +289,9 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,
@@ -326,6 +341,9 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,
@@ -358,6 +376,9 @@ it("lets users be on multiple teams", async ({ expect }) => {
             "primary_email_verified": false,
             "profile_image_url": null,
             "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
             "restricted_reason": null,
             "selected_team": {
               "client_metadata": null,

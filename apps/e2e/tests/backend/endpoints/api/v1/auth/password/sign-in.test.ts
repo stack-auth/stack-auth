@@ -37,6 +37,8 @@ it("should allow signing in to existing accounts", async ({ expect }) => {
         "primary_email_verified": false,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_reason": null,
         "restricted_reason": null,
         "selected_team": {
           "client_metadata": null,

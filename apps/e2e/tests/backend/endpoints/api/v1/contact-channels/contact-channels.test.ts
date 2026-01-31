@@ -202,6 +202,8 @@ it("delete contact channel on the client", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
+      "restricted_by_admin": false,
+      "restricted_by_admin_reason": null,
       "restricted_reason": null,
       "selected_team": {
         "client_metadata": null,
@@ -567,6 +569,8 @@ it("updates contact channel primary status", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
+      "restricted_by_admin": false,
+      "restricted_by_admin_reason": null,
       "restricted_reason": null,
       "selected_team": {
         "client_metadata": null,
@@ -633,6 +637,8 @@ it("sets a primary contact channel to non-primary", async ({ expect }) => {
       "primary_email_verified": false,
       "profile_image_url": null,
       "requires_totp_mfa": false,
+      "restricted_by_admin": false,
+      "restricted_by_admin_reason": null,
       "restricted_reason": null,
       "selected_team": {
         "client_metadata": null,

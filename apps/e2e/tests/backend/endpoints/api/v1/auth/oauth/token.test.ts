@@ -55,6 +55,8 @@ describe("with grant_type === 'authorization_code'", async () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_by_admin": false,
+          "restricted_by_admin_reason": null,
           "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,

@@ -48,6 +48,19 @@ const branchSchemaFuzzerConfig = [{
         }],
       }],
     }],
+    signUpRules: [{
+      "some-rule-id": [{
+        enabled: [true, false],
+        displayName: ["Block Test Emails", "Allow Only Company Domain"],
+        priority: [0, 1, 100],
+        condition: ['email.endsWith("@test.com")', 'emailDomain == "company.com"'],
+        action: [{
+          type: ["allow", "reject", "restrict", "log"] as const,
+          message: ["", "Sign up is not allowed for this email"],
+        }],
+      }],
+    }],
+    signUpRulesDefaultAction: ["allow", "reject"],
   }],
   dataVault: [{
     stores: [{

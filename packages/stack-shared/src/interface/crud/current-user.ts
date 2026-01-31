@@ -35,6 +35,8 @@ const clientReadSchema = usersCrudServerReadSchema.pick([
   "is_anonymous",
   "is_restricted",
   "restricted_reason",
+  "restricted_by_admin",
+  "restricted_by_admin_reason",
 ]).concat(yupObject({
   selected_team: teamsCrudClientReadSchema.nullable().defined(),
 })).defined();

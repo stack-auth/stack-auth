@@ -962,7 +962,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: string,
       displayName: string | null,
       primaryEmail: string | null,
-      restrictedReason: { type: "anonymous" | "email_not_verified" },
+      restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
     }>,
     totalAffectedCount: number,
   }> {
@@ -975,7 +975,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         id: u.id,
         displayName: u.display_name,
         primaryEmail: u.primary_email,
-        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" },
+        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
       })),
       totalAffectedCount: result.total_affected_count,
     };

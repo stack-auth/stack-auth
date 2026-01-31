@@ -2166,7 +2166,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
       isRestricted: auth.is_restricted as boolean,
-      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" } | null) ?? null,
+      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null) ?? null,
     };
   }
 
