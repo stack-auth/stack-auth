@@ -3,16 +3,17 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import { Result } from "../utils/results";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import { SvixTokenCrud } from "./crud/svix-token";
-import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
+import type { MoneyAmount } from "../utils/currency-constants";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -56,13 +57,8 @@ export type ClickhouseMigrationRequest = {
 };
 
 export type ClickhouseMigrationResponse = {
-  total_events: number,
-  processed_events: number,
-  remaining_events: number,
   migrated_events: number,
-  skipped_existing_events: number,
   inserted_rows: number,
-  progress: number,
   next_cursor: {
     created_at_millis: number,
     id: string,
@@ -711,7 +707,11 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {
+  async refundTransaction(options: {
+    type: "subscription" | "one-time-purchase",
+    id: string,
+    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
+  }): Promise<{ success: boolean }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
       {
@@ -719,7 +719,15 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify(options),
+        body: JSON.stringify({
+          type: options.type,
+          id: options.id,
+          refund_entries: options.refundEntries.map((entry) => ({
+            entry_index: entry.entryIndex,
+            quantity: entry.quantity,
+            amount_usd: entry.amountUsd,
+          })),
+        }),
       },
       null,
     );
