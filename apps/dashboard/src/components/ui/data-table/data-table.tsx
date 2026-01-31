@@ -116,6 +116,7 @@ type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[],
   data: TData[],
   toolbarRender?: (table: TableType<TData>) => React.ReactNode,
+  onTableReady?: (table: TableType<TData>) => void,
   defaultVisibility?: VisibilityState,
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
@@ -128,6 +129,7 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   toolbarRender,
+  onTableReady,
   defaultVisibility,
   defaultColumnFilters,
   defaultSorting,
@@ -147,6 +149,7 @@ export function DataTable<TData, TValue>({
     columns={columns}
     data={data}
     toolbarRender={toolbarRender}
+    onTableReady={onTableReady}
     defaultVisibility={defaultVisibility}
     sorting={sorting}
     setSorting={setSorting}
@@ -180,6 +183,7 @@ export function DataTableManualPagination<TData, TValue>({
   columns,
   data,
   toolbarRender,
+  onTableReady,
   defaultVisibility,
   defaultColumnFilters,
   defaultSorting,
@@ -230,6 +234,7 @@ export function DataTableManualPagination<TData, TValue>({
     columns={columns}
     data={data}
     toolbarRender={toolbarRender}
+    onTableReady={onTableReady}
     sorting={sorting}
     setSorting={setSorting}
     pagination={pagination}
@@ -266,6 +271,7 @@ function DataTableBase<TData, TValue>({
   columns,
   data,
   toolbarRender,
+  onTableReady,
   defaultVisibility,
   sorting,
   setSorting,
@@ -317,6 +323,10 @@ function DataTableBase<TData, TValue>({
     manualFiltering,
     rowCount,
   });
+
+  React.useEffect(() => {
+    onTableReady?.(table);
+  }, [table, onTableReady]);
 
   return <TableView
     table={table}

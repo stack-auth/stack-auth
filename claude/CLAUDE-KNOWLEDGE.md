@@ -11,3 +11,9 @@ A: It uses a hero-preview layout in `VibeCodeLayout` where the preview area domi
 
 Q: How can I improve AI design generations for emails?
 A: Update the system prompts in the backend's chat adapters (e.g., `apps/backend/src/lib/ai-chat/email-template-adapter.ts`). Providing explicit design principles, Tailwind CSS best practices, and structured technical rules helps the AI generate more polished and consistent designs.
+
+Q: What endpoint does the local Freestyle mock expose for script execution?
+A: The mock server responds on `/execute/v1/script` and `/execute/v2/script` when built from `docker/dependencies/freestyle-mock/Dockerfile`; if the running image is older and only supports v1, backend dev can post to `/execute/v1/script` for email rendering.
+
+Q: How can I add a small Vitest check inside a client-only file?
+A: Use `import.meta.vitest?.test(...)` at the bottom of the file for lightweight, in-file tests without adding a separate test file.
