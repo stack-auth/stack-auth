@@ -117,7 +117,7 @@ it("handles invalid SQL query", async ({ expect }) => {
         \`,
       },
       "error": deindent\`
-        The query failed to execute: Syntax error: failed at position 1 (INVALID) (line 1, col 1): INVALID SQL QUERY 
+        Syntax error: failed at position 1 (INVALID) (line 1, col 1): INVALID SQL QUERY 
         FORMAT JSONEachRow. Expected one of: Query, Query with output, EXPLAIN, EXPLAIN, SELECT query, possibly with UNION, list of union elements, SELECT query, subquery, possibly with UNION, SELECT subquery, SELECT query, WITH, FROM, SELECT, SHOW CREATE QUOTA query, SHOW CREATE, SHOW [FULL] [TEMPORARY] TABLES|DATABASES|CLUSTERS|CLUSTER|MERGES 'name' [[NOT] [I]LIKE 'str'] [LIMIT expr], SHOW, SHOW COLUMNS query, SHOW ENGINES query, SHOW ENGINES, SHOW FUNCTIONS query, SHOW FUNCTIONS, SHOW INDEXES query, SHOW SETTING query, SHOW SETTING, EXISTS or SHOW CREATE query, EXISTS, DESCRIBE FILESYSTEM CACHE query, DESCRIBE, DESC, DESCRIBE query, SHOW PROCESSLIST query, SHOW PROCESSLIST, CREATE TABLE or ATTACH TABLE query, CREATE, ATTACH, REPLACE, CREATE DATABASE query, CREATE VIEW query, CREATE DICTIONARY, CREATE LIVE VIEW query, CREATE WINDOW VIEW query, ALTER query, ALTER TABLE, ALTER TEMPORARY TABLE, ALTER DATABASE, RENAME query, RENAME DATABASE, RENAME TABLE, EXCHANGE TABLES, RENAME DICTIONARY, EXCHANGE DICTIONARIES, RENAME, DROP query, DROP, DETACH, TRUNCATE, UNDROP query, UNDROP, CHECK ALL TABLES, CHECK TABLE, KILL QUERY query, KILL, OPTIMIZE query, OPTIMIZE TABLE, WATCH query, WATCH, SHOW ACCESS query, SHOW ACCESS, ShowAccessEntitiesQuery, SHOW GRANTS query, SHOW GRANTS, SHOW PRIVILEGES query, SHOW PRIVILEGES, BACKUP or RESTORE query, BACKUP, RESTORE, INSERT query, INSERT INTO, USE query, USE, SET ROLE or SET DEFAULT ROLE query, SET ROLE DEFAULT, SET ROLE, SET DEFAULT ROLE, SET query, SET, SYSTEM query, SYSTEM, CREATE USER or ALTER USER query, ALTER USER, CREATE USER, CREATE ROLE or ALTER ROLE query, ALTER ROLE, CREATE ROLE, CREATE QUOTA or ALTER QUOTA query, ALTER QUOTA, CREATE QUOTA, CREATE ROW POLICY or ALTER ROW POLICY query, ALTER POLICY, ALTER ROW POLICY, CREATE POLICY, CREATE ROW POLICY, CREATE SETTINGS PROFILE or ALTER SETTINGS PROFILE query, ALTER SETTINGS PROFILE, ALTER PROFILE, CREATE SETTINGS PROFILE, CREATE PROFILE, CREATE FUNCTION query, DROP FUNCTION query, CREATE WORKLOAD query, DROP WORKLOAD query, CREATE RESOURCE query, DROP RESOURCE query, CREATE NAMED COLLECTION, DROP NAMED COLLECTION query, Alter NAMED COLLECTION query, ALTER, CREATE INDEX query, DROP INDEX query, DROP access entity query, MOVE access entity query, MOVE, GRANT or REVOKE query, REVOKE, GRANT, CHECK GRANT, CHECK GRANT, TCL query, BEGIN TRANSACTION, START TRANSACTION, COMMIT, ROLLBACK, SET TRANSACTION SNAPSHOT, Delete query, DELETE, Update query, UPDATE, COPY query, COPY. 
       \`,
     }
@@ -187,7 +187,7 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
         "details": { "error": "Timeout exceeded: elapsed <stripped time> ms, maximum: 1000 ms. " },
-        "error": "The query failed to execute: Timeout exceeded: elapsed <stripped time> ms, maximum: 1000 ms. ",
+        "error": "Timeout exceeded: elapsed <stripped time> ms, maximum: 1000 ms. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -233,8 +233,18 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TABLE ON default.test_table. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TABLE ON default.test_table. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -253,8 +263,18 @@ it("does not allow querying system tables", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -275,8 +295,18 @@ it("does not allow killing queries", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query_id, user, query) ON system.processes. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query_id, user, query) ON system.processes. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -295,8 +325,18 @@ it("does not allow INSERT statements", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(dummy) ON system.one. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant INSERT(dummy) ON system.one. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -322,7 +362,7 @@ it("does not allow updating ClickHouse settings", async ({ expect }) => {
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
         "details": { "error": "Cannot modify 'max_memory_usage' setting in readonly mode. " },
-        "error": "The query failed to execute: Cannot modify 'max_memory_usage' setting in readonly mode. ",
+        "error": "Cannot modify 'max_memory_usage' setting in readonly mode. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -447,7 +487,7 @@ it("can see only some tables", async ({ expect }) => {
   `);
 });
 
-it("SHOW TABLES should be empty because current database is empty", async ({ expect }) => {
+it("SHOW TABLES should have the correct tables", async ({ expect }) => {
   const response = await runQuery({
     query: "SHOW TABLES",
   });
@@ -519,7 +559,7 @@ it("does not allow overriding SQL_project_id setting", async ({ expect }) => {
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
         "details": { "error": "Cannot modify 'SQL_project_id' setting in readonly mode. " },
-        "error": "The query failed to execute: Cannot modify 'SQL_project_id' setting in readonly mode. ",
+        "error": "Cannot modify 'SQL_project_id' setting in readonly mode. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -540,7 +580,7 @@ it("does not allow overriding SQL_branch_id setting", async ({ expect }) => {
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
         "details": { "error": "Cannot modify 'SQL_branch_id' setting in readonly mode. " },
-        "error": "The query failed to execute: Cannot modify 'SQL_branch_id' setting in readonly mode. ",
+        "error": "Cannot modify 'SQL_branch_id' setting in readonly mode. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -552,7 +592,7 @@ it("does not allow overriding SQL_branch_id setting", async ({ expect }) => {
 
 it("does not allow accessing system tables via subquery", async ({ expect }) => {
   const response = await runQuery({
-    query: "SELECT * FROM analytics.events WHERE 1 = (SELECT count() FROM system.users)",
+    query: "SELECT * FROM events WHERE 1 = (SELECT count() FROM system.users)",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -560,8 +600,18 @@ it("does not allow accessing system tables via subquery", async ({ expect }) => 
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT for at least one column on system.users. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT for at least one column on system.users. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -581,8 +631,18 @@ it("does not allow UNION to access restricted data", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(number) ON system.numbers. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -602,8 +662,18 @@ it("does not allow file system access via file() function", async ({ expect }) =
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON FILE. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON FILE. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -623,8 +693,18 @@ it("does not allow network access via url() function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON URL. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON URL. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -644,8 +724,18 @@ it("does not allow remote table access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -665,8 +755,18 @@ it("does not allow cluster table access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON REMOTE. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -693,7 +793,7 @@ it("does not allow multi-statement execution", async ({ expect }) => {
           \`,
         },
         "error": deindent\`
-          The query failed to execute: Syntax error (Multi-statements are not allowed): failed at position 9 (end of query) (line 1, col 9): ; SELECT 1 
+          Syntax error (Multi-statements are not allowed): failed at position 9 (end of query) (line 1, col 9): ; SELECT 1 
           FORMAT JSONEachRow. . 
         \`,
       },
@@ -715,8 +815,18 @@ it("does not allow CTE to bypass restrictions", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -736,8 +846,18 @@ it("does not allow accessing tables of other databases", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 60 Unknown table expression identifier 'analytics.some_table' in scope SELECT * FROM analytics.some_table. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 60 Unknown table expression identifier 'analytics.some_table' in scope SELECT * FROM analytics.some_table. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -757,8 +877,18 @@ it("does not allow accessing information_schema", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(table_catalog, table_schema, table_name, table_type, table_rows, data_length, index_length, table_collation, table_comment, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, DATA_LENGTH, TABLE_COLLATION, TABLE_COMMENT) ON information_schema.tables. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(table_catalog, table_schema, table_name, table_type, table_rows, data_length, index_length, table_collation, table_comment, TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, DATA_LENGTH, TABLE_COLLATION, TABLE_COMMENT) ON information_schema.tables. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -770,7 +900,7 @@ it("does not allow accessing information_schema", async ({ expect }) => {
 
 it("does not allow dictionary access", async ({ expect }) => {
   const response = await runQuery({
-    query: "SELECT dictGet('some_dict', 'value', 'key')",
+    query: "SELECT * FROM system.dictionaries",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -778,8 +908,18 @@ it("does not allow dictionary access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(database, name, uuid, status, origin, type, key.names, key.types, attribute.names, attribute.types, bytes_allocated, hierarchical_index_bytes_allocated, query_count, hit_rate, found_rate, element_count, load_factor, source, lifetime_min, lifetime_max, loading_start_time, last_successful_update_time, loading_duration, last_exception, comment) ON system.dictionaries. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(database, name, uuid, status, origin, type, key.names, key.types, attribute.names, attribute.types, bytes_allocated, hierarchical_index_bytes_allocated, query_count, hit_rate, found_rate, element_count, load_factor, source, lifetime_min, lifetime_max, loading_start_time, last_successful_update_time, loading_duration, last_exception, comment) ON system.dictionaries. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -799,8 +939,18 @@ it("does not allow query log snooping", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query) ON system.query_log. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(query) ON system.query_log. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -812,7 +962,7 @@ it("does not allow query log snooping", async ({ expect }) => {
 
 it("does not allow granting privileges", async ({ expect }) => {
   const response = await runQuery({
-    query: "GRANT ALL ON *.* TO limited_user",
+    query: "SHOW GRANTS FOR default",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -820,8 +970,18 @@ it("does not allow granting privileges", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Syntax error: failed at position 35 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, At, Comma, EXCEPT, ON, WITH GRANT OPTION, WITH ADMIN OPTION, WITH REPLACE OPTION, ParallelWithClause, PARALLEL WITH, end of query. " },
-        "error": "The query failed to execute: Syntax error: failed at position 35 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, At, Comma, EXCEPT, ON, WITH GRANT OPTION, WITH ADMIN OPTION, WITH REPLACE OPTION, ParallelWithClause, PARALLEL WITH, end of query. ",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SHOW USERS. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SHOW USERS. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -833,16 +993,17 @@ it("does not allow granting privileges", async ({ expect }) => {
 
 it("does not allow creating functions", async ({ expect }) => {
   const response = await runQuery({
-    query: "CREATE FUNCTION linear_equation AS (x, k, b) -> k*x + b",
+    query: "CREATE FUNCTION plus_one AS (a) -> a + 1",
   });
 
+  // will fail because we do .query; .query does not support CREATE FUNCTION
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Syntax error: failed at position 58 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token sequence, Dot, token, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, ParallelWithClause, PARALLEL WITH, end of query. " },
-        "error": "The query failed to execute: Syntax error: failed at position 58 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token sequence, Dot, token, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, ParallelWithClause, PARALLEL WITH, end of query. ",
+        "details": { "error": "Syntax error: failed at position 43 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, DoubleColon, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, ParallelWithClause, PARALLEL WITH, end of query. " },
+        "error": "Syntax error: failed at position 43 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, DoubleColon, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, ParallelWithClause, PARALLEL WITH, end of query. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -862,8 +1023,18 @@ it("does not allow S3 access", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON S3. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON S3. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -883,8 +1054,18 @@ it("does not allow executable table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -904,8 +1085,18 @@ it("does not allow comment obfuscation to bypass restrictions", async ({ expect 
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -925,8 +1116,18 @@ it("does not allow comment obfuscation in table names", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -946,8 +1147,18 @@ it("does not allow creating materialized views", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE VIEW ON default.evil. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE VIEW ON default.evil. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -957,7 +1168,7 @@ it("does not allow creating materialized views", async ({ expect }) => {
   `);
 });
 
-it("does not allow merge table function to access all tables", async ({ expect }) => {
+it("does not allow merge table function to access system tables", async ({ expect }) => {
   const response = await runQuery({
     query: "SELECT * FROM merge('system', '.*')",
   });
@@ -968,7 +1179,7 @@ it("does not allow merge table function to access all tables", async ({ expect }
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
         "details": { "error": "There are no tables satisfied provided regexp, you must specify table structure manually. " },
-        "error": "The query failed to execute: There are no tables satisfied provided regexp, you must specify table structure manually. ",
+        "error": "There are no tables satisfied provided regexp, you must specify table structure manually. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -980,7 +1191,7 @@ it("does not allow merge table function to access all tables", async ({ expect }
 
 it("does not allow DROP TABLE", async ({ expect }) => {
   const response = await runQuery({
-    query: "DROP TABLE analytics.events",
+    query: "DROP TABLE events",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -988,8 +1199,18 @@ it("does not allow DROP TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant DROP VIEW ON default.events. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant DROP VIEW ON default.events. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1001,7 +1222,7 @@ it("does not allow DROP TABLE", async ({ expect }) => {
 
 it("does not allow ALTER TABLE", async ({ expect }) => {
   const response = await runQuery({
-    query: "ALTER TABLE analytics.events ADD COLUMN malicious String",
+    query: "ALTER TABLE events ADD COLUMN malicious String",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -1009,8 +1230,18 @@ it("does not allow ALTER TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER ADD COLUMN(malicious) ON default.events. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER ADD COLUMN(malicious) ON default.events. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1022,7 +1253,7 @@ it("does not allow ALTER TABLE", async ({ expect }) => {
 
 it("does not allow TRUNCATE TABLE", async ({ expect }) => {
   const response = await runQuery({
-    query: "TRUNCATE TABLE analytics.events",
+    query: "TRUNCATE TABLE events",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -1030,8 +1261,18 @@ it("does not allow TRUNCATE TABLE", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant TRUNCATE ON default.events. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant TRUNCATE ON default.events. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1043,7 +1284,7 @@ it("does not allow TRUNCATE TABLE", async ({ expect }) => {
 
 it("does not allow DELETE statements", async ({ expect }) => {
   const response = await runQuery({
-    query: "DELETE FROM analytics.events WHERE 1=1",
+    query: "ALTER TABLE events DELETE WHERE 1=1",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -1051,8 +1292,18 @@ it("does not allow DELETE statements", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Syntax error: failed at position 41 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, DoubleColon, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query. " },
-        "error": "The query failed to execute: Syntax error: failed at position 41 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, DoubleColon, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query. ",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER DELETE ON default.events. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER DELETE ON default.events. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1064,7 +1315,7 @@ it("does not allow DELETE statements", async ({ expect }) => {
 
 it("does not allow UPDATE statements", async ({ expect }) => {
   const response = await runQuery({
-    query: "UPDATE analytics.events SET project_id = 'hacked' WHERE 1=1",
+    query: "ALTER TABLE events UPDATE project_id = 'hacked' WHERE 1=1",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -1072,8 +1323,18 @@ it("does not allow UPDATE statements", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Syntax error: failed at position 62 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, DoubleColon, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query. " },
-        "error": "The query failed to execute: Syntax error: failed at position 62 (FORMAT) (line 2, col 1): FORMAT JSONEachRow. Expected one of: token, DoubleColon, OR, AND, IS NOT DISTINCT FROM, IS NULL, IS NOT NULL, BETWEEN, NOT BETWEEN, LIKE, ILIKE, NOT LIKE, NOT ILIKE, REGEXP, IN, NOT IN, GLOBAL IN, GLOBAL NOT IN, MOD, DIV, SETTINGS, ParallelWithClause, PARALLEL WITH, end of query. ",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER UPDATE(project_id) ON default.events. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant ALTER UPDATE(project_id) ON default.events. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1093,8 +1354,18 @@ it("does not allow accessing system.users", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(name, id, storage, auth_type, auth_params, host_ip, host_names, host_names_regexp, host_names_like, default_roles_all, default_roles_list, default_roles_except, grantees_any, grantees_list, grantees_except, default_database) ON system.users. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1115,8 +1386,18 @@ it("does not allow accessing system.processes", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(is_initial_query, user, query_id, address, port, initial_user, initial_query_id, initial_address, initial_port, interface, os_user, client_hostname, client_name, client_revision, client_version_major, client_version_minor, client_version_patch, http_method, http_user_agent, http_referer, forwarded_for, quota_key, distributed_depth, elapsed, is_cancelled, is_all_data_sent, read_rows, read_bytes, total_rows_approx, written_rows, written_bytes, memory_usage, peak_memory_usage, query, normalized_query_hash, query_kind, thread_ids, ProfileEvents, Settings, current_database) ON system.processes. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant SELECT(is_initial_query, user, query_id, address, port, initial_user, initial_query_id, initial_address, initial_port, interface, os_user, client_hostname, client_name, client_revision, client_version_major, client_version_minor, client_version_patch, http_method, http_user_agent, http_referer, forwarded_for, quota_key, distributed_depth, elapsed, is_cancelled, is_all_data_sent, read_rows, read_bytes, total_rows_approx, written_rows, written_bytes, memory_usage, peak_memory_usage, query, normalized_query_hash, query_kind, thread_ids, ProfileEvents, Settings, current_database) ON system.processes. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1136,8 +1417,18 @@ it("does not allow input() function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1149,7 +1440,7 @@ it("does not allow input() function", async ({ expect }) => {
 
 it("does not allow generateRandom table function", async ({ expect }) => {
   const response = await runQuery({
-    query: "SELECT * FROM generateRandom('x UInt64') LIMIT 1000000000",
+    query: "SELECT * FROM generateRandom('x UInt64', 1, 10, 10)",
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -1157,8 +1448,18 @@ it("does not allow generateRandom table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. " },
-        "error": "The query failed to execute: Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. ",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1179,7 +1480,7 @@ it("does not allow numbers table function with large values", async ({ expect })
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
         "details": { "error": "Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. " },
-        "error": "The query failed to execute: Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. ",
+        "error": "Limit for result exceeded, max rows: 10.00 thousand, current rows: 65.41 thousand. ",
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1199,8 +1500,18 @@ it("does not allow jdbc table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON JDBC. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON JDBC. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1220,8 +1531,18 @@ it("does not allow mysql table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON MYSQL. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON MYSQL. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
@@ -1241,8 +1562,18 @@ it("does not allow postgresql table function", async ({ expect }) => {
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Error during execution of this query." },
-        "error": "The query failed to execute: Error during execution of this query.",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON POSTGRES. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant READ ON POSTGRES. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",

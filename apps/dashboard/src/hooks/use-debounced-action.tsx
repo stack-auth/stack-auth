@@ -1,6 +1,6 @@
 "use client";
 
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useRef } from "react";
 
 /**
@@ -50,7 +50,7 @@ export function useDebouncedAction({
 
     let cancelled = false;
 
-    const execute = async () => {
+    const execute: () => Promise<void> = async () => {
       await wait(delayMs);
       if (cancelled) return;
       if (hasExecutedRef.current) return;
@@ -59,10 +59,7 @@ export function useDebouncedAction({
       await actionRef.current();
     };
 
-    execute().catch((error) => {
-      // Log but don't throw - the action should handle its own errors
-      console.error("useDebouncedAction error:", error);
-    });
+    runAsynchronouslyWithAlert(execute);
 
     return () => {
       cancelled = true;

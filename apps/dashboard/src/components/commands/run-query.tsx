@@ -253,39 +253,9 @@ function VirtualizedFlatTable({
 // Parse error message for human-readable display
 function parseErrorMessage(error: unknown): { title: string, details: string | null } {
   const message = error instanceof Error ? error.message : String(error);
-
-  // Try to extract ClickHouse-specific errors
-  const clickhouseMatch = /Code:\s*(\d+)[\s.,]*(.*?)(?:\(|$)/i.exec(message);
-  if (clickhouseMatch) {
-    const errorCode = clickhouseMatch[1];
-    const errorText = clickhouseMatch[2].trim();
-    return {
-      title: `ClickHouse Error ${errorCode}`,
-      details: errorText || message,
-    };
-  }
-
-  // Try to extract SQL syntax errors
-  if (/syntax error/i.test(message)) {
-    return {
-      title: "SQL Syntax Error",
-      details: message.replace(/^.*?syntax error/i, "Syntax error"),
-    };
-  }
-
-  // Try to extract unknown column/table errors
-  const unknownMatch = /unknown (column|table|database|identifier)[\s:]*['"`]?(\w+)['"`]?/i.exec(message);
-  if (unknownMatch) {
-    return {
-      title: `Unknown ${unknownMatch[1].charAt(0).toUpperCase() + unknownMatch[1].slice(1)}`,
-      details: `"${unknownMatch[2]}" was not found`,
-    };
-  }
-
-  // Generic error
   return {
     title: "Query Error",
-    details: message.length > 200 ? message.slice(0, 200) + "..." : message,
+    details: message,
   };
 }
 
@@ -301,7 +271,7 @@ function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () => void 
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-1">{title}</h3>
         {details && (
-          <p className="text-xs text-muted-foreground max-w-md break-words font-mono">
+          <p className="text-xs text-muted-foreground max-w-md break-words font-mono whitespace-pre-wrap">
             {details}
           </p>
         )}
