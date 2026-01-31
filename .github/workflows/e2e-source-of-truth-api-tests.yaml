@@ -24,7 +24,6 @@ jobs:
       STACK_FORCE_EXTERNAL_DB_SYNC: "true"
       STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       STACK_EXTERNAL_DB_SYNC_DIRECT: "true"
-      NEXT_PUBLIC_STACK_API_URL: "http://host.docker.internal:8102"
 
     strategy:
       matrix:
