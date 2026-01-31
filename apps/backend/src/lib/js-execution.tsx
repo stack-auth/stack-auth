@@ -220,7 +220,6 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
           const result = await freestyleEngine.execute(code, options);
           return Result.ok(result);
         } catch (error) {
-          //if we're here, that means infra error not user error?
           return Result.error(error);
         }
       },
@@ -232,8 +231,6 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     return retryResult.data;
   }
 
-  //TODO: Capture error block for freestyle engine infra failure?
-
   captureError(`js-execution-freestyle-failed`, new StackAssertionError(
     `JS execution freestyle engine failed, falling back to vercel sandbox engine`,
     { error: retryResult.error, innerCode: code, innerOptions: options }
@@ -243,14 +240,11 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
     const result = await vercelSandboxEngine.execute(code, options);
     return result;
   } catch (error){
-      //if we're here, that means infra error not user error?
-      //TODO: Improve error message?
       captureError(`js-execution-vercel-sandbox-failed`, new StackAssertionError(
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
         { error: error, innerCode: code, innerOptions: options }
       ));
-      //TODO: Improve error message
-      throw new StackAssertionError("Infrastructure error", { cause: error, innerCode: code, innerOptions: options });
+      throw new StackAssertionError("Email rendering service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }
 }
 
@@ -260,7 +254,6 @@ async function runWithoutFallback(code: string, options: ExecuteJavascriptOption
     const result = await freestyleEngine.execute(code, options);
     return result;
   } catch (error) {
-    //if we're here, that means infra error not user error?
-    throw new StackAssertionError("Infrastructure error", { cause: error, innerCode: code, innerOptions: options });
+    throw new StackAssertionError("Email rendering service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }
 }
