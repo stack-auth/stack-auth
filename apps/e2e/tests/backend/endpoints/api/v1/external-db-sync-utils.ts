@@ -1,7 +1,7 @@
 import { Client, ClientConfig } from 'pg';
 import { expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL } from '../../../../helpers';
-import { Project } from '../../../backend-helpers';
+import { InternalApiKey, Project } from '../../../backend-helpers';
 
 
 const PORT_PREFIX = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || '81';
@@ -36,7 +36,7 @@ const CLIENT_CONFIG: Partial<ClientConfig> = {
 // Track all projects created with external DB configs for cleanup
 type ProjectContext = {
   projectId: string,
-  adminAccessToken: string,
+  superSecretAdminKey: string,
 };
 const createdProjects: ProjectContext[] = [];
 
@@ -315,6 +315,10 @@ export async function countUsersInExternalDb(client: Client): Promise<number> {
  */
 export async function createProjectWithExternalDb(externalDatabases: any, projectOptions?: { display_name?: string, description?: string }) {
   const project = await Project.createAndSwitch(projectOptions);
+  const { projectKeys } = await InternalApiKey.createAndSetProjectKeys(project.adminAccessToken);
+  if (!projectKeys.superSecretAdminKey) {
+    throw new Error('Expected super secret admin key to be present for external DB sync tests.');
+  }
   await Project.updateConfig({
     "dbSync.externalDatabases": externalDatabases
   });
@@ -322,7 +326,7 @@ export async function createProjectWithExternalDb(externalDatabases: any, projec
   // Track this project for cleanup
   createdProjects.push({
     projectId: project.projectId,
-    adminAccessToken: project.adminAccessToken,
+    superSecretAdminKey: projectKeys.superSecretAdminKey,
   });
 
   return project;
@@ -352,8 +356,9 @@ export async function cleanupAllProjectConfigs() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'x-stack-access-type': 'admin',
           'x-stack-project-id': project.projectId,
-          'x-stack-admin-access-token': project.adminAccessToken,
+          'x-stack-super-secret-admin-key': project.superSecretAdminKey,
         },
         body: JSON.stringify({
           config_override_string: JSON.stringify({ "dbSync.externalDatabases": {} })
