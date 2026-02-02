@@ -1,6 +1,7 @@
 import { Client, ClientConfig } from 'pg';
 import { expect } from 'vitest';
 import { niceFetch, STACK_BACKEND_BASE_URL } from '../../../../helpers';
+import type { NiceRequestInit, NiceResponse } from '../../../../helpers';
 import { InternalApiKey, Project } from '../../../backend-helpers';
 
 
@@ -21,6 +22,8 @@ const FORCE_SYNC_MAX_DURATION_MS = (() => {
   return parsed;
 })();
 const FORCE_SYNC_INTERVAL_MS = 2000;
+const FORCE_SYNC_RETRY_COUNT = 2;
+const FORCE_SYNC_RETRY_DELAY_MS = 2000;
 let lastForcedSyncAt = -Infinity;
 
 // Connection settings to prevent connection leaks
@@ -161,6 +164,47 @@ export async function waitForCondition(
   throw new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`);
 }
 
+type ErrorWithCode = {
+  code?: unknown,
+  cause?: unknown,
+};
+
+function getErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const errorWithCode = err as ErrorWithCode;
+  if (typeof errorWithCode.code === "string") {
+    return errorWithCode.code;
+  }
+  if (errorWithCode.cause) {
+    return getErrorCode(errorWithCode.cause);
+  }
+  return undefined;
+}
+
+function isHeadersTimeoutError(err: unknown): boolean {
+  return getErrorCode(err) === "UND_ERR_HEADERS_TIMEOUT";
+}
+
+async function niceFetchWithRetry(
+  url: string | URL,
+  options: NiceRequestInit,
+  retries = FORCE_SYNC_RETRY_COUNT,
+  delayMs = FORCE_SYNC_RETRY_DELAY_MS,
+): Promise<NiceResponse> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await niceFetch(url, options);
+    } catch (err) {
+      if (!isHeadersTimeoutError(err) || attempt >= retries) {
+        throw err;
+      }
+      attempt += 1;
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+}
+
 export async function forceExternalDbSync(): Promise<boolean> {
   if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return false;
 
@@ -171,7 +215,7 @@ export async function forceExternalDbSync(): Promise<boolean> {
 
   lastForcedSyncAt = performance.now();
 
-  await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
+  await niceFetchWithRetry(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
     query: {
       maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
       stopWhenIdle: "true",
@@ -180,7 +224,7 @@ export async function forceExternalDbSync(): Promise<boolean> {
       Authorization: `Bearer ${cronSecret}`,
     },
   });
-  await niceFetch(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
+  await niceFetchWithRetry(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
     query: {
       maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
       stopWhenIdle: "true",
