@@ -40,6 +40,22 @@ jobs:
       - name: Start dev environment
         run: pnpm run restart-dev-environment
 
+      - name: Prime external DB sync
+        run: |
+          set -euo pipefail
+          set -a
+          source apps/backend/.env.development
+          set +a
+          baseUrl="http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02"
+          maxDurationMs="${STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS:-20000}"
+          for _ in 1 2 3; do
+            curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${baseUrl}/api/latest/internal/external-db-sync/sequencer?maxDurationMs=${maxDurationMs}&stopWhenIdle=true" >/dev/null
+            curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${baseUrl}/api/latest/internal/external-db-sync/poller?maxDurationMs=${maxDurationMs}&stopWhenIdle=true" >/dev/null
+            sleep 2
+          done
+
       - name: Run tests
         run: pnpm run test run --reporter=verbose
       
