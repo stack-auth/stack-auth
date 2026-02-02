@@ -51,6 +51,14 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
     });
   };
 
+  const handleDisable = async () => {
+    await updateConfig({
+      adminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: false },
+      pushable: true,
+    });
+  };
+
   const handleOpen = () => {
     const path = getAppPath(project.id, ALL_APPS_FRONTEND[appId]);
     // Allow navigation by resetting the flag (was set to true by pathname effect)
@@ -75,6 +83,7 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
           appId={appId}
           isEnabled={isEnabled}
           onEnable={handleEnable}
+          onDisable={handleDisable}
           onOpen={handleOpen}
           titleComponent={DialogTitle}
         />
