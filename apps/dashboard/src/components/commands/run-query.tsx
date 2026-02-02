@@ -1,6 +1,7 @@
 "use client";
 
 import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import {
   Dialog,
@@ -30,7 +31,6 @@ import {
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRouter } from "@/components/router";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
 

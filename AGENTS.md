@@ -95,6 +95,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
+- NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT!
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
