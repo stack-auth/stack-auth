@@ -75,7 +75,12 @@ function isJsonValue(value: unknown): boolean {
 
 // Parse ClickHouse date string as UTC
 function parseClickHouseDate(value: string): Date {
-  const normalized = value.replace(" ", "T") + (value.includes("Z") || value.includes("+") ? "" : "Z");
+  const trimmed = value.trim();
+  // Handle date-only strings (YYYY-MM-DD) by appending time
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return new Date(trimmed + "T00:00:00Z");
+  }
+  const normalized = trimmed.replace(" ", "T") + (trimmed.includes("Z") || trimmed.includes("+") ? "" : "Z");
   return new Date(normalized);
 }
 
@@ -289,7 +294,7 @@ function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () => void 
         </p>
       </div>
       <button
-        onClick={() => runAsynchronouslyWithAlert(onRetry())}
+        onClick={() => runAsynchronouslyWithAlert(onRetry)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-foreground/[0.06] hover:bg-foreground/[0.1] transition-colors hover:transition-none"
       >
         <ArrowClockwiseIcon className="h-3 w-3" />
@@ -445,7 +450,7 @@ function SaveQueryDialog({
     }
   };
 
-  const canSave = displayName.trim() && selectedFolderId;
+  const canSave = displayName.trim() && selectedFolderId && sqlQuery.trim();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -698,11 +703,15 @@ function QueriesContent() {
       },
       pushable: false,
     });
-    // Clear selection if we deleted the selected folder
+    // Clear selection and results if we deleted the selected folder
     if (selectedFolderId === folderId) {
       setSelectedFolderId(null);
       setSelectedQueryId(null);
       setSqlQuery("");
+      setHasQueried(false);
+      setRows([]);
+      setColumns([]);
+      setError(null);
     }
   };
 
@@ -714,10 +723,14 @@ function QueriesContent() {
       },
       pushable: false,
     });
-    // Clear selection if we deleted the selected query
+    // Clear selection and results if we deleted the selected query
     if (selectedFolderId === folderId && selectedQueryId === queryId) {
       setSelectedQueryId(null);
       setSqlQuery("");
+      setHasQueried(false);
+      setRows([]);
+      setColumns([]);
+      setError(null);
     }
   };
 
@@ -839,7 +852,7 @@ function QueriesContent() {
                 placeholder="SELECT * FROM default.events ORDER BY event_at DESC LIMIT 100"
                 className="font-mono text-sm min-h-[80px] resize-y bg-background/60"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !loading) {
                     e.preventDefault();
                     runAsynchronouslyWithAlert(runQuery());
                   }
@@ -1012,7 +1025,7 @@ function FolderItem({
               e.stopPropagation();
               onDeleteFolder();
             }}
-            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-opacity"
+            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors hover:transition-none"
           >
             <TrashIcon className="h-3.5 w-3.5" />
           </button>
@@ -1045,7 +1058,7 @@ function FolderItem({
                       e.stopPropagation();
                       onDeleteQuery(query.id);
                     }}
-                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-opacity"
+                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors hover:transition-none"
                   >
                     <TrashIcon className="h-3 w-3" />
                   </button>

@@ -496,9 +496,9 @@ describe("analytics config - edge cases", () => {
   it("handles special characters in folder and query IDs", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
-    // Create folder with special characters in ID
-    const folderId = "folder_with-special.chars123";
-    const queryId = "query_with-special.chars456";
+    // Create folder with special characters in ID (no dots, as they are used as path separators)
+    const folderId = "folder_with-special_chars123";
+    const queryId = "query_with-special_chars456";
 
     await updateConfig(adminAccessToken, {
       [`analytics.queryFolders.${folderId}`]: {

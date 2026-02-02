@@ -652,7 +652,7 @@ export default function PageClient() {
                 className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
               >
                 <SparkleIcon className="h-4 w-4" />
-                Query
+                Queries
               </Link>
             </div>
           </div>

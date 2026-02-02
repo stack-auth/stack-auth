@@ -1,32 +1,62 @@
 "use client";
 
 import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { Button } from "@/components/ui";
 import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
+import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { useFromNow } from "@/hooks/use-from-now";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import {
   ArrowClockwiseIcon,
   CheckCircleIcon,
   FloppyDiskIcon,
   PlayIcon,
+  PlusIcon,
   SpinnerGapIcon,
   WarningCircleIcon,
 } from "@phosphor-icons/react";
+import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRouter } from "@/components/router";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
-import { Link } from "../link";
 
 type RowData = Record<string, unknown>;
+
+type ConfigFolder = {
+  displayName: string,
+  sortOrder?: number,
+  queries: Record<string, {
+    displayName: string,
+    sqlQuery: string,
+    description?: string,
+  }>,
+};
+
+type FolderWithId = {
+  id: string,
+  displayName: string,
+  sortOrder: number,
+  queries: Array<{
+    id: string,
+    displayName: string,
+    sqlQuery: string,
+    description?: string,
+  }>,
+};
 
 const DEBOUNCE_MS = 400;
 
@@ -340,6 +370,212 @@ function LoadingState() {
   );
 }
 
+// Save query dialog for the command palette
+function SaveQueryDialog({
+  open,
+  onOpenChange,
+  adminApp,
+  sqlQuery,
+}: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  adminApp: ReturnType<typeof useAdminAppIfExists>,
+  sqlQuery: string,
+}) {
+  const updateConfig = useUpdateConfig();
+  const router = useRouter();
+  const [displayName, setDisplayName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  // Get folders from config
+  const config = adminApp?.useProject().useConfig();
+  const folders = useMemo((): FolderWithId[] => {
+    if (!config) return [];
+    // Type assertion because config types may not be updated yet
+    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics ?? {};
+    const queryFolders = analyticsConfig.queryFolders ?? {};
+
+    return Object.entries(queryFolders)
+      .map(([id, folder]) => ({
+        id,
+        displayName: folder.displayName,
+        sortOrder: folder.sortOrder ?? 0,
+        queries: Object.entries(folder.queries).map(([queryId, q]) => ({
+          id: queryId,
+          displayName: q.displayName,
+          sqlQuery: q.sqlQuery,
+          description: q.description,
+        })),
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [config]);
+
+  const handleSave = async () => {
+    if (!adminApp || !displayName.trim() || !sqlQuery.trim() || !selectedFolderId) return;
+    setLoading(true);
+    try {
+      const queryId = generateSecureRandomString();
+      await updateConfig({
+        adminApp,
+        configUpdate: {
+          [`analytics.queryFolders.${selectedFolderId}.queries.${queryId}`]: {
+            displayName: displayName.trim(),
+            sqlQuery,
+            ...(description.trim() ? { description: description.trim() } : {}),
+          },
+        },
+        pushable: false,
+      });
+      setDisplayName("");
+      setDescription("");
+      setSelectedFolderId("");
+      onOpenChange(false);
+      // Navigate to the queries page after saving
+      router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/queries`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!adminApp || !newFolderName.trim()) return;
+    setCreatingFolder(true);
+    try {
+      const folderId = generateSecureRandomString();
+      await updateConfig({
+        adminApp,
+        configUpdate: {
+          [`analytics.queryFolders.${folderId}`]: {
+            displayName: newFolderName.trim(),
+            sortOrder: folders.length,
+            queries: {},
+          },
+        },
+        pushable: false,
+      });
+      // Auto-select the newly created folder
+      setSelectedFolderId(folderId);
+      setNewFolderName("");
+      setShowCreateFolder(false);
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const canSave = displayName.trim() && selectedFolderId && sqlQuery.trim();
+
+  if (!adminApp) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Save Query</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="query-name">Query Name</Label>
+              <Input
+                id="query-name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="My Query"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="query-folder">Folder</Label>
+                {!showCreateFolder && (
+                  <button
+                    onClick={() => setShowCreateFolder(true)}
+                    className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors hover:transition-none"
+                  >
+                    <PlusIcon className="h-3 w-3" />
+                    New folder
+                  </button>
+                )}
+              </div>
+              {showCreateFolder ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="Folder name"
+                    className="flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        runAsynchronouslyWithAlert(handleCreateFolder());
+                      } else if (e.key === "Escape") {
+                        setShowCreateFolder(false);
+                        setNewFolderName("");
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => runAsynchronouslyWithAlert(handleCreateFolder())}
+                    disabled={!newFolderName.trim() || creatingFolder}
+                  >
+                    {creatingFolder ? "..." : "Create"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowCreateFolder(false);
+                      setNewFolderName("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <select
+                  id="query-folder"
+                  className="w-full h-10 px-3 border rounded-md text-sm bg-background"
+                  value={selectedFolderId}
+                  onChange={(e) => setSelectedFolderId(e.target.value)}
+                >
+                  <option value="">Select a folder...</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {folder.displayName}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="query-description">Description (optional)</Label>
+              <Textarea
+                id="query-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What this query does..."
+                rows={2}
+              />
+            </div>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={!canSave || loading}>
+            {loading ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Main Run Query Preview Component - wrapper that resets state on query change
 export function RunQueryPreview({ query, ...rest }: CmdKPreviewProps) {
   return <RunQueryPreviewInner key={query} query={query} {...rest} />;
@@ -357,6 +593,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   const [hasQueried, setHasQueried] = useState(false);
   const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   const trimmedQuery = query.trim();
 
@@ -460,15 +697,13 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
         <span className="text-[10px] text-muted-foreground">
           {rows.length.toLocaleString()} row{rows.length !== 1 ? "s" : ""}
         </span>
-        <SimpleTooltip tooltip="Open Queries page to save">
-          <Link
-            href={`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/queries`}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors hover:transition-none"
-          >
-            <FloppyDiskIcon className="h-3 w-3" />
-            Save Query
-          </Link>
-        </SimpleTooltip>
+        <button
+          onClick={() => setSaveDialogOpen(true)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors hover:transition-none"
+        >
+          <FloppyDiskIcon className="h-3 w-3" />
+          Save Query
+        </button>
       </div>
 
       {/* Table */}
@@ -483,6 +718,13 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
         columns={columns}
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
+      />
+
+      <SaveQueryDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        adminApp={adminApp}
+        sqlQuery={trimmedQuery}
       />
     </div>
   );
