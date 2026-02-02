@@ -1,8 +1,9 @@
 'use client';
 
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Skeleton, Typography } from '@stackframe/stack-ui';
 import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus, CreditCard } from 'lucide-react';
-import React, { Suspense } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp, useUser } from '..';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
@@ -88,6 +89,73 @@ export function AccountSettings(props: {
   const project = props.mockProject || projectFromHook;
   const teams = user?.useTeams() || [];
   const billing = user?.useBilling() || null;
+  const teamsKey = useMemo(() => teams.map(team => team.id).join("|"), [teams]);
+  const teamsById = useMemo(() => teams, [teamsKey]);
+  const userRef = useRef(userFromHook ?? null);
+  const userId = userFromHook?.id ?? null;
+  const [paymentsAvailability, setPaymentsAvailability] = useState<{
+    userHasProducts: boolean,
+    teamIdsWithProducts: Set<string>,
+    isReady: boolean,
+  }>(() => ({
+    userHasProducts: false,
+    teamIdsWithProducts: new Set<string>(),
+    isReady: !!props.mockUser,
+  }));
+
+  const handlePaymentsAvailabilityError = useCallback((error: unknown) => {
+    alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? "check the browser console for the full error." : "report this to the developer."}\n\n${error}`);
+  }, []);
+
+  useEffect(() => {
+    userRef.current = userFromHook ?? null;
+  }, [userFromHook]);
+
+  useEffect(() => {
+    if (props.mockUser || !userId) {
+      return;
+    }
+    let cancelled = false;
+    runAsynchronously(async () => {
+      const currentUser = userRef.current;
+      if (!currentUser || currentUser.id !== userId) {
+        return;
+      }
+      const [userProducts, teamsWithProducts] = await Promise.all([
+        currentUser.listProducts({ limit: 1 }),
+        Promise.all(teamsById.map(async (team) => {
+          const isTeamAdmin = await currentUser.hasPermission(team, "team_admin");
+          if (!isTeamAdmin) {
+            return null;
+          }
+          const teamProducts = await team.listProducts({ limit: 1 });
+          const hasTeamProducts = teamProducts.some((product) => product.customerType === "team");
+          return hasTeamProducts ? team.id : null;
+        })),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      const userHasProducts = userProducts.some((product) => product.customerType === "user");
+      const teamIdsWithProducts = new Set<string>(teamsWithProducts.filter((id): id is string => id !== null));
+      setPaymentsAvailability({
+        userHasProducts,
+        teamIdsWithProducts,
+        isReady: true,
+      });
+    }, { onError: handlePaymentsAvailabilityError });
+    return () => {
+      cancelled = true;
+    };
+  }, [handlePaymentsAvailabilityError, props.mockUser, teamsById, userId]);
+
+  const teamsWithProducts = useMemo(
+    () => teamsById.filter(team => paymentsAvailability.teamIdsWithProducts.has(team.id)),
+    [paymentsAvailability.teamIdsWithProducts, teamsById],
+  );
+  const shouldShowPaymentsTab = props.mockUser
+    || (paymentsAvailability.isReady
+      && (paymentsAvailability.userHasProducts || teamsWithProducts.length > 0));
 
   // If we're not in mock mode and don't have a user, the useUser hook will handle redirect
   if (!props.mockUser && !userFromHook) {
@@ -142,15 +210,19 @@ export function AccountSettings(props: {
                 <ApiKeysPage mockApiKeys={props.mockApiKeys} mockMode={!!props.mockUser} />
               </Suspense>,
             }] as const : []),
-            {
+            ...(shouldShowPaymentsTab ? [{
               title: t('Payments'),
               type: 'item',
               id: 'payments',
               icon: <Icon name="CreditCard" />,
               content: <Suspense fallback={<PaymentsPageSkeleton/>}>
-                <PaymentsPage mockMode={!!props.mockUser} />
+                <PaymentsPage
+                  mockMode={!!props.mockUser}
+                  allowPersonal={paymentsAvailability.userHasProducts}
+                  availableTeams={teamsWithProducts}
+                />
               </Suspense>,
-            },
+            }] as const : []),
             {
               title: t('Settings'),
               type: 'item',
