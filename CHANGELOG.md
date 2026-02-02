@@ -6,18 +6,18 @@
 
 ### Payments
 Introduced a redesigned payments onboarding flow
-![Payments Onboarding]()
+![Payments Onboarding](https://raw.githubusercontent.com/stack-auth/stack-auth/dev/apps/dashboard/public/changelog/payments-onboarding.png)
 
 ## 1/21/26
 
 ### Payments
 - Payments page updated with new UI changes
-![Create Product]()
+![Create Product](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/payments-create-product.png)
 - Added a new Payments Settings page with an option to temporarily disable all payments
-![Payments Setting]()
+![Payments Setting](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/payments-settings-1.png)
 - Subscription renewal emails are now sent automatically to users
 - Past payment invoices are now visible on the Account Settings page
-![Past Payments Invoices]()
+![Past Payments Invoices](https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/apps/dashboard/public/changelog/account-settings-invoices.png)
 
 ### Documentation
 - Updated JWT documentation to include `isRestricted` and `restrictedReason`
