@@ -1,7 +1,7 @@
 "use client";
 
-import * as Sentry from "@sentry/nextjs";
 import { Spinner } from "@/components/ui";
+import * as Sentry from "@sentry/nextjs";
 import Error from "next/error";
 import { useEffect } from "react";
 
@@ -15,7 +15,7 @@ export default function GlobalError({ error }: any) {
   useEffect(() => {
     let cancelled = false;
     setTimeout(() => {
-      if (isProdLike && !cancelled) {
+      if (!cancelled) {
         window.location.assign("/");
       }
     }, 20);

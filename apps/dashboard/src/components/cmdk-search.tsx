@@ -407,6 +407,9 @@ export function CmdKSearch({
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
   const columnsContainerRef = useRef<HTMLDivElement>(null);
+  // Track previous selection to handle reordering
+  const prevSelectedIdRef = useRef<string | null>(null);
+  const prevSelectedIndexRef = useRef<number>(0);
 
   // Handle keyboard shortcut and custom event
   useEffect(() => {
@@ -475,14 +478,47 @@ export function CmdKSearch({
     return selectedIndices[activeDepth] ?? 0;
   }, [activeDepth, selectedIndices]);
 
-  // Reset selection and close nested columns when results change
+  // Handle selection when commands reorder
+  // - If currently selected item moved UP, keep it selected at new index
+  // - If currently selected item moved DOWN or is gone, reset to first item
   useEffect(() => {
-    setSelectedIndex(0);
-    setSelectedIndices([0]);
+    const prevId = prevSelectedIdRef.current;
+    const prevIndex = prevSelectedIndexRef.current;
+
+    if (prevId && filteredCommands.length > 0) {
+      const newIndex = filteredCommands.findIndex((cmd) => cmd.id === prevId);
+
+      if (newIndex !== -1 && newIndex <= prevIndex) {
+        // Item moved up or stayed same - keep it selected
+        setSelectedIndex(newIndex);
+        setSelectedIndices([newIndex]);
+      } else {
+        // Item moved down or is no longer in list - reset to first
+        setSelectedIndex(0);
+        setSelectedIndices([0]);
+      }
+    } else {
+      // No previous selection or empty list - reset to first
+      setSelectedIndex(0);
+      setSelectedIndices([0]);
+    }
+
+    // Always clear nested state when commands change
     setNestedColumns([]);
     setActiveDepth(0);
     setNestedBlurHandlers([]);
-  }, [filteredCommands.length]);
+  }, [filteredCommands]);
+
+  // Keep track of currently selected command for reorder detection
+  useEffect(() => {
+    if (filteredCommands.length > 0 && selectedIndex < filteredCommands.length) {
+      prevSelectedIdRef.current = filteredCommands[selectedIndex].id;
+      prevSelectedIndexRef.current = selectedIndex;
+    } else {
+      prevSelectedIdRef.current = null;
+      prevSelectedIndexRef.current = 0;
+    }
+  }, [selectedIndex, filteredCommands]);
 
   const registerOnFocus = useCallback((onFocus: () => void) => {
     setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
@@ -740,7 +776,7 @@ export function CmdKSearch({
         className="fixed inset-0 flex items-center justify-center z-50 px-4 pointer-events-none"
         style={{ animation: "spotlight-slide-in 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
-        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1000px)] pointer-events-auto">
+        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1500px)] pointer-events-auto">
           {/* Background layer */}
           <div className="absolute inset-[2px] rounded-[14px] -z-10 backdrop-blur-xl bg-gray-100/80 dark:bg-[#161616]/80" />
           <div
