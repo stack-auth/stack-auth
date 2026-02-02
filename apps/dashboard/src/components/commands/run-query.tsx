@@ -24,6 +24,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
+import { Link } from "../link";
 
 type RowData = Record<string, unknown>;
 
@@ -460,13 +461,13 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
           {rows.length.toLocaleString()} row{rows.length !== 1 ? "s" : ""}
         </span>
         <SimpleTooltip tooltip="Open Queries page to save">
-          <a
+          <Link
             href={`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/queries`}
             className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors hover:transition-none"
           >
             <FloppyDiskIcon className="h-3 w-3" />
             Save Query
-          </a>
+          </Link>
         </SimpleTooltip>
       </div>
 
