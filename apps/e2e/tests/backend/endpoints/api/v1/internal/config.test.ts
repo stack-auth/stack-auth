@@ -506,7 +506,7 @@ describe("domain config", () => {
     expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
   });
 
-  it("supports both nested object and dot notation formats for trusted domains", async ({ expect }) => {
+  it("supports only nested object, not dot notation format, for trusted domains", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
     // Test nested object format
@@ -565,7 +565,6 @@ describe("domain config", () => {
 
     expect(dotNotationResponse.status).toBe(200);
 
-    // Verify the dot notation format was applied correctly
     const configResponse2 = await niceBackendFetch("/api/v1/internal/config", {
       method: "GET",
       accessType: "admin",
@@ -573,12 +572,7 @@ describe("domain config", () => {
     });
     const config2 = JSON.parse(configResponse2.body.config_string);
     expect(config2.domains.trustedDomains).toMatchInlineSnapshot(`
-      {
-        "2": {
-          "baseUrl": "https://example.com",
-          "handlerPath": "/handler",
-        },
-      }
+      {}
     `);
 
     // Test mixing both formats in a single request
@@ -601,7 +595,6 @@ describe("domain config", () => {
 
     expect(mixedFormatResponse.status).toBe(200);
 
-    // Verify both formats work together
     const configResponse3 = await niceBackendFetch("/api/v1/internal/config", {
       method: "GET",
       accessType: "admin",
@@ -613,10 +606,6 @@ describe("domain config", () => {
         "3": {
           "baseUrl": "http://nested.example.com",
           "handlerPath": "/nested",
-        },
-        "4": {
-          "baseUrl": "http://dotted.example.com",
-          "handlerPath": "/dotted",
         },
       }
     `);

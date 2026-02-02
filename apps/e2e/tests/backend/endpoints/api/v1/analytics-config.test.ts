@@ -152,8 +152,8 @@ describe("analytics config - query folders", () => {
     });
 
     // Verify it's deleted by checking the override (rendered config applies defaults)
-    const override = await getEnvironmentOverride(adminAccessToken);
-    expect(override["analytics.queryFolders.delete-folder"]).toBeNull();
+    config = await getConfig(adminAccessToken);
+    expect(config.analytics.queryFolders["delete-folder"]).toBeUndefined();
   });
 });
 
@@ -298,13 +298,12 @@ describe("analytics config - queries nested in folders", () => {
     });
 
     // Verify only the deleted query is gone (check override for deletion, rendered config for the kept one)
-    const override = await getEnvironmentOverride(adminAccessToken);
-    expect(override["analytics.queryFolders.delete-query-folder.queries.delete-query"]).toBeNull();
-    config = await getConfig(adminAccessToken);
-    expect(config.analytics.queryFolders["delete-query-folder"].queries["keep-query"]).toBeDefined();
+    const config2 = await getConfig(adminAccessToken);
+    expect(config2.analytics.queryFolders["delete-query-folder"].queries["delete-query"]).toBeUndefined();
+    expect(config2.analytics.queryFolders["delete-query-folder"].queries["keep-query"]).toBeDefined();
   });
 
-  it("deleting a folder also deletes all its queries", async ({ expect }) => {
+  it("deleting a folder also deletes all its queries in the override", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
     // Create folder with multiple queries
