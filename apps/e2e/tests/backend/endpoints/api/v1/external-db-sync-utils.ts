@@ -360,7 +360,7 @@ export async function cleanupAllProjectConfigs() {
   for (const project of createdProjects) {
     try {
       // Make direct HTTP call to clear the external DB config
-      await niceFetch(new URL('/api/latest/internal/config/override', STACK_BACKEND_BASE_URL), {
+      await niceFetch(new URL('/api/latest/internal/config/override/environment', STACK_BACKEND_BASE_URL), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
