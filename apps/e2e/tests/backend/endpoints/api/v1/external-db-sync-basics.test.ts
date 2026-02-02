@@ -4,7 +4,7 @@ import { User, niceBackendFetch } from '../../../backend-helpers';
 import {
   TEST_TIMEOUT,
   TestDbManager,
-  createProjectWithExternalDb,
+  createProjectWithExternalDb as createProjectWithExternalDbRaw,
   verifyInExternalDb,
   verifyNotInExternalDb,
   waitForCondition,
@@ -16,6 +16,19 @@ import {
 // Run tests sequentially to avoid concurrency issues with shared backend state
 describe.sequential('External DB Sync - Basic Tests', () => {
   let dbManager: TestDbManager;
+  const createProjectWithExternalDb = (
+    externalDatabases: any,
+    projectOptions?: { display_name?: string, description?: string }
+  ) => {
+    if (!dbManager) {
+      throw new Error('TestDbManager not initialized');
+    }
+    return createProjectWithExternalDbRaw(
+      externalDatabases,
+      projectOptions,
+      { projectTracker: dbManager.createdProjects }
+    );
+  };
 
   beforeAll(async () => {
     dbManager = new TestDbManager();
