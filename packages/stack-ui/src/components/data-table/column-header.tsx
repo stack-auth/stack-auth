@@ -1,4 +1,5 @@
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@stackframe/stack-ui";
+import { Button } from "../ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Column } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, LucideIcon } from "lucide-react";
 import { cn } from "../../lib/utils";

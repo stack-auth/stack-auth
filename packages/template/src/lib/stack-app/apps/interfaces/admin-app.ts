@@ -1,6 +1,8 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
@@ -123,7 +125,12 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { customCustomerId: string, itemId: string, quantity: number, expiresAt?: string, description?: string }
     )): Promise<void>,
-    refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void>,
+    refundTransaction(options: {
+      type: "subscription" | "one-time-purchase",
+      id: string,
+      refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
+    }): Promise<void>,
+    queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
