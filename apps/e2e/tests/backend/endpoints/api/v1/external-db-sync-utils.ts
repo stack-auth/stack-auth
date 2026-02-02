@@ -21,6 +21,7 @@ const FORCE_SYNC_MAX_DURATION_MS = (() => {
   return parsed;
 })();
 const FORCE_SYNC_INTERVAL_MS = 2000;
+const FORCE_SYNC_ATTEMPTS = 3;
 let lastForcedSyncAt = -Infinity;
 
 // Connection settings to prevent connection leaks
@@ -171,24 +172,32 @@ export async function forceExternalDbSync(): Promise<boolean> {
 
   lastForcedSyncAt = performance.now();
 
-  await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
-    query: {
-      maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
-      stopWhenIdle: "true",
-    },
-    headers: {
-      Authorization: `Bearer ${cronSecret}`,
-    },
-  });
-  await niceFetch(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
-    query: {
-      maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
-      stopWhenIdle: "true",
-    },
-    headers: {
-      Authorization: `Bearer ${cronSecret}`,
-    },
-  });
+  for (let attempt = 0; attempt < FORCE_SYNC_ATTEMPTS; attempt++) {
+    const sequencerRes = await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
+      query: {
+        maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
+        stopWhenIdle: "true",
+      },
+      headers: {
+        Authorization: `Bearer ${cronSecret}`,
+      },
+    });
+    const pollerRes = await niceFetch(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
+      query: {
+        maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
+        stopWhenIdle: "true",
+      },
+      headers: {
+        Authorization: `Bearer ${cronSecret}`,
+      },
+    });
+
+    const sequencerIterations = (sequencerRes.body as { iterations?: number } | undefined)?.iterations ?? 0;
+    const requestsProcessed = (pollerRes.body as { requests_processed?: number } | undefined)?.requests_processed ?? 0;
+    if (sequencerIterations === 0 && requestsProcessed === 0) {
+      break;
+    }
+  }
   return true;
 }
 
