@@ -424,12 +424,14 @@ function SaveQueryDialog({
   folders,
   sqlQuery,
   onSave,
+  onCreateFolder,
 }: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
   folders: FolderWithId[],
   sqlQuery: string,
   onSave: (displayName: string, folderId: string, description: string | null) => Promise<void>,
+  onCreateFolder: () => void,
 }) {
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
@@ -475,7 +477,13 @@ function SaveQueryDialog({
                 id="query-folder"
                 className="w-full h-10 px-3 border rounded-md text-sm bg-background"
                 value={selectedFolderId}
-                onChange={(e) => setSelectedFolderId(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value === "__create_new__") {
+                    onCreateFolder();
+                  } else {
+                    setSelectedFolderId(e.target.value);
+                  }
+                }}
               >
                 <option value="">Select a folder...</option>
                 {folders.map((folder) => (
@@ -483,6 +491,7 @@ function SaveQueryDialog({
                     {folder.displayName}
                   </option>
                 ))}
+                <option value="__create_new__">Create new...</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -957,6 +966,7 @@ function QueriesContent() {
         folders={folders}
         sqlQuery={sqlQuery}
         onSave={handleSaveQuery}
+        onCreateFolder={() => setCreateFolderDialogOpen(true)}
       />
       <DeleteConfirmDialog
         open={deleteDialogOpen}

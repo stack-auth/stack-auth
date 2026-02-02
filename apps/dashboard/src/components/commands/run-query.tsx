@@ -508,6 +508,7 @@ function SaveQueryDialog({
                     onChange={(e) => setNewFolderName(e.target.value)}
                     placeholder="Folder name"
                     className="flex-1"
+                    autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         runAsynchronouslyWithAlert(handleCreateFolder());
@@ -540,7 +541,13 @@ function SaveQueryDialog({
                   id="query-folder"
                   className="w-full h-10 px-3 border rounded-md text-sm bg-background"
                   value={selectedFolderId}
-                  onChange={(e) => setSelectedFolderId(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === "__create_new__") {
+                      setShowCreateFolder(true);
+                    } else {
+                      setSelectedFolderId(e.target.value);
+                    }
+                  }}
                 >
                   <option value="">Select a folder...</option>
                   {folders.map((folder) => (
@@ -548,6 +555,7 @@ function SaveQueryDialog({
                       {folder.displayName}
                     </option>
                   ))}
+                  <option value="__create_new__">Create new...</option>
                 </select>
               )}
             </div>
