@@ -20,9 +20,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     externalDatabases: any,
     projectOptions?: { display_name?: string, description?: string }
   ) => {
-    if (!dbManager) {
-      throw new Error('TestDbManager not initialized');
-    }
     return createProjectWithExternalDbRaw(
       externalDatabases,
       projectOptions,
