@@ -161,17 +161,15 @@ export async function waitForCondition(
   throw new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`);
 }
 
-async function maybeForceExternalDbSync() {
-  if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return;
-
-  const now = performance.now();
-  if (now - lastForcedSyncAt < FORCE_SYNC_INTERVAL_MS) return;
-  lastForcedSyncAt = now;
+export async function forceExternalDbSync(): Promise<boolean> {
+  if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return false;
 
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     throw new Error('CRON_SECRET is required when STACK_FORCE_EXTERNAL_DB_SYNC=true');
   }
+
+  lastForcedSyncAt = performance.now();
 
   await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
     query: {
@@ -191,6 +189,16 @@ async function maybeForceExternalDbSync() {
       Authorization: `Bearer ${cronSecret}`,
     },
   });
+  return true;
+}
+
+async function maybeForceExternalDbSync() {
+  if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return;
+
+  const now = performance.now();
+  if (now - lastForcedSyncAt < FORCE_SYNC_INTERVAL_MS) return;
+
+  await forceExternalDbSync();
 }
 
 /**

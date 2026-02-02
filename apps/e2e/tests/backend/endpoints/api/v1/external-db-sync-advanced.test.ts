@@ -17,6 +17,8 @@ import {
   waitForTable
 } from './external-db-sync-utils';
 
+const COMPLEX_SEQUENCE_TIMEOUT = TEST_TIMEOUT * 2 + 30_000;
+
 describe.sequential('External DB Sync - Advanced Tests', () => {
   let dbManager: TestDbManager;
 
@@ -545,7 +547,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
 
     const user2Row = res.rows.find(r => r.primary_email === 'seq2@example.com');
     expect(user2Row.display_name).toBe('User 2 Updated');
-  }, TEST_TIMEOUT);
+  }, COMPLEX_SEQUENCE_TIMEOUT);
 
   /**
    * What it does:

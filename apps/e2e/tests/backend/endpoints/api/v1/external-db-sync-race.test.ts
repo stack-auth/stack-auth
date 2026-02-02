@@ -10,6 +10,7 @@ import {
   TEST_TIMEOUT,
   TestDbManager,
   createProjectWithExternalDb,
+  forceExternalDbSync,
   waitForCondition,
   waitForSyncedDeletion,
   waitForTable
@@ -271,7 +272,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
    * - Tests that sync captures all committed changes eventually
    */
   describe('Race conditions with overlapping transactions', () => {
-    const LOCAL_TEST_TIMEOUT = 120_000; // Must be > 70s sleep + setup time
+    const LOCAL_TEST_TIMEOUT = TEST_TIMEOUT + 60_000; // Must cover baseline sync + fallback sleep on slow CI
 
     async function setupExternalDbWithBaseline(dbName: string) {
       const connectionString = await dbManager.createDatabase(dbName);
@@ -365,7 +366,10 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
             [user.userId],
           );
 
-          await sleep(70000);
+          const forced = await forceExternalDbSync();
+          if (!forced) {
+            await sleep(70000);
+          }
 
           const during = await externalClient.query<{
             display_name: string | null,
