@@ -2,11 +2,11 @@
 
 import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import {
-    Dialog,
-    DialogBody,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
@@ -14,11 +14,11 @@ import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { useFromNow } from "@/hooks/use-from-now";
 import { cn } from "@/lib/utils";
 import {
-    ArrowClockwiseIcon,
-    CheckCircleIcon,
-    PlayIcon,
-    SpinnerGapIcon,
-    WarningCircleIcon,
+  ArrowClockwiseIcon,
+  CheckCircleIcon,
+  PlayIcon,
+  SpinnerGapIcon,
+  WarningCircleIcon,
 } from "@phosphor-icons/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
