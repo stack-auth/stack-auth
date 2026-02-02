@@ -218,6 +218,21 @@ const environmentSchemaFuzzerConfig = [{
     ...branchSchemaFuzzerConfig[0].payments[0],
     testMode: [false, true],
   }],
+  analytics: [{
+    queryFolders: [{
+      "some-folder-id": [{
+        displayName: ["Some Folder", "Some Other Folder"],
+        sortOrder: [0, 1, 10, -5],
+        queries: [{
+          "some-query-id": [{
+            displayName: ["Some Query", "Some Other Query"],
+            sqlQuery: ["", "SELECT * FROM events", "SELECT * FROM users"],
+            description: ["", "A query description", "Another description"],
+          }],
+        }],
+      }],
+    }],
+  }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 
 const organizationSchemaFuzzerConfig = environmentSchemaFuzzerConfig satisfies FuzzerConfig<OrganizationConfigNormalizedOverride>;

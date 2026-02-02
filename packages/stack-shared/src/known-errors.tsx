@@ -1465,6 +1465,26 @@ const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const QueryFolderNotFound = createKnownErrorConstructor(
+  KnownError,
+  "QUERY_FOLDER_NOT_FOUND",
+  () => [
+    404,
+    "Query folder not found.",
+  ] as const,
+  () => [] as const,
+);
+
+const SavedQueryNotFound = createKnownErrorConstructor(
+  KnownError,
+  "SAVED_QUERY_NOT_FOUND",
+  () => [
+    404,
+    "Saved query not found.",
+  ] as const,
+  () => [] as const,
+);
+
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",
@@ -1792,6 +1812,8 @@ export const KnownErrors = {
   RestrictedUserNotAllowed,
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
+  QueryFolderNotFound,
+  SavedQueryNotFound,
   ProjectNotFound,
   CurrentProjectNotFound,
   BranchDoesNotExist,

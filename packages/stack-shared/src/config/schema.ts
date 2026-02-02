@@ -227,6 +227,26 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 }));
 
 
+// --- Analytics Schema (environment config only - not pushable) ---
+const environmentAnalyticsSchema = yupObject({
+  queryFolders: yupRecord(
+    userSpecifiedIdSchema("folderId"),
+    yupObject({
+      displayName: yupString(),
+      sortOrder: yupNumber().optional(),
+      queries: yupRecord(
+        userSpecifiedIdSchema("queryId"),
+        yupObject({
+          displayName: yupString(),
+          sqlQuery: yupString(),  // SQL query string (not English language)
+          description: yupString().optional(),
+        }),
+      ),
+    }),
+  ),
+});
+// --- END Analytics Schema ---
+
 export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
@@ -279,6 +299,8 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   payments: branchConfigSchema.getNested("payments").concat(yupObject({
     testMode: yupBoolean(),
   })),
+
+  analytics: environmentAnalyticsSchema,
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
@@ -610,6 +632,18 @@ const organizationConfigDefaults = {
   dataVault: {
     stores: (key: string) => ({
       displayName: "Unnamed Vault",
+    }),
+  },
+
+  analytics: {
+    queryFolders: (key: string) => ({
+      displayName: "Unnamed Folder",
+      sortOrder: 0,
+      queries: (queryKey: string) => ({
+        displayName: "Unnamed Query",
+        sqlQuery: "",
+        description: undefined,
+      }),
     }),
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
