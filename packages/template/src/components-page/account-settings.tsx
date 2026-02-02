@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Skeleton, Typography } from '@stackframe/stack-ui';
 import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus, CreditCard } from 'lucide-react';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -103,10 +103,6 @@ export function AccountSettings(props: {
     isReady: !!props.mockUser,
   }));
 
-  const handlePaymentsAvailabilityError = useCallback((error: unknown) => {
-    alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? "check the browser console for the full error." : "report this to the developer."}\n\n${error}`);
-  }, []);
-
   useEffect(() => {
     userRef.current = userFromHook ?? null;
   }, [userFromHook]);
@@ -116,7 +112,7 @@ export function AccountSettings(props: {
       return;
     }
     let cancelled = false;
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       const currentUser = userRef.current;
       if (!currentUser || currentUser.id !== userId) {
         return;
@@ -143,11 +139,11 @@ export function AccountSettings(props: {
         teamIdsWithProducts,
         isReady: true,
       });
-    }, { onError: handlePaymentsAvailabilityError });
+    });
     return () => {
       cancelled = true;
     };
-  }, [handlePaymentsAvailabilityError, props.mockUser, teamsById, userId]);
+  }, [props.mockUser, teamsById, userId]);
 
   const teamsWithProducts = useMemo(
     () => teamsById.filter(team => paymentsAvailability.teamIdsWithProducts.has(team.id)),
