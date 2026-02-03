@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-backend",
-  "version": "2.8.63",
+  "version": "2.8.64",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "type": "module",
