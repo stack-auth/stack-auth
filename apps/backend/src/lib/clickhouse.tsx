@@ -7,7 +7,7 @@ export function createClickhouseClient(authType: "admin" | "external", database?
     url: getEnvVariable("STACK_CLICKHOUSE_URL"),
     username: authType === "admin" ? getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER") : "limited_user",
     password: authType === "admin" ? getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD") : getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
-    database: getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
+    database
   });
 }
 
