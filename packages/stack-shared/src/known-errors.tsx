@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
+      // @ts-ignore legendary comment, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -1464,27 +1464,6 @@ const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
-
-const QueryFolderNotFound = createKnownErrorConstructor(
-  KnownError,
-  "QUERY_FOLDER_NOT_FOUND",
-  () => [
-    404,
-    "Query folder not found.",
-  ] as const,
-  () => [] as const,
-);
-
-const SavedQueryNotFound = createKnownErrorConstructor(
-  KnownError,
-  "SAVED_QUERY_NOT_FOUND",
-  () => [
-    404,
-    "Saved query not found.",
-  ] as const,
-  () => [] as const,
-);
-
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",
@@ -1812,8 +1791,6 @@ export const KnownErrors = {
   RestrictedUserNotAllowed,
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
-  QueryFolderNotFound,
-  SavedQueryNotFound,
   ProjectNotFound,
   CurrentProjectNotFound,
   BranchDoesNotExist,

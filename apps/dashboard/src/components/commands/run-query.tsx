@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  ConfigFolder,
+  FolderWithId,
+  isDateValue,
+  isJsonValue,
+  JsonValue,
+  parseClickHouseDate,
+  RowData,
+  RowDetailDialog,
+  VirtualizedFlatTable,
+} from "@/app/(main)/(protected)/projects/[projectId]/analytics/shared";
 import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
@@ -30,54 +41,12 @@ import {
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
-
-type RowData = Record<string, unknown>;
-
-type ConfigFolder = {
-  displayName: string,
-  sortOrder?: number,
-  queries: Record<string, {
-    displayName: string,
-    sqlQuery: string,
-    description?: string,
-  }>,
-};
-
-type FolderWithId = {
-  id: string,
-  displayName: string,
-  sortOrder: number,
-  queries: Array<{
-    id: string,
-    displayName: string,
-    sqlQuery: string,
-    description?: string,
-  }>,
-};
 
 const DEBOUNCE_MS = 400;
 
-// Detect if a value is a date string
-function isDateValue(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  return /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}:\d{2})?/.test(value);
-}
-
-// Detect if a value is JSON
-function isJsonValue(value: unknown): boolean {
-  return typeof value === "object" && value !== null;
-}
-
-// Parse ClickHouse date string as UTC
-function parseClickHouseDate(value: string): Date {
-  const normalized = value.replace(" ", "T") + (value.includes("Z") || value.includes("+") ? "" : "Z");
-  return new Date(normalized);
-}
-
-// Component for displaying dates
+// Component for displaying dates with relative time (specific to command palette)
 function DateValue({ value }: { value: string }) {
   const date = parseClickHouseDate(value);
   const fromNow = useFromNow(date);
@@ -89,26 +58,8 @@ function DateValue({ value }: { value: string }) {
   );
 }
 
-// Component for displaying JSON values
-function JsonValue({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
-  const formatted = JSON.stringify(value, null, 2);
-  const preview = JSON.stringify(value);
-
-  if (truncate && preview.length > 60) {
-    return (
-      <SimpleTooltip tooltip={<pre className="text-xs max-w-md overflow-auto max-h-64">{formatted}</pre>}>
-        <span className="cursor-help text-muted-foreground">
-          {preview.slice(0, 57)}...
-        </span>
-      </SimpleTooltip>
-    );
-  }
-
-  return <span className="text-muted-foreground">{preview}</span>;
-}
-
-// Format a cell value for display
-function CellValue({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
+// Format a cell value for display with relative dates (specific to command palette)
+function CellValueWithRelativeDates({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground/50">—</span>;
   }
@@ -133,167 +84,9 @@ function CellValue({ value, truncate = true }: { value: unknown, truncate?: bool
   return <span>{str}</span>;
 }
 
-// Row detail dialog
-function RowDetailDialog({
-  row,
-  columns,
-  open,
-  onOpenChange,
-}: {
-  row: RowData | null,
-  columns: string[],
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-}) {
-  if (!row) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Row Details</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <div className="space-y-4">
-            {columns.map((column) => (
-              <div key={column} className="space-y-1">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {column}
-                </Label>
-                <div className="font-mono text-sm bg-muted/30 rounded px-3 py-2 overflow-auto max-h-48">
-                  {isJsonValue(row[column]) ? (
-                    <pre className="whitespace-pre-wrap break-all">
-                      {JSON.stringify(row[column], null, 2)}
-                    </pre>
-                  ) : (
-                    <CellValue value={row[column]} truncate={false} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Virtualized flat table component
-function VirtualizedFlatTable({
-  columns,
-  rows,
-  onRowClick,
-}: {
-  columns: string[],
-  rows: RowData[],
-  onRowClick: (row: RowData) => void,
-}) {
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 36,
-    overscan: 10,
-  });
-
-  // Column widths - distribute based on content type
-  const columnWidths = useMemo(() => {
-    const widths = new Map<string, string>();
-    columns.forEach((col) => {
-      if (col.includes("id") && col !== "project_id") {
-        widths.set(col, "minmax(200px, 1fr)");
-      } else if (col.includes("_at") || col.includes("date")) {
-        widths.set(col, "minmax(100px, 140px)");
-      } else if (col === "data" || col.includes("json")) {
-        widths.set(col, "minmax(180px, 2fr)");
-      } else if (col === "event_type" || col === "type") {
-        widths.set(col, "minmax(100px, 160px)");
-      } else {
-        widths.set(col, "minmax(80px, 1fr)");
-      }
-    });
-    return widths;
-  }, [columns]);
-
-  const gridTemplateColumns = columns.map((col) => columnWidths.get(col) ?? "1fr").join(" ");
-  const minContentWidth = columns.length * 120;
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      <div
-        ref={parentRef}
-        className="flex-1 overflow-auto"
-      >
-        <div style={{ minWidth: `${minContentWidth}px` }}>
-          {/* Sticky header */}
-          <div
-            className="grid gap-3 px-3 py-1.5 border-b border-border/50 bg-muted/40 backdrop-blur-sm sticky top-0 z-10"
-            style={{ gridTemplateColumns }}
-          >
-            {columns.map((column) => (
-              <span
-                key={column}
-                className="font-mono text-xs font-medium text-muted-foreground"
-              >
-                {column}
-              </span>
-            ))}
-          </div>
-
-          {/* Virtualized rows container */}
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const row = rows[virtualRow.index];
-
-              return (
-                <div
-                  key={virtualRow.index}
-                  className={cn(
-                    "absolute left-0 right-0 grid gap-3 px-3 items-center cursor-pointer",
-                    "border-b border-border/30 hover:bg-muted/30 transition-colors hover:transition-none",
-                    virtualRow.index % 2 === 0 ? "bg-transparent" : "bg-muted/10"
-                  )}
-                  style={{
-                    top: `${virtualRow.start}px`,
-                    height: `${virtualRow.size}px`,
-                    gridTemplateColumns,
-                  }}
-                  onClick={() => onRowClick(row)}
-                >
-                  {columns.map((column) => (
-                    <div key={column} className="font-mono text-[11px] truncate">
-                      <CellValue value={row[column]} />
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Parse error message for human-readable display
-function parseErrorMessage(error: unknown): { title: string, details: string | null } {
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    title: "Query Error",
-    details: message,
-  };
-}
-
-// Error display component
+// Error display component for this file (uses relative dates display)
 function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () => void }) {
-  const { title, details } = parseErrorMessage(error);
+  const message = error instanceof Error ? error.message : String(error);
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 p-6 text-center">
@@ -301,12 +94,10 @@ function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () => void 
         <WarningCircleIcon className="h-7 w-7 text-red-500" />
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-1">{title}</h3>
-        {details && (
-          <p className="text-xs text-muted-foreground max-w-md break-words font-mono whitespace-pre-wrap">
-            {details}
-          </p>
-        )}
+        <h3 className="text-sm font-semibold text-foreground mb-1">Query Error</h3>
+        <p className="text-xs text-muted-foreground max-w-md break-words font-mono whitespace-pre-wrap">
+          {message}
+        </p>
       </div>
       <button
         onClick={onRetry}
@@ -511,7 +302,7 @@ function SaveQueryDialog({
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        runAsynchronouslyWithAlert(handleCreateFolder());
+                        runAsynchronouslyWithAlert(handleCreateFolder);
                       } else if (e.key === "Escape") {
                         setShowCreateFolder(false);
                         setNewFolderName("");
@@ -520,7 +311,7 @@ function SaveQueryDialog({
                   />
                   <Button
                     size="sm"
-                    onClick={() => runAsynchronouslyWithAlert(handleCreateFolder())}
+                    onClick={handleCreateFolder}
                     disabled={!newFolderName.trim() || creatingFolder}
                   >
                     {creatingFolder ? "..." : "Create"}
