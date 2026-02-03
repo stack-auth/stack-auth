@@ -8,12 +8,8 @@ const clickhouseExternalUser = "limited_user";
 const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD");
 const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDefaultDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default");
-const HAS_CLICKHOUSE = !!clickhouseUrl && !!clickhouseAdminPassword && !!clickhouseExternalPassword;
 
 export function createClickhouseClient(authType: "admin" | "external", database?: string) {
-  if (!HAS_CLICKHOUSE) {
-    throw new StackAssertionError("ClickHouse is not configured");
-  }
   return createClient({
     url: clickhouseUrl,
     username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,
