@@ -1,7 +1,6 @@
-import { executeJavascript } from '@/lib/js-execution';
+import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -50,7 +49,7 @@ export function createTemplateComponentFromHtml(html: string) {
 const nodeModules = {
   "react-dom": "19.1.1",
   "react": "19.1.1",
-  "@react-email/components": "0.1.1",
+  "@react-email/components": "1.0.6",
   "arktype": "2.1.20",
 };
 
@@ -70,12 +69,9 @@ const entryJs = deindent`
 `;
 
 type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
-type ExecuteResult =
-  | { status: "ok", data: unknown }
-  | { status: "error", error: unknown };
 
 async function bundleAndExecute<T>(
-  files: Record<string, string> & { '/entry.js': string }
+  files: Record<string, string> & { '/entry.js': string },
 ): Promise<Result<T, string>> {
   const bundle = await bundleJavaScript(files, {
     keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
@@ -87,40 +83,11 @@ async function bundleAndExecute<T>(
     return Result.error(bundle.error);
   }
 
-  if (["development", "test"].includes(getNodeEnvironment())) {
-    const executeResult = await executeJavascript(bundle.data, { nodeModules, engine: 'freestyle' }) as ExecuteResult;
-    if (executeResult.status === "error") {
-      return Result.error(JSON.stringify(executeResult.error));
-    }
-    return Result.ok(executeResult.data as T);
-  }
-
-  const executeResult = await executeJavascript(bundle.data, { nodeModules }) as ExecuteResult;
+  const executeResult: ExecuteResult = await executeJavascript(bundle.data, { nodeModules });
 
   if (executeResult.status === "error") {
-    const vercelResult = await executeJavascript(bundle.data, { nodeModules, engine: 'vercel-sandbox' }) as ExecuteResult;
-    if (vercelResult.status === "error") {
-      captureError("email-rendering-freestyle-and-vercel-runtime-error", new StackAssertionError(
-        "Email rendering failed with both freestyle and vercel-sandbox engines",
-        {
-          freestyleError: executeResult.error,
-          vercelError: vercelResult.error,
-          innerCode: bundle.data,
-          innerOptions: [
-            { nodeModules, engine: 'freestyle' },
-            { nodeModules, engine: 'vercel-sandbox' },
-          ],
-        },
-      ));
-      return Result.error(JSON.stringify(vercelResult.error));
-    }
-    captureError("email-rendering-freestyle-runtime-error", new StackAssertionError(
-      "Email rendering failed with freestyle but succeeded with vercel-sandbox",
-      { freestyleError: executeResult.error, innerCode: bundle.data, innerOptions: { nodeModules, engine: 'freestyle' } }
-    ));
-    return Result.ok(vercelResult.data as T);
+    return Result.error(JSON.stringify(executeResult.error));
   }
-
   return Result.ok(executeResult.data as T);
 }
 

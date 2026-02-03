@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/e-commerce-demo",
-  "version": "2.8.62",
+  "version": "2.8.63",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {

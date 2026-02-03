@@ -69,7 +69,7 @@ const performSignUp = async (email: string, password: string) => {
       "Content-Type": "application/json",
       "X-Stack-Access-Type": "client",
       "X-Stack-Publishable-Client-Key": getEnvVariable("STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY"),
-      "X-Stack-Project-Id": "internal",
+      "X-Stack-Project-Id": getEnvVariable("STACK_EMAIL_MONITOR_PROJECT_ID"),
     },
     body: JSON.stringify({
       email,
@@ -120,7 +120,7 @@ const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean)
   throw new StackAssertionError(`Couldn't find verification email in time limit`, { recipient_email: testEmail, max_poll_attempts: MAX_POLL_ATTEMPTS, poll_interval_ms: POLL_INTERVAL_MS });
 };
 
-export const GET = createSmartRouteHandler({
+export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
     summary: "Email Health Monitor",

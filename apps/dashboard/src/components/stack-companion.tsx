@@ -15,19 +15,22 @@ import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
 /**
- * Compare two CalVer versions in YYYY.MM.DD format
+ * Compare two US date versions in M/D/YY format
  * Returns true if version1 is newer than version2
  */
-function isNewerCalVer(version1: string, version2: string): boolean {
-  const parseCalVer = (version: string): Date | null => {
-    const match = version.match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
+function isNewerVersion(version1: string, version2: string): boolean {
+  const parseUsDate = (version: string): Date | null => {
+    const match = version.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
     if (!match) return null;
-    const [, year, month, day] = match;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const [, month, day, year] = match;
+    const twoDigitYear = parseInt(year);
+    // Sliding window: 70-99 → 1970-1999, 00-69 → 2000-2069
+    const fullYear = twoDigitYear >= 70 ? 1900 + twoDigitYear : 2000 + twoDigitYear;
+    return new Date(fullYear, parseInt(month) - 1, parseInt(day));
   };
 
-  const date1 = parseCalVer(version1);
-  const date2 = parseCalVer(version2);
+  const date1 = parseUsDate(version1);
+  const date2 = parseUsDate(version2);
 
   if (!date1 || !date2) {
     // Fallback to string comparison if parsing fails
@@ -193,7 +196,7 @@ export function StackCompanion({ className }: { className?: string }) {
         } else {
           const hasNewer = entries.some((entry: ChangelogEntry) => {
             if (entry.isUnreleased) return false;
-            return isNewerCalVer(entry.version, lastSeen);
+            return isNewerVersion(entry.version, lastSeen);
           });
           setHasNewVersions(hasNewer);
         }
@@ -231,7 +234,7 @@ export function StackCompanion({ className }: { className?: string }) {
         } else {
           const hasNewer = changelogData.some((entry: ChangelogEntry) => {
             if (entry.isUnreleased) return false;
-            return isNewerCalVer(entry.version, lastSeen);
+            return isNewerVersion(entry.version, lastSeen);
           });
           setHasNewVersions(hasNewer);
         }

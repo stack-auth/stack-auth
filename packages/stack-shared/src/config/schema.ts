@@ -103,20 +103,6 @@ const branchAppsSchema = yupObject({
     yupObject({
       enabled: yupBoolean(),
     }),
-  ).test(
-    'authentication-and-emails-enabled',
-    'authentication and emails must be installed and enabled',
-    function(value) {
-      const hasAuthentication = value['authentication'].enabled === true;
-      const hasEmails = value['emails'].enabled === true;
-      if (!hasAuthentication || !hasEmails) {
-        return this.createError({
-          message: 'authentication and emails must be installed and enabled',
-          path: this.path,
-        });
-      }
-      return true;
-    }
   ),
 });
 // --- END NEW Apps Schema ---

@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.62",
+  "version": "2.8.63",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
@@ -83,7 +83,7 @@
     "lodash": "^4.17.21",
     "next": "16.1.5",
     "next-themes": "^0.2.1",
-    "posthog-js": "^1.235.0",
+    "posthog-js": "^1.336.1",
     "react": "19.2.3",
     "react-day-picker": "^9.6.7",
     "react-dom": "19.2.3",
