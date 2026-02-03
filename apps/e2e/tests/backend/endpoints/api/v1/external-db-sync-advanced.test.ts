@@ -914,7 +914,7 @@ $$;`);
     expect(res.rows.length).toBe(1);
     expect(res.rows[0].display_name).toBe('Final Name');
     expect(res.rows[0].id).toBe(newId);
-  }, TEST_TIMEOUT);
+  }, COMPLEX_SEQUENCE_TIMEOUT);
 
   /**
    * What it does:
