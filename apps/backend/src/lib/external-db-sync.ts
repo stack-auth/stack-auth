@@ -34,6 +34,14 @@ function isDuplicateTypeError(error: unknown): error is PgErrorLike {
   return pgError.code === "23505" && pgError.constraint === "pg_type_typname_nsp_index";
 }
 
+function isConcurrentUpdateError(error: unknown): error is PgErrorLike {
+  if (!error || typeof error !== "object") return false;
+  const pgError = error as PgErrorLike;
+  // "tuple concurrently updated" occurs when multiple transactions race to modify
+  // the same system catalog row (e.g., during concurrent CREATE TABLE IF NOT EXISTS)
+  return typeof pgError.message === "string" && pgError.message.includes("tuple concurrently updated");
+}
+
 async function ensureExternalSchema(
   externalClient: Client,
   tableSchemaSql: string,
@@ -42,10 +50,14 @@ async function ensureExternalSchema(
   try {
     await externalClient.query(tableSchemaSql);
   } catch (error) {
-    if (!isDuplicateTypeError(error)) throw error;
-
-    // Concurrent CREATE TABLE can race and hit a duplicate type error.
+    // Concurrent CREATE TABLE can race and cause various errors:
+    // - duplicate type error (23505 on pg_type_typname_nsp_index)
+    // - tuple concurrently updated (system catalog row modified by another transaction)
     // If the table now exists, we can safely continue.
+    if (!isDuplicateTypeError(error) && !isConcurrentUpdateError(error)) {
+      throw error;
+    }
+
     const existsResult = await externalClient.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables
@@ -58,7 +70,7 @@ async function ensureExternalSchema(
     }
 
     throw new StackAssertionError(
-      `Duplicate type error while creating table ${JSON.stringify(tableName)}, but table does not exist.`
+      `Schema creation error while creating table ${JSON.stringify(tableName)}, but table does not exist.`
     );
   }
 }
