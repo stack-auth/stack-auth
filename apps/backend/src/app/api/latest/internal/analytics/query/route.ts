@@ -1,10 +1,14 @@
-import { getClickhouseExternalClient, getQueryTimingStats, isClickhouseConfigured } from "@/lib/clickhouse";
+import { getClickhouseExternalClient, isClickhouseConfigured } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { randomUUID } from "crypto";
+
+const MAX_QUERY_TIMEOUT_MS = 120_000;
+const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -17,7 +21,7 @@ export const POST = createSmartRouteHandler({
       include_all_branches: yupBoolean().default(false),
       query: yupString().defined().nonEmpty(),
       params: yupRecord(yupString().defined(), yupMixed().defined()).default({}),
-      timeout_ms: yupNumber().integer().min(1_000).default(10_000),
+      timeout_ms: yupNumber().integer().min(1_000).max(MAX_QUERY_TIMEOUT_MS).default(DEFAULT_QUERY_TIMEOUT_MS),
     }).defined(),
   }),
   response: yupObject({
@@ -25,10 +29,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       result: jsonSchema.defined(),
-      stats: yupObject({
-        cpu_time: yupNumber().defined(),
-        wall_clock_time: yupNumber().defined(),
-      }).defined(),
+      query_id: yupString().defined(),
     }).defined(),
   }),
   async handler({ body, auth }) {
@@ -39,7 +40,7 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("ClickHouse is not configured");
     }
     const client = getClickhouseExternalClient();
-    const queryId = randomUUID();
+    const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
     const resultSet = await Result.fromPromise(client.query({
       query: body.query,
       query_id: queryId,
@@ -58,25 +59,17 @@ export const POST = createSmartRouteHandler({
     }));
 
     if (resultSet.status === "error") {
-      const message = getSafeClickhouseErrorMessage(resultSet.error);
-      if (message === null) {
-        throw new StackAssertionError("Unknown Clickhouse error", { cause: resultSet.error });
-      }
+      const message = getSafeClickhouseErrorMessage(resultSet.error, body.query);
       throw new KnownErrors.AnalyticsQueryError(message);
     }
 
     const rows = await resultSet.data.json<Record<string, unknown>[]>();
-    const stats = await getQueryTimingStats(client, queryId);
-
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
         result: rows,
-        stats: {
-          cpu_time: stats.cpu_time_ms,
-          wall_clock_time: stats.wall_clock_time_ms,
-        },
+        query_id: queryId,
       },
     };
   },
@@ -101,20 +94,24 @@ const DEFAULT_CLICKHOUSE_ERROR_MESSAGE = "Error during execution of this query."
 const MAX_RESULT_ROWS = 10_000;
 const MAX_RESULT_BYTES = 10 * 1024 * 1024;
 
-function getSafeClickhouseErrorMessage(error: unknown): string | null {
-  if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string") {
-    return null;
+function getSafeClickhouseErrorMessage(error: unknown, query: string) {
+  if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string" || isNaN(Number(error.code)) || !("message" in error) || typeof error.message !== "string") {
+    captureError("unknown-clickhouse-error-for-query-not-clickhouse-error", new StackAssertionError("Unknown error from Clickhouse is not a Clickhouse error", { cause: error, query: query }));
+    return DEFAULT_CLICKHOUSE_ERROR_MESSAGE;
   }
+
   const errorCode = Number(error.code);
-  if (isNaN(errorCode)) {
-    return null;
-  }
-  const message = "message" in error && typeof error.message === "string" ? error.message : null;
+  const message = error.message;
   if (SAFE_CLICKHOUSE_ERROR_CODES.includes(errorCode)) {
     return message;
   }
-  if (UNSAFE_CLICKHOUSE_ERROR_CODES.includes(errorCode)) {
-    return DEFAULT_CLICKHOUSE_ERROR_MESSAGE;
+  const isKnown = UNSAFE_CLICKHOUSE_ERROR_CODES.includes(errorCode);
+  if (!isKnown) {
+    captureError("unknown-clickhouse-error-for-query", new StackAssertionError(`Unknown Clickhouse error: code ${errorCode} not in safe or unsafe codes`, { cause: error, query: query }));
   }
-  return null;
+
+  if (getNodeEnvironment() === "development" || getNodeEnvironment() === "test") {
+    return `${DEFAULT_CLICKHOUSE_ERROR_MESSAGE}${!isKnown ? "\n\nThis error is not known and you should probably add it to the safe or unsafe codes in analytics/query/route.ts." : ""}\n\nAs you are in development mode, you can see the full error: ${errorCode} ${message}`;
+  }
+  return DEFAULT_CLICKHOUSE_ERROR_MESSAGE;
 }
