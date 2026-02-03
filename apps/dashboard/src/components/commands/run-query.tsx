@@ -26,7 +26,7 @@ import {
   PlayIcon,
   PlusIcon,
   SpinnerGapIcon,
-  WarningCircleIcon,
+  WarningCircleIcon
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";

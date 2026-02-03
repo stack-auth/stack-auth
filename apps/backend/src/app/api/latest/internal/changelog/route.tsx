@@ -1,6 +1,8 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import * as fs from "fs/promises";
+import * as path from "path";
 
 const REVALIDATE_SECONDS = 60 * 60;
 
@@ -72,10 +74,9 @@ function parseRootChangelog(markdown: string): ChangelogEntry[] {
 
     const heading = versionMatch[1].trim();
     const { version, releasedAt, isUnreleased } = parseVersionHeading(heading);
-    const isSemver = /^\d+\.\d+\.\d+$/.test(version);
-    const isCalVer = /^\d{4}\.\d{2}\.\d{2}$/.test(version);
+    const isUsDate = /^\d{1,2}\/\d{1,2}\/\d{2}$/.test(version); // US date format: M/D/YY
 
-    if (!isUnreleased && !isSemver && !isCalVer) {
+    if (!isUnreleased && !isUsDate) {
       continue;
     }
 
@@ -138,6 +139,25 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async () => {
+    const isDevelopment = getNodeEnvironment() === "development";
+
+    // In development mode, read from local CHANGELOG.md file
+    if (isDevelopment) {
+      const changelogPath = path.resolve(process.cwd(), "../../CHANGELOG.md");
+      const fileExists = await fs.access(changelogPath).then(() => true, () => false);
+
+      if (fileExists) {
+        const content = await fs.readFile(changelogPath, "utf-8");
+        const entries = parseRootChangelog(content).slice(0, 8);
+
+        return {
+          statusCode: 200,
+          bodyType: "json",
+          body: { entries },
+        } as const;
+      }
+    }
+
     const changelogUrl = getEnvVariable("STACK_CHANGELOG_URL", "");
 
     if (!changelogUrl) {
