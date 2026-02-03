@@ -1,5 +1,4 @@
-import { getClickhouseExternalClient, getQueryTimingStats } from "@/lib/clickhouse";
-import { getClickhouseExternalClient, isClickhouseConfigured } from "@/lib/clickhouse";
+import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
