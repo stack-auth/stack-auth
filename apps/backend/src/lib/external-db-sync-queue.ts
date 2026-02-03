@@ -12,6 +12,19 @@ function assertUuid(value: unknown, label: string): asserts value is string {
 // Queues a sync request for a specific tenant if one isn't already pending.
 export async function enqueueExternalDbSync(tenancyId: string): Promise<void> {
   assertUuid(tenancyId, "tenancyId");
+  await enqueueExternalDbSyncBatch([tenancyId]);
+}
+
+// Queues sync requests for multiple tenants in a single query.
+// Only inserts for tenants that don't already have a pending request.
+export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<void> {
+  if (tenancyIds.length === 0) return;
+
+  for (const id of tenancyIds) {
+    assertUuid(id, "tenancyId");
+  }
+
+  // Use unnest to pass array of UUIDs and insert all in one query
   await globalPrismaClient.$executeRaw`
     INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt")
     SELECT
@@ -19,14 +32,15 @@ export async function enqueueExternalDbSync(tenancyId: string): Promise<void> {
       NOW(),
       json_build_object(
         'url',  '/api/latest/internal/external-db-sync/sync-engine',
-        'body', json_build_object('tenancyId', ${tenancyId}::uuid)
+        'body', json_build_object('tenancyId', t.tenancy_id)
       ),
       NULL
+    FROM unnest(${tenancyIds}::uuid[]) AS t(tenancy_id)
     WHERE NOT EXISTS (
       SELECT 1
       FROM "OutgoingRequest"
       WHERE "startedFulfillingAt" IS NULL
-        AND ("qstashOptions"->'body'->>'tenancyId')::uuid = ${tenancyId}::uuid
+        AND ("qstashOptions"->'body'->>'tenancyId')::uuid = t.tenancy_id
     )
   `;
 }

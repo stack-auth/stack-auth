@@ -225,6 +225,7 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
+  @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
   // Partial index for external db sync backfill lives in migration SQL.
 }
 
@@ -290,6 +291,7 @@ model ContactChannel {
   @@unique([tenancyId, projectUserId, type, value])
   // only one contact channel per project with the same value and type can be used for auth
   @@unique([tenancyId, type, value, usedForAuth])
+  @@index([tenancyId, sequenceId], name: "ContactChannel_tenancyId_sequenceId_idx")
   // Partial index for external db sync backfill lives in migration SQL (WHERE shouldUpdateSequenceId = TRUE).
 }
 

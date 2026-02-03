@@ -32,8 +32,8 @@ export const POST = createSmartRouteHandler({
 
     const tenancy = await getTenancy(tenancyId);
     if (!tenancy) {
-console.warn(`[sync-engine] Tenancy ${tenancyId} in queue but not found.`);
-throw new StatusError(404, `Tenancy ${tenancyId} not found.`);
+      console.warn(`[sync-engine] Tenancy ${tenancyId} in queue but not found, assuming it was deleted.`);
+      throw new StatusError(400, `Tenancy ${tenancyId} not found.`);
     }
 
     await syncExternalDatabases(tenancy);

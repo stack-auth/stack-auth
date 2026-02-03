@@ -24,6 +24,14 @@ CREATE UNIQUE INDEX  "ContactChannel_sequenceId_key" ON "ContactChannel"("sequen
 CREATE UNIQUE INDEX  "ProjectUser_sequenceId_key" ON "ProjectUser"("sequenceId");
 
 -- SPLIT_STATEMENT_SENTINEL
+-- Creates composite indexes on (tenancyId, sequenceId) for efficient sync-engine queries.
+-- These allow fast lookups of rows by tenant ordered by sequence number.
+CREATE INDEX "ProjectUser_tenancyId_sequenceId_idx" ON "ProjectUser"("tenancyId", "sequenceId");
+
+-- SPLIT_STATEMENT_SENTINEL
+CREATE INDEX "ContactChannel_tenancyId_sequenceId_idx" ON "ContactChannel"("tenancyId", "sequenceId");
+
+-- SPLIT_STATEMENT_SENTINEL
 -- Creates OutgoingRequest table to queue sync requests to external databases.
 -- Each request stores the QStash options for making HTTP requests and tracks when fulfillment started.
 CREATE TABLE  "OutgoingRequest" (
@@ -81,14 +89,15 @@ ALTER TABLE "ContactChannel" ADD COLUMN "shouldUpdateSequenceId" BOOLEAN NOT NUL
 ALTER TABLE "DeletedRow" ADD COLUMN "shouldUpdateSequenceId" BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- SPLIT_STATEMENT_SENTINEL
--- Creates partial indexes on shouldUpdateSequenceId to quickly find rows that need updates.
-CREATE INDEX "ProjectUser_shouldUpdateSequenceId_idx" ON "ProjectUser"("shouldUpdateSequenceId") WHERE "shouldUpdateSequenceId" = TRUE;
+-- Creates partial indexes on (shouldUpdateSequenceId, tenancyId) to quickly find rows that need updates
+-- and support ORDER BY tenancyId for less fragmented updates.
+CREATE INDEX "ProjectUser_shouldUpdateSequenceId_idx" ON "ProjectUser"("shouldUpdateSequenceId", "tenancyId") WHERE "shouldUpdateSequenceId" = TRUE;
 
 -- SPLIT_STATEMENT_SENTINEL
-CREATE INDEX "ContactChannel_shouldUpdateSequenceId_idx" ON "ContactChannel"("shouldUpdateSequenceId") WHERE "shouldUpdateSequenceId" = TRUE;
+CREATE INDEX "ContactChannel_shouldUpdateSequenceId_idx" ON "ContactChannel"("shouldUpdateSequenceId", "tenancyId") WHERE "shouldUpdateSequenceId" = TRUE;
 
 -- SPLIT_STATEMENT_SENTINEL
-CREATE INDEX "DeletedRow_shouldUpdateSequenceId_idx" ON "DeletedRow"("shouldUpdateSequenceId") WHERE "shouldUpdateSequenceId" = TRUE;
+CREATE INDEX "DeletedRow_shouldUpdateSequenceId_idx" ON "DeletedRow"("shouldUpdateSequenceId", "tenancyId") WHERE "shouldUpdateSequenceId" = TRUE;
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
