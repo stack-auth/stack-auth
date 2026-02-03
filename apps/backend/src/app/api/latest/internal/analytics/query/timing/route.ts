@@ -1,8 +1,7 @@
-import { getClickhouseExternalClient, getQueryTimingStatsForProject, isClickhouseConfigured } from "@/lib/clickhouse";
+import { getClickhouseExternalClient, getQueryTimingStatsForProject } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -26,10 +25,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth }) {
-    if (!isClickhouseConfigured()) {
-      throw new StackAssertionError("ClickHouse is not configured");
-    }
-
     const expectedPrefix = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:`;
     if (!body.query_id.startsWith(expectedPrefix)) {
       throw new KnownErrors.ItemNotFound(body.query_id);

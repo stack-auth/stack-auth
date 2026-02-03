@@ -9,7 +9,7 @@ import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
-import { getClickhouseAdminClient, isClickhouseConfigured } from "./clickhouse";
+import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
 
@@ -129,6 +129,20 @@ const ApiRequestEventType = {
   ],
 } as const satisfies SystemEventTypeBase;
 
+const SignUpRuleTriggerEventType = {
+  id: "$sign-up-rule-trigger",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    ruleId: yupString().defined(),
+    action: yupString().oneOf(['allow', 'reject', 'restrict', 'log']).defined(),
+    email: yupString().nullable().defined(),
+    authMethod: yupString().oneOf(['password', 'otp', 'oauth', 'passkey']).nullable().defined(),
+    oauthProvider: yupString().nullable().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
@@ -137,6 +151,7 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   TokenRefreshEventType,
   ApiRequestEventType,
   LegacyApiEventType,
+  SignUpRuleTriggerEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 
@@ -240,19 +255,21 @@ export async function logEvent<T extends EventType[]>(
       },
     });
 
-    // Only log TokenRefresh events to ClickHouse
-    if (isClickhouseConfigured() && eventTypesArray.some(e => e.id === '$token-refresh')) {
+    // Log specific events to ClickHouse
+    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
+    const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
+    if (matchingEventType) {
       const clickhouseClient = getClickhouseAdminClient();
       await clickhouseClient.insert({
         table: "analytics_internal.events",
         values: [{
-          event_type: '$token-refresh',
+          event_type: matchingEventType.id,
           event_at: timeRange.end,
           data: clickhouseEventData,
           project_id: projectId,
           branch_id: branchId,
           user_id: userId || null,
-          team_id: null,  // Token refresh events don't have team context
+          team_id: null,
         }],
         format: "JSONEachRow",
         clickhouse_settings: {

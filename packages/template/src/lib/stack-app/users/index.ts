@@ -132,10 +132,10 @@ export type BaseUser = {
    */
   readonly isRestricted: boolean,
   /**
-   * The reason why the user is restricted, e.g., { type: "email_not_verified" } or { type: "anonymous" }.
+   * The reason why the user is restricted, e.g., { type: "email_not_verified" }, { type: "anonymous" }, or { type: "restricted_by_administrator" }.
    * Null if the user is not restricted.
    */
-  readonly restrictedReason: { type: "anonymous" | "email_not_verified" } | null,
+  readonly restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -307,6 +307,13 @@ export type ServerBaseUser = {
   setServerMetadata(metadata: any): Promise<void>,
   setClientReadOnlyMetadata(metadata: any): Promise<void>,
 
+  /** Whether the user is restricted by an administrator. Can be set manually or by sign-up rules. */
+  readonly restrictedByAdmin: boolean,
+  /** Public reason shown to the user explaining why they are restricted. Optional. */
+  readonly restrictedByAdminReason: string | null,
+  /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
+  readonly restrictedByAdminPrivateDetails: string | null,
+
   createTeam(data: Omit<ServerTeamCreateOptions, "creatorUserId">): Promise<ServerTeam>,
 
   useContactChannels(): ServerContactChannel[], // THIS_LINE_PLATFORM react-like
@@ -380,9 +387,13 @@ export type ServerUserUpdateOptions = {
   clientReadOnlyMetadata?: ReadonlyJson,
   serverMetadata?: ReadonlyJson,
   password?: string,
+  restrictedByAdmin?: boolean,
+  restrictedByAdminReason?: string | null,
+  restrictedByAdminPrivateDetails?: string | null,
 } & UserUpdateOptions;
 export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions): CurrentUserCrud["Server"]["Update"] {
-  return {
+  // Base update options
+  const baseUpdate: CurrentUserCrud["Server"]["Update"] = {
     display_name: options.displayName,
     primary_email: options.primaryEmail,
     client_metadata: options.clientMetadata,
@@ -395,6 +406,13 @@ export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions):
     profile_image_url: options.profileImageUrl,
     totp_secret_base64: options.totpMultiFactorSecret != null ? encodeBase64(options.totpMultiFactorSecret) : options.totpMultiFactorSecret,
   };
+  // Add admin restriction fields (may not be in generated types yet but will be at runtime)
+  return {
+    ...baseUpdate,
+    restricted_by_admin: options.restrictedByAdmin,
+    restricted_by_admin_reason: options.restrictedByAdminReason,
+    restricted_by_admin_private_details: options.restrictedByAdminPrivateDetails,
+  } as CurrentUserCrud["Server"]["Update"];
 }
 
 
