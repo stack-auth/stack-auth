@@ -1,4 +1,4 @@
-import { getClickhouseExternalClient, getQueryTimingStats, isClickhouseConfigured } from "@/lib/clickhouse";
+import { getClickhouseExternalClient, isClickhouseConfigured } from "@/lib/clickhouse";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, jsonSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -6,6 +6,9 @@ import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { randomUUID } from "crypto";
+
+const MAX_QUERY_TIMEOUT_MS = 120_000;
+const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -18,7 +21,7 @@ export const POST = createSmartRouteHandler({
       include_all_branches: yupBoolean().default(false),
       query: yupString().defined().nonEmpty(),
       params: yupRecord(yupString().defined(), yupMixed().defined()).default({}),
-      timeout_ms: yupNumber().integer().min(1_000).default(10_000),
+      timeout_ms: yupNumber().integer().min(1_000).max(MAX_QUERY_TIMEOUT_MS).default(DEFAULT_QUERY_TIMEOUT_MS),
     }).defined(),
   }),
   response: yupObject({
@@ -26,10 +29,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       result: jsonSchema.defined(),
-      stats: yupObject({
-        cpu_time: yupNumber().defined(),
-        wall_clock_time: yupNumber().defined(),
-      }).defined(),
+      query_id: yupString().defined(),
     }).defined(),
   }),
   async handler({ body, auth }) {
@@ -40,7 +40,7 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("ClickHouse is not configured");
     }
     const client = getClickhouseExternalClient();
-    const queryId = randomUUID();
+    const queryId = `${auth.tenancy.project.id}:${auth.tenancy.branchId}:${randomUUID()}`;
     const resultSet = await Result.fromPromise(client.query({
       query: body.query,
       query_id: queryId,
@@ -64,17 +64,12 @@ export const POST = createSmartRouteHandler({
     }
 
     const rows = await resultSet.data.json<Record<string, unknown>[]>();
-    const stats = await getQueryTimingStats(client, queryId);
-
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
         result: rows,
-        stats: {
-          cpu_time: stats.cpu_time_ms,
-          wall_clock_time: stats.wall_clock_time_ms,
-        },
+        query_id: queryId,
       },
     };
   },
