@@ -2,28 +2,21 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
-const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL");
-const clickhouseAdminUser = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
-const clickhouseExternalUser = "limited_user";
-const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD");
-const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
-const clickhouseDefaultDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default");
-
 export function createClickhouseClient(authType: "admin" | "external", database?: string) {
   return createClient({
-    url: clickhouseUrl,
-    username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,
-    password: authType === "admin" ? clickhouseAdminPassword : clickhouseExternalPassword,
-    database,
+    url: getEnvVariable("STACK_CLICKHOUSE_URL"),
+    username: authType === "admin" ? getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER") : "limited_user",
+    password: authType === "admin" ? getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD") : getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
+    database: getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"),
   });
 }
 
 export function getClickhouseAdminClient() {
-  return createClickhouseClient("admin", clickhouseDefaultDatabase);
+  return createClickhouseClient("admin", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
 }
 
 export function getClickhouseExternalClient() {
-  return createClickhouseClient("external", clickhouseDefaultDatabase);
+  return createClickhouseClient("external", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
 }
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {
@@ -32,8 +25,8 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
   await client.exec({
     query: "SYSTEM FLUSH LOGS",
     auth: {
-      username: clickhouseAdminUser,
-      password: clickhouseAdminPassword,
+      username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER"),
+      password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
     },
   });
   const queryProfile = async () => {
@@ -49,8 +42,8 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
     `,
       query_params: { query_id: queryId },
       auth: {
-        username: clickhouseAdminUser,
-        password: clickhouseAdminPassword,
+        username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER"),
+        password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
       },
       format: "JSON",
     });
@@ -98,8 +91,8 @@ export const getQueryTimingStatsForProject = async (
         query_id: queryId,
       },
       auth: {
-        username: clickhouseAdminUser,
-        password: clickhouseAdminPassword,
+        username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER"),
+        password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
       },
       format: "JSON",
     });
