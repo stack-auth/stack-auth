@@ -2,11 +2,11 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
-const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
+const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL");
 const clickhouseAdminUser = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
 const clickhouseExternalUser = "limited_user";
-const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD", "");
-const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD", "");
+const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD");
+const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD");
 const clickhouseDefaultDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default");
 const HAS_CLICKHOUSE = !!clickhouseUrl && !!clickhouseAdminPassword && !!clickhouseExternalPassword;
 
