@@ -11,3 +11,6 @@ A: The generated `.next/types/validator.ts` can keep stale imports for removed r
 
 Q: Why can external DB sync tests time out in dev-focused GitHub workflows?
 A: The first calls to `/api/latest/internal/external-db-sync/sequencer` and `/poller` can be slow in dev mode and hit Undici's headers timeout; prewarming those endpoints with the cron secret, retrying header-timeout failures in the test helper, or running tests single-worker are viable mitigations.
+
+Q: How can we serialize only the external DB sync Vitest files while keeping the rest parallel?
+A: Use `poolMatchGlobs` to route the external DB sync test globs to the `forks` pool and set `poolOptions.forks.{minForks,maxForks}=1` in `apps/e2e/vitest.config.ts`; keep the default threads pool for all other tests.
