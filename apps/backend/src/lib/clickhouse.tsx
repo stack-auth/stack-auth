@@ -2,12 +2,21 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
+function getAdminAuth() {
+  return {
+    username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe"),
+    password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
+  };
+}
+
 export function createClickhouseClient(authType: "admin" | "external", database?: string) {
   return createClient({
     url: getEnvVariable("STACK_CLICKHOUSE_URL"),
-    username: authType === "admin" ? getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER") : "limited_user",
-    password: authType === "admin" ? getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD") : getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
-    database
+    ...authType === "admin" ? getAdminAuth() : {
+      username: "limited_user",
+      password: getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
+    },
+    database,
   });
 }
 
@@ -24,10 +33,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
   // Todo: for performance we should instead poll for this row to become available asynchronously after returning result. Flushed every 7.5 seconds by default
   await client.exec({
     query: "SYSTEM FLUSH LOGS",
-    auth: {
-      username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER"),
-      password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
-    },
+    auth: getAdminAuth(),
   });
   const queryProfile = async () => {
     const profile = await client.query({
@@ -41,10 +47,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
       LIMIT 1
     `,
       query_params: { query_id: queryId },
-      auth: {
-        username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER"),
-        password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
-      },
+      auth: getAdminAuth(),
       format: "JSON",
     });
 
@@ -90,10 +93,7 @@ export const getQueryTimingStatsForProject = async (
       query_params: {
         query_id: queryId,
       },
-      auth: {
-        username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER"),
-        password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
-      },
+      auth: getAdminAuth(),
       format: "JSON",
     });
 
