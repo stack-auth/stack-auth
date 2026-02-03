@@ -465,7 +465,7 @@ describe("send email to all users", () => {
           "delivered_at_millis": <stripped field 'delivered_at_millis'>,
           "has_delivered": true,
           "has_rendered": true,
-          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table><!--7--><!--/$--></body></html>",
+          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></td></tr></tbody></table><!--7--><!--/$--></body></html>",
           "id": "<stripped UUID>",
           "is_high_priority": false,
           "is_paused": false,
@@ -502,7 +502,7 @@ describe("send email to all users", () => {
           "delivered_at_millis": <stripped field 'delivered_at_millis'>,
           "has_delivered": true,
           "has_rendered": true,
-          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table><!--7--><!--/$--></body></html>",
+          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></td></tr></tbody></table><!--7--><!--/$--></body></html>",
           "id": "<stripped UUID>",
           "is_high_priority": false,
           "is_paused": false,
@@ -944,21 +944,29 @@ describe("template variables", () => {
             <meta name="x-apple-disable-message-reformatting" />
         </head>
         
-        <body style="background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem"><!--$-->
-            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em">
+        <body style="background-color:rgb(250,251,251)"><!--$-->
+            <table border="0" width="100%" cellPadding="0" cellSpacing="0" role="presentation" align="center">
                 <tbody>
-                    <tr style="width:100%">
-                        <td>
-                            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em">
+                    <tr>
+                        <td style="background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5">
+                            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem">
                                 <tbody>
                                     <tr style="width:100%">
                                         <td>
-                                            <div data-testid="string">String: <!-- -->hello world</div>
-                                            <div data-testid="number">Number: <!-- -->42</div>
-                                            <div data-testid="boolean">Boolean: <!-- -->true</div>
-                                            <div data-testid="array">Array: <!-- -->apple, banana, cherry</div>
-                                            <div data-testid="object">Object: <!-- -->deeply nested value</div>
-                                            <div data-testid="null">Null: <!-- -->is null</div>
+                                            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em">
+                                                <tbody>
+                                                    <tr style="width:100%">
+                                                        <td>
+                                                            <div data-testid="string">String: <!-- -->hello world</div>
+                                                            <div data-testid="number">Number: <!-- -->42</div>
+                                                            <div data-testid="boolean">Boolean: <!-- -->true</div>
+                                                            <div data-testid="array">Array: <!-- -->apple, banana, cherry</div>
+                                                            <div data-testid="object">Object: <!-- -->deeply nested value</div>
+                                                            <div data-testid="null">Null: <!-- -->is null</div>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
                                         </td>
                                     </tr>
                                 </tbody>

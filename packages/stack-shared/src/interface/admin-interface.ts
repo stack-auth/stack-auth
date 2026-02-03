@@ -794,6 +794,7 @@ export class StackAdminInterface extends StackServerInterface {
     const data = await response.json();
     return {
       result: data.result,
+      query_id: data.query_id,
     };
   }
 
