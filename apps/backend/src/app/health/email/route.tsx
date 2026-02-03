@@ -107,7 +107,7 @@ const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean)
     const POLL_INTERVAL_MS = 5000;
 
     for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
-      await traceSpan(`waiting for verification email - attempt ${attempt}`, async () => {
+      const done = await traceSpan(`waiting for verification email - attempt ${attempt}`, async () => {
         await wait(POLL_INTERVAL_MS);
 
         const listData = useInbucket
@@ -118,9 +118,14 @@ const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean)
         const verificationEmail = emails.find((email) => isExpectedVerificationEmail(email, testEmail));
 
         if (verificationEmail) {
-          return;
+          return true;
         }
+
+        return false;
       });
+      if (done) {
+        return;
+      }
     }
 
     throw new StackAssertionError(`Couldn't find verification email in time limit`, { recipient_email: testEmail, max_poll_attempts: MAX_POLL_ATTEMPTS, poll_interval_ms: POLL_INTERVAL_MS });
