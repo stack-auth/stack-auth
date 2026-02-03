@@ -37,11 +37,10 @@ const CLIENT_CONFIG: Partial<ClientConfig> = {
 };
 
 // Track all projects created with external DB configs for cleanup
-type ProjectContext = {
+export type ProjectContext = {
   projectId: string,
   superSecretAdminKey: string,
 };
-const createdProjects: ProjectContext[] = [];
 
 /**
  * Helper class to manage external test databases
@@ -50,6 +49,7 @@ export class TestDbManager {
   private setupClient: Client | null = null;
   private databases: Map<string, Client> = new Map();
   private databaseNames: Set<string> = new Set();
+  public readonly createdProjects: ProjectContext[] = [];
 
   async init() {
     this.setupClient = new Client({
@@ -84,7 +84,8 @@ export class TestDbManager {
 
   async cleanup() {
     // First, clean up all project configs to stop the sync cron from trying to connect
-    await cleanupAllProjectConfigs();
+    await cleanupProjectConfigs(this.createdProjects);
+    this.createdProjects.length = 0;
 
     // Close all tracked database clients
     const closePromises = Array.from(this.databases.values()).map(async (client) => {
@@ -365,7 +366,11 @@ export async function countUsersInExternalDb(client: Client): Promise<number> {
  * Helper to create a project and update its config with external DB settings.
  * Tracks the project for cleanup later.
  */
-export async function createProjectWithExternalDb(externalDatabases: any, projectOptions?: { display_name?: string, description?: string }) {
+export async function createProjectWithExternalDb(
+  externalDatabases: any,
+  projectOptions?: { display_name?: string, description?: string },
+  options?: { projectTracker?: ProjectContext[] }
+) {
   const project = await Project.createAndSwitch(projectOptions);
   const { projectKeys } = await InternalApiKey.createAndSetProjectKeys(project.adminAccessToken);
   if (!projectKeys.superSecretAdminKey) {
@@ -376,10 +381,12 @@ export async function createProjectWithExternalDb(externalDatabases: any, projec
   });
 
   // Track this project for cleanup
-  createdProjects.push({
-    projectId: project.projectId,
-    superSecretAdminKey: projectKeys.superSecretAdminKey,
-  });
+  if (options?.projectTracker) {
+    options.projectTracker.push({
+      projectId: project.projectId,
+      superSecretAdminKey: projectKeys.superSecretAdminKey,
+    });
+  }
 
   return project;
 }
@@ -400,8 +407,8 @@ export async function cleanupProjectExternalDb() {
  * Note: This function makes direct HTTP calls instead of using backendContext
  * because it runs in afterAll, which is outside the test context.
  */
-export async function cleanupAllProjectConfigs() {
-  for (const project of createdProjects) {
+export async function cleanupProjectConfigs(projects: ProjectContext[]) {
+  for (const project of projects) {
     try {
       // Make direct HTTP call to clear the external DB config
       await niceFetch(new URL('/api/latest/internal/config/override', STACK_BACKEND_BASE_URL), {
@@ -421,7 +428,4 @@ export async function cleanupAllProjectConfigs() {
       console.warn(`Failed to cleanup project ${project.projectId}:`, err);
     }
   }
-
-  // Clear the tracked projects
-  createdProjects.length = 0;
 }
