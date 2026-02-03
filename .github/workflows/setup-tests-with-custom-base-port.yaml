@@ -49,4 +49,4 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm run test run --reporter=verbose
+      - run: pnpm run test run --reporter=verbose --min-workers=1 --max-workers=1
