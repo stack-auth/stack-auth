@@ -1,6 +1,6 @@
 "use client";
 
-import { ConditionBuilder } from "@/components/rule-builder";
+import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builder";
 import {
   ActionDialog,
   Alert,
@@ -31,7 +31,7 @@ import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIc
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -142,15 +142,19 @@ function RuleEditor({
       const parsed = parseCelToVisualTree(rule.condition);
       if (parsed) return parsed;
     }
+    captureError(`sign-up-rule-editor-initial-condition-parse-error`, new StackAssertionError(`Failed to parse condition for rule ${ruleId}, continuing with empty condition  `, { cause: rule?.condition }));
     const group = createEmptyGroup('and');
     group.children = [createEmptyCondition()];
     return group;
-  }, [rule?.condition]);
+  }, [rule?.condition, ruleId]);
 
   const [conditionTree, setConditionTree] = useState<RuleNode>(initialConditionTree);
 
+  // Validate the condition tree
+  const isTreeValid = isConditionTreeValid(conditionTree);
+
   const handleSave = async () => {
-    if (!displayName.trim()) return;
+    if (!displayName.trim() || !isTreeValid) return;
 
     setIsSaving(true);
     try {
@@ -235,7 +239,7 @@ function RuleEditor({
           <div className="flex items-center gap-2 pt-2">
             <Button
               onClick={handleSave}
-              disabled={!displayName.trim() || isSaving}
+              disabled={!displayName.trim() || !isTreeValid || isSaving}
               size="sm"
             >
               <CheckIcon className="h-4 w-4 mr-1.5" />

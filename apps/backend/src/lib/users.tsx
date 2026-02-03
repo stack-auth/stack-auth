@@ -25,7 +25,7 @@ export type SignUpRuleOptions = {
  * - Passkey signup
  * - Anonymous user conversion
  *
- * Do NOT use this for creating anonymous users (use createOrUpgradeAnonymousUser directly).
+ * Do NOT use this for creating anonymous users (use createOrUpgradeAnonymousUserWithoutRules directly).
  *
  * @param tenancy - The tenancy context
  * @param currentUser - Current user (if any, for anonymous upgrade)

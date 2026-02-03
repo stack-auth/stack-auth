@@ -1,1 +1,1 @@
-export { ConditionBuilder } from './condition-builder';
+export { ConditionBuilder, isConditionTreeValid } from './condition-builder';

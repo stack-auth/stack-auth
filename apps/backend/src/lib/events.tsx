@@ -136,7 +136,6 @@ const SignUpRuleTriggerEventType = {
     branchId: yupString().defined(),
     ruleId: yupString().defined(),
     action: yupString().oneOf(['allow', 'reject', 'restrict', 'log']).defined(),
-    userId: yupString().uuid().nullable().defined(),
     email: yupString().nullable().defined(),
     authMethod: yupString().oneOf(['password', 'otp', 'oauth', 'passkey']).nullable().defined(),
     oauthProvider: yupString().nullable().defined(),

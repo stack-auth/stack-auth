@@ -18,6 +18,7 @@ import {
   AvatarFallback,
   AvatarImage,
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,7 +41,6 @@ import {
   TableRow,
   Textarea,
   Typography,
-  cn,
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
@@ -50,9 +50,8 @@ import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon,
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -307,36 +306,35 @@ function RestrictionDialog({
     onOpenChange(newOpen);
   };
 
-  const handleSaveAndRestrict = () => {
+  const handleSaveAndRestrict = async () => {
+    if (!privateDetails.trim()) {
+      alert('Please enter the private details for the restriction.');
+      return;
+    }
+
     setIsSaving(true);
-    runAsynchronouslyWithAlert(async () => {
-      try {
-        await user.update({
-          restrictedByAdmin: true,
-          restrictedByAdminReason: publicReason.trim() || null,
-          restrictedByAdminPrivateDetails: privateDetails.trim() || null,
-        } as any);
-        onOpenChange(false);
-      } finally {
-        setIsSaving(false);
-      }
-    });
+    try {
+      await user.update({ restrictedByAdmin: true, restrictedByAdminReason: publicReason.trim() || null, restrictedByAdminPrivateDetails: privateDetails.trim() || null } as any);
+      onOpenChange(false);
+    } catch (error) {
+      captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleRemoveRestriction = () => {
+  const handleRemoveRestriction = async () => {
     setIsSaving(true);
-    runAsynchronouslyWithAlert(async () => {
-      try {
-        await user.update({
-          restrictedByAdmin: false,
-          restrictedByAdminReason: null,
-          restrictedByAdminPrivateDetails: null,
-        } as any);
-        onOpenChange(false);
-      } finally {
-        setIsSaving(false);
-      }
-    });
+    try {
+      await user.update({
+        restrictedByAdmin: false,
+        restrictedByAdminReason: null,
+        restrictedByAdminPrivateDetails: null,
+      } as any);
+      onOpenChange(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -364,6 +362,7 @@ function RestrictionDialog({
               value={privateDetails}
               onChange={(e) => setPrivateDetails(e.target.value)}
               placeholder="Internal notes, e.g., which sign-up rule triggered"
+              required
               className="min-h-[80px]"
               disabled={isSaving}
             />
@@ -388,6 +387,7 @@ function RestrictionDialog({
             Cancel
           </Button>
           <Button
+
             onClick={handleSaveAndRestrict}
             disabled={isSaving}
           >

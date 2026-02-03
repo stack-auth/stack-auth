@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, cn } from "@/components/ui";
+import { Button, cn, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
 import {
   type ConditionField,
   type ConditionNode,
@@ -10,9 +10,48 @@ import {
   type GroupNode,
   type RuleNode,
 } from "@/lib/cel-visual-parser";
-import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import React from "react";
+
+/**
+ * Validates whether a string is a valid regular expression.
+ * Returns null if valid, or an error message if invalid.
+ */
+function validateRegex(pattern: string): string | null {
+  if (!pattern.trim()) {
+    return "Regex pattern cannot be empty";
+  }
+  try {
+    new RegExp(pattern);
+    return null;
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      return e.message;
+    }
+    return "Invalid regex pattern";
+  }
+}
+
+/**
+ * Recursively checks if a RuleNode tree has any validation errors.
+ * Returns true if the tree is valid, false if there are errors.
+ */
+export function isConditionTreeValid(node: RuleNode): boolean {
+  if (node.type === 'condition') {
+    // Check regex validation
+    if (node.operator === 'matches') {
+      const error = validateRegex(String(node.value));
+      if (error !== null) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Group node - check all children
+  return node.children.every(child => isConditionTreeValid(child));
+}
 
 // Field options with labels
 const FIELD_OPTIONS: { value: ConditionField, label: string }[] = [
@@ -61,6 +100,11 @@ function ConditionRow({
 }) {
   const availableOperators = getOperatorsForField(condition.field);
   const predefinedValues = PREDEFINED_VALUES[condition.field];
+
+  // Validate regex when operator is 'matches'
+  const regexError = condition.operator === 'matches'
+    ? validateRegex(String(condition.value))
+    : null;
 
   const handleFieldChange = (field: ConditionField) => {
     const newOperators = getOperatorsForField(field);
@@ -135,13 +179,34 @@ function ConditionRow({
           ))}
         </select>
       ) : (
-        <input
-          type="text"
-          value={String(condition.value)}
-          onChange={(e) => handleValueChange(e.target.value)}
-          placeholder="Enter value..."
-          className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md flex-1"
-        />
+        <div className="flex-1 flex items-center gap-1">
+          <input
+            type="text"
+            value={String(condition.value)}
+            onChange={(e) => handleValueChange(e.target.value)}
+            placeholder={condition.operator === 'matches' ? "Enter regex pattern..." : "Enter value..."}
+            className={cn(
+              "h-8 px-2 text-sm bg-background/60 border rounded-md flex-1",
+              regexError
+                ? "border-destructive ring-1 ring-destructive/30"
+                : "border-border/50"
+            )}
+          />
+          {regexError && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-destructive flex-shrink-0">
+                    <WarningCircleIcon className="h-4 w-4" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[300px]">
+                  <p className="text-xs">{regexError}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       )}
 
       {/* Remove button */}

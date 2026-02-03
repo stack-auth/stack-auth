@@ -92,7 +92,8 @@ type OnboardingConfig = {
 
 /**
  * Computes the restricted status and reason for a user based on their data and config.
- * A user is "restricted" if they've signed up but haven't completed onboarding requirements.
+ * A user can be "restricted" for various reasons, for example if they've signed up but haven't completed onboarding
+ * requirements, or they've been restricted by an administrator via sign-up rules or manual admin action.
  *
  * The config parameter accepts any object with an optional `onboarding.requireEmailVerification` property.
  * This allows passing various config types (EnvironmentRenderedConfig, CompleteConfig, etc.) without type errors.
@@ -497,9 +498,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const includeAnonymous = query.include_anonymous === "true";
     const includeRestricted = query.include_restricted === "true" || includeAnonymous; // include_anonymous also includes restricted
 
-    // Compute whether we need to filter out restricted users based on email verification
     // TODO: Instead of hardcoding this, we should use computeRestrictedStatus
     const shouldFilterRestrictedByEmail = !includeRestricted && auth.tenancy.config.onboarding.requireEmailVerification;
+    const shouldFilterRestrictedByAdmin = !includeRestricted;
 
     const where = {
       tenancyId: auth.tenancy.id,
@@ -524,6 +525,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             isVerified: true,
           },
         },
+      } : {},
+      ...shouldFilterRestrictedByAdmin ? {
+        restrictedByAdmin: false,
       } : {},
       ...query.query ? {
         OR: [

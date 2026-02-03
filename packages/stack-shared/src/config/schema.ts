@@ -588,7 +588,6 @@ const organizationConfigDefaults = {
       condition: undefined,
       action: {
         type: 'allow',
-        metadata: undefined,
         message: undefined,
       },
     }),

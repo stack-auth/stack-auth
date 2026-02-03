@@ -15,7 +15,6 @@ async function logRuleTrigger(
   ruleId: string,
   context: SignUpRuleContext,
   action: SignUpRuleAction,
-  userId?: string
 ): Promise<void> {
   try {
     await logEvent([SystemEventTypes.SignUpRuleTrigger], {
@@ -23,7 +22,6 @@ async function logRuleTrigger(
       branchId: tenancy.branchId,
       ruleId,
       action: action.type,
-      userId: userId ?? null,
       email: context.email,
       authMethod: context.authMethod,
       oauthProvider: context.oauthProvider,
