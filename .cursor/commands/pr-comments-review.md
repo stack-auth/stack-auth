@@ -1,0 +1,1 @@
+Please review the PR comments with `gh pr status` and fix & resolve those issues that are valid and relevant. Leave those comments that are mostly bullshit unresolved. Report the result to me in detail. Do NOT automatically commit or stage the changes back to the PR!

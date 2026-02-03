@@ -1,13 +1,13 @@
 "use client";
 
+import { Link } from "@/components/link";
 import { Alert, Button, Skeleton, Typography } from "@/components/ui";
 import {
   Dialog,
   DialogBody,
   DialogContent,
-  DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,8 +30,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import {
+  isDateValue,
+  isJsonValue,
+  JsonValue,
+  parseClickHouseDate,
+  RowData,
+} from "../shared";
 
-// Context for date display preference
+// Context for date display preference (specific to tables page for toggle feature)
 const DateDisplayContext = createContext<{ relative: boolean }>({ relative: true });
 
 // Available tables in the analytics database
@@ -45,32 +52,11 @@ const AVAILABLE_TABLES = new Map([
 ]);
 
 type TableId = "events";
-type RowData = Record<string, unknown>;
 type SortDir = "ASC" | "DESC";
 
 const PAGE_SIZE = 50;
 
-// Detect if a value is a date string
-function isDateValue(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  return /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}:\d{2})?/.test(value);
-}
-
-// Detect if a value is JSON
-function isJsonValue(value: unknown): boolean {
-  return typeof value === "object" && value !== null;
-}
-
-// Parse ClickHouse date string as UTC
-function parseClickHouseDate(value: string): Date {
-  // ClickHouse dates are in UTC but formatted without timezone indicator
-  // e.g., "2026-01-29 02:08:20.970" - need to treat as UTC
-  // Replace space with T and append Z to parse as UTC
-  const normalized = value.replace(" ", "T") + (value.includes("Z") || value.includes("+") ? "" : "Z");
-  return new Date(normalized);
-}
-
-// Component for displaying dates with toggle support
+// Component for displaying dates with toggle support (specific to tables page)
 function DateValue({ value }: { value: string }) {
   const { relative } = useContext(DateDisplayContext);
   const date = parseClickHouseDate(value);
@@ -85,24 +71,6 @@ function DateValue({ value }: { value: string }) {
   }
 
   return <span>{date.toLocaleString()}</span>;
-}
-
-// Component for displaying JSON values
-function JsonValue({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
-  const formatted = JSON.stringify(value, null, 2);
-  const preview = JSON.stringify(value);
-
-  if (truncate && preview.length > 60) {
-    return (
-      <SimpleTooltip tooltip={<pre className="text-xs max-w-md overflow-auto max-h-64">{formatted}</pre>}>
-        <span className="cursor-help text-muted-foreground">
-          {preview.slice(0, 57)}...
-        </span>
-      </SimpleTooltip>
-    );
-  }
-
-  return <span className="text-muted-foreground">{preview}</span>;
 }
 
 // Format a cell value for display
@@ -620,7 +588,6 @@ function TableContent({ tableId }: { tableId: TableId }) {
 
 export default function PageClient() {
   const [selectedTable, setSelectedTable] = useState<TableId | null>("events");
-  const [queryDialogOpen, setQueryDialogOpen] = useState(false);
 
   return (
     <AppEnabledGuard appId="analytics">
@@ -648,13 +615,13 @@ export default function PageClient() {
               </div>
             </div>
             <div className="py-4 px-4">
-              <button
-                onClick={() => setQueryDialogOpen(true)}
+              <Link
+                href="./queries"
                 className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
               >
                 <SparkleIcon className="h-4 w-4" />
-                Query
-              </button>
+                Queries
+              </Link>
             </div>
           </div>
 
@@ -669,23 +636,6 @@ export default function PageClient() {
             )}
           </div>
         </div>
-
-        {/* Query moved dialog */}
-        <Dialog open={queryDialogOpen} onOpenChange={setQueryDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Analytics Queries have moved to the Control Center</DialogTitle>
-            </DialogHeader>
-            <DialogBody>
-              <Typography variant="secondary">
-                You can now do analytics queries directly from the Control Center. To open the Control Center, press <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">⌘</kbd> + <kbd className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">K</kbd>
-              </Typography>
-            </DialogBody>
-            <DialogFooter>
-              <Button onClick={() => setQueryDialogOpen(false)}>OK</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </PageLayout>
     </AppEnabledGuard>
   );
