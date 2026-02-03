@@ -175,27 +175,16 @@ jobs:
             sleep 2
           done
 
-      - name: Run tests (excluding external DB sync)
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} --exclude "apps/e2e/tests/backend/endpoints/api/v1/external-db-sync"
+      - name: Run tests
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
-      - name: Run external DB sync tests (single worker)
-        run: pnpm test run --min-workers=1 --max-workers=1 apps/e2e/tests/backend/endpoints/api/v1/external-db-sync
-
-      - name: Run tests again (excluding external DB sync, attempt 1)
+      - name: Run tests again (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} --exclude "apps/e2e/tests/backend/endpoints/api/v1/external-db-sync"
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
-      - name: Run external DB sync tests again (single worker, attempt 1)
+      - name: Run tests again (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run --min-workers=1 --max-workers=1 apps/e2e/tests/backend/endpoints/api/v1/external-db-sync
-
-      - name: Run tests again (excluding external DB sync, attempt 2)
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} --exclude "apps/e2e/tests/backend/endpoints/api/v1/external-db-sync"
-
-      - name: Run external DB sync tests again (single worker, attempt 2)
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run --min-workers=1 --max-workers=1 apps/e2e/tests/backend/endpoints/api/v1/external-db-sync
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
