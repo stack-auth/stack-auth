@@ -49,4 +49,8 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm run test run --reporter=verbose
+      - name: Run tests (excluding external DB sync)
+        run: pnpm run test run --reporter=verbose --exclude "**/external-db-sync*.test.ts"
+
+      - name: Run external DB sync tests (single worker)
+        run: pnpm run test run --reporter=verbose --min-workers=1 --max-workers=1 **/external-db-sync*.test.ts

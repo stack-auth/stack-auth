@@ -175,16 +175,27 @@ jobs:
             sleep 2
           done
 
-      - name: Run tests
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+      - name: Run tests (excluding external DB sync)
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} --exclude "**/external-db-sync*.test.ts"
 
-      - name: Run tests again, to make sure they are stable (attempt 1)
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+      - name: Run external DB sync tests (single worker)
+        run: pnpm test run --min-workers=1 --max-workers=1 **/external-db-sync*.test.ts
 
-      - name: Run tests again, to make sure they are stable (attempt 2)
+      - name: Run tests again (excluding external DB sync, attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} --exclude "**/external-db-sync*.test.ts"
+
+      - name: Run external DB sync tests again (single worker, attempt 1)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        run: pnpm test run --min-workers=1 --max-workers=1 **/external-db-sync*.test.ts
+
+      - name: Run tests again (excluding external DB sync, attempt 2)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} --exclude "**/external-db-sync*.test.ts"
+
+      - name: Run external DB sync tests again (single worker, attempt 2)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        run: pnpm test run --min-workers=1 --max-workers=1 **/external-db-sync*.test.ts
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail

@@ -8,3 +8,12 @@ A: Use the shared `TextAreaField` component's `helperText` prop in `apps/dashboa
 
 Q: Why did `pnpm typecheck` fail after deleting a Next.js route?
 A: The generated `.next/types/validator.ts` can keep stale imports for removed routes. Deleting that file (or regenerating Next build output) clears the outdated references so `pnpm typecheck` succeeds again.
+
+Q: Why can external DB sync tests time out in dev-focused GitHub workflows?
+A: The first calls to `/api/latest/internal/external-db-sync/sequencer` and `/poller` can be slow in dev mode and hit Undici's headers timeout; prewarming those endpoints with the cron secret, retrying header-timeout failures in the test helper, or running tests single-worker are viable mitigations.
+
+Q: How can we serialize only the external DB sync Vitest files while keeping the rest parallel?
+A: Use `poolMatchGlobs` to route the external DB sync test globs to the `forks` pool and set `poolOptions.forks.{minForks,maxForks}=1` in `apps/e2e/vitest.config.ts`; keep the default threads pool for all other tests.
+
+Q: How can CI keep most tests parallel while isolating external DB sync tests?
+A: Split workflow test runs into two steps: run the full suite with `--exclude "**/external-db-sync*.test.ts"`, then run only external DB sync tests with `--min-workers=1 --max-workers=1`.
