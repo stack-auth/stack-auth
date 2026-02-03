@@ -8,7 +8,7 @@ import {
   POSTGRES_PASSWORD,
   POSTGRES_USER,
   TestDbManager,
-  createProjectWithExternalDb,
+  createProjectWithExternalDb as createProjectWithExternalDbRaw,
   waitForCondition,
   waitForTable,
 } from './external-db-sync-utils';
@@ -16,6 +16,16 @@ import {
 // Run tests sequentially to avoid concurrency issues with shared backend state
 describe.sequential('External DB Sync - High Volume Tests', () => {
   let dbManager: TestDbManager;
+  const createProjectWithExternalDb = (
+    externalDatabases: any,
+    projectOptions?: { display_name?: string, description?: string }
+  ) => {
+    return createProjectWithExternalDbRaw(
+      externalDatabases,
+      projectOptions,
+      { projectTracker: dbManager.createdProjects }
+    );
+  };
 
   beforeAll(async () => {
     dbManager = new TestDbManager();

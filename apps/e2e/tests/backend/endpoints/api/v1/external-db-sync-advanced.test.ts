@@ -9,7 +9,7 @@ import {
   POSTGRES_USER,
   TEST_TIMEOUT,
   TestDbManager,
-  createProjectWithExternalDb,
+  createProjectWithExternalDb as createProjectWithExternalDbRaw,
   verifyNotInExternalDb,
   waitForCondition,
   waitForSyncedData,
@@ -21,6 +21,16 @@ const COMPLEX_SEQUENCE_TIMEOUT = TEST_TIMEOUT * 2 + 30_000;
 
 describe.sequential('External DB Sync - Advanced Tests', () => {
   let dbManager: TestDbManager;
+  const createProjectWithExternalDb = (
+    externalDatabases: any,
+    projectOptions?: { display_name?: string, description?: string }
+  ) => {
+    return createProjectWithExternalDbRaw(
+      externalDatabases,
+      projectOptions,
+      { projectTracker: dbManager.createdProjects }
+    );
+  };
 
   beforeAll(async () => {
     dbManager = new TestDbManager();
