@@ -93,6 +93,10 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
 - Whenever you update an SDK implementation in `sdks/implementations`, make sure to update the specs accordingly in `sdks/specs` such that if you reimplemented the entire SDK from the specs again, you would get the same implementation. (For example, if the specs are not precise enough to describe a change you made, make the specs more precise.)
 - When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
+- When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
+- NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
+- Fail early, fail loud. Fail fast with an error instead of silently continuing.
+- Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible. 
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

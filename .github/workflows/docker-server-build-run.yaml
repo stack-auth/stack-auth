@@ -36,7 +36,7 @@ jobs:
       - name: Run Docker container and check logs
         run: |
           docker run --add-host=host.docker.internal:host-gateway --env-file docker/server/.env.example -p 8101:8101 -p 8102:8102 -d --name stackframe-server server
-          sleep 60
+          sleep 120
           docker logs -t stackframe-server
 
       - name: Check server health

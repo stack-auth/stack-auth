@@ -82,6 +82,7 @@
     "@vercel/sandbox": "^1.2.0",
     "ai": "^4.3.17",
     "bcrypt": "^5.1.1",
+    "cel-js": "^0.8.2",
     "chokidar-cli": "^3.0.0",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",

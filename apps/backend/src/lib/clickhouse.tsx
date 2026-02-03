@@ -2,40 +2,30 @@ import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
-const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
-const clickhouseAdminUser = getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe");
-const clickhouseExternalUser = "limited_user";
-const clickhouseAdminPassword = getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD", "");
-const clickhouseExternalPassword = getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD", "");
-const clickhouseDefaultDatabase = getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default");
-const HAS_CLICKHOUSE = !!clickhouseUrl && !!clickhouseAdminPassword && !!clickhouseExternalPassword;
-
-if (!HAS_CLICKHOUSE) {
-  console.warn("ClickHouse is not configured. Analytics features will not be available.");
-}
-
-export function isClickhouseConfigured() {
-  return HAS_CLICKHOUSE;
+function getAdminAuth() {
+  return {
+    username: getEnvVariable("STACK_CLICKHOUSE_ADMIN_USER", "stackframe"),
+    password: getEnvVariable("STACK_CLICKHOUSE_ADMIN_PASSWORD"),
+  };
 }
 
 export function createClickhouseClient(authType: "admin" | "external", database?: string) {
-  if (!HAS_CLICKHOUSE) {
-    throw new StackAssertionError("ClickHouse is not configured");
-  }
   return createClient({
-    url: clickhouseUrl,
-    username: authType === "admin" ? clickhouseAdminUser : clickhouseExternalUser,
-    password: authType === "admin" ? clickhouseAdminPassword : clickhouseExternalPassword,
+    url: getEnvVariable("STACK_CLICKHOUSE_URL"),
+    ...authType === "admin" ? getAdminAuth() : {
+      username: "limited_user",
+      password: getEnvVariable("STACK_CLICKHOUSE_EXTERNAL_PASSWORD"),
+    },
     database,
   });
 }
 
 export function getClickhouseAdminClient() {
-  return createClickhouseClient("admin", clickhouseDefaultDatabase);
+  return createClickhouseClient("admin", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
 }
 
 export function getClickhouseExternalClient() {
-  return createClickhouseClient("external", clickhouseDefaultDatabase);
+  return createClickhouseClient("external", getEnvVariable("STACK_CLICKHOUSE_DATABASE", "default"));
 }
 
 export const getQueryTimingStats = async (client: ClickHouseClient, queryId: string) => {
@@ -43,10 +33,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
   // Todo: for performance we should instead poll for this row to become available asynchronously after returning result. Flushed every 7.5 seconds by default
   await client.exec({
     query: "SYSTEM FLUSH LOGS",
-    auth: {
-      username: clickhouseAdminUser,
-      password: clickhouseAdminPassword,
-    },
+    auth: getAdminAuth(),
   });
   const queryProfile = async () => {
     const profile = await client.query({
@@ -60,10 +47,7 @@ export const getQueryTimingStats = async (client: ClickHouseClient, queryId: str
       LIMIT 1
     `,
       query_params: { query_id: queryId },
-      auth: {
-        username: clickhouseAdminUser,
-        password: clickhouseAdminPassword,
-      },
+      auth: getAdminAuth(),
       format: "JSON",
     });
 
@@ -109,10 +93,7 @@ export const getQueryTimingStatsForProject = async (
       query_params: {
         query_id: queryId,
       },
-      auth: {
-        username: clickhouseAdminUser,
-        password: clickhouseAdminPassword,
-      },
+      auth: getAdminAuth(),
       format: "JSON",
     });
 
