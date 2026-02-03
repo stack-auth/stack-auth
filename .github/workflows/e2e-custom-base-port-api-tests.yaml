@@ -153,21 +153,6 @@ jobs:
       - name: Wait 10 seconds
         run: sleep 10
 
-      - name: Prime external DB sync
-        run: |
-          set -euo pipefail
-          set -a
-          source apps/backend/.env.test.local
-          set +a
-          baseUrl="http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02"
-          for _ in 1 2 3; do
-            curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" \
-              "${baseUrl}/api/latest/internal/external-db-sync/sequencer" >/dev/null
-            curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" \
-              "${baseUrl}/api/latest/internal/external-db-sync/poller" >/dev/null
-            sleep 2
-          done
-
       - name: Run tests
         run: pnpm test run
 
