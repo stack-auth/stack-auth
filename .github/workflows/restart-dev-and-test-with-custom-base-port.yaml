@@ -41,7 +41,7 @@ jobs:
         run: pnpm run restart-dev-environment
 
       - name: Run tests
-        run: pnpm run test run --reporter=verbose --min-workers=1 --max-workers=1
+        run: pnpm run test run --reporter=verbose
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt
