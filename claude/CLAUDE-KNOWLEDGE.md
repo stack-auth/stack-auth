@@ -14,3 +14,6 @@ A: The first calls to `/api/latest/internal/external-db-sync/sequencer` and `/po
 
 Q: How can we serialize only the external DB sync Vitest files while keeping the rest parallel?
 A: Use `poolMatchGlobs` to route the external DB sync test globs to the `forks` pool and set `poolOptions.forks.{minForks,maxForks}=1` in `apps/e2e/vitest.config.ts`; keep the default threads pool for all other tests.
+
+Q: How can CI keep most tests parallel while isolating external DB sync tests?
+A: Split workflow test runs into two steps: run the full suite with `--exclude "**/external-db-sync*.test.ts"`, then run only external DB sync tests with `--min-workers=1 --max-workers=1`.

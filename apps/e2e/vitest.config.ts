@@ -14,19 +14,6 @@ export default mergeConfig(
         "./tests/setup.ts",
       ],
       snapshotSerializers: ["./tests/snapshot-serializer.ts"],
-      poolMatchGlobs: [
-        ['**/tests/backend/endpoints/api/v1/external-db-sync*.test.ts', 'forks'],
-      ],
-      poolOptions: {
-        forks: {
-          maxForks: 1,
-          minForks: 1,
-        },
-        threads: {
-          maxThreads: 8,
-          minThreads: 1,
-        },
-      },
     },
   }),
 )
