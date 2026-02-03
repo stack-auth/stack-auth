@@ -29,7 +29,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { useFromNow } from "@/hooks/use-from-now";
 import { useUpdateConfig } from "@/lib/config-update";
-import { cn } from "@/lib/utils";
 import {
   ArrowClockwiseIcon,
   CheckCircleIcon,
@@ -40,6 +39,7 @@ import {
   WarningCircleIcon
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
@@ -162,6 +162,7 @@ function LoadingState() {
 }
 
 // Save query dialog for the command palette
+// Note: This component requires adminApp to be non-null to avoid conditional hook calls
 function SaveQueryDialog({
   open,
   onOpenChange,
@@ -170,7 +171,7 @@ function SaveQueryDialog({
 }: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
-  adminApp: ReturnType<typeof useAdminAppIfExists>,
+  adminApp: NonNullable<ReturnType<typeof useAdminAppIfExists>>,
   sqlQuery: string,
 }) {
   const updateConfig = useUpdateConfig();
@@ -183,13 +184,13 @@ function SaveQueryDialog({
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
 
-  // Get folders from config
-  const config = adminApp?.useProject().useConfig();
+  // Get folders from config - hooks are now called unconditionally
+  const config = adminApp.useProject().useConfig();
   const folders = useMemo((): FolderWithId[] => {
-    if (!config) return [];
     // Type assertion because config types may not be updated yet
-    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics ?? {};
-    const queryFolders = analyticsConfig.queryFolders ?? {};
+    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics
+    ?? throwErr("Missing analytics config");
+    const queryFolders = analyticsConfig.queryFolders ?? throwErr("Missing queryFolders in analytics config");
 
     return Object.entries(queryFolders)
       .map(([id, folder]) => ({
@@ -207,7 +208,7 @@ function SaveQueryDialog({
   }, [config]);
 
   const handleSave = async () => {
-    if (!adminApp || !displayName.trim() || !sqlQuery.trim() || !selectedFolderId) return;
+    if (!displayName.trim() || !sqlQuery.trim() || !selectedFolderId) return;
     setLoading(true);
     try {
       const queryId = generateSecureRandomString();
@@ -234,7 +235,7 @@ function SaveQueryDialog({
   };
 
   const handleCreateFolder = async () => {
-    if (!adminApp || !newFolderName.trim()) return;
+    if (!newFolderName.trim()) return;
     setCreatingFolder(true);
     try {
       const folderId = generateSecureRandomString();
@@ -259,8 +260,6 @@ function SaveQueryDialog({
   };
 
   const canSave = displayName.trim() && selectedFolderId && sqlQuery.trim();
-
-  if (!adminApp) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -311,7 +310,7 @@ function SaveQueryDialog({
                   />
                   <Button
                     size="sm"
-                    onClick={handleCreateFolder}
+                    onClick={() => runAsynchronouslyWithAlert(handleCreateFolder)}
                     disabled={!newFolderName.trim() || creatingFolder}
                   >
                     {creatingFolder ? "..." : "Create"}
@@ -366,7 +365,7 @@ function SaveQueryDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!canSave || loading}>
+          <Button onClick={() => runAsynchronouslyWithAlert(handleSave)} disabled={!canSave || loading}>
             {loading ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
@@ -444,9 +443,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   };
 
   const handleRetry = useCallback(() => {
-    runQuery().catch(() => {
-      // Error is already handled in runQuery
-    });
+    runAsynchronouslyWithAlert(runQuery);
   }, [runQuery]);
 
   // No admin app available

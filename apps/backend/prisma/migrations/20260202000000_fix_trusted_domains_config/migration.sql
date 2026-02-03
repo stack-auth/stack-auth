@@ -28,16 +28,18 @@ ON /* SCHEMA_NAME_SENTINEL */."EnvironmentConfigOverride" ("temp_trusted_domains
 WHERE "temp_trusted_domains_checked" IS NOT TRUE;
 -- SPLIT_STATEMENT_SENTINEL
 
--- Process rows in batches
+-- Process rows in batches (outside transaction so each batch commits independently)
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
 -- CONDITIONALLY_REPEAT_MIGRATION_SENTINEL
 WITH rows_to_check AS (
   -- Get unchecked rows
   SELECT "projectId", "branchId", "config"
-  FROM "EnvironmentConfigOverride"
+  FROM /* SCHEMA_NAME_SENTINEL */."EnvironmentConfigOverride"
   WHERE "temp_trusted_domains_checked" IS NOT TRUE
-  LIMIT 10000
+  -- Keep batch size small for consistent performance
+  LIMIT 1000
 ),
 matching_keys AS (
   -- Find all keys that look like "domains.trustedDomains.<id>.<property...>"
@@ -79,7 +81,7 @@ parents_to_add AS (
 ),
 updated_with_keys AS (
   -- Update rows that need new parent keys
-  UPDATE "EnvironmentConfigOverride" eco
+  UPDATE /* SCHEMA_NAME_SENTINEL */."EnvironmentConfigOverride" eco
   SET
     "config" = eco."config" || pta.new_keys,
     "updatedAt" = NOW(),
@@ -91,7 +93,7 @@ updated_with_keys AS (
 ),
 marked_as_checked AS (
   -- Mark all checked rows (including ones that didn't need fixing)
-  UPDATE "EnvironmentConfigOverride" eco
+  UPDATE /* SCHEMA_NAME_SENTINEL */."EnvironmentConfigOverride" eco
   SET "temp_trusted_domains_checked" = TRUE
   FROM rows_to_check rtc
   WHERE eco."projectId" = rtc."projectId"
@@ -107,7 +109,10 @@ SELECT COUNT(*) > 0 AS should_repeat_migration
 FROM rows_to_check;
 -- SPLIT_STATEMENT_SENTINEL
 
--- Clean up: drop temporary index
+-- Clean up: drop temporary index (outside transaction since CREATE was also outside)
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
 DROP INDEX IF EXISTS "temp_eco_trusted_domains_checked_idx";
 -- SPLIT_STATEMENT_SENTINEL
 

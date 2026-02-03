@@ -29,6 +29,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -151,7 +152,7 @@ function CreateFolderDialog({
                 placeholder="My Queries"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    runAsynchronouslyWithAlert(handleCreate());
+                    runAsynchronouslyWithAlert(handleCreate);
                   }
                 }}
               />
@@ -162,7 +163,7 @@ function CreateFolderDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={!displayName.trim() || loading}>
+          <Button onClick={() => runAsynchronouslyWithAlert(handleCreate)} disabled={!displayName.trim() || loading}>
             {loading ? "Creating..." : "Create"}
           </Button>
         </DialogFooter>
@@ -264,7 +265,7 @@ function SaveQueryDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!canSave || loading}>
+          <Button onClick={() => runAsynchronouslyWithAlert(handleSave)} disabled={!canSave || loading}>
             {loading ? "Saving..." : "Save"}
           </Button>
         </DialogFooter>
@@ -312,7 +313,7 @@ function DeleteConfirmDialog({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={handleConfirm} disabled={loading}>
+          <Button variant="destructive" onClick={() => runAsynchronouslyWithAlert(handleConfirm)} disabled={loading}>
             {loading ? "Deleting..." : "Delete"}
           </Button>
         </DialogFooter>
@@ -350,9 +351,9 @@ function QueriesContent() {
 
   // Get folders and queries from environment config
   const folders = useMemo((): FolderWithId[] => {
-    // Type assertion because config types may not be updated yet
-    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics ?? {};
-    const queryFolders = analyticsConfig.queryFolders ?? {};
+    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics
+      ?? throwErr("Missing analytics config");
+    const queryFolders = analyticsConfig.queryFolders ?? throwErr("Missing queryFolders in analytics config");
 
     return Object.entries(queryFolders)
       .map(([id, folder]) => ({
@@ -404,7 +405,7 @@ function QueriesContent() {
     setSqlQuery(query.sqlQuery);
     setError(null);
     // Run the query immediately after selecting it
-    runAsynchronouslyWithAlert(runQuery(query.sqlQuery));
+    runAsynchronouslyWithAlert(() => runQuery(query.sqlQuery));
   };
 
   const handleCreateFolder = async (displayName: string) => {
@@ -617,7 +618,7 @@ function QueriesContent() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !loading) {
                     e.preventDefault();
-                    runAsynchronouslyWithAlert(runQuery());
+                    runAsynchronouslyWithAlert(runQuery);
                   }
                 }}
               />
@@ -628,7 +629,7 @@ function QueriesContent() {
             <div className="flex flex-col gap-2">
               <Button
                 size="sm"
-                onClick={() => runAsynchronouslyWithAlert(runQuery())}
+                onClick={() => runAsynchronouslyWithAlert(runQuery)}
                 disabled={!sqlQuery.trim() || loading}
                 className="gap-1.5"
               >
@@ -643,7 +644,7 @@ function QueriesContent() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => runAsynchronouslyWithAlert(handleUpdateCurrentQuery())}
+                  onClick={() => runAsynchronouslyWithAlert(handleUpdateCurrentQuery)}
                   disabled={!sqlQuery.trim()}
                   className="gap-1.5"
                 >

@@ -593,22 +593,8 @@ describe("domain config", () => {
       },
     });
 
-    expect(mixedFormatResponse.status).toBe(200);
-
-    const configResponse3 = await niceBackendFetch("/api/v1/internal/config", {
-      method: "GET",
-      accessType: "admin",
-      headers: adminHeaders(adminAccessToken),
-    });
-    const config3 = JSON.parse(configResponse3.body.config_string);
-    expect(config3.domains.trustedDomains).toMatchInlineSnapshot(`
-      {
-        "3": {
-          "baseUrl": "http://nested.example.com",
-          "handlerPath": "/nested",
-        },
-      }
-    `);
+    expect(mixedFormatResponse.status).toBe(400);
+    expect(mixedFormatResponse.body).toContain("domains.trustedDomains");
   });
 });
 

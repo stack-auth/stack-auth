@@ -336,8 +336,8 @@ describe("analytics config - queries nested in folders", () => {
     });
 
     // Verify folder is deleted (check override since rendered config applies defaults)
-    const override = await getEnvironmentOverride(adminAccessToken);
-    expect(override["analytics.queryFolders.cascade-folder"]).toBeNull();
+    const override = await getConfig(adminAccessToken);
+    expect(override.analytics.queryFolders["cascade-folder"]).toBeUndefined();
   });
 });
 
