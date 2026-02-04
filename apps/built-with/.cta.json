@@ -1,0 +1,16 @@
+{
+  "projectName": "built-with",
+  "mode": "file-router",
+  "typescript": true,
+  "tailwind": false,
+  "packageManager": "pnpm",
+  "git": true,
+  "install": true,
+  "addOnOptions": {},
+  "version": 1,
+  "framework": "react-cra",
+  "chosenAddOns": [
+    "start",
+    "nitro"
+  ]
+}

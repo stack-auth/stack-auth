@@ -1,0 +1,18 @@
+.header {
+  padding: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  background-color: #fff;
+  color: #000;
+  justify-content: space-between;
+}
+
+.nav {
+  display: flex;
+  flex-direction: row;
+}
+
+.nav-item {
+  padding: 0 0.5rem;
+  font-weight: bold;
+}

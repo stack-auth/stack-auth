@@ -1,0 +1,43 @@
+.api-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1rem;
+  color: #fff;
+}
+
+.api-page .content {
+  width: 100%;
+  max-width: 2xl;
+  padding: 8rem;
+  border-radius: 1rem;
+  backdrop-filter: blur(1rem);
+  background-color: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 1rem 0 rgba(0, 0, 0, 0.1);
+  border: 0.5rem solid rgba(0, 0, 0, 0.1);
+}
+
+.api-page .content h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.api-page .content ul {
+  margin-bottom: 1rem;
+  list-style: none;
+  padding: 0;
+}
+
+.api-page .content li {
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(0.5rem);
+  box-shadow: 0 0 0.5rem 0 rgba(255, 255, 255, 0.1);
+}
+
+.api-page .content li span {
+  font-size: 1.2rem;
+}
