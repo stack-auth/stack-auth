@@ -1,5 +1,5 @@
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
-import type { SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { CelEvaluationError, evaluateCelExpression, SignUpRuleContext } from "./cel-evaluator";
@@ -54,17 +54,92 @@ export async function evaluateSignUpRules(
   tenancy: Tenancy,
   context: SignUpRuleContext
 ) {
-  const config = tenancy.config;
+  const result = evaluateSignUpRulesInternal(tenancy, context, { includeEvaluations: false, logTriggers: true });
+  return {
+    restrictedBecauseOfSignUpRuleId: result.outcome.restrictedBecauseOfSignUpRuleId,
+    shouldAllow: result.outcome.shouldAllow,
+  };
+}
 
+export type SignUpRuleEvaluationStatus =
+  | 'matched'
+  | 'not_matched'
+  | 'disabled'
+  | 'missing_condition'
+  | 'error';
+
+export type SignUpRuleEvaluation = {
+  ruleId: string,
+  rule: SignUpRule,
+  status: SignUpRuleEvaluationStatus,
+  error?: string,
+};
+
+export type SignUpRulesTraceResult = {
+  evaluations: SignUpRuleEvaluation[],
+  outcome: {
+    shouldAllow: boolean,
+    decision: 'allow' | 'reject' | 'default-allow' | 'default-reject',
+    decisionRuleId: string | null,
+    restrictedBecauseOfSignUpRuleId: string | null,
+  },
+};
+
+/**
+ * Evaluates all sign-up rules and returns a trace of evaluations.
+ * This is used for admin testing and does not log any analytics events.
+ */
+export function evaluateSignUpRulesWithTrace(
+  tenancy: Tenancy,
+  context: SignUpRuleContext
+): SignUpRulesTraceResult {
+  return evaluateSignUpRulesInternal(tenancy, context, { includeEvaluations: true, logTriggers: false });
+}
+
+function evaluateSignUpRulesInternal(
+  tenancy: Tenancy,
+  context: SignUpRuleContext,
+  options: { includeEvaluations: boolean, logTriggers: boolean }
+): SignUpRulesTraceResult {
+  const config = tenancy.config;
+  const evaluations: SignUpRuleEvaluation[] = [];
   let restrictedBecauseOfSignUpRuleId: string | null = null;
+
+  const recordEvaluation = options.includeEvaluations
+    ? (evaluation: SignUpRuleEvaluation) => {
+      evaluations.push(evaluation);
+    }
+    : () => {};
+
   for (const [ruleId, rule] of typedEntries(config.auth.signUpRules)) {
-    if (!rule.enabled || !rule.condition) continue;
+    const isEnabled = rule.enabled === true;
+    if (!isEnabled) {
+      recordEvaluation({
+        ruleId,
+        rule,
+        status: 'disabled',
+      });
+      continue;
+    }
+    if (!rule.condition) {
+      recordEvaluation({
+        ruleId,
+        rule,
+        status: 'missing_condition',
+      });
+      continue;
+    }
 
     let matches = false;
+    let status: SignUpRuleEvaluationStatus = 'not_matched';
+    let error: string | undefined;
     try {
       matches = evaluateCelExpression(rule.condition, context);
+      status = matches ? 'matched' : 'not_matched';
     } catch (e) {
       if (e instanceof CelEvaluationError) {
+        status = 'error';
+        error = e.message;
         // technically a custom config could cause this, but the dashboard shouldn't allow creating faulty configs
         // so for now, let's capture an error so we know that something is probably wrong on the DB
         captureError(`cel-evaluation-error:${ruleId}`, new StackAssertionError(`CEL evaluation error for rule ${ruleId}`, { cause: e }));
@@ -72,6 +147,13 @@ export async function evaluateSignUpRules(
         throw e;
       }
     }
+
+    recordEvaluation({
+      ruleId,
+      rule,
+      status,
+      ...(error ? { error } : {}),
+    });
 
     if (matches) {
       const actionConfig = rule.action;
@@ -81,8 +163,10 @@ export async function evaluateSignUpRules(
         message: actionConfig.message,
       };
 
-      // log asynchronously
-      runAsynchronouslyAndWaitUntil(logRuleTrigger(tenancy, ruleId, context, action));
+      if (options.logTriggers) {
+        // log asynchronously
+        runAsynchronouslyAndWaitUntil(logRuleTrigger(tenancy, ruleId, context, action));
+      }
 
       // apply the action
       if (actionType === 'restrict') {
@@ -93,15 +177,26 @@ export async function evaluateSignUpRules(
       }
       if (actionType === 'allow' || actionType === 'reject') {
         return {
-          restrictedBecauseOfSignUpRuleId,
-          shouldAllow: actionType === 'allow',
+          evaluations,
+          outcome: {
+            restrictedBecauseOfSignUpRuleId,
+            shouldAllow: actionType === 'allow',
+            decision: actionType,
+            decisionRuleId: ruleId,
+          },
         };
       }
     }
   }
 
+  const shouldAllow = config.auth.signUpRulesDefaultAction !== 'reject';
   return {
-    restrictedBecauseOfSignUpRuleId,
-    shouldAllow: config.auth.signUpRulesDefaultAction !== 'reject',
+    evaluations,
+    outcome: {
+      restrictedBecauseOfSignUpRuleId,
+      shouldAllow,
+      decision: shouldAllow ? 'default-allow' : 'default-reject',
+      decisionRuleId: null,
+    },
   };
 }
