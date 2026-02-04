@@ -161,15 +161,15 @@ jobs:
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test run
+        run: pnpm test run --exclude "**/external-db-sync*.test.ts" # external-db-sync does not support external sot
 
       - name: Run tests again (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run
+        run: pnpm test run --exclude "**/external-db-sync*.test.ts"
 
       - name: Run tests again (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test run
+        run: pnpm test run --exclude "**/external-db-sync*.test.ts"
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
