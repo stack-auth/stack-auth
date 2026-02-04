@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
 import { resolveSchema } from '../../lib/openapi-utils';
 import { useAPIPageContext } from './api-page-wrapper';
-import { Button } from './button';
+import { Button } from '../mdx/button';
 
 type EnhancedAPIPageProps = {
   document: string,

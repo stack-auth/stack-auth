@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-backend",
-  "version": "2.8.60",
+  "version": "2.8.64",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "type": "module",
@@ -25,6 +25,7 @@
     "codegen": "pnpm run with-env pnpm run generate-migration-imports && pnpm run with-env bash -c 'if [ \"$STACK_ACCELERATE_ENABLED\" = \"true\" ]; then pnpm run prisma generate --no-engine; else pnpm run codegen-prisma; fi' && pnpm run codegen-docs && pnpm run codegen-route-info",
     "codegen:watch": "concurrently -n \"prisma,docs,route-info,migration-imports\" -k \"pnpm run codegen-prisma:watch\" \"pnpm run codegen-docs:watch\" \"pnpm run codegen-route-info:watch\" \"pnpm run generate-migration-imports:watch\"",
     "psql-inner": "psql $(echo $STACK_DATABASE_CONNECTION_STRING | sed 's/\\?.*$//')",
+    "clickhouse": "pnpm run with-env clickhouse-client --host localhost --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}37 --user stackframe --password PASSWORD-PLACEHOLDER--9gKyMxJeMx",
     "psql": "pnpm run with-env:dev pnpm run psql-inner",
     "prisma-studio": "pnpm run with-env:dev prisma studio --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}06 --browser none",
     "prisma:dev": "pnpm run with-env:dev prisma",
@@ -41,7 +42,7 @@
     "codegen-docs:watch": "pnpm run with-env tsx watch --exclude '**/node_modules/**' --clear-screen=false scripts/generate-openapi-fumadocs.ts",
     "generate-keys": "pnpm run with-env tsx scripts/generate-keys.ts",
     "db-seed-script": "pnpm run db:seed",
-    "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity.ts",
+    "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity/index.ts",
     "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts"
   },
   "prisma": {
@@ -50,6 +51,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.3.23",
     "@aws-sdk/client-s3": "^3.855.0",
+    "@clickhouse/client": "^1.14.0",
     "@node-oauth/oauth2-server": "^5.1.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.53.0",
@@ -80,13 +82,14 @@
     "@vercel/sandbox": "^1.2.0",
     "ai": "^4.3.17",
     "bcrypt": "^5.1.1",
+    "cel-js": "^0.8.2",
     "chokidar-cli": "^3.0.0",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
     "freestyle-sandboxes": "^0.1.6",
     "jose": "^6.1.3",
     "json-diff": "^1.0.6",
-    "next": "16.1.1",
+    "next": "16.1.5",
     "nodemailer": "^6.9.10",
     "oidc-provider": "^8.5.1",
     "openid-client": "5.6.4",

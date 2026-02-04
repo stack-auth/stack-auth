@@ -1,20 +1,35 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Team, TeamSwitcher } from "../../..";
 import { useUser } from "../../../lib/hooks";
 import { useTranslation } from "../../../lib/translations";
 import { PageLayout } from "../page-layout";
 import { PaymentsPanel } from "./payments-panel";
 
-export function PaymentsPage(props: { mockMode?: boolean }) {
+export function PaymentsPage(props: { mockMode?: boolean, availableTeams?: Team[], allowPersonal?: boolean }) {
   const { t } = useTranslation();
   const user = useUser({ or: props.mockMode ? "return-null" : "redirect" });
-  const teams = user?.useTeams() ?? [];
+  const teams = props.availableTeams ?? user?.useTeams() ?? [];
+  const allowPersonal = props.allowPersonal ?? true;
   const hasTeams = teams.length > 0;
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const customer = selectedTeam ?? user;
-  const customerType = selectedTeam ? "team" : "user";
+  const effectiveSelectedTeam = selectedTeam ?? (!allowPersonal ? (teams[0] ?? null) : null);
+  const customer = effectiveSelectedTeam ?? (allowPersonal ? user : null);
+  const customerType = effectiveSelectedTeam ? "team" : "user";
+
+  useEffect(() => {
+    if (props.mockMode) {
+      return;
+    }
+    if (!allowPersonal && !selectedTeam && teams.length > 0) {
+      setSelectedTeam(teams[0]);
+      return;
+    }
+    if (selectedTeam && !teams.some(team => team.id === selectedTeam.id)) {
+      setSelectedTeam(allowPersonal ? null : (teams[0] ?? null));
+    }
+  }, [allowPersonal, props.mockMode, selectedTeam, teams]);
 
   if (props.mockMode) {
     return (
@@ -35,8 +50,9 @@ export function PaymentsPage(props: { mockMode?: boolean }) {
     <PageLayout>
       {hasTeams ? (
         <TeamSwitcher
-          team={selectedTeam ?? undefined}
-          allowNull
+          team={effectiveSelectedTeam ?? undefined}
+          teams={teams}
+          allowNull={allowPersonal}
           nullLabel={t("Personal")}
           onChange={async (team) => {
             setSelectedTeam(team);

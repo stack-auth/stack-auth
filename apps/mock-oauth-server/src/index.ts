@@ -46,8 +46,46 @@ const app = express();
 // Simple in-memory storage for revoked tokens
 const revokedTokens = new Set<string>();
 
+// Storage for simulating specific error responses on token refresh
+// Maps refresh token -> error type to return on next refresh attempt
+const simulatedRefreshErrors = new Map<string, { error: string, error_description: string }>();
+
+// Storage for simulating errors by grant ID (since we can't easily get refresh tokens)
+const simulatedRefreshErrorsByGrant = new Map<string, { error: string, error_description: string }>();
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json()); // Add JSON parsing middleware
+
+// Middleware to intercept token refresh requests and return simulated errors
+app.post('/token', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (req.body.grant_type === 'refresh_token' && req.body.refresh_token) {
+    const refreshTokenValue = req.body.refresh_token;
+
+    // Check by refresh token directly
+    const simulatedError = simulatedRefreshErrors.get(refreshTokenValue);
+    if (simulatedError) {
+      simulatedRefreshErrors.delete(refreshTokenValue);
+      res.status(400).json(simulatedError);
+      return;
+    }
+
+    // Check by grant ID
+    try {
+      const refreshToken = await oidc.RefreshToken.find(refreshTokenValue);
+      if (refreshToken?.grantId) {
+        const errorByGrant = simulatedRefreshErrorsByGrant.get(refreshToken.grantId);
+        if (errorByGrant) {
+          simulatedRefreshErrorsByGrant.delete(refreshToken.grantId);
+          res.status(400).json(errorByGrant);
+          return;
+        }
+      }
+    } catch {
+      // Token might not be found, continue to oidc-provider
+    }
+  }
+  next();
+});
 
 const loginTemplateSource = `
 <!DOCTYPE html>
@@ -219,6 +257,77 @@ app.post('/interaction/:uid/login', setNoCache, async (req: express.Request, res
     await oidc.interactionFinished(req, res, result, { mergeWithLastSubmission: false });
   } catch (err) {
     next(err);
+  }
+});
+
+// Endpoint to simulate specific OAuth errors on next refresh attempt
+// This is useful for testing how the backend handles various OAuth error scenarios
+app.post('/simulate-refresh-error', async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const { token, error_type } = req.body;
+
+    if (!token) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Missing token parameter'
+      });
+      return;
+    }
+
+    // Find the access token to get the associated refresh token
+    const accessToken = await oidc.AccessToken.find(token);
+    if (!accessToken) {
+      res.status(400).json({
+        error: 'invalid_token',
+        error_description: 'Access token not found'
+      });
+      return;
+    }
+
+    // Get the refresh token associated with this grant
+    const grantId = accessToken.grantId;
+    if (!grantId) {
+      res.status(400).json({
+        error: 'invalid_token',
+        error_description: 'No grant associated with this token'
+      });
+      return;
+    }
+
+    // Find refresh tokens for this grant
+    // Note: oidc-provider stores refresh tokens with the grantId, but we need to find them
+    // For simplicity, we'll store the error by grantId and check it in the middleware
+    const errorResponses: Record<string, { error: string, error_description: string } | undefined> = {
+      'invalid_grant': { error: 'invalid_grant', error_description: 'The refresh token is invalid or expired' },
+      'access_denied': { error: 'access_denied', error_description: 'The resource owner denied the request' },
+      'consent_required': { error: 'consent_required', error_description: 'User consent is required' },
+      'invalid_token': { error: 'invalid_token', error_description: 'The token is invalid' },
+      'unauthorized_client': { error: 'unauthorized_client', error_description: 'The client is not authorized' },
+    };
+
+    const errorResponse = errorResponses[error_type];
+    if (!errorResponse) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: `Invalid error_type. Valid types: ${Object.keys(errorResponses).join(', ')}`
+      });
+      return;
+    }
+
+    // We need to find the refresh token. Since oidc-provider doesn't expose a simple way to do this,
+    // we'll store by grantId and update the middleware to check grantIds
+    // For now, let's use a workaround: store by grantId
+    simulatedRefreshErrorsByGrant.set(grantId, errorResponse);
+
+    res.json({
+      success: true,
+      message: `Next refresh attempt for this token will return ${error_type} error`
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'server_error',
+      error_description: 'Failed to set up simulated error'
+    });
   }
 });
 
