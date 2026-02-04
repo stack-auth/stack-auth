@@ -4,7 +4,6 @@ import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as 
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { oauthResponseToSmartResponse } from "../oauth-helpers";
 
 export const POST = createSmartRouteHandler({
@@ -16,8 +15,6 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     body: yupObject({
       grant_type: yupString().oneOf(["authorization_code", "refresh_token"]).defined(),
-      client_id: yupString().optional(),
-      client_secret: yupString().optional(),
     }).unknown().defined(),
   }).defined(),
   response: yupObject({
@@ -27,24 +24,13 @@ export const POST = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler(req, fullReq) {
-    const clientId = req.body.client_id;
-    const clientSecretRaw = req.body.client_secret;
-    const clientSecret = !clientSecretRaw || clientSecretRaw === publicOAuthClientSecretSentinel
-      ? undefined
-      : clientSecretRaw;
-
-    const body = { ...fullReq.body as any };
-    if (clientId && !clientSecret) {
-      throw new KnownErrors.InvalidOAuthClientIdOrSecret(clientId);
-    }
-
     const oauthRequest = new OAuthRequest({
       headers: {
         ...fullReq.headers,
         "content-type": "application/x-www-form-urlencoded",
       },
       method: fullReq.method,
-      body,
+      body: fullReq.body,
       query: fullReq.query,
     });
 

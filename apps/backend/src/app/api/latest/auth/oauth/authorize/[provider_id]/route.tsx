@@ -8,7 +8,6 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
@@ -40,7 +39,7 @@ export const GET = createSmartRouteHandler({
 
       // oauth parameters
       client_id: yupString().defined(),
-      client_secret: yupString().optional(),
+      client_secret: yupString().defined(),
       redirect_uri: urlSchema.defined(),
       scope: yupString().defined(),
       state: yupString().defined(),
@@ -61,13 +60,7 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
     }
 
-    const clientSecretRaw = query.client_secret ?? publicOAuthClientSecretSentinel;
-    const clientSecret = !clientSecretRaw || clientSecretRaw === publicOAuthClientSecretSentinel
-      ? undefined
-      : clientSecretRaw;
-    if (!clientSecret) {
-      throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
-    } else if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret }))) {
+    if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret }))) {
       throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
     }
 
@@ -118,7 +111,7 @@ export const GET = createSmartRouteHandler({
         innerState,
         info: {
           tenancyId: tenancy.id,
-          publishableClientKey: clientSecretRaw,
+          publishableClientKey: query.client_secret,
           redirectUri: query.redirect_uri.split('#')[0], // remove hash
           scope: query.scope,
           state: query.state,

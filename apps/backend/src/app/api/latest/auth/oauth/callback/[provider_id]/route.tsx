@@ -15,8 +15,6 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
-const publicOAuthClientSecretSentinel = "__stack_public_client__";
-
 /**
  * Create a project user OAuth account with the provided data.
  * Used for the "link" flow which doesn't go through the standard sign-up path.
@@ -169,27 +167,21 @@ const handler = createSmartRouteHandler({
         }
       }
 
-      const oauthClientSecret = outerInfo.publishableClientKey ?? publicOAuthClientSecretSentinel;
-      const oauthQuery = {
-        client_id: `${tenancy.project.id}#${tenancy.branchId}`,
-        client_secret: oauthClientSecret,
-        redirect_uri: outerInfo.redirectUri,
-        state: outerInfo.state,
-        scope: outerInfo.scope,
-        grant_type: outerInfo.grantType,
-        code_challenge: outerInfo.codeChallenge,
-        code_challenge_method: outerInfo.codeChallengeMethod,
-        response_type: outerInfo.responseType,
-      };
-
       const oauthRequest = new OAuthRequest({
-        headers: {
-          authorization: `Basic ${Buffer.from(`${oauthQuery.client_id}:${oauthClientSecret}`).toString("base64")}`,
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        body: oauthQuery,
-        method: "POST",
-        query: oauthQuery,
+        headers: {},
+        body: {},
+        method: "GET",
+        query: {
+          client_id: `${tenancy.project.id}#${tenancy.branchId}`,
+          client_secret: outerInfo.publishableClientKey,
+          redirect_uri: outerInfo.redirectUri,
+          state: outerInfo.state,
+          scope: outerInfo.scope,
+          grant_type: outerInfo.grantType,
+          code_challenge: outerInfo.codeChallenge,
+          code_challenge_method: outerInfo.codeChallengeMethod,
+          response_type: outerInfo.responseType,
+        }
       });
 
       const storeTokens = async (oauthAccountId: string) => {

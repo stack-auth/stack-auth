@@ -2,7 +2,6 @@ export const standardProviders = ["google", "github", "microsoft", "spotify", "f
 // No more shared providers should be added except for special cases
 export const sharedProviders = ["google", "github", "microsoft", "spotify"] as const;
 export const allProviders = standardProviders;
-export const publicOAuthClientSecretSentinel = "__stack_public_client__";
 
 export type ProviderType = typeof allProviders[number];
 export type StandardProviderType = typeof standardProviders[number];

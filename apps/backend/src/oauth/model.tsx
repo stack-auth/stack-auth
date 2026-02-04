@@ -9,7 +9,6 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
@@ -48,11 +47,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       return false;
     }
 
-    const normalizedClientSecret = (!clientSecret || clientSecret === publicOAuthClientSecretSentinel)
-      ? undefined
-      : clientSecret;
-    if (normalizedClientSecret) {
-      const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: normalizedClientSecret });
+    if (clientSecret) {
+      const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
       if (!keySet) {
         return false;
       }
