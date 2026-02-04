@@ -14,6 +14,7 @@ import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dis
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
+import { traceSpan } from "@/utils/telemetry";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
@@ -90,148 +91,205 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(401, "Unauthorized");
     }
 
-    const startTime = performance.now();
-    const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
-    const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
-    const pollIntervalMs = 50;
-    const staleClaimIntervalMinutes = 5;
-    const pollerClaimLimit = getPollerClaimLimit();
+    return await traceSpan("external-db-sync.poller", async (span) => {
+      const startTime = performance.now();
+      const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
+      const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
+      const pollIntervalMs = 50;
+      const staleClaimIntervalMinutes = 5;
+      const pollerClaimLimit = getPollerClaimLimit();
 
-    let totalRequestsProcessed = 0;
-    async function claimPendingRequests(): Promise<OutgoingRequest[]> {
-      return await globalPrismaClient.$queryRaw<OutgoingRequest[]>`
-          UPDATE "OutgoingRequest"
-          SET "startedFulfillingAt" = NOW()
-          WHERE "id" IN (
-            SELECT id
-            FROM "OutgoingRequest"
-            WHERE "startedFulfillingAt" IS NULL
-            ORDER BY "createdAt"
-            LIMIT ${pollerClaimLimit}
-            FOR UPDATE SKIP LOCKED
-          )
-          RETURNING *;
-        `;
-    }
+      span.setAttribute("stack.external-db-sync.max-duration-ms", maxDurationMs);
+      span.setAttribute("stack.external-db-sync.stop-when-idle", stopWhenIdle);
+      span.setAttribute("stack.external-db-sync.poll-interval-ms", pollIntervalMs);
+      span.setAttribute("stack.external-db-sync.poller-claim-limit", pollerClaimLimit);
+      span.setAttribute("stack.external-db-sync.direct-sync", directSyncEnabled());
+      span.setAttribute("stack.external-db-sync.stale-claim-minutes", staleClaimIntervalMinutes);
 
-    async function deleteOutgoingRequest(id: string): Promise<void> {
-      await retryTransaction(globalPrismaClient, async (tx) => {
-        await tx.outgoingRequest.delete({ where: { id } });
-      });
-    }
+      let totalRequestsProcessed = 0;
+      let iterationCount = 0;
 
-    async function deleteOutgoingRequests(ids: string[]): Promise<void> {
-      if (ids.length === 0) return;
-      await retryTransaction(globalPrismaClient, async (tx) => {
-        await tx.outgoingRequest.deleteMany({ where: { id: { in: ids } } });
-      });
-    }
-    async function processRequest(request: OutgoingRequest): Promise<void> {
-      // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
-      const options = request.qstashOptions as any;
-      const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+      async function claimPendingRequests(): Promise<OutgoingRequest[]> {
+        return await traceSpan("external-db-sync.poller.claimPendingRequests", async (claimSpan) => {
+          const requests = await globalPrismaClient.$queryRaw<OutgoingRequest[]>`
+              UPDATE "OutgoingRequest"
+              SET "startedFulfillingAt" = NOW()
+              WHERE "id" IN (
+                SELECT id
+                FROM "OutgoingRequest"
+                WHERE "startedFulfillingAt" IS NULL
+                ORDER BY "createdAt"
+                LIMIT ${pollerClaimLimit}
+                FOR UPDATE SKIP LOCKED
+              )
+              RETURNING *;
+            `;
+          claimSpan.setAttribute("stack.external-db-sync.claimed-count", requests.length);
+          return requests;
+        });
+      }
 
-      let fullUrl = new URL(options.url, baseUrl).toString();
+      async function deleteOutgoingRequest(id: string): Promise<void> {
+        await retryTransaction(globalPrismaClient, async (tx) => {
+          await tx.outgoingRequest.delete({ where: { id } });
+        });
+      }
 
-      // In dev/test, QStash runs in Docker so "localhost" won't work.
-      // Replace with "host.docker.internal" to reach the host machine.
-      // if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
-      //   const url = new URL(fullUrl);
-      //   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-      //     url.hostname = "host.docker.internal";
-      //     fullUrl = url.toString();
-      //   }
-      // }
+      async function deleteOutgoingRequests(ids: string[]): Promise<void> {
+        if (ids.length === 0) return;
+        await retryTransaction(globalPrismaClient, async (tx) => {
+          await tx.outgoingRequest.deleteMany({ where: { id: { in: ids } } });
+        });
+      }
+      async function processRequest(request: OutgoingRequest): Promise<void> {
+        // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
+        const options = request.qstashOptions as any;
+        const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 
-      await upstash.publishJSON({
-        url: fullUrl,
-        body: options.body,
-        flowControl: options.flowControl,
-      });
-      await deleteOutgoingRequest(request.id);
-    }
+        let fullUrl = new URL(options.url, baseUrl).toString();
 
-    type UpstashRequest = PublishBatchRequest<unknown>;
-
-    function buildUpstashRequest(request: OutgoingRequest): UpstashRequest {
-      // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
-      const options = request.qstashOptions as any;
-      const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
-
-      let fullUrl = new URL(options.url, baseUrl).toString();
-
-      // In dev/test, QStash runs in Docker so "localhost" won't work.
-      // Replace with "host.docker.internal" to reach the host machine.
-      // if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
-      //   const url = new URL(fullUrl);
-      //   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-      //     url.hostname = "host.docker.internal";
-      //     fullUrl = url.toString();
-      //   }
-      // }
-
-      const flowControl = options.flowControl as UpstashRequest["flowControl"];
-
-      return {
-        url: fullUrl,
-        body: options.body,
-        ...(flowControl ? { flowControl } : {}),
-      };
-    }
-
-    async function processRequests(requests: OutgoingRequest[]): Promise<number> {
-      let processed = 0;
-
-      if (directSyncEnabled()) {
-        for (const request of requests) {
-          try {
-            await processRequest(request);
-            processed++;
-          } catch (error) {
-            captureError("poller-iteration-error", error);
+        // In dev/test, QStash runs in Docker so "localhost" won't work.
+        // Replace with "host.docker.internal" to reach the host machine.
+        if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
+          const url = new URL(fullUrl);
+          if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+            url.hostname = "host.docker.internal";
+            fullUrl = url.toString();
           }
         }
-        return processed;
+
+        await upstash.publishJSON({
+          url: fullUrl,
+          body: options.body,
+          flowControl: options.flowControl,
+        });
+        await deleteOutgoingRequest(request.id);
       }
 
-      if (requests.length === 0) return 0;
+      type UpstashRequest = PublishBatchRequest<unknown>;
 
-      try {
-        const batchPayload = requests.map(buildUpstashRequest);
-        console.log("publishing to QStash batch", { count: batchPayload.length });
-        await upstash.batchJSON(batchPayload);
-        await deleteOutgoingRequests(requests.map((request) => request.id));
-        return requests.length;
-      } catch (error) {
-        captureError("poller-iteration-error", error);
-        return 0;
+      function buildUpstashRequest(request: OutgoingRequest): UpstashRequest {
+        // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
+        const options = request.qstashOptions as any;
+        const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+
+        let fullUrl = new URL(options.url, baseUrl).toString();
+
+        // In dev/test, QStash runs in Docker so "localhost" won't work.
+        // Replace with "host.docker.internal" to reach the host machine.
+        if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
+          const url = new URL(fullUrl);
+          if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+            url.hostname = "host.docker.internal";
+            fullUrl = url.toString();
+          }
+        }
+
+        const flowControl = options.flowControl as UpstashRequest["flowControl"];
+
+        return {
+          url: fullUrl,
+          body: options.body,
+          ...(flowControl ? { flowControl } : {}),
+        };
       }
-    }
 
-    while (performance.now() - startTime < maxDurationMs) {
-      const fusebox = await getExternalDbSyncFusebox();
-      if (!fusebox.pollerEnabled) {
-        break;
+      async function processRequests(requests: OutgoingRequest[]): Promise<number> {
+        return await traceSpan({
+          description: "external-db-sync.poller.processRequests",
+          attributes: {
+            "stack.external-db-sync.pending-count": requests.length,
+            "stack.external-db-sync.direct-sync": directSyncEnabled(),
+          },
+        }, async (processSpan) => {
+          let processed = 0;
+
+          if (directSyncEnabled()) {
+            for (const request of requests) {
+              try {
+                await processRequest(request);
+                processed++;
+              } catch (error) {
+                processSpan.setAttribute("stack.external-db-sync.iteration-error", true);
+                captureError("poller-iteration-error", error);
+              }
+            }
+            processSpan.setAttribute("stack.external-db-sync.processed-count", processed);
+            return processed;
+          }
+
+          if (requests.length === 0) {
+            processSpan.setAttribute("stack.external-db-sync.processed-count", 0);
+            return 0;
+          }
+
+          try {
+            const batchPayload = requests.map(buildUpstashRequest);
+            console.log("publishing to QStash batch", { count: batchPayload.length });
+            await upstash.batchJSON(batchPayload);
+            await deleteOutgoingRequests(requests.map((request) => request.id));
+            processSpan.setAttribute("stack.external-db-sync.processed-count", requests.length);
+            return requests.length;
+          } catch (error) {
+            processSpan.setAttribute("stack.external-db-sync.iteration-error", true);
+            captureError("poller-iteration-error", error);
+            processSpan.setAttribute("stack.external-db-sync.processed-count", 0);
+            return 0;
+          }
+        });
       }
 
-      const pendingRequests = await claimPendingRequests();
+      type PollerIterationResult = {
+        stopReason: "disabled" | "idle" | null,
+        processed: number,
+      };
 
-      if (stopWhenIdle && pendingRequests.length === 0) {
-        break;
+      while (performance.now() - startTime < maxDurationMs) {
+        const iterationResult = await traceSpan<PollerIterationResult>({
+          description: "external-db-sync.poller.iteration",
+          attributes: {
+            "stack.external-db-sync.iteration": iterationCount + 1,
+          },
+        }, async (iterationSpan) => {
+          const fusebox = await getExternalDbSyncFusebox();
+          iterationSpan.setAttribute("stack.external-db-sync.poller-enabled", fusebox.pollerEnabled);
+          if (!fusebox.pollerEnabled) {
+            return { stopReason: "disabled", processed: 0 };
+          }
+
+          const pendingRequests = await claimPendingRequests();
+          iterationSpan.setAttribute("stack.external-db-sync.pending-count", pendingRequests.length);
+
+          if (stopWhenIdle && pendingRequests.length === 0) {
+            return { stopReason: "idle", processed: 0 };
+          }
+
+          const processed = await processRequests(pendingRequests);
+          iterationSpan.setAttribute("stack.external-db-sync.processed-count", processed);
+          return { stopReason: null, processed };
+        });
+
+        if (iterationResult.stopReason) {
+          break;
+        }
+
+        iterationCount++;
+        totalRequestsProcessed += iterationResult.processed;
+
+        await wait(pollIntervalMs);
       }
 
-      totalRequestsProcessed += await processRequests(pendingRequests);
+      span.setAttribute("stack.external-db-sync.requests-processed", totalRequestsProcessed);
+      span.setAttribute("stack.external-db-sync.iterations", iterationCount);
 
-      await wait(pollIntervalMs);
-    }
-
-    return {
-      statusCode: 200,
-      bodyType: "json" as const,
-      body: {
-        ok: true,
-        requests_processed: totalRequestsProcessed,
-      },
-    };
+      return {
+        statusCode: 200,
+        bodyType: "json" as const,
+        body: {
+          ok: true,
+          requests_processed: totalRequestsProcessed,
+        },
+      };
+    });
   },
 });

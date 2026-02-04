@@ -94,7 +94,7 @@ ALTER TABLE "ContactChannel" ADD COLUMN "shouldUpdateSequenceId" BOOLEAN NOT NUL
 ALTER TABLE "DeletedRow" ADD COLUMN "shouldUpdateSequenceId" BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- SPLIT_STATEMENT_SENTINEL
--- Creates partial indexes on (shouldUpdateSequenceId, tenancyId) to quickly find rows that need updates
+-- Creates indexes on (shouldUpdateSequenceId, tenancyId) to quickly find rows that need updates
 -- and support ORDER BY tenancyId for less fragmented updates.
 CREATE INDEX "ProjectUser_shouldUpdateSequenceId_idx" ON "ProjectUser"("shouldUpdateSequenceId", "tenancyId");
 

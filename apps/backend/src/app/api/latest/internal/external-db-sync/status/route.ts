@@ -15,6 +15,7 @@ import { errorToNiceString, StackAssertionError, throwErr } from "@stackframe/st
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Client } from "pg";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { traceSpan } from "@/utils/telemetry";
 
 const STALE_CLAIM_INTERVAL_MINUTES = 5;
 
@@ -718,79 +719,99 @@ export const GET = createSmartRouteHandler({
   }),
   response: responseSchema,
   handler: async ({ auth, query }) => {
-    if (auth.tenancy.project.id !== "internal") {
-      throw new KnownErrors.ExpectedInternalProject();
-    }
-    const tenancyId = auth.tenancy.id;
+    return await traceSpan({
+      description: "external-db-sync.status",
+      attributes: {
+        "stack.external-db-sync.scope": query.scope,
+        "stack.external-db-sync.tenancy-id": auth.tenancy.id,
+      },
+    }, async (span) => {
+      if (auth.tenancy.project.id !== "internal") {
+        throw new KnownErrors.ExpectedInternalProject();
+      }
+      const tenancyId = auth.tenancy.id;
 
-    const shouldIncludeGlobal = query.scope === "all";
-    const currentStats = shouldIncludeGlobal ? await fetchInternalStats(null) : await fetchInternalStats(tenancyId);
-    const globalStats = shouldIncludeGlobal ? currentStats : null;
-    const globalTenanciesCount = shouldIncludeGlobal
-      ? (await globalPrismaClient.$queryRaw<CountRow[]>`
-          SELECT COUNT(*)::bigint AS "total"
-          FROM "Tenancy"
-        `).at(0) ?? throwErr("Tenancy count query returned no rows.")
-      : null;
-    const globalDbSyncCount = shouldIncludeGlobal
-      ? (await globalPrismaClient.$queryRaw<CountRow[]>`
-          SELECT COUNT(*)::bigint AS "total"
-          FROM "EnvironmentConfigOverride"
-          WHERE ("config"->'dbSync'->'externalDatabases') IS NOT NULL
-        `).at(0) ?? throwErr("DB sync config count query returned no rows.")
-      : null;
+      const shouldIncludeGlobal = query.scope === "all";
+      span.setAttribute("stack.external-db-sync.include-global", shouldIncludeGlobal);
 
-    const externalDbStatuses = shouldIncludeGlobal
-      ? []
-      : await Promise.all(
-          Object.entries(
-            auth.tenancy.config.dbSync.externalDatabases as CompleteConfig["dbSync"]["externalDatabases"],
-          ).map(([dbId, dbConfig]) => fetchExternalDatabaseStatus(dbId, dbConfig, currentStats.mappingStatuses)),
-        );
+      const currentStats = await traceSpan({
+        description: "external-db-sync.status.fetchInternalStats",
+        attributes: {
+          "stack.external-db-sync.scope": shouldIncludeGlobal ? "all" : "tenancy",
+        },
+      }, async () => shouldIncludeGlobal ? await fetchInternalStats(null) : await fetchInternalStats(tenancyId));
 
-    const outgoingStats = currentStats.outgoingStatsRow;
+      const globalStats = shouldIncludeGlobal ? currentStats : null;
+      const globalTenanciesCount = shouldIncludeGlobal
+        ? (await globalPrismaClient.$queryRaw<CountRow[]>`
+            SELECT COUNT(*)::bigint AS "total"
+            FROM "Tenancy"
+          `).at(0) ?? throwErr("Tenancy count query returned no rows.")
+        : null;
+      const globalDbSyncCount = shouldIncludeGlobal
+        ? (await globalPrismaClient.$queryRaw<CountRow[]>`
+            SELECT COUNT(*)::bigint AS "total"
+            FROM "EnvironmentConfigOverride"
+            WHERE ("config"->'dbSync'->'externalDatabases') IS NOT NULL
+          `).at(0) ?? throwErr("DB sync config count query returned no rows.")
+        : null;
 
-    return {
-      statusCode: 200 as const,
-      bodyType: "json" as const,
-      body: {
-        ok: true,
-        generated_at_millis: Date.now(),
-        global: shouldIncludeGlobal && globalStats && globalTenanciesCount && globalDbSyncCount ? {
-          tenancies_total: toBigIntStringOrThrow(globalTenanciesCount.total, "tenancies total"),
-          tenancies_with_db_sync: toBigIntStringOrThrow(globalDbSyncCount.total, "tenancies with db sync"),
+      const externalDbStatuses = shouldIncludeGlobal
+        ? []
+        : await traceSpan("external-db-sync.status.fetchExternalDatabaseStatuses", async (externalSpan) => {
+          const statuses = await Promise.all(
+            Object.entries(
+              auth.tenancy.config.dbSync.externalDatabases as CompleteConfig["dbSync"]["externalDatabases"],
+            ).map(([dbId, dbConfig]) => fetchExternalDatabaseStatus(dbId, dbConfig, currentStats.mappingStatuses)),
+          );
+          externalSpan.setAttribute("stack.external-db-sync.external-db-count", statuses.length);
+          return statuses;
+        });
+
+      const outgoingStats = currentStats.outgoingStatsRow;
+
+      return {
+        statusCode: 200 as const,
+        bodyType: "json" as const,
+        body: {
+          ok: true,
+          generated_at_millis: Date.now(),
+          global: shouldIncludeGlobal && globalStats && globalTenanciesCount && globalDbSyncCount ? {
+            tenancies_total: toBigIntStringOrThrow(globalTenanciesCount.total, "tenancies total"),
+            tenancies_with_db_sync: toBigIntStringOrThrow(globalDbSyncCount.total, "tenancies with db sync"),
+            sequencer: {
+              project_users: globalStats.projectUsersStats,
+              contact_channels: globalStats.contactChannelStats,
+              deleted_rows: {
+                ...globalStats.deletedRowStats,
+                by_table: globalStats.deletedRowsByTable,
+              },
+            },
+            poller: formatPollerStats(globalStats.outgoingStatsRow),
+            sync_engine: {
+              mappings: globalStats.mappings,
+            },
+          } : null,
+          tenancy: {
+            id: tenancyId,
+            project_id: auth.tenancy.project.id,
+            branch_id: auth.tenancy.branchId,
+          },
           sequencer: {
-            project_users: globalStats.projectUsersStats,
-            contact_channels: globalStats.contactChannelStats,
+            project_users: currentStats.projectUsersStats,
+            contact_channels: currentStats.contactChannelStats,
             deleted_rows: {
-              ...globalStats.deletedRowStats,
-              by_table: globalStats.deletedRowsByTable,
+              ...currentStats.deletedRowStats,
+              by_table: currentStats.deletedRowsByTable,
             },
           },
-          poller: formatPollerStats(globalStats.outgoingStatsRow),
+          poller: formatPollerStats(outgoingStats),
           sync_engine: {
-            mappings: globalStats.mappings,
-          },
-        } : null,
-        tenancy: {
-          id: tenancyId,
-          project_id: auth.tenancy.project.id,
-          branch_id: auth.tenancy.branchId,
-        },
-        sequencer: {
-          project_users: currentStats.projectUsersStats,
-          contact_channels: currentStats.contactChannelStats,
-          deleted_rows: {
-            ...currentStats.deletedRowStats,
-            by_table: currentStats.deletedRowsByTable,
+            mappings: currentStats.mappings,
+            external_databases: externalDbStatuses,
           },
         },
-        poller: formatPollerStats(outgoingStats),
-        sync_engine: {
-          mappings: currentStats.mappings,
-          external_databases: externalDbStatuses,
-        },
-      },
-    };
+      };
+    });
   },
 });
