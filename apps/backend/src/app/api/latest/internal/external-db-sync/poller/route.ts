@@ -208,7 +208,6 @@ export const GET = createSmartRouteHandler({
     }
 
     while (performance.now() - startTime < maxDurationMs) {
-      console.log("poller-iteration", performance.now() - startTime);
       const pendingRequests = await claimPendingRequests();
 
       if (stopWhenIdle && pendingRequests.length === 0) {

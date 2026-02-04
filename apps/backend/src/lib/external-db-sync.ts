@@ -1,5 +1,7 @@
 import { Tenancy } from "@/lib/tenancies";
+import type { PrismaTransaction } from "@/lib/types";
 import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -22,6 +24,172 @@ function assertUuid(value: unknown, label: string): asserts value is string {
   if (!UUID_REGEX.test(value)) {
     throw new StackAssertionError(`${label} must be a valid UUID. Received: ${JSON.stringify(value)}`);
   }
+}
+
+type ExternalDbSyncClient = PrismaTransaction | PrismaClientWithReplica;
+
+type ExternalDbSyncTarget =
+  | {
+    tableName: "ProjectUser",
+    tenancyId: string,
+    projectUserId: string,
+  }
+  | {
+    tableName: "ContactChannel",
+    tenancyId: string,
+    projectUserId: string,
+    contactChannelId: string,
+  };
+
+export function withExternalDbSyncUpdate<T extends object>(data: T): T & { shouldUpdateSequenceId: true } {
+  return {
+    ...data,
+    shouldUpdateSequenceId: true,
+  };
+}
+
+export async function markProjectUserForExternalDbSync(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  }
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+  await tx.projectUser.update({
+    where: {
+      tenancyId_projectUserId: {
+        tenancyId: options.tenancyId,
+        projectUserId: options.projectUserId,
+      },
+    },
+    data: {
+      shouldUpdateSequenceId: true,
+    },
+  });
+}
+
+export async function recordExternalDbSyncDeletion(
+  tx: ExternalDbSyncClient,
+  target: ExternalDbSyncTarget,
+): Promise<void> {
+  assertUuid(target.tenancyId, "tenancyId");
+  assertUuid(target.projectUserId, "projectUserId");
+
+  if (target.tableName === "ProjectUser") {
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUser',
+        jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId"),
+        to_jsonb("ProjectUser".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUser"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "projectUserId" = ${target.projectUserId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUser, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  assertUuid(target.contactChannelId, "contactChannelId");
+  const insertedCount = await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ContactChannel',
+      jsonb_build_object(
+        'tenancyId',
+        "tenancyId",
+        'projectUserId',
+        "projectUserId",
+        'id',
+        "id"
+      ),
+      to_jsonb("ContactChannel".*),
+      NOW(),
+      TRUE
+    FROM "ContactChannel"
+    WHERE "tenancyId" = ${target.tenancyId}::uuid
+      AND "projectUserId" = ${target.projectUserId}::uuid
+      AND "id" = ${target.contactChannelId}::uuid
+    FOR UPDATE
+  `);
+
+  if (insertedCount !== 1) {
+    throw new StackAssertionError(
+      `Expected to insert 1 DeletedRow entry for ContactChannel, got ${insertedCount}.`
+    );
+  }
+}
+
+export async function recordExternalDbSyncContactChannelDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ContactChannel',
+      jsonb_build_object(
+        'tenancyId',
+        "tenancyId",
+        'projectUserId',
+        "projectUserId",
+        'id',
+        "id"
+      ),
+      to_jsonb("ContactChannel".*),
+      NOW(),
+      TRUE
+    FROM "ContactChannel"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
 }
 
 type PgErrorLike = {
