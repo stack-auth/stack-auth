@@ -1,4 +1,5 @@
 import { syncExternalDatabases } from "@/lib/external-db-sync";
+import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { getTenancy } from "@/lib/tenancies";
 import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -36,7 +37,10 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, `Tenancy ${tenancyId} not found.`);
     }
 
-    await syncExternalDatabases(tenancy);
+    const needsResync = await syncExternalDatabases(tenancy);
+    if (needsResync) {
+      await enqueueExternalDbSync(tenancy.id);
+    }
 
     return {
       statusCode: 200,

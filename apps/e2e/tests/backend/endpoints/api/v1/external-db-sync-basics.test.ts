@@ -448,4 +448,56 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     const seq2 = Number(metadata2.rows[0].last_synced_sequence_id);
     expect(seq2).toBeGreaterThan(seq1);
   }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a project with external DB sync enabled.
+   * - Calls the internal status endpoint and validates the response shape.
+   *
+   * Why it matters:
+   * - Confirms the dashboard status API exposes sequencer, poller, and sync-engine metrics.
+   */
+  test('Status endpoint exposes sync pipeline metrics', async () => {
+    const dbName = 'status_endpoint_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, {
+      display_name: '📈 External DB Sync Status',
+      description: 'Validating sync status endpoint shape',
+    });
+
+    const response = await niceBackendFetch('/api/latest/internal/external-db-sync/status', {
+      accessType: 'admin',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      tenancy: {
+        id: expect.any(String),
+        project_id: expect.any(String),
+        branch_id: expect.any(String),
+      },
+      sequencer: {
+        project_users: expect.any(Object),
+        contact_channels: expect.any(Object),
+        deleted_rows: expect.any(Object),
+      },
+      poller: {
+        total: expect.any(String),
+        pending: expect.any(String),
+        in_flight: expect.any(String),
+        stale: expect.any(String),
+      },
+      sync_engine: {
+        mappings: expect.any(Array),
+        external_databases: expect.any(Array),
+      },
+    });
+  }, TEST_TIMEOUT);
 });

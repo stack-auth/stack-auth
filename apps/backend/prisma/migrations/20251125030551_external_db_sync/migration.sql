@@ -37,11 +37,16 @@ CREATE INDEX "ContactChannel_tenancyId_sequenceId_idx" ON "ContactChannel"("tena
 CREATE TABLE  "OutgoingRequest" (
     "id" UUID NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deduplicationKey" TEXT,
     "qstashOptions" JSONB NOT NULL,
     "startedFulfillingAt" TIMESTAMP(3),
 
-    CONSTRAINT "OutgoingRequest_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "OutgoingRequest_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "OutgoingRequest_deduplicationKey_key" UNIQUE ("deduplicationKey")
 );
+
+-- SPLIT_STATEMENT_SENTINEL
+CREATE INDEX "OutgoingRequest_startedFulfillingAt_deduplicationKey_idx" ON "OutgoingRequest"("startedFulfillingAt", "deduplicationKey");
 
 -- SPLIT_STATEMENT_SENTINEL
 -- Creates composite index on startedFulfillingAt and createdAt for efficient querying of pending requests in order.
@@ -91,13 +96,13 @@ ALTER TABLE "DeletedRow" ADD COLUMN "shouldUpdateSequenceId" BOOLEAN NOT NULL DE
 -- SPLIT_STATEMENT_SENTINEL
 -- Creates partial indexes on (shouldUpdateSequenceId, tenancyId) to quickly find rows that need updates
 -- and support ORDER BY tenancyId for less fragmented updates.
-CREATE INDEX "ProjectUser_shouldUpdateSequenceId_idx" ON "ProjectUser"("shouldUpdateSequenceId", "tenancyId") WHERE "shouldUpdateSequenceId" = TRUE;
+CREATE INDEX "ProjectUser_shouldUpdateSequenceId_idx" ON "ProjectUser"("shouldUpdateSequenceId", "tenancyId");
 
 -- SPLIT_STATEMENT_SENTINEL
-CREATE INDEX "ContactChannel_shouldUpdateSequenceId_idx" ON "ContactChannel"("shouldUpdateSequenceId", "tenancyId") WHERE "shouldUpdateSequenceId" = TRUE;
+CREATE INDEX "ContactChannel_shouldUpdateSequenceId_idx" ON "ContactChannel"("shouldUpdateSequenceId", "tenancyId");
 
 -- SPLIT_STATEMENT_SENTINEL
-CREATE INDEX "DeletedRow_shouldUpdateSequenceId_idx" ON "DeletedRow"("shouldUpdateSequenceId", "tenancyId") WHERE "shouldUpdateSequenceId" = TRUE;
+CREATE INDEX "DeletedRow_shouldUpdateSequenceId_idx" ON "DeletedRow"("shouldUpdateSequenceId", "tenancyId");
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
@@ -240,4 +245,3 @@ CREATE TRIGGER log_deleted_row_contact_channel
 BEFORE DELETE ON "ContactChannel"
 FOR EACH ROW
 EXECUTE FUNCTION log_deleted_row();
-

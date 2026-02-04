@@ -8,11 +8,13 @@ import {
   yupTuple,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
+const SEQUENCER_BATCH_SIZE_ENV = "STACK_EXTERNAL_DB_SYNC_SEQUENCER_BATCH_SIZE";
+const DEFAULT_BATCH_SIZE = 1000;
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -30,19 +32,30 @@ function parseStopWhenIdle(value: string | undefined): boolean {
   throw new StatusError(400, "stopWhenIdle must be 'true' or 'false'");
 }
 
+function getSequencerBatchSize(): number {
+  const rawValue = getEnvVariable(SEQUENCER_BATCH_SIZE_ENV, "");
+  if (!rawValue) return DEFAULT_BATCH_SIZE;
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new StackAssertionError(
+      `${SEQUENCER_BATCH_SIZE_ENV} must be a positive integer. Received: ${JSON.stringify(rawValue)}`
+    );
+  }
+  return parsed;
+}
+
 
 // Assigns sequence IDs to rows that need them and queues sync requests for affected tenants.
-// Processes up to 1000 rows at a time from each table.
-async function backfillSequenceIds(): Promise<boolean> {
+// Processes up to batchSize rows at a time from each table.
+async function backfillSequenceIds(batchSize: number): Promise<boolean> {
   let didUpdate = false;
   const projectUserTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
     WITH rows_to_update AS (
       SELECT "tenancyId", "projectUserId"
       FROM "ProjectUser"
       WHERE "shouldUpdateSequenceId" = TRUE
-      OR "sequenceId" IS NULL
       ORDER BY "tenancyId"
-      LIMIT 1000
+      LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     ),
     updated_rows AS (
@@ -68,9 +81,8 @@ async function backfillSequenceIds(): Promise<boolean> {
       SELECT "tenancyId", "projectUserId", "id"
       FROM "ContactChannel"
       WHERE "shouldUpdateSequenceId" = TRUE
-      OR "sequenceId" IS NULL
       ORDER BY "tenancyId"
-      LIMIT 1000
+      LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     ),
     updated_rows AS (
@@ -96,9 +108,8 @@ async function backfillSequenceIds(): Promise<boolean> {
       SELECT "id", "tenancyId"
       FROM "DeletedRow"
       WHERE "shouldUpdateSequenceId" = TRUE
-      OR "sequenceId" IS NULL
       ORDER BY "tenancyId"
-      LIMIT 1000
+      LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
     ),
     updated_rows AS (
@@ -161,12 +172,13 @@ export const GET = createSmartRouteHandler({
     const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
     const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
     const pollIntervalMs = 50;
+    const batchSize = getSequencerBatchSize();
 
     let iterations = 0;
 
     while (performance.now() - startTime < maxDurationMs) {
       try {
-        const didUpdate = await backfillSequenceIds();
+        const didUpdate = await backfillSequenceIds(batchSize);
         if (stopWhenIdle && !didUpdate) {
           break;
         }

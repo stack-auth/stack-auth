@@ -26,21 +26,18 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
 
   // Use unnest to pass array of UUIDs and insert all in one query
   await globalPrismaClient.$executeRaw`
-    INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt")
+    INSERT INTO "OutgoingRequest" ("id", "createdAt", "qstashOptions", "startedFulfillingAt", "deduplicationKey")
     SELECT
       gen_random_uuid(),
       NOW(),
       json_build_object(
         'url',  '/api/latest/internal/external-db-sync/sync-engine',
-        'body', json_build_object('tenancyId', t.tenancy_id)
+        'body', json_build_object('tenancyId', t.tenancy_id),
+        'flowControl', json_build_object('key', 'sentinel-sync-key', 'parallelism', 20)
       ),
-      NULL
+      NULL,
+      'sentinel-sync-key-' || t.tenancy_id
     FROM unnest(${tenancyIds}::uuid[]) AS t(tenancy_id)
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM "OutgoingRequest"
-      WHERE "startedFulfillingAt" IS NULL
-        AND ("qstashOptions"->'body'->>'tenancyId')::uuid = t.tenancy_id
-    )
+    ON CONFLICT ("deduplicationKey") DO NOTHING
   `;
 }

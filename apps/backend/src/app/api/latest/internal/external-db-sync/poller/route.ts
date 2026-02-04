@@ -1,4 +1,5 @@
 import { upstash } from "@/lib/upstash";
+import type { PublishBatchRequest } from "@upstash/qstash";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import type { OutgoingRequest } from "@/generated/prisma/client";
@@ -10,11 +11,13 @@ import {
   yupTuple,
 } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
+const POLLER_CLAIM_LIMIT_ENV = "STACK_EXTERNAL_DB_SYNC_POLL_CLAIM_LIMIT";
+const DEFAULT_POLL_CLAIM_LIMIT = 100;
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -34,6 +37,18 @@ function parseStopWhenIdle(value: string | undefined): boolean {
 
 function directSyncEnabled(): boolean {
   return getEnvVariable(DIRECT_SYNC_ENV, "") === "true";
+}
+
+function getPollerClaimLimit(): number {
+  const rawValue = getEnvVariable(POLLER_CLAIM_LIMIT_ENV, "");
+  if (!rawValue) return DEFAULT_POLL_CLAIM_LIMIT;
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new StackAssertionError(
+      `${POLLER_CLAIM_LIMIT_ENV} must be a positive integer. Received: ${JSON.stringify(rawValue)}`
+    );
+  }
+  return parsed;
 }
 
 function getLocalApiBaseUrl(): string {
@@ -79,33 +94,65 @@ export const GET = createSmartRouteHandler({
     const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
     const pollIntervalMs = 50;
     const staleClaimIntervalMinutes = 5;
+    const pollerClaimLimit = getPollerClaimLimit();
 
     let totalRequestsProcessed = 0;
     async function claimPendingRequests(): Promise<OutgoingRequest[]> {
-      return await retryTransaction(globalPrismaClient, async (tx) => {
-        const rows = await tx.$queryRaw<OutgoingRequest[]>`
+      return await globalPrismaClient.$queryRaw<OutgoingRequest[]>`
           UPDATE "OutgoingRequest"
           SET "startedFulfillingAt" = NOW()
           WHERE "id" IN (
             SELECT id
             FROM "OutgoingRequest"
             WHERE "startedFulfillingAt" IS NULL
-              OR "startedFulfillingAt" < NOW() - (${staleClaimIntervalMinutes} * INTERVAL '1 minute')
             ORDER BY "createdAt"
-            LIMIT 100
+            LIMIT ${pollerClaimLimit}
             FOR UPDATE SKIP LOCKED
           )
           RETURNING *;
         `;
-        return rows;
-      });
     }
+
     async function deleteOutgoingRequest(id: string): Promise<void> {
       await retryTransaction(globalPrismaClient, async (tx) => {
         await tx.outgoingRequest.delete({ where: { id } });
       });
     }
+
+    async function deleteOutgoingRequests(ids: string[]): Promise<void> {
+      if (ids.length === 0) return;
+      await retryTransaction(globalPrismaClient, async (tx) => {
+        await tx.outgoingRequest.deleteMany({ where: { id: { in: ids } } });
+      });
+    }
     async function processRequest(request: OutgoingRequest): Promise<void> {
+      // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
+      const options = request.qstashOptions as any;
+      const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+
+      let fullUrl = new URL(options.url, baseUrl).toString();
+
+      // In dev/test, QStash runs in Docker so "localhost" won't work.
+      // Replace with "host.docker.internal" to reach the host machine.
+      // if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
+      //   const url = new URL(fullUrl);
+      //   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      //     url.hostname = "host.docker.internal";
+      //     fullUrl = url.toString();
+      //   }
+      // }
+
+      await upstash.publishJSON({
+        url: fullUrl,
+        body: options.body,
+        flowControl: options.flowControl,
+      });
+      await deleteOutgoingRequest(request.id);
+    }
+
+    type UpstashRequest = PublishBatchRequest<unknown>;
+
+    function buildUpstashRequest(request: OutgoingRequest): UpstashRequest {
       // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
       const options = request.qstashOptions as any;
       const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
@@ -122,27 +169,13 @@ export const GET = createSmartRouteHandler({
         }
       }
 
-      if (directSyncEnabled()) {
-        const directUrl = new URL(options.url, getLocalApiBaseUrl()).toString();
-        const res = await fetch(directUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "upstash-signature": "test-bypass",
-          },
-          body: JSON.stringify(options.body),
-        });
-        if (!res.ok) {
-          throw new StatusError(res.status, `Direct sync failed: ${res.status} ${res.statusText}`);
-        }
-      } else {
-        await upstash.publishJSON({
-          url: fullUrl,
-          body: options.body,
-        });
-      }
+      const flowControl = options.flowControl as UpstashRequest["flowControl"];
 
-      await deleteOutgoingRequest(request.id);
+      return {
+        url: fullUrl,
+        body: options.body,
+        ...(flowControl ? { flowControl } : {}),
+      };
     }
 
     async function processRequests(requests: OutgoingRequest[]): Promise<number> {
@@ -160,19 +193,22 @@ export const GET = createSmartRouteHandler({
         return processed;
       }
 
-      const results = await Promise.allSettled(requests.map(processRequest));
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          processed++;
-          continue;
-        }
-        captureError("poller-iteration-error", result.reason);
-      }
+      if (requests.length === 0) return 0;
 
-      return processed;
+      try {
+        const batchPayload = requests.map(buildUpstashRequest);
+        console.log("publishing to QStash batch", { count: batchPayload.length });
+        await upstash.batchJSON(batchPayload);
+        await deleteOutgoingRequests(requests.map((request) => request.id));
+        return requests.length;
+      } catch (error) {
+        captureError("poller-iteration-error", error);
+        return 0;
+      }
     }
 
     while (performance.now() - startTime < maxDurationMs) {
+      console.log("poller-iteration", performance.now() - startTime);
       const pendingRequests = await claimPendingRequests();
 
       if (stopWhenIdle && pendingRequests.length === 0) {

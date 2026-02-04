@@ -1,13 +1,15 @@
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Client } from 'pg';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_BATCHES_PER_MAPPING_ENV = "STACK_EXTERNAL_DB_SYNC_MAX_BATCHES_PER_MAPPING";
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -40,6 +42,18 @@ function isConcurrentUpdateError(error: unknown): error is PgErrorLike {
   // "tuple concurrently updated" occurs when multiple transactions race to modify
   // the same system catalog row (e.g., during concurrent CREATE TABLE IF NOT EXISTS)
   return typeof pgError.message === "string" && pgError.message.includes("tuple concurrently updated");
+}
+
+function getMaxBatchesPerMapping(): number | null {
+  const rawValue = getEnvVariable(MAX_BATCHES_PER_MAPPING_ENV, "");
+  if (!rawValue) return null;
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new StackAssertionError(
+      `${MAX_BATCHES_PER_MAPPING_ENV} must be a positive integer. Received: ${JSON.stringify(rawValue)}`
+    );
+  }
+  return parsed;
 }
 
 async function ensureExternalSchema(
@@ -143,11 +157,11 @@ async function syncMapping(
   externalClient: Client,
   mappingId: string,
   mapping: typeof DEFAULT_DB_SYNC_MAPPINGS[keyof typeof DEFAULT_DB_SYNC_MAPPINGS],
-  internalPrisma: PrismaClientTransaction,
+  internalPrisma: PrismaClientWithReplica,
   dbId: string,
   tenancyId: string,
   dbType: 'postgres',
-) {
+): Promise<boolean> {
   assertNonEmptyString(mappingId, "mappingId");
   assertNonEmptyString(mapping.targetTable, "mapping.targetTable");
   assertUuid(tenancyId, "tenancyId");
@@ -180,13 +194,16 @@ async function syncMapping(
   }
 
   const BATCH_LIMIT = 1000;
+  const maxBatchesPerMapping = getMaxBatchesPerMapping();
+  let batchesProcessed = 0;
+  let throttled = false;
 
   while (true) {
     assertUuid(tenancyId, "tenancyId");
     if (!Number.isFinite(lastSequenceId)) {
       throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
     }
-    const rows = await internalPrisma.$queryRawUnsafe<any[]>(fetchQuery, tenancyId, lastSequenceId);
+    const rows = await internalPrisma.$replica().$queryRawUnsafe<any[]>(fetchQuery, tenancyId, lastSequenceId);
 
     if (rows.length === 0) {
       break;
@@ -216,16 +233,24 @@ async function syncMapping(
     if (rows.length < BATCH_LIMIT) {
       break;
     }
+
+    batchesProcessed++;
+    if (maxBatchesPerMapping !== null && batchesProcessed >= maxBatchesPerMapping) {
+      throttled = true;
+      break;
+    }
   }
+
+  return throttled;
 }
 
 
 async function syncDatabase(
   dbId: string,
   dbConfig: CompleteConfig["dbSync"]["externalDatabases"][string],
-  internalPrisma: PrismaClientTransaction,
+  internalPrisma: PrismaClientWithReplica,
   tenancyId: string,
-) {
+): Promise<boolean> {
   assertNonEmptyString(dbId, "dbId");
   assertUuid(tenancyId, "tenancyId");
   const dbType = dbConfig.type;
@@ -246,13 +271,14 @@ async function syncDatabase(
     connectionString: dbConfig.connectionString,
   });
 
+  let needsResync = false;
   const syncResult = await Result.fromPromise((async () => {
     await externalClient.connect();
 
     // Always use DEFAULT_DB_SYNC_MAPPINGS - users cannot customize mappings
     // because internalDbFetchQuery runs against Stack Auth's internal DB
     for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
-      await syncMapping(
+      const mappingThrottled = await syncMapping(
         externalClient,
         mappingId,
         mapping,
@@ -261,6 +287,9 @@ async function syncDatabase(
         tenancyId,
         dbType,
       );
+      if (mappingThrottled) {
+        needsResync = true;
+      }
     }
   })());
 
@@ -271,23 +300,31 @@ async function syncDatabase(
 
   if (syncResult.status === "error") {
     captureError(`external-db-sync-${dbId}`, syncResult.error);
-    return;
+    return false;
   }
+
+  return needsResync;
 }
 
 
-export async function syncExternalDatabases(tenancy: Tenancy) {
+export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> {
   assertUuid(tenancy.id, "tenancy.id");
   const externalDatabases = tenancy.config.dbSync.externalDatabases;
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
+  let needsResync = false;
 
   for (const [dbId, dbConfig] of Object.entries(externalDatabases)) {
     try {
-      await syncDatabase(dbId, dbConfig, internalPrisma, tenancy.id);
+      const databaseThrottled = await syncDatabase(dbId, dbConfig, internalPrisma, tenancy.id);
+      if (databaseThrottled) {
+        needsResync = true;
+      }
     } catch (error) {
       // Log the error but continue syncing other databases
       // This ensures one bad database config doesn't block successful syncs to other databases
       captureError(`external-db-sync-${dbId}`, error);
     }
   }
+
+  return needsResync;
 }

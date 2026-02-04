@@ -1071,8 +1071,11 @@ model OutgoingRequest {
 
   qstashOptions       Json
   startedFulfillingAt DateTime?
+  deduplicationKey String?
 
+  @@unique([deduplicationKey])
   @@index([startedFulfillingAt, createdAt])
+  @@index([startedFulfillingAt, deduplicationKey])
 }
 
 model DeletedRow {
