@@ -1,28 +1,24 @@
-import { defineConfig } from 'vite'
-import { devtools } from '@tanstack/devtools-vite'
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-import viteReact from '@vitejs/plugin-react'
-import viteTsConfigPaths from 'vite-tsconfig-paths'
-import { fileURLToPath, URL } from 'url'
-import { nitro } from 'nitro/vite'
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "url";
+import { defineConfig } from "vite";
+import viteTsConfigPaths from "vite-tsconfig-paths";
 
-const config = defineConfig({
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+export default defineConfig(({ mode }) => {
+  const isTest = mode === "test";
+  return {
+    envPrefix: ["VITE_", "NEXT_PUBLIC_"],
+    resolve: {
+      alias: {
+        "@": fileURLToPath(new URL("./src", import.meta.url)),
+      },
     },
-  },
-  plugins: [
-    devtools(),
-    nitro(),
-    // this is the plugin that enables path aliases
-    viteTsConfigPaths({
-      projects: ['./tsconfig.json'],
-    }),
-
-    tanstackStart(),
-    viteReact(),
-  ],
-})
-
-export default config
+    plugins: [
+      // this is the plugin that enables path aliases
+      viteTsConfigPaths({
+        projects: ["./tsconfig.json"],
+      }),
+      ...(!isTest ? [tanstackStart(), viteReact()] : []),
+    ],
+  };
+});

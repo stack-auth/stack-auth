@@ -42,13 +42,17 @@ function checkScope(scope: string | string[] | undefined) {
 
 export class OAuthModel implements AuthorizationCodeModel {
   async getClient(clientId: string, clientSecret: string): Promise<Client | Falsey> {
+    const publicOAuthClientSecretSentinel = "__stack_public_client__";
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(clientId), true);
     if (!tenancy) {
       return false;
     }
 
-    if (clientSecret) {
-      const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
+    const normalizedClientSecret = (!clientSecret || clientSecret === publicOAuthClientSecretSentinel)
+      ? undefined
+      : clientSecret;
+    if (normalizedClientSecret) {
+      const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: normalizedClientSecret });
       if (!keySet) {
         return false;
       }

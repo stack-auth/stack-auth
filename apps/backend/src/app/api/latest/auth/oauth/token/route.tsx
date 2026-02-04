@@ -1,4 +1,5 @@
-import { oauthServer } from "@/oauth";
+import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { getProjectBranchFromClientId, oauthServer } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -15,6 +16,8 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     body: yupObject({
       grant_type: yupString().oneOf(["authorization_code", "refresh_token"]).defined(),
+      client_id: yupString().optional(),
+      client_secret: yupString().optional(),
     }).unknown().defined(),
   }).defined(),
   response: yupObject({
@@ -24,6 +27,21 @@ export const POST = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler(req, fullReq) {
+    const publicOAuthClientSecretSentinel = "__stack_public_client__";
+    const clientId = req.body.client_id;
+    const clientSecretRaw = req.body.client_secret;
+    const clientSecret = !clientSecretRaw || clientSecretRaw === publicOAuthClientSecretSentinel
+      ? undefined
+      : clientSecretRaw;
+    if (clientId && !clientSecret) {
+      const [projectId, branchId] = getProjectBranchFromClientId(clientId);
+      const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId, true);
+      if (tenancy?.config.project.requirePublishableClientKey) {
+        throw new KnownErrors.PublishableClientKeyRequiredForProject(tenancy.project.id);
+      }
+      req.body.client_secret = publicOAuthClientSecretSentinel;
+    }
+
     const oauthRequest = new OAuthRequest({
       headers: {
         ...fullReq.headers,

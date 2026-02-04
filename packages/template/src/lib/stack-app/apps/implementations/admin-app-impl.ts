@@ -6,10 +6,10 @@ import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
@@ -120,6 +120,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     super(resolvedOptions, {
       ...extraOptions,
@@ -131,7 +132,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         ...resolvedOptions.projectOwnerSession ? {
           projectOwnerSession: resolvedOptions.projectOwnerSession,
         } : {
-          publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+          ...(publishableClientKey ? { publishableClientKey } : {}),
           secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
           superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
         },
@@ -244,9 +245,26 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
-        const updateOptions = adminProjectUpdateOptionsToCrud(update);
-        await app._interface.updateProject(updateOptions);
-        await onRefresh();
+        const { requirePublishableClientKey, ...projectUpdate } = update;
+        const updateOptions = adminProjectUpdateOptionsToCrud(projectUpdate);
+        const hasConfigUpdate = !!updateOptions.config
+          && Object.values(updateOptions.config).some((value) => value !== undefined);
+        const hasProjectUpdate = Object.entries(updateOptions).some(([key, value]) => {
+          if (key === "config") return hasConfigUpdate;
+          return value !== undefined;
+        });
+
+        if (hasProjectUpdate) {
+          await app._interface.updateProject(updateOptions);
+          await onRefresh();
+        }
+
+        if (requirePublishableClientKey !== undefined) {
+          await app._interface.updateConfigOverride("project", {
+            "project.requirePublishableClientKey": requirePublishableClientKey,
+          });
+          await app._refreshProjectConfig();
+        }
       },
       async delete() {
         await app._interface.deleteProject();

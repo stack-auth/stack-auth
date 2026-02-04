@@ -259,6 +259,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const project = await queriesResults.project;
   if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine (it's worth the better error messages)
   const tenancy = await queriesResults.tenancy;
+  const requiresPublishableClientKey = tenancy?.config.project.requirePublishableClientKey ?? true;
 
   if (developmentKeyOverride) {
     if (!["development", "test"].includes(getNodeEnvironment()) && getEnvVariable("STACK_ALLOW_DEVELOPMENT_KEY_OVERRIDE_DESPITE_PRODUCTION", "") !== "this-is-dangerous") {  // it's not actually that dangerous, but it changes the security model
@@ -272,7 +273,12 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   } else {
     switch (requestType) {
       case "client": {
-        if (!publishableClientKey) throw new KnownErrors.ClientAuthenticationRequired();
+        if (!publishableClientKey) {
+          if (requiresPublishableClientKey) {
+            throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
+          }
+          break;
+        }
         if (!queriesResults.isClientKeyValid) throw new KnownErrors.InvalidPublishableClientKey(projectId);
         break;
       }

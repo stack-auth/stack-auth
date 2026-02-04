@@ -14,6 +14,7 @@ import { generators } from "openid-client";
 import * as yup from "yup";
 
 const outerOAuthFlowExpirationInMinutes = 10;
+const publicOAuthClientSecretSentinel = "__stack_public_client__";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -39,7 +40,7 @@ export const GET = createSmartRouteHandler({
 
       // oauth parameters
       client_id: yupString().defined(),
-      client_secret: yupString().defined(),
+      client_secret: yupString().optional(),
       redirect_uri: urlSchema.defined(),
       scope: yupString().defined(),
       state: yupString().defined(),
@@ -60,7 +61,15 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
     }
 
-    if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret }))) {
+    const clientSecretRaw = query.client_secret ?? publicOAuthClientSecretSentinel;
+    const clientSecret = !clientSecretRaw || clientSecretRaw === publicOAuthClientSecretSentinel
+      ? undefined
+      : clientSecretRaw;
+    if (!clientSecret) {
+      if (tenancy.config.project.requirePublishableClientKey) {
+        throw new KnownErrors.PublishableClientKeyRequiredForProject(tenancy.project.id);
+      }
+    } else if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret }))) {
       throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
     }
 
@@ -111,7 +120,7 @@ export const GET = createSmartRouteHandler({
         innerState,
         info: {
           tenancyId: tenancy.id,
-          publishableClientKey: query.client_secret,
+          publishableClientKey: clientSecretRaw,
           redirectUri: query.redirect_uri.split('#')[0], // remove hash
           scope: query.scope,
           state: query.state,

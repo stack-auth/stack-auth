@@ -58,6 +58,9 @@ export const projectConfigSchema = yupObject({
       connectionString: yupString().defined()
     }),
   ),
+  project: yupObject({
+    requirePublishableClientKey: yupBoolean(),
+  }),
 });
 
 // --- NEW RBAC Schema ---
@@ -205,7 +208,10 @@ const branchOnboardingSchema = yupObject({
 });
 
 
-export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
+export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
+  "sourceOfTruth",
+  "project",
+]).concat(yupObject({
   rbac: branchRbacSchema,
 
   teams: yupObject({
@@ -489,6 +495,9 @@ const projectConfigDefaults = {
     type: 'hosted',
     connectionStrings: undefined,
     connectionString: undefined,
+  },
+  project: {
+    requirePublishableClientKey: false,
   },
 } as const satisfies DefaultsType<ProjectRenderedConfigBeforeDefaults, []>;
 

@@ -404,6 +404,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
     }
 
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
+
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
@@ -412,7 +414,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,
-        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        ...(publishableClientKey ? { publishableClientKey } : {}),
         prepareRequest: async () => {
           await cookies?.(); // THIS_LINE_PLATFORM next
         }
@@ -2799,19 +2801,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   get [stackAppInternalsSymbol]() {
     return {
       toClientJson: (): StackClientAppJson<HasTokenStore, ProjectId> => {
-        if (!("publishableClientKey" in this._interface.options)) {
-          // TODO find a way to do this
-          throw new StackAssertionError("Cannot serialize to JSON from an application without a publishable client key");
-        }
-
         if (typeof this._redirectMethod !== "string") {
           throw new StackAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
         }
 
+        const publishableClientKey = "publishableClientKey" in this._interface.options
+          ? this._interface.options.publishableClientKey
+          : undefined;
+
         return {
           baseUrl: this._options.baseUrl,
           projectId: this.projectId,
-          publishableClientKey: this._interface.options.publishableClientKey,
+          ...(publishableClientKey ? { publishableClientKey } : {}),
           tokenStore: this._tokenStoreInit,
           urls: this._urlOptions,
           oauthScopesOnSignIn: this._oauthScopesOnSignIn,

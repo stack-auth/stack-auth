@@ -9,6 +9,7 @@ import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
+import { publicOAuthClientSecretSentinel } from "../utils/oauth";
 import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
 import { wait } from '../utils/promises';
@@ -41,8 +42,13 @@ export type ClientInterfaceOptions = {
   prepareRequest?: () => Promise<void>,
 } & ({
   publishableClientKey: string,
+  projectOwnerSession?: undefined,
 } | {
+  publishableClientKey?: undefined,
   projectOwnerSession: InternalSession,
+} | {
+  publishableClientKey?: undefined,
+  projectOwnerSession?: undefined,
 });
 
 export class StackClientInterface {
@@ -149,11 +155,13 @@ export class StackClientInterface {
   }
 
   public async fetchNewAccessToken(refreshToken: RefreshToken) {
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO support it
       throw new Error("Admin session token is currently not supported for fetching new access token. Did you try to log in on a StackApp initiated with the admin session?");
     }
 
+    const publishableClientKey = this.options.publishableClientKey;
+    const clientSecret = publishableClientKey ?? publicOAuthClientSecretSentinel;
     const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
@@ -162,10 +170,10 @@ export class StackClientInterface {
     };
     const client: oauth.Client = {
       client_id: this.projectId,
-      client_secret: this.options.publishableClientKey,
+      client_secret: clientSecret,
     };
 
-    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const clientAuthentication = oauth.ClientSecretPost(clientSecret);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = tokenEndpoint.startsWith('http://');
 
@@ -177,7 +185,6 @@ export class StackClientInterface {
         refreshToken.token,
         allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
       );
-
       const response = await this._processResponse(rawResponse);
 
       if (response.status === "error") {
@@ -324,7 +331,7 @@ export class StackClientInterface {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
         "X-Stack-Allow-Anonymous-User": "true",
-        ...('publishableClientKey' in this.options ? {
+        ...(this.options.publishableClientKey ? {
           "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
         ...(adminTokenObj ? {
@@ -987,13 +994,15 @@ export class StackClientInterface {
       updatedRedirectUrl.searchParams.delete(key);
     }
 
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const publishableClientKey = this.options.publishableClientKey;
+    const clientSecret = publishableClientKey ?? publicOAuthClientSecretSentinel;
     const url = new URL(this.getApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
     url.searchParams.set("client_id", this.projectId);
-    url.searchParams.set("client_secret", this.options.publishableClientKey);
+    url.searchParams.set("client_secret", clientSecret);
     url.searchParams.set("redirect_uri", updatedRedirectUrl.toString());
     url.searchParams.set("scope", "legacy");
     url.searchParams.set("state", options.state);
@@ -1027,10 +1036,12 @@ export class StackClientInterface {
     codeVerifier: string,
     state: string,
   }): Promise<{ newUser: boolean, afterCallbackRedirectUrl?: string, accessToken: string, refreshToken: string }> {
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const publishableClientKey = this.options.publishableClientKey;
+    const clientSecret = publishableClientKey ?? publicOAuthClientSecretSentinel;
     const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
@@ -1039,9 +1050,9 @@ export class StackClientInterface {
     };
     const client: oauth.Client = {
       client_id: this.projectId,
-      client_secret: this.options.publishableClientKey,
+      client_secret: clientSecret,
     };
-    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const clientAuthentication = oauth.ClientSecretPost(clientSecret);
     // Allow insecure HTTP requests only in test environment (for localhost testing)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = tokenEndpoint.startsWith('http://');

@@ -546,7 +546,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
+  async getConfigOverride(level: "project" | "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       { method: "GET" },
@@ -555,7 +555,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async setConfigOverride(level: "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+  async setConfigOverride(level: "project" | "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -572,7 +572,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+  async updateConfigOverride(level: "project" | "branch" | "environment", configOverrideOverride: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -791,11 +791,7 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
 
-    const data = await response.json();
-    return {
-      result: data.result,
-      query_id: data.query_id,
-    };
+    return await response.json();
   }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {

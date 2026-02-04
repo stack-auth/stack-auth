@@ -380,6 +380,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
+
     super(resolvedOptions, {
       ...extraOptions,
       interface: extraOptions?.interface ?? new StackServerInterface({
@@ -387,7 +389,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        ...(publishableClientKey ? { publishableClientKey } : {}),
         secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
     });
