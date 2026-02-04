@@ -3,6 +3,7 @@ import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { getTenancy } from "@/lib/tenancies";
 import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -28,6 +29,14 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ body }, fullReq) => {
     await ensureUpstashSignature(fullReq);
+
+    const fusebox = await getExternalDbSyncFusebox();
+    if (!fusebox.syncEngineEnabled) {
+      return {
+        statusCode: 200,
+        bodyType: "success",
+      };
+    }
 
     const { tenancyId } = body;
 

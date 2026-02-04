@@ -13,6 +13,7 @@ import {
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
@@ -161,13 +162,13 @@ export const GET = createSmartRouteHandler({
 
       // In dev/test, QStash runs in Docker so "localhost" won't work.
       // Replace with "host.docker.internal" to reach the host machine.
-      if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
-        const url = new URL(fullUrl);
-        if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-          url.hostname = "host.docker.internal";
-          fullUrl = url.toString();
-        }
-      }
+      // if (getNodeEnvironment().includes("development") || getNodeEnvironment().includes("test")) {
+      //   const url = new URL(fullUrl);
+      //   if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      //     url.hostname = "host.docker.internal";
+      //     fullUrl = url.toString();
+      //   }
+      // }
 
       const flowControl = options.flowControl as UpstashRequest["flowControl"];
 
@@ -208,6 +209,11 @@ export const GET = createSmartRouteHandler({
     }
 
     while (performance.now() - startTime < maxDurationMs) {
+      const fusebox = await getExternalDbSyncFusebox();
+      if (!fusebox.pollerEnabled) {
+        break;
+      }
+
       const pendingRequests = await claimPendingRequests();
 
       if (stopWhenIdle && pendingRequests.length === 0) {

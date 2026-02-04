@@ -25,9 +25,9 @@ export async function ensureUpstashSignature(fullReq: SmartRequest): Promise<voi
   }
 
   const url = new URL(fullReq.url);
-  if ((nodeEnv.includes("development") || nodeEnv.includes("test")) && url.hostname === "localhost") {
-    url.hostname = "host.docker.internal";
-  }
+  // if ((nodeEnv.includes("development") || nodeEnv.includes("test")) && url.hostname === "localhost") {
+  //   url.hostname = "host.docker.internal";
+  // }
 
   const isValid = await upstashReceiver.verify({
     signature: upstashSignature,

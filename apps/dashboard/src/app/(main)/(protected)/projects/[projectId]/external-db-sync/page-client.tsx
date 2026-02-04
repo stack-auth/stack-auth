@@ -22,6 +22,7 @@ import {
 } from "@/components/ui";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notFound } from "next/navigation";
 
@@ -123,6 +124,19 @@ type ExternalDbSyncStatus = {
   },
 };
 
+type ExternalDbSyncFusebox = {
+  sequencerEnabled: boolean,
+  pollerEnabled: boolean,
+  syncEngineEnabled: boolean,
+};
+
+type ExternalDbSyncFuseboxResponse = {
+  ok: true,
+  sequencer_enabled: boolean,
+  poller_enabled: boolean,
+  sync_engine_enabled: boolean,
+};
+
 type AdminAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
 };
@@ -208,9 +222,12 @@ function DataDate(props: { value: number | null | undefined, loading: boolean })
 export default function PageClient() {
   const adminApp = useAdminApp() as AdminAppWithInternals;
   const [status, setStatus] = useState<ExternalDbSyncStatus | null>(null);
+  const [fusebox, setFusebox] = useState<ExternalDbSyncFusebox | null>(null);
+  const [savedFusebox, setSavedFusebox] = useState<ExternalDbSyncFusebox | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [savingFusebox, setSavingFusebox] = useState(false);
   const inFlightRef = useRef(false);
   const summarySamplesRef = useRef<Array<{
     timestampMillis: number,
@@ -252,6 +269,79 @@ export default function PageClient() {
     inFlightRef.current = false;
   }, [adminApp]);
 
+  const loadFusebox = useCallback(async () => {
+    const result = await Result.fromPromise((async () => {
+      const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+        urlString`/internal/external-db-sync/fusebox`,
+        { method: "GET" },
+        "admin",
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        const message = typeof body?.error === "string" ? body.error : "Failed to load external DB sync fusebox.";
+        throw new Error(message);
+      }
+      return body as ExternalDbSyncFuseboxResponse;
+    })());
+
+    if (result.status === "error") {
+      const message = result.error instanceof Error ? result.error.message : String(result.error);
+      setError(message);
+      return;
+    }
+
+    const nextFusebox = {
+      sequencerEnabled: result.data.sequencer_enabled,
+      pollerEnabled: result.data.poller_enabled,
+      syncEngineEnabled: result.data.sync_engine_enabled,
+    };
+    setFusebox(nextFusebox);
+    setSavedFusebox(nextFusebox);
+    setError(null);
+  }, [adminApp]);
+
+  const saveFusebox = useCallback(async () => {
+    if (!fusebox) return;
+    setSavingFusebox(true);
+    const result = await Result.fromPromise((async () => {
+      const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+        urlString`/internal/external-db-sync/fusebox`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            sequencer_enabled: fusebox.sequencerEnabled,
+            poller_enabled: fusebox.pollerEnabled,
+            sync_engine_enabled: fusebox.syncEngineEnabled,
+          }),
+          headers: { "content-type": "application/json" },
+        },
+        "admin",
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        const message = typeof body?.error === "string" ? body.error : "Failed to update external DB sync fusebox.";
+        throw new Error(message);
+      }
+      return body as ExternalDbSyncFuseboxResponse;
+    })());
+    setSavingFusebox(false);
+
+    if (result.status === "error") {
+      const message = result.error instanceof Error ? result.error.message : String(result.error);
+      setError(message);
+      return;
+    }
+
+    const nextFusebox = {
+      sequencerEnabled: result.data.sequencer_enabled,
+      pollerEnabled: result.data.poller_enabled,
+      syncEngineEnabled: result.data.sync_engine_enabled,
+    };
+    setFusebox(nextFusebox);
+    setSavedFusebox(nextFusebox);
+    setError(null);
+  }, [adminApp, fusebox]);
+
   const refreshWithAlert = useCallback(() => {
     runAsynchronouslyWithAlert(loadStatus);
   }, [loadStatus]);
@@ -259,6 +349,10 @@ export default function PageClient() {
   useEffect(() => {
     runAsynchronously(loadStatus);
   }, [loadStatus]);
+
+  useEffect(() => {
+    runAsynchronously(loadFusebox);
+  }, [loadFusebox]);
 
   useEffect(() => {
     if (!autoRefresh) return undefined;
@@ -342,6 +436,12 @@ export default function PageClient() {
   const globalStatus = status?.global ?? null;
   const deletedRowsByTable = status?.sequencer.deleted_rows.by_table ?? [];
   const mappingRows = status?.sync_engine.mappings ?? [];
+  const fuseboxDirty = useMemo(() => {
+    if (!fusebox || !savedFusebox) return false;
+    return fusebox.sequencerEnabled !== savedFusebox.sequencerEnabled
+      || fusebox.pollerEnabled !== savedFusebox.pollerEnabled
+      || fusebox.syncEngineEnabled !== savedFusebox.syncEngineEnabled;
+  }, [fusebox, savedFusebox]);
 
   if (adminApp.projectId !== "internal") {
     return notFound();
@@ -376,6 +476,7 @@ export default function PageClient() {
         )}
         <span>Last updated: {status ? formatMillis(status.generated_at_millis) : "—"}</span>
       </div>
+
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -584,6 +685,60 @@ export default function PageClient() {
               )}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Fusebox</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!fusebox ? (
+            <div className="space-y-3">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-9 w-24" />
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-6">
+                <div>
+                  <Typography type="p" className="text-sm font-medium">Sequencer</Typography>
+                  <Typography type="p" className="text-xs text-muted-foreground">Assigns sequence IDs and queues sync work.</Typography>
+                </div>
+                <Switch
+                  checked={fusebox.sequencerEnabled}
+                  onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, sequencerEnabled: checked } : current)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-6">
+                <div>
+                  <Typography type="p" className="text-sm font-medium">Poller</Typography>
+                  <Typography type="p" className="text-xs text-muted-foreground">Dispatches queued sync jobs to QStash.</Typography>
+                </div>
+                <Switch
+                  checked={fusebox.pollerEnabled}
+                  onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, pollerEnabled: checked } : current)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-6">
+                <div>
+                  <Typography type="p" className="text-sm font-medium">Sync engine</Typography>
+                  <Typography type="p" className="text-xs text-muted-foreground">Processes mapping batches for tenants.</Typography>
+                </div>
+                <Switch
+                  checked={fusebox.syncEngineEnabled}
+                  onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, syncEngineEnabled: checked } : current)}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={saveFusebox} disabled={!fuseboxDirty || savingFusebox} loading={savingFusebox}>
+                  Save
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

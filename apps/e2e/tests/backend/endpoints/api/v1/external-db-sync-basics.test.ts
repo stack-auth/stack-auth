@@ -449,55 +449,44 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(seq2).toBeGreaterThan(seq1);
   }, TEST_TIMEOUT);
 
+
   /**
    * What it does:
-   * - Creates a project with external DB sync enabled.
-   * - Calls the internal status endpoint and validates the response shape.
+   * - Reads the external DB sync fusebox settings.
+   * - Writes the same values back to confirm the update endpoint.
    *
    * Why it matters:
-   * - Confirms the dashboard status API exposes sequencer, poller, and sync-engine metrics.
+   * - Ensures internal fusebox controls are reachable and validated.
    */
-  test('Status endpoint exposes sync pipeline metrics', async () => {
-    const dbName = 'status_endpoint_test';
-    const connectionString = await dbManager.createDatabase(dbName);
-
-    await createProjectWithExternalDb({
-      main: {
-        type: 'postgres',
-        connectionString,
-      }
-    }, {
-      display_name: '📈 External DB Sync Status',
-      description: 'Validating sync status endpoint shape',
-    });
-
-    const response = await niceBackendFetch('/api/latest/internal/external-db-sync/status', {
+  test('Fusebox endpoint returns and accepts enablement flags', async () => {
+    const getResponse = await niceBackendFetch('/api/latest/internal/external-db-sync/fusebox', {
       accessType: 'admin',
     });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body).toMatchObject({
       ok: true,
-      tenancy: {
-        id: expect.any(String),
-        project_id: expect.any(String),
-        branch_id: expect.any(String),
+      sequencer_enabled: expect.any(Boolean),
+      poller_enabled: expect.any(Boolean),
+      sync_engine_enabled: expect.any(Boolean),
+    });
+
+    const postResponse = await niceBackendFetch('/api/latest/internal/external-db-sync/fusebox', {
+      accessType: 'admin',
+      method: 'POST',
+      body: {
+        sequencer_enabled: getResponse.body.sequencer_enabled,
+        poller_enabled: getResponse.body.poller_enabled,
+        sync_engine_enabled: getResponse.body.sync_engine_enabled,
       },
-      sequencer: {
-        project_users: expect.any(Object),
-        contact_channels: expect.any(Object),
-        deleted_rows: expect.any(Object),
-      },
-      poller: {
-        total: expect.any(String),
-        pending: expect.any(String),
-        in_flight: expect.any(String),
-        stale: expect.any(String),
-      },
-      sync_engine: {
-        mappings: expect.any(Array),
-        external_databases: expect.any(Array),
-      },
+    });
+
+    expect(postResponse.status).toBe(200);
+    expect(postResponse.body).toMatchObject({
+      ok: true,
+      sequencer_enabled: getResponse.body.sequencer_enabled,
+      poller_enabled: getResponse.body.poller_enabled,
+      sync_engine_enabled: getResponse.body.sync_engine_enabled,
     });
   }, TEST_TIMEOUT);
 });

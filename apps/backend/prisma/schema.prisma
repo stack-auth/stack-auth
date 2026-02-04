@@ -94,6 +94,19 @@ model EnvironmentConfigOverride {
   @@id([projectId, branchId])
 }
 
+model ExternalDbSyncMetadata {
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  singleton BooleanTrue @unique @default(TRUE)
+
+  sequencerEnabled  Boolean @default(true)
+  pollerEnabled     Boolean @default(true)
+  syncEngineEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Team {
   tenancyId String @db.Uuid
   teamId    String @default(uuid()) @db.Uuid
