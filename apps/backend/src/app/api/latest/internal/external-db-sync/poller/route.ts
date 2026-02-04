@@ -1,8 +1,9 @@
+import type { OutgoingRequest } from "@/generated/prisma/client";
+import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { upstash } from "@/lib/upstash";
-import type { PublishBatchRequest } from "@upstash/qstash";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import type { OutgoingRequest } from "@/generated/prisma/client";
+import { traceSpan } from "@/utils/telemetry";
 import {
   yupBoolean,
   yupNumber,
@@ -13,13 +14,12 @@ import {
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
-import { traceSpan } from "@/utils/telemetry";
+import type { PublishBatchRequest } from "@upstash/qstash";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
 const POLLER_CLAIM_LIMIT_ENV = "STACK_EXTERNAL_DB_SYNC_POLL_CLAIM_LIMIT";
-const DEFAULT_POLL_CLAIM_LIMIT = 100;
+const DEFAULT_POLL_CLAIM_LIMIT = 1000;
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -118,7 +118,6 @@ export const GET = createSmartRouteHandler({
                 SELECT id
                 FROM "OutgoingRequest"
                 WHERE "startedFulfillingAt" IS NULL
-                ORDER BY "createdAt"
                 LIMIT ${pollerClaimLimit}
                 FOR UPDATE SKIP LOCKED
               )
@@ -225,7 +224,6 @@ export const GET = createSmartRouteHandler({
 
           try {
             const batchPayload = requests.map(buildUpstashRequest);
-            console.log("publishing to QStash batch", { count: batchPayload.length });
             await upstash.batchJSON(batchPayload);
             await deleteOutgoingRequests(requests.map((request) => request.id));
             processSpan.setAttribute("stack.external-db-sync.processed-count", requests.length);
@@ -268,10 +266,6 @@ export const GET = createSmartRouteHandler({
           iterationSpan.setAttribute("stack.external-db-sync.processed-count", processed);
           return { stopReason: null, processed };
         });
-
-        if (iterationResult.stopReason) {
-          break;
-        }
 
         iterationCount++;
         totalRequestsProcessed += iterationResult.processed;

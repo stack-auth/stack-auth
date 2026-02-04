@@ -1,5 +1,8 @@
+import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
+import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { traceSpan } from "@/utils/telemetry";
 import {
   yupBoolean,
   yupNumber,
@@ -10,9 +13,6 @@ import {
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
-import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
-import { traceSpan } from "@/utils/telemetry";
 
 const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const SEQUENCER_BATCH_SIZE_ENV = "STACK_EXTERNAL_DB_SYNC_SEQUENCER_BATCH_SIZE";
@@ -233,10 +233,6 @@ export const GET = createSmartRouteHandler({
 
           return { stopReason: null };
         });
-
-        if (iterationResult.stopReason) {
-          break;
-        }
 
         iterations++;
         await wait(pollIntervalMs);
