@@ -97,7 +97,7 @@ const getColumns = (showPublishableClientKey: boolean): ColumnDef<ExtendedIntern
     id: "serverKey",
     accessorFn: (row) => row.secretServerKey?.lastFour,
     header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Server Key" />,
-    cell: ({ row }) => <TextCell>*******{row.original.secretServerKey?.lastFour}</TextCell>,
+    cell: ({ row }) => <TextCell>{row.original.secretServerKey?.lastFour ? `*******${row.original.secretServerKey.lastFour}` : "—"}</TextCell>,
     enableSorting: false,
   };
   const tailColumns: ColumnDef<ExtendedInternalApiKey>[] = [

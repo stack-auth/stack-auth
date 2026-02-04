@@ -2,6 +2,7 @@ import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/c
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
@@ -10,8 +11,6 @@ import { createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { Context, Mailbox, NiceRequestInit, NiceResponse, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_ID, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_SVIX_SERVER_URL, generatedEmailSuffix, localRedirectUrl, niceFetch, updateCookiesFromResponse } from "../helpers";
 import { localhostUrl, withPortPrefix } from "../helpers/ports";
-
-const publicOAuthClientSecretSentinel = "__stack_public_client__";
 
 type BackendContext = {
   readonly projectKeys: ProjectKeys,

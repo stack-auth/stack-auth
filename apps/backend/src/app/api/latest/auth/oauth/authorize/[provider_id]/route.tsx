@@ -8,13 +8,13 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
 import * as yup from "yup";
 
 const outerOAuthFlowExpirationInMinutes = 10;
-const publicOAuthClientSecretSentinel = "__stack_public_client__";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -66,9 +66,7 @@ export const GET = createSmartRouteHandler({
       ? undefined
       : clientSecretRaw;
     if (!clientSecret) {
-      if (tenancy.config.project.requirePublishableClientKey) {
-        throw new KnownErrors.PublishableClientKeyRequiredForProject(tenancy.project.id);
-      }
+      throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
     } else if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret }))) {
       throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
     }

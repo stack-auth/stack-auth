@@ -9,6 +9,7 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
@@ -42,7 +43,6 @@ function checkScope(scope: string | string[] | undefined) {
 
 export class OAuthModel implements AuthorizationCodeModel {
   async getClient(clientId: string, clientSecret: string): Promise<Client | Falsey> {
-    const publicOAuthClientSecretSentinel = "__stack_public_client__";
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(clientId), true);
     if (!tenancy) {
       return false;

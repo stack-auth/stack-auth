@@ -1,10 +1,10 @@
-import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { getProjectBranchFromClientId, oauthServer } from "@/oauth";
+import { oauthServer } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { oauthResponseToSmartResponse } from "../oauth-helpers";
 
 export const POST = createSmartRouteHandler({
@@ -27,19 +27,15 @@ export const POST = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler(req, fullReq) {
-    const publicOAuthClientSecretSentinel = "__stack_public_client__";
     const clientId = req.body.client_id;
     const clientSecretRaw = req.body.client_secret;
     const clientSecret = !clientSecretRaw || clientSecretRaw === publicOAuthClientSecretSentinel
       ? undefined
       : clientSecretRaw;
+
+    const body = { ...fullReq.body as any };
     if (clientId && !clientSecret) {
-      const [projectId, branchId] = getProjectBranchFromClientId(clientId);
-      const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId, true);
-      if (tenancy?.config.project.requirePublishableClientKey) {
-        throw new KnownErrors.PublishableClientKeyRequiredForProject(tenancy.project.id);
-      }
-      req.body.client_secret = publicOAuthClientSecretSentinel;
+      throw new KnownErrors.InvalidOAuthClientIdOrSecret(clientId);
     }
 
     const oauthRequest = new OAuthRequest({
@@ -48,7 +44,7 @@ export const POST = createSmartRouteHandler({
         "content-type": "application/x-www-form-urlencoded",
       },
       method: fullReq.method,
-      body: fullReq.body,
+      body,
       query: fullReq.query,
     });
 
