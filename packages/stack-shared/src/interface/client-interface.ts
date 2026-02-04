@@ -229,7 +229,6 @@ export class StackClientInterface {
       refreshToken: null,
     });
 
-
     return await this._networkRetry(
       () => this.sendClientRequestInner(path, requestOptions, session!, requestType),
       session,
