@@ -150,7 +150,7 @@ jobs:
         run: pnpm test
 
       - name: Verify data integrity
-        run: pnpm run verify-data-integrity
+        run: pnpm run verify-data-integrity --no-bail
 
       - name: Print Docker Compose logs
         if: always()

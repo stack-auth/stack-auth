@@ -1,6 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -8,6 +9,7 @@ import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
@@ -671,8 +673,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void> {
-    await this._interface.refundTransaction({ type: options.type, id: options.id });
+  async refundTransaction(options: {
+    type: "subscription" | "one-time-purchase",
+    id: string,
+    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
+  }): Promise<void> {
+    await this._interface.refundTransaction({
+      type: options.type,
+      id: options.id,
+      refundEntries: options.refundEntries,
+    });
     await this._transactionsCache.invalidateWhere(() => true);
   }
 
@@ -940,6 +950,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // END_PLATFORM
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
+  }
+
   async previewAffectedUsersByOnboardingChange(
     onboarding: { requireEmailVerification?: boolean },
     limit?: number,
@@ -948,7 +962,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: string,
       displayName: string | null,
       primaryEmail: string | null,
-      restrictedReason: { type: "anonymous" | "email_not_verified" },
+      restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
     }>,
     totalAffectedCount: number,
   }> {
@@ -961,7 +975,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         id: u.id,
         displayName: u.display_name,
         primaryEmail: u.primary_email,
-        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" },
+        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
       })),
       totalAffectedCount: result.total_affected_count,
     };

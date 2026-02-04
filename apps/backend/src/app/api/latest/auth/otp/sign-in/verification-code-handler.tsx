@@ -2,7 +2,7 @@ import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-chann
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
-import { createOrUpgradeAnonymousUser } from "@/lib/users";
+import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
@@ -105,7 +105,9 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     let isNewUser = false;
 
     if (!user) {
-      user = await createOrUpgradeAnonymousUser(
+      // Note: Request context (IP, user agent) is not available in verification code handler
+      // The rule evaluation will proceed with limited context
+      user = await createOrUpgradeAnonymousUserWithRules(
         tenancy,
         currentUser ?? null,
         {
@@ -114,7 +116,11 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           primary_email_auth_enabled: true,
           otp_auth_enabled: true,
         },
-        []
+        [],
+        {
+          authMethod: 'otp',
+          // TODO: Pass request context when available in verification code handler
+        }
       );
       isNewUser = true;
     }

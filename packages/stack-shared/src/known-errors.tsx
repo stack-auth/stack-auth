@@ -716,6 +716,19 @@ const SignUpNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const SignUpRejected = createKnownErrorConstructor(
+  KnownError,
+  "SIGN_UP_REJECTED",
+  (message?: string) => [
+    403,
+    message ?? "Your sign up was rejected. Please contact us for more information.",
+    {
+      message: message ?? "Your sign up was rejected. Please contact us for more information.",
+    },
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
   "PASSWORD_AUTHENTICATION_NOT_ENABLED",
@@ -1063,7 +1076,7 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
 const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
     {
@@ -1692,6 +1705,28 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnalyticsQueryTimeout = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_TIMEOUT",
+  (timeoutMs: number) => [
+    400,
+    `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
+    { timeout_ms: timeoutMs },
+  ] as const,
+  (json) => [json.timeout_ms] as const,
+);
+
+const AnalyticsQueryError = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_ERROR",
+  (error: string) => [
+    400,
+    `${error}`,
+    { error },
+  ] as const,
+  (json) => [json.error] as const,
+);
+
 const DefaultPaymentMethodRequired = createKnownErrorConstructor(
   KnownError,
   "DEFAULT_PAYMENT_METHOD_REQUIRED",
@@ -1774,6 +1809,7 @@ export const KnownErrors = {
   CurrentProjectNotFound,
   BranchDoesNotExist,
   SignUpNotEnabled,
+  SignUpRejected,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,
@@ -1853,6 +1889,8 @@ export const KnownErrors = {
   NewPurchasesBlocked,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
+  AnalyticsQueryTimeout,
+  AnalyticsQueryError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

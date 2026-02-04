@@ -199,6 +199,11 @@ model ProjectUser {
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
 
+  // Admin restriction fields - can be set by signup rules or manually by admins
+  restrictedByAdmin               Boolean @default(false)
+  restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
+  restrictedByAdminPrivateDetails String? // Private details (server access only)
+
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
@@ -659,6 +664,8 @@ model Event {
   // =============================== END END USER PROPERTIES ===============================
 
   @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@index([createdAt])
+  @@index([createdAt, id])
 }
 
 // An IP address that was seen in an event. Use the location fields instead of refetching the location from the ip, as the real-world geoip data may have changed since the event was logged.
