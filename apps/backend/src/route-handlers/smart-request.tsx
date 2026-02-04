@@ -259,6 +259,9 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const project = await queriesResults.project;
   if (project === null) throw new KnownErrors.CurrentProjectNotFound(projectId);  // this does allow one to probe whether a project exists or not, but that's fine (it's worth the better error messages)
   const tenancy = await queriesResults.tenancy;
+  const isClientKeyValid = await queriesResults.isClientKeyValid;
+  const isServerKeyValid = await queriesResults.isServerKeyValid;
+  const isAdminKeyValid = await queriesResults.isAdminKeyValid;
   const requiresPublishableClientKey = tenancy?.config.project.requirePublishableClientKey ?? true;
 
   if (developmentKeyOverride) {
@@ -279,17 +282,17 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
           }
           break;
         }
-        if (!queriesResults.isClientKeyValid) throw new KnownErrors.InvalidPublishableClientKey(projectId);
+        if (!isClientKeyValid) throw new KnownErrors.InvalidPublishableClientKey(projectId);
         break;
       }
       case "server": {
         if (!secretServerKey) throw new KnownErrors.ServerAuthenticationRequired();
-        if (!queriesResults.isServerKeyValid) throw new KnownErrors.InvalidSecretServerKey(projectId);
+        if (!isServerKeyValid) throw new KnownErrors.InvalidSecretServerKey(projectId);
         break;
       }
       case "admin": {
         if (!superSecretAdminKey) throw new KnownErrors.AdminAuthenticationRequired();
-        if (!queriesResults.isAdminKeyValid) throw new KnownErrors.InvalidSuperSecretAdminKey(projectId);
+        if (!isAdminKeyValid) throw new KnownErrors.InvalidSuperSecretAdminKey(projectId);
         break;
       }
       default: {

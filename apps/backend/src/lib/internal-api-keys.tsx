@@ -1,7 +1,7 @@
 // TODO remove and replace with CRUD handler
 
-import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
 import { ApiKeySet, Prisma } from '@/generated/prisma/client';
+import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
 import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
 import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
@@ -9,15 +9,27 @@ import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/
 import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { publishableClientKeyNotNecessarySentinel } from '@stackframe/stack-shared/dist/utils/oauth';
+import { getRenderedProjectConfigQuery } from './config';
 
 export const publishableClientKeyHeaderSchema = yupString().matches(/^[a-zA-Z0-9_-]*$/);
 export const secretServerKeyHeaderSchema = publishableClientKeyHeaderSchema;
 export const superSecretAdminKeyHeaderSchema = secretServerKeyHeaderSchema;
 
-export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<boolean> {
+export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<Promise<boolean>> {
   key = validateKeyType(key);
   const keyType = Object.keys(key)[0] as keyof KeyType;
   const keyValue = key[keyType];
+
+  if (keyType === "publishableClientKey" && keyValue === publishableClientKeyNotNecessarySentinel) {
+    return RawQuery.then(
+      getRenderedProjectConfigQuery({ projectId }),
+      async (configPromise) => {
+        const config = await configPromise;
+        return !config.project.requirePublishableClientKey;
+      },
+    );
+  }
 
   const whereClause = Prisma.sql`
     ${Prisma.raw(JSON.stringify(keyType))} = ${keyValue}
@@ -34,7 +46,7 @@ export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<b
       AND "manuallyRevokedAt" IS NULL
       AND "expiresAt" > ${new Date()}
     `,
-    postProcess: (rows) => rows[0]?.result === "t",
+    postProcess: async (rows) => rows[0]?.result === "t",
   };
 }
 
@@ -56,6 +68,12 @@ export async function checkApiKeySet(projectId: string, key: KeyType): Promise<b
 }
 
 async function checkApiKeySetLegacy(projectId: string, key: KeyType): Promise<boolean> {
+  const validatedKey = validateKeyType(key);
+  if ("publishableClientKey" in validatedKey && validatedKey.publishableClientKey === publishableClientKeyNotNecessarySentinel) {
+    const config = await rawQuery(globalPrismaClient, getRenderedProjectConfigQuery({ projectId }));
+    return !config.project.requirePublishableClientKey;
+  }
+
   const set = await getApiKeySet(projectId, key);
   if (!set) return false;
   if (set.manually_revoked_at_millis) return false;

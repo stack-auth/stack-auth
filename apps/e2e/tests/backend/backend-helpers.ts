@@ -2,7 +2,7 @@ import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/c
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { publicOAuthClientSecretSentinel } from "@stackframe/stack-shared/dist/utils/oauth";
+import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
@@ -661,8 +661,8 @@ export namespace Auth {
       const userAuth = backendContext.value.userAuth;
       const includeClientSecret = options.includeClientSecret ?? true;
       const clientSecret = includeClientSecret
-        ? (projectKeys.publishableClientKey ?? publicOAuthClientSecretSentinel)
-        : publicOAuthClientSecretSentinel;
+        ? (projectKeys.publishableClientKey ?? publishableClientKeyNotNecessarySentinel)
+        : publishableClientKeyNotNecessarySentinel;
 
       return filterUndefined({
         client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
@@ -838,8 +838,8 @@ export namespace Auth {
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const includeClientSecret = options.includeClientSecret ?? true;
       const clientSecret = includeClientSecret
-        ? (projectKeys.publishableClientKey ?? publicOAuthClientSecretSentinel)
-        : publicOAuthClientSecretSentinel;
+        ? (projectKeys.publishableClientKey ?? publishableClientKeyNotNecessarySentinel)
+        : publishableClientKeyNotNecessarySentinel;
 
       const tokenResponse = await niceBackendFetch("/api/v1/auth/oauth/token", {
         method: "POST",

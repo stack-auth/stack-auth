@@ -31,6 +31,11 @@ x-stack-random-nonce: <random-string>
   - Generate a new random string for each request
 content-type: application/json (for requests with body)
 
+### OAuth client_secret sentinel
+
+publishableClientKeyNotNecessarySentinel: "__stack_public_client__"
+  - Use this as the OAuth client_secret when a project does not require a publishable client key.
+
 
 ### Authentication Headers [authenticated]
 
@@ -208,7 +213,7 @@ To refresh an access token from a refresh token, use an OAuth2 token grant:
     grant_type: refresh_token
     refresh_token: <refresh_token>
     client_id: <projectId>
-    client_secret: <publishableClientKey>
+    client_secret: <publishableClientKey | publishableClientKeyNotNecessarySentinel>
 
   Response on success (200 OK):
     { access_token: string, refresh_token?: string, ... }
