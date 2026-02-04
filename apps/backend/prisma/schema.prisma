@@ -202,6 +202,11 @@ model ProjectUser {
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
 
+  // Admin restriction fields - can be set by signup rules or manually by admins
+  restrictedByAdmin               Boolean @default(false)
+  restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
+  restrictedByAdminPrivateDetails String? // Private details (server access only)
+
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
