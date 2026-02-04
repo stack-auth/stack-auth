@@ -1,8 +1,9 @@
 "use client";
 
+import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
-import { DataTable, Switch, Typography } from "@/components/ui";
-import { AdminSentEmail } from "@stackframe/stack";
+import { Badge, DataTable, Switch, Typography } from "@/components/ui";
+import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
 import { useEffect, useState } from "react";
@@ -10,6 +11,86 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
+
+// Status labels for display
+const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
+  "paused": "Paused",
+  "preparing": "Preparing",
+  "rendering": "Rendering",
+  "render-error": "Render Error",
+  "scheduled": "Scheduled",
+  "queued": "Queued",
+  "sending": "Sending",
+  "server-error": "Server Error",
+  "skipped": "Skipped",
+  "bounced": "Bounced",
+  "delivery-delayed": "Delivery Delayed",
+  "sent": "Sent",
+  "opened": "Opened",
+  "clicked": "Clicked",
+  "marked-as-spam": "Marked as Spam",
+};
+
+function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "secondary" | "destructive" | "outline" {
+  switch (status) {
+    case "paused": {
+      return "outline";
+    }
+    case "preparing":
+    case "rendering":
+    case "scheduled":
+    case "queued":
+    case "sending": {
+      return "default";
+    }
+    case "sent":
+    case "opened":
+    case "clicked":
+    case "skipped":
+    case "delivery-delayed": {
+      return "secondary";
+    }
+    case "bounced":
+    case "server-error":
+    case "render-error": {
+      return "destructive";
+    }
+    case "marked-as-spam": {
+      return "outline";
+    }
+    default: {
+      return "default";
+    }
+  }
+}
+
+function getRecipientDisplay(email: AdminEmailOutbox): string {
+  const to = email.to;
+  if (to.type === "user-primary-email") {
+    return `User: ${to.userId.slice(0, 8)}...`;
+  } else if (to.type === "user-custom-emails") {
+    return to.emails.length > 0 ? to.emails[0] : `User: ${to.userId.slice(0, 8)}...`;
+  } else {
+    return to.emails.length > 0 ? to.emails[0] : "No recipients";
+  }
+}
+
+function getSubjectDisplay(email: AdminEmailOutbox): string {
+  // Subject is only available after rendering
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Safe access for display, subject may not exist on all status variants
+  const subject = (email as any).subject;
+  return subject || "(Not yet rendered)";
+}
+
+function getTimeDisplay(email: AdminEmailOutbox): string {
+  // Show delivered time if available, otherwise scheduled time
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Safe access for display, deliveredAt may not exist on all status variants
+  const deliveredAt = (email as any).deliveredAt;
+  if (deliveredAt) {
+    return new Date(deliveredAt).toLocaleString();
+  }
+  return email.scheduledAt.toLocaleString();
+}
 
 type ViewMode = "grouped" | "list";
 
@@ -34,25 +115,31 @@ function ViewModeToggle({
   );
 }
 
-const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
-  { accessorKey: "recipient", header: "Recipient" },
-  { accessorKey: "subject", header: "Subject" },
+const emailTableColumns: ColumnDef<AdminEmailOutbox>[] = [
   {
-    accessorKey: "sentAt",
-    header: "Sent At",
-    cell: ({ row }) => {
-      const date = row.original.sentAt;
-      return date.toLocaleDateString() + " " + date.toLocaleTimeString();
-    },
+    accessorKey: "recipient",
+    header: "Recipient",
+    cell: ({ row }) => getRecipientDisplay(row.original),
+  },
+  {
+    accessorKey: "subject",
+    header: "Subject",
+    cell: ({ row }) => getSubjectDisplay(row.original),
+  },
+  {
+    accessorKey: "scheduledAt",
+    header: "Time",
+    cell: ({ row }) => getTimeDisplay(row.original),
   },
   {
     accessorKey: "status",
     header: "Status",
     cell: ({ row }) => {
-      return row.original.error ? (
-        <div className="text-red-500">Failed</div>
-      ) : (
-        <div className="text-green-500">Sent</div>
+      const status = row.original.status;
+      return (
+        <Badge variant={getStatusBadgeVariant(status)}>
+          {STATUS_LABELS[status]}
+        </Badge>
       );
     },
   },
@@ -60,15 +147,16 @@ const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
 
 function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
-  const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
+  const router = useRouter();
+  const [emailLogs, setEmailLogs] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     runAsynchronously(async () => {
       setLoading(true);
       try {
-        const emails = await stackAdminApp.listSentEmails();
-        setEmailLogs(emails);
+        const result = await stackAdminApp.listOutboxEmails();
+        setEmailLogs(result.items);
       } finally {
         setLoading(false);
       }
@@ -88,7 +176,10 @@ function EmailSendDataTable() {
       data={emailLogs}
       defaultColumnFilters={[]}
       columns={emailTableColumns}
-      defaultSorting={[{ id: "sentAt", desc: true }]}
+      defaultSorting={[{ id: "scheduledAt", desc: true }]}
+      onRowClick={(email) => {
+        router.push(`email-viewer/${email.id}`);
+      }}
     />
   );
 }
