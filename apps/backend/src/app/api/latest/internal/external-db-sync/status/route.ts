@@ -1,6 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import {
   adaptSchema,
@@ -11,6 +12,7 @@ import {
   yupObject,
   yupString,
 } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Client } from "pg";
@@ -427,6 +429,202 @@ function parseConnectionString(connectionString: string | null | undefined) {
   };
 }
 
+type ClickhouseMetadataRow = {
+  mapping_name: string,
+  last_synced_sequence_id: string,
+  updated_at: string,
+};
+
+type ClickhouseUsersStatsRow = {
+  total_rows: string,
+  min_signed_up_at: string | null,
+  max_signed_up_at: string | null,
+};
+
+async function fetchClickhouseDatabaseStatus(
+  dbId: string,
+  mappingStatuses: Array<{
+    mapping_id: string,
+    internal_max_sequence_id: string | null,
+  }>,
+  tenancy: {
+    id: string,
+    projectId: string,
+    branchId: string,
+  },
+) {
+  const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
+  const connection = parseConnectionString(clickhouseUrl);
+  if (!clickhouseUrl) {
+    return {
+      id: dbId,
+      type: "clickhouse",
+      connection,
+      status: "error" as const,
+      error: "Missing STACK_CLICKHOUSE_URL",
+      metadata: [],
+      users_table: {
+        exists: false,
+        total_rows: null,
+        min_signed_up_at_millis: null,
+        max_signed_up_at_millis: null,
+      },
+      mapping_status: mappingStatuses.map((mapping) => ({
+        mapping_id: mapping.mapping_id,
+        internal_max_sequence_id: mapping.internal_max_sequence_id,
+        last_synced_sequence_id: null,
+        updated_at_millis: null,
+        backlog: null,
+      })),
+    };
+  }
+
+  const client = getClickhouseAdminClient();
+  let metadata: ClickhouseMetadataRow[] = [];
+  let usersStats: ClickhouseUsersStatsRow | null = null;
+  try {
+    const metadataResult = await Result.fromPromise(client.query({
+      query: `
+        SELECT
+          mapping_name,
+          toString(argMax(last_synced_sequence_id, updated_at)) AS last_synced_sequence_id,
+          toString(max(updated_at)) AS updated_at
+        FROM analytics_internal._stack_sync_metadata
+        WHERE tenancy_id = {tenancy_id:UUID}
+        GROUP BY mapping_name
+      `,
+      query_params: {
+        tenancy_id: tenancy.id,
+      },
+      format: "JSONEachRow",
+    }));
+    if (metadataResult.status === "error") {
+      return {
+        id: dbId,
+        type: "clickhouse",
+        connection,
+        status: "error" as const,
+        error: formatError(metadataResult.error),
+        metadata: [],
+        users_table: {
+          exists: false,
+          total_rows: null,
+          min_signed_up_at_millis: null,
+          max_signed_up_at_millis: null,
+        },
+        mapping_status: mappingStatuses.map((mapping) => ({
+          mapping_id: mapping.mapping_id,
+          internal_max_sequence_id: mapping.internal_max_sequence_id,
+          last_synced_sequence_id: null,
+          updated_at_millis: null,
+          backlog: null,
+        })),
+      };
+    }
+    const metadataRows = await metadataResult.data.json<ClickhouseMetadataRow>();
+    metadata = metadataRows;
+
+    const usersStatsResult = await Result.fromPromise(client.query({
+      query: `
+        SELECT
+          toString(count()) AS total_rows,
+          toString(min(signed_up_at)) AS min_signed_up_at,
+          toString(max(signed_up_at)) AS max_signed_up_at
+        FROM analytics_internal.users FINAL
+        WHERE project_id = {project_id:String}
+          AND branch_id = {branch_id:String}
+          AND is_deleted = 0
+      `,
+      query_params: {
+        project_id: tenancy.projectId,
+        branch_id: tenancy.branchId,
+      },
+      format: "JSONEachRow",
+    }));
+    if (usersStatsResult.status === "error") {
+      return {
+        id: dbId,
+        type: "clickhouse",
+        connection,
+        status: "error" as const,
+        error: formatError(usersStatsResult.error),
+        metadata: metadata.map((row) => ({
+          mapping_name: row.mapping_name,
+          last_synced_sequence_id: toBigIntString(row.last_synced_sequence_id) ?? "-1",
+          updated_at_millis: toMillis(row.updated_at),
+        })),
+        users_table: {
+          exists: false,
+          total_rows: null,
+          min_signed_up_at_millis: null,
+          max_signed_up_at_millis: null,
+        },
+        mapping_status: mappingStatuses.map((mapping) => ({
+          mapping_id: mapping.mapping_id,
+          internal_max_sequence_id: mapping.internal_max_sequence_id,
+          last_synced_sequence_id: null,
+          updated_at_millis: null,
+          backlog: null,
+        })),
+      };
+    }
+
+    const usersStatsRows = await usersStatsResult.data.json<ClickhouseUsersStatsRow>();
+    usersStats = usersStatsRows[0] ?? {
+      total_rows: "0",
+      min_signed_up_at: null,
+      max_signed_up_at: null,
+    };
+  } finally {
+    await Result.fromPromise(client.close());
+  }
+
+  const metadataMap = new Map<string, { last_synced_sequence_id: string | null, updated_at_millis: number | null }>();
+  const formattedMetadata = metadata.map((row) => {
+    const lastSynced = toBigIntString(row.last_synced_sequence_id) ?? "-1";
+    const updatedAt = toMillis(row.updated_at);
+    metadataMap.set(row.mapping_name, { last_synced_sequence_id: lastSynced, updated_at_millis: updatedAt });
+    return {
+      mapping_name: row.mapping_name,
+      last_synced_sequence_id: lastSynced,
+      updated_at_millis: updatedAt,
+    };
+  });
+
+  const mappingStatus = mappingStatuses.map((mapping) => {
+    const external = metadataMap.get(mapping.mapping_id);
+    const lastSynced = external?.last_synced_sequence_id ?? null;
+    const updatedAt = external?.updated_at_millis ?? null;
+    let backlog: string | null = null;
+    if (mapping.internal_max_sequence_id && lastSynced) {
+      backlog = (BigInt(mapping.internal_max_sequence_id) - BigInt(lastSynced)).toString();
+    }
+    return {
+      mapping_id: mapping.mapping_id,
+      internal_max_sequence_id: mapping.internal_max_sequence_id,
+      last_synced_sequence_id: lastSynced,
+      updated_at_millis: updatedAt,
+      backlog,
+    };
+  });
+
+  return {
+    id: dbId,
+    type: "clickhouse",
+    connection,
+    status: "ok" as const,
+    error: null,
+    metadata: formattedMetadata,
+    users_table: {
+      exists: true,
+      total_rows: toBigIntString(usersStats.total_rows),
+      min_signed_up_at_millis: toMillis(usersStats.min_signed_up_at),
+      max_signed_up_at_millis: toMillis(usersStats.max_signed_up_at),
+    },
+    mapping_status: mappingStatus,
+  };
+}
+
 async function fetchExternalDatabaseStatus(
   dbId: string,
   dbConfig: CompleteConfig["dbSync"]["externalDatabases"][string],
@@ -434,7 +632,15 @@ async function fetchExternalDatabaseStatus(
     mapping_id: string,
     internal_max_sequence_id: string | null,
   }>,
+  tenancy: {
+    id: string,
+    projectId: string,
+    branchId: string,
+  },
 ) {
+  if (dbConfig.type === "clickhouse") {
+    return await fetchClickhouseDatabaseStatus(dbId, mappingStatuses, tenancy);
+  }
   const connection = parseConnectionString(dbConfig.connectionString ?? null);
 
   if (dbConfig.type !== "postgres") {
@@ -762,7 +968,11 @@ export const GET = createSmartRouteHandler({
           const statuses = await Promise.all(
             Object.entries(
               auth.tenancy.config.dbSync.externalDatabases as CompleteConfig["dbSync"]["externalDatabases"],
-            ).map(([dbId, dbConfig]) => fetchExternalDatabaseStatus(dbId, dbConfig, currentStats.mappingStatuses)),
+            ).map(([dbId, dbConfig]) => fetchExternalDatabaseStatus(dbId, dbConfig, currentStats.mappingStatuses, {
+              id: auth.tenancy.id,
+              projectId: auth.tenancy.project.id,
+              branchId: auth.tenancy.branchId,
+            })),
           );
           externalSpan.setAttribute("stack.external-db-sync.external-db-count", statuses.length);
           return statuses;

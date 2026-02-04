@@ -239,11 +239,16 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     externalDatabases: yupRecord(
       userSpecifiedIdSchema("externalDatabaseId"),
       yupObject({
-        type: yupString().oneOf(['postgres']).defined(),
-        connectionString: yupString().defined(),
-      })
+        type: yupString().oneOf(["postgres", "clickhouse"]).defined(),
+        connectionString: yupString().when("type", {
+          is: "postgres",
+          then: (schema) => schema.defined(),
+          otherwise: (schema) => schema.optional(),
+        }),
+      }),
     ),
   }),
+
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -852,9 +857,34 @@ export async function sanitizeBranchConfig<T extends BranchRenderedConfigBeforeS
   };
 }
 
+type DbSyncConfig = EnvironmentConfigNormalizedOverride["dbSync"];
+type ExternalDatabasesConfig = NonNullable<NonNullable<DbSyncConfig>["externalDatabases"]>;
+
+function hasDbSync<T extends object>(config: T): config is T & { dbSync?: DbSyncConfig } {
+  return "dbSync" in config;
+}
+
 export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedConfigBeforeSanitization>(config: T) {
   assertNormalized(config);
   const prepared = await sanitizeBranchConfig(config);
+  const existingDbSync = hasDbSync(prepared) ? prepared.dbSync : undefined;
+  const externalDatabases: ExternalDatabasesConfig = existingDbSync?.externalDatabases ?? {};
+  if (!Object.prototype.hasOwnProperty.call(externalDatabases, "clickhouse")) {
+    const clickhouseDatabase: NonNullable<ExternalDatabasesConfig>[string] = {
+      type: "clickhouse",
+      connectionString: undefined,
+    };
+    return {
+      ...prepared,
+      dbSync: {
+        ...existingDbSync,
+        externalDatabases: {
+          ...externalDatabases,
+          clickhouse: clickhouseDatabase,
+        },
+      },
+    };
+  }
   return {
     ...prepared,
   };
