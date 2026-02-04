@@ -46,7 +46,7 @@ You have access to a queryAnalytics tool to run ClickHouse SQL queries against t
 Available tables:
 
 **events** - User activity events
-- event_type: LowCardinality(String) - Type of event (e.g., 'user_signed_in', 'user_signed_up')
+- event_type: LowCardinality(String) - $token-refresh is the only valid event_type right now, it occurs whenever an access token is refreshed
 - event_at: DateTime64(3, 'UTC') - When the event occurred
 - data: JSON - Additional event data
 - user_id: Nullable(String) - Associated user ID

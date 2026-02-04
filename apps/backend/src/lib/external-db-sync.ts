@@ -435,6 +435,7 @@ async function pushRowsToClickhouse(
       sequence_id: sequenceId,
       primary_email_verified: normalizeClickhouseBoolean(rest.primary_email_verified, "primary_email_verified"),
       is_anonymous: normalizeClickhouseBoolean(rest.is_anonymous, "is_anonymous"),
+      restricted_by_admin: normalizeClickhouseBoolean(rest.restricted_by_admin, "restricted_by_admin"),
       is_deleted: normalizeClickhouseBoolean(rest.is_deleted, "is_deleted"),
     };
   });

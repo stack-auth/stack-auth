@@ -39,6 +39,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           client_read_only_metadata JSON,
           server_metadata JSON,
           is_anonymous UInt8,
+          restricted_by_admin UInt8,
+          restricted_by_admin_reason Nullable(String),
+          restricted_by_admin_private_details Nullable(String),
           sequence_id Int64,
           is_deleted UInt8,
           created_at DateTime64(3, 'UTC') DEFAULT now64(3)
@@ -93,6 +96,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
             COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
             "ProjectUser"."isAnonymous" AS "is_anonymous",
+            "ProjectUser"."restrictedByAdmin" AS "restricted_by_admin",
+            "ProjectUser"."restrictedByAdminReason" AS "restricted_by_admin_reason",
+            "ProjectUser"."restrictedByAdminPrivateDetails" AS "restricted_by_admin_private_details",
             "ProjectUser"."sequenceId" AS "sequence_id",
             "ProjectUser"."tenancyId" AS "tenancyId",
             false AS "is_deleted"
@@ -115,6 +121,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             '{}'::jsonb AS "client_read_only_metadata",
             '{}'::jsonb AS "server_metadata",
             false AS "is_anonymous",
+            false AS "restricted_by_admin",
+            NULL::text AS "restricted_by_admin_reason",
+            NULL::text AS "restricted_by_admin_private_details",
             "DeletedRow"."sequenceId" AS "sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
             true AS "is_deleted"
