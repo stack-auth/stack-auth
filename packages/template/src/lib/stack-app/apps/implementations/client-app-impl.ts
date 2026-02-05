@@ -317,8 +317,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
 
-  protected async _createCookieHelper(): Promise<CookieHelper> {
-    if (this._tokenStoreInit === 'nextjs-cookie' || this._tokenStoreInit === 'cookie') {
+  protected async _createCookieHelper(overrideTokenStoreInit?: TokenStoreInit): Promise<CookieHelper> {
+    const tokenStoreInit = overrideTokenStoreInit === undefined ? this._tokenStoreInit : overrideTokenStoreInit;
+    if (tokenStoreInit === 'nextjs-cookie' || tokenStoreInit === 'cookie') {
       return await createCookieHelper();
     } else {
       return await createPlaceholderCookieHelper();
@@ -877,7 +878,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _getSession(overrideTokenStoreInit?: TokenStoreInit): Promise<InternalSession> {
-    const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper(), overrideTokenStoreInit);
+    const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper(overrideTokenStoreInit), overrideTokenStoreInit);
     const session = this._getSessionFromTokenStore(tokenStore);
     return session;
   }
@@ -2166,7 +2167,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
       isRestricted: auth.is_restricted as boolean,
-      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" } | null) ?? null,
+      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null) ?? null,
     };
   }
 

@@ -168,6 +168,11 @@ function getEventLoopDelayStats(): EventLoopDelayStats | null {
   // Reset for next interval
   eventLoopHistogram.reset();
 
+  const hasInvalidValues = [min, max, mean, p50, p95, p99].some(value => !Number.isFinite(value));
+  if (hasInvalidValues) {
+    return null;
+  }
+
   return {
     minMs: min / 1e6,
     maxMs: max / 1e6,

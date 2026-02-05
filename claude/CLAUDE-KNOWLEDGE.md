@@ -17,3 +17,11 @@ A: The mock server responds on `/execute/v1/script` and `/execute/v2/script` whe
 
 Q: How can I add a small Vitest check inside a client-only file?
 A: Use `import.meta.vitest?.test(...)` at the bottom of the file for lightweight, in-file tests without adding a separate test file.
+Q: Why did `pnpm typecheck` fail after deleting a Next.js route?
+A: The generated `.next/types/validator.ts` can keep stale imports for removed routes. Deleting that file (or regenerating Next build output) clears the outdated references so `pnpm typecheck` succeeds again.
+
+Q: How should `restricted_by_admin` updates handle reason fields?
+A: When setting `restricted_by_admin` to false, explicitly clear `restricted_by_admin_reason` and `restricted_by_admin_private_details` to null (even if omitted in the PATCH) to satisfy the database constraint.
+
+Q: Where should `stackAppInternalsSymbol` be imported from in the dashboard?
+A: Use the shared `apps/dashboard/src/lib/stack-app-internals.ts` export to avoid duplicating the Symbol.for definition across files.

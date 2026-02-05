@@ -7,4 +7,5 @@ export type AnalyticsQueryOptions = {
 
 export type AnalyticsQueryResponse = {
   result: Record<string, unknown>[],
+  query_id: string,
 };

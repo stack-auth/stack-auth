@@ -8,18 +8,21 @@ import { Freestyle as FreestyleClient } from 'freestyle-sandboxes';
 
 export type ExecuteJavascriptOptions = {
   nodeModules?: Record<string, string>,
-  engine?: 'freestyle' | 'vercel-sandbox',
 };
+
+export type ExecuteResult =
+  | { status: "ok", data: unknown }
+  | { status: "error", error: { message: string, stack?: string, cause?: unknown } };
 
 type JsEngine = {
   name: string,
-  execute: (code: string, options: ExecuteJavascriptOptions) => Promise<unknown>,
+  execute: (code: string, options: ExecuteJavascriptOptions) => Promise<ExecuteResult>,
 };
 
 function createFreestyleEngine(): JsEngine {
   return {
     name: 'freestyle',
-    execute: async (code: string, options: ExecuteJavascriptOptions): Promise<unknown> => {
+    execute: async (code: string, options: ExecuteJavascriptOptions): Promise<ExecuteResult> => {
       const apiKey = getEnvVariable("STACK_FREESTYLE_API_KEY");
       let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
 
@@ -45,7 +48,7 @@ function createFreestyleEngine(): JsEngine {
         throw new StackAssertionError("Freestyle execution returned undefined result", { response, innerCode: code, innerOptions: options });
       }
 
-      return response.result;
+      return response.result as ExecuteResult;
     },
   };
 }
@@ -53,10 +56,10 @@ function createFreestyleEngine(): JsEngine {
 function createVercelSandboxEngine(): JsEngine {
   return {
     name: 'vercel-sandbox',
-    execute: async (code: string, options: ExecuteJavascriptOptions): Promise<unknown> => {
-      const teamId = getEnvVariable("STACK_VERCEL_SANDBOX_TEAM_ID", "");
-      const projectId = getEnvVariable("STACK_VERCEL_SANDBOX_PROJECT_ID", "");
-      const token = getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN", "");
+    execute: async (code: string, options: ExecuteJavascriptOptions): Promise<ExecuteResult> => {
+      const teamId = getEnvVariable("STACK_VERCEL_SANDBOX_TEAM_ID");
+      const projectId = getEnvVariable("STACK_VERCEL_SANDBOX_PROJECT_ID");
+      const token = getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN");
 
       const sandbox = await Sandbox.create({
         resources: { vcpus: 2 },
@@ -122,51 +125,66 @@ const engineMap = new Map<string, JsEngine>([
   ['vercel-sandbox', createVercelSandboxEngine()],
 ]);
 
-const engines: JsEngine[] = Array.from(engineMap.values());
-
 /**
  * Executes the given code with the given options. Returns the result of the code execution
  * if it is JSON-serializable. Has undefined behavior if it is not JSON-serializable or if
  * the code throws an error.
  */
-export async function executeJavascript(code: string, options: ExecuteJavascriptOptions = {}): Promise<unknown> {
+export async function executeJavascript(code: string, options: ExecuteJavascriptOptions = {}): Promise<ExecuteResult> {
   return await traceSpan({
     description: 'js-execution.executeJavascript',
     attributes: {
       'js-execution.code.length': code.length.toString(),
       'js-execution.nodeModules.count': options.nodeModules ? Object.keys(options.nodeModules).length.toString() : '0',
-      'js-execution.engine': options.engine ?? 'auto',
     }
   }, async () => {
-    if (options.engine) {
-      const engine = engineMap.get(options.engine);
-      if (!engine) {
-        throw new StackAssertionError(`Unknown JS execution engine: ${options.engine}`);
+
+    if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN") != "vercel_sandbox_disabled_for_local_development") {
+      const shouldSanityTest = Math.random() < 0.05;
+      if (shouldSanityTest) {
+        runAsynchronouslyAndWaitUntil(runSanityTest(code, options));
       }
-      return await engine.execute(code, options);
+
+      return await runWithFallback(code, options);
+    } else {
+      if (getNodeEnvironment().includes("prod")) {
+        throw new StackAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
+      }
+
+      return await runWithoutFallback(code, options);
     }
-
-    const shouldSanityTest = Math.random() < 0.05;
-
-    if (shouldSanityTest) {
-      runAsynchronouslyAndWaitUntil(runSanityTest(code, options));
-    }
-
-    // Normal execution: try engines in order with retry for first engine
-    return await runWithFallback(code, options);
   });
+}
+
+/**
+ * Compare two execution results for sanity test equality.
+ * For error results, we only compare status and message (not stack traces,
+ * which differ between execution environments).
+ */
+function areResultsEqual(a: ExecuteResult, b: ExecuteResult): boolean {
+  if (a.status !== b.status) return false;
+
+  if (a.status === 'ok' && b.status === 'ok') {
+    return JSON.stringify(a.data) === JSON.stringify(b.data);
+  }
+
+  if (a.status === 'error' && b.status === 'error') {
+    return a.error.message === b.error.message;
+  }
+
+  return false;
 }
 
 async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   const results: Array<{ engine: string, result: unknown }> = [];
   const failures: Array<{ engine: string, error: unknown }> = [];
 
-  for (const engine of engines) {
+  for (const [name, engine] of engineMap) {
     try {
       const result = await engine.execute(code, options);
-      results.push({ engine: engine.name, result });
+      results.push({ engine: name, result });
     } catch (error) {
-      failures.push({ engine: engine.name, error });
+      failures.push({ engine: name, error });
     }
   }
 
@@ -181,8 +199,8 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
     return;
   }
 
-  const referenceResult = results[0].result;
-  const allEqual = results.every(r => JSON.stringify(r.result) === JSON.stringify(referenceResult));
+  const referenceResult = results[0].result as ExecuteResult;
+  const allEqual = results.every(r => areResultsEqual(r.result as ExecuteResult, referenceResult));
   if (!allEqual) {
     captureError("js-execution-sanity-test-mismatch", new StackAssertionError(
       "JS execution sanity test: engines returned different results",
@@ -191,19 +209,15 @@ async function runSanityTest(code: string, options: ExecuteJavascriptOptions) {
   }
 }
 
-async function runWithFallback(code: string, options: ExecuteJavascriptOptions): Promise<unknown> {
-  const errors: Array<{ engine: string, error: unknown }> = [];
+async function runWithFallback(code: string, options: ExecuteJavascriptOptions): Promise<ExecuteResult> {
+  const freestyleEngine = engineMap.get("freestyle")!;
+  const vercelSandboxEngine = engineMap.get("vercel-sandbox")!;
 
-  for (let i = 0; i < engines.length; i++) {
-    const engine = engines[i];
-    const isFirstEngine = i === 0;
-
-    const maxAttempts = isFirstEngine ? 2 : 1;
-
-    const retryResult = await Result.retry(
+  const maxAttempts = 2;
+  const retryResult = await Result.retry(
       async () => {
         try {
-          const result = await engine.execute(code, options);
+          const result = await freestyleEngine.execute(code, options);
           return Result.ok(result);
         } catch (error) {
           return Result.error(error);
@@ -213,20 +227,33 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
       { exponentialDelayBase: 500 }
     );
 
-    if (retryResult.status === 'ok') {
-      return retryResult.data;
-    }
-
-    const engineError = retryResult.error;
-    errors.push({ engine: engine.name, error: engineError });
-
-    if (i < engines.length - 1) {
-      captureError(`js-execution-${engine.name}-failed`, new StackAssertionError(
-        `JS execution engine '${engine.name}' failed, falling back to next engine`,
-        { error: engineError, attempts: retryResult.attempts, innerCode: code, innerOptions: options }
-      ));
-    }
+  if (retryResult.status === 'ok') {
+    return retryResult.data;
   }
 
-  throw errors[errors.length - 1].error;
+  captureError(`js-execution-freestyle-failed`, new StackAssertionError(
+    `JS execution freestyle engine failed, falling back to vercel sandbox engine`,
+    { error: retryResult.error, innerCode: code, innerOptions: options }
+  ));
+
+  try {
+    const result = await vercelSandboxEngine.execute(code, options);
+    return result;
+  } catch (error){
+      captureError(`js-execution-vercel-sandbox-failed`, new StackAssertionError(
+        `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
+        { error: error, innerCode: code, innerOptions: options }
+      ));
+      throw new StackAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
+  }
+}
+
+async function runWithoutFallback(code: string, options: ExecuteJavascriptOptions): Promise<ExecuteResult> {
+  const freestyleEngine = engineMap.get("freestyle")!;
+  try {
+    const result = await freestyleEngine.execute(code, options);
+    return result;
+  } catch (error) {
+    throw new StackAssertionError("Freestyle rendering service unavailable when running without fallback", { cause: error, innerCode: code, innerOptions: options });
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/dev-launchpad",
-  "version": "2.8.63",
+  "version": "2.8.65",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {

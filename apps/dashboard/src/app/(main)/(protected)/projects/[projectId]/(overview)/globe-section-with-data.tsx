@@ -1,10 +1,9 @@
 'use client';
 
 import { ErrorBoundary } from '@sentry/nextjs';
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useAdminApp } from '../use-admin-app';
 import { GlobeSection } from './globe';
-
-const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
 export function GlobeSectionWithData({ includeAnonymous }: { includeAnonymous: boolean }) {
   const adminApp = useAdminApp();

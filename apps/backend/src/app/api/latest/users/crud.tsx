@@ -92,7 +92,8 @@ type OnboardingConfig = {
 
 /**
  * Computes the restricted status and reason for a user based on their data and config.
- * A user is "restricted" if they've signed up but haven't completed onboarding requirements.
+ * A user can be "restricted" for various reasons, for example if they've signed up but haven't completed onboarding
+ * requirements, or they've been restricted by an administrator via sign-up rules or manual admin action.
  *
  * The config parameter accepts any object with an optional `onboarding.requireEmailVerification` property.
  * This allows passing various config types (EnvironmentRenderedConfig, CompleteConfig, etc.) without type errors.
@@ -101,7 +102,8 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   isAnonymous: boolean,
   primaryEmailVerified: boolean,
   config: T,
-): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" } } {
+  restrictedByAdmin?: boolean,
+): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } } {
   // note: when you implement this function, make sure to also update the filter in the list users endpoint
 
   // Anonymous users are always restricted (they need to sign up first)
@@ -110,8 +112,14 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   }
 
   // Check email verification requirement (default to false if not configured)
+  // This takes precedence over admin restriction because it's user-actionable
   if (config.onboarding.requireEmailVerification && !primaryEmailVerified) {
     return { isRestricted: true, restrictedReason: { type: "email_not_verified" } };
+  }
+
+  // Check if user was restricted by administrator (e.g., via sign-up rules or manual admin action)
+  if (restrictedByAdmin) {
+    return { isRestricted: true, restrictedReason: { type: "restricted_by_administrator" } };
   }
 
   // EXTENSIBILITY: Add more conditions here in the future
@@ -141,6 +149,7 @@ export const userPrismaToCrud = (
     prisma.isAnonymous,
     primaryEmailVerified,
     config,
+    prisma.restrictedByAdmin,
   );
 
   const result = {
@@ -170,6 +179,9 @@ export const userPrismaToCrud = (
     is_anonymous: prisma.isAnonymous,
     is_restricted: isRestricted,
     restricted_reason: restrictedReason,
+    restricted_by_admin: prisma.restrictedByAdmin,
+    restricted_by_admin_reason: prisma.restrictedByAdminReason,
+    restricted_by_admin_private_details: prisma.restrictedByAdminPrivateDetails,
   };
   return result;
 };
@@ -347,6 +359,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         row.isAnonymous,
         primaryEmailContactChannel?.isVerified || false,
         config,
+        row.restrictedByAdmin,
       );
 
       return {
@@ -384,6 +397,9 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         is_anonymous: row.isAnonymous,
         is_restricted: restrictedStatus.isRestricted,
         restricted_reason: restrictedStatus.restrictedReason,
+        restricted_by_admin: row.restrictedByAdmin,
+        restricted_by_admin_reason: row.restrictedByAdminReason,
+        restricted_by_admin_private_details: row.restrictedByAdminPrivateDetails,
       };
     },
   };
@@ -417,6 +433,7 @@ export function getUserIfOnGlobalPrismaClientQuery(
         user.is_anonymous,
         user.primary_email_verified,
         config,
+        user.restricted_by_admin,
       );
       return {
         ...user,
@@ -481,9 +498,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const includeAnonymous = query.include_anonymous === "true";
     const includeRestricted = query.include_restricted === "true" || includeAnonymous; // include_anonymous also includes restricted
 
-    // Compute whether we need to filter out restricted users based on email verification
     // TODO: Instead of hardcoding this, we should use computeRestrictedStatus
     const shouldFilterRestrictedByEmail = !includeRestricted && auth.tenancy.config.onboarding.requireEmailVerification;
+    const shouldFilterRestrictedByAdmin = !includeRestricted;
 
     const where = {
       tenancyId: auth.tenancy.id,
@@ -508,6 +525,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             isVerified: true,
           },
         },
+      } : {},
+      ...shouldFilterRestrictedByAdmin ? {
+        restrictedByAdmin: false,
       } : {},
       ...query.query ? {
         OR: [
@@ -587,6 +607,23 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
       const config = auth.tenancy.config;
 
+      // Validate restricted_by_admin fields consistency
+      const restrictedByAdmin = data.restricted_by_admin ?? false;
+      let restrictedByAdminReason = data.restricted_by_admin_reason === undefined
+        ? undefined
+        : (data.restricted_by_admin_reason || null);
+      let restrictedByAdminPrivateDetails = data.restricted_by_admin_private_details === undefined
+        ? undefined
+        : (data.restricted_by_admin_private_details || null);
+
+      if (!restrictedByAdmin) {
+        if (restrictedByAdminReason != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_reason requires restricted_by_admin=true");
+        }
+        if (restrictedByAdminPrivateDetails != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_private_details requires restricted_by_admin=true");
+        }
+      }
 
       const newUser = await tx.projectUser.create({
         data: {
@@ -599,7 +636,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? false,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
+          restrictedByAdmin,
+          restrictedByAdminReason,
+          restrictedByAdminPrivateDetails,
         },
         include: userFullInclude,
       });
@@ -1059,6 +1099,30 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         });
       }
 
+      let restrictedByAdminReason = data.restricted_by_admin_reason === undefined
+        ? undefined
+        : (data.restricted_by_admin_reason || null);
+
+      let restrictedByAdminPrivateDetails = data.restricted_by_admin_private_details === undefined
+        ? undefined
+        : (data.restricted_by_admin_private_details || null);
+
+      // Compute effective restricted flag considering existing value for PATCH updates
+      const effectiveRestrictedByAdmin = data.restricted_by_admin ?? oldUser.restrictedByAdmin;
+
+      if (!effectiveRestrictedByAdmin) {
+        // User is not (or will not be) restricted - reason/details must not be provided
+        if (restrictedByAdminReason != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_reason requires restricted_by_admin=true");
+        }
+        if (restrictedByAdminPrivateDetails != null) {
+          throw new StatusError(StatusError.BadRequest, "restricted_by_admin_private_details requires restricted_by_admin=true");
+        }
+        // Clear reason and details when unrestricting
+        restrictedByAdminReason = null;
+        restrictedByAdminPrivateDetails = null;
+      }
+
       const db = await tx.projectUser.update({
         where: {
           tenancyId_projectUserId: {
@@ -1074,7 +1138,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images")
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
+          restrictedByAdmin: data.restricted_by_admin ?? undefined,
+          restrictedByAdminReason: restrictedByAdminReason,
+          restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
         },
         include: userFullInclude,
       });

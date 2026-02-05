@@ -28,6 +28,8 @@ it("allows anonymous users to sign up on the internal project", async ({ expect 
         "primary_email_verified": false,
         "profile_image_url": null,
         "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_reason": null,
         "restricted_reason": { "type": "anonymous" },
         "selected_team": {
           "client_metadata": null,
