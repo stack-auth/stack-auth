@@ -9,7 +9,7 @@ describe("without project access", () => {
     projectKeys: "no-project",
   });
 
-  it.only("should not be able to read own user", async ({ expect }) => {
+  it("should not be able to read own user", async ({ expect }) => {
     await backendContext.with({
       projectKeys: InternalProjectKeys,
     }, async () => {
