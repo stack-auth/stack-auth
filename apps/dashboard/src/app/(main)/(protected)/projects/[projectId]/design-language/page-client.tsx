@@ -27,6 +27,7 @@ import {
   cn,
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
+import { Link } from "@/components/link";
 import {
   CheckCircle,
   Cube,
@@ -741,6 +742,15 @@ export default function PageClient() {
   return (
     <PageLayout>
       <div className="flex flex-col gap-12">
+        <div className="rounded-2xl border border-blue-500/30 bg-blue-500/[0.06] p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <Typography type="h3" className="text-base font-semibold">Realistic Theme Preview</Typography>
+            <Typography variant="secondary" className="text-sm">Use the new demo page to validate theme changes across a realistic layout.</Typography>
+          </div>
+          <Button asChild size="sm" className="w-fit">
+            <Link href="./design-language/realistic-demo">Open demo page</Link>
+          </Button>
+        </div>
 
         {/* ============================================================ */}
         {/* CARDS */}
@@ -1317,7 +1327,7 @@ export default function PageClient() {
             title="Success Alert"
             description="Use for successful operations"
           >
-            <Alert className="bg-green-500/5 border-green-500/20">
+            <Alert className="bg-green-500/[0.06] border-green-500/30">
               <CheckCircle className="h-4 w-4 text-green-500" />
               <AlertTitle className="text-green-600 dark:text-green-400">Success</AlertTitle>
               <AlertDescription>Your changes have been saved successfully.</AlertDescription>
@@ -1328,7 +1338,7 @@ export default function PageClient() {
             title="Error Alert"
             description="Use for errors and failures"
           >
-            <Alert className="bg-red-500/5 border-red-500/20">
+            <Alert className="bg-red-500/[0.06] border-red-500/30">
               <XCircle className="h-4 w-4 text-red-500" />
               <AlertTitle className="text-red-600 dark:text-red-400">Error</AlertTitle>
               <AlertDescription>An error occurred while processing your request.</AlertDescription>
@@ -1339,7 +1349,7 @@ export default function PageClient() {
             title="Warning Alert"
             description="Use for warnings that need attention"
           >
-            <Alert className="bg-orange-500/5 border-orange-500/20">
+            <Alert className="bg-orange-500/[0.06] border-orange-500/30">
               <WarningCircle className="h-4 w-4 text-orange-500" />
               <AlertTitle className="text-orange-600 dark:text-orange-400">Warning</AlertTitle>
               <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
@@ -1350,7 +1360,7 @@ export default function PageClient() {
             title="Info Alert"
             description="Use for informational messages without a title"
           >
-            <Alert className="bg-blue-500/5 border-blue-500/20">
+            <Alert className="bg-blue-500/[0.06] border-blue-500/30">
               <Info className="h-4 w-4 text-blue-500" />
               <AlertTitle className="text-blue-600 dark:text-blue-400">Info</AlertTitle>
               <AlertDescription>
