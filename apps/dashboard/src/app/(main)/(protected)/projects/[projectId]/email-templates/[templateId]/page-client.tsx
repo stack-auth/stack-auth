@@ -118,11 +118,15 @@ export default function PageClient(props: { templateId: string }) {
       await stackAdminApp.updateEmailTemplate(props.templateId, currentCode, selectedThemeId === undefined ? null : selectedThemeId);
       setSaveAlert({ variant: "success", title: "Template saved" });
     } catch (error) {
-      setSaveAlert({
-        variant: "destructive",
-        title: "Failed to save template",
-        description: getErrorMessage(error),
-      });
+      if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
+        setSaveAlert({
+          variant: "destructive",
+          title: "Failed to save template",
+          description: getErrorMessage(error),
+        });
+        return;
+      }
+      throw error;
     }
   };
 

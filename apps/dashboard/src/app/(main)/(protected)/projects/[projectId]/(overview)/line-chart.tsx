@@ -192,8 +192,8 @@ export function ChartCard({
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{
-        __html: `
+      <style>
+        {`
           .chart-card-tooltip-escape .recharts-tooltip-wrapper {
             z-index: 9999 !important;
             overflow: visible !important;
@@ -201,8 +201,8 @@ export function ChartCard({
           .chart-card-tooltip-escape .recharts-tooltip-wrapper > * {
             overflow: visible !important;
           }
-        `
-      }} />
+        `}
+      </style>
       <div className={cn(
         "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
         "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",

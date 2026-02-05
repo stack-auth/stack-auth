@@ -60,11 +60,15 @@ export default function PageClient({ themeId }: { themeId: string }) {
       await stackAdminApp.updateEmailTheme(themeId, currentCode);
       setSaveAlert({ variant: "success", title: "Theme saved" });
     } catch (error) {
-      setSaveAlert({
-        variant: "destructive",
-        title: "Failed to save theme",
-        description: getErrorMessage(error),
-      });
+      if (error instanceof KnownErrors.EmailRenderingError) {
+        setSaveAlert({
+          variant: "destructive",
+          title: "Failed to save theme",
+          description: error.message,
+        });
+        return;
+      }
+      throw error;
     }
   };
 

@@ -7,6 +7,7 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu
 import { cn } from "@/lib/utils";
 import { DotsThreeVertical, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -204,7 +205,7 @@ export default function PageClient() {
     if (emailConfig.isShared) {
       setSharedSmtpWarningDialogOpen(draftId);
     } else {
-      router.push(`email-drafts/${draftId}`);
+      router.push(urlString`email-drafts/${draftId}`);
     }
   };
 
@@ -260,12 +261,12 @@ export default function PageClient() {
               <EmptyState onCreateNew={() => setNewDraftDialogOpen(true)} />
             ) : (
               <div className="p-4 space-y-2">
-                {drafts.map((draft: any) => (
+                {drafts.map((draft) => (
                   <DraftCard
                     key={draft.id}
                     draft={draft}
                     onOpen={() => handleOpenDraft(draft.id)}
-                    onDelete={() => runAsynchronouslyWithAlert(handleDeleteDraft(draft.id))}
+                    onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
                   />
                 ))}
               </div>
@@ -301,7 +302,8 @@ export default function PageClient() {
           okButton={{
             label: "Open Draft Anyway",
             onClick: async () => {
-              router.push(`email-drafts/${sharedSmtpWarningDialogOpen}`);
+              if (sharedSmtpWarningDialogOpen === null) return;
+              router.push(urlString`email-drafts/${sharedSmtpWarningDialogOpen}`);
             }
           }}
           cancelButton={{ label: "Cancel" }}
@@ -337,7 +339,7 @@ function NewDraftDialog({
 
   const handleCreateNewDraft = async (values: { name: string }) => {
     const draft = await stackAdminApp.createEmailDraft({ displayName: values.name });
-    router.push(`email-drafts/${draft.id}`);
+    router.push(urlString`email-drafts/${draft.id}`);
   };
 
   return (

@@ -68,11 +68,15 @@ export default function PageClient({ draftId }: { draftId: string }) {
       await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
       setStage("send");
     } catch (error) {
-      setSaveAlert({
-        variant: "destructive",
-        title: "Failed to save draft",
-        description: getErrorMessage(error),
-      });
+      if (error instanceof KnownErrors.EmailRenderingError) {
+        setSaveAlert({
+          variant: "destructive",
+          title: "Failed to save draft",
+          description: error.message,
+        });
+        return;
+      }
+      throw error;
     }
   };
 
@@ -191,11 +195,15 @@ function SendStage({ draftId }: { draftId: string }) {
       );
       setSendAlert({ variant: "success", title: "Email sent" });
     } catch (error) {
-      setSendAlert({
-        variant: "destructive",
-        title: "Failed to send email",
-        description: getErrorMessage(error),
-      });
+      if (error instanceof KnownErrors.EmailRenderingError || error instanceof KnownErrors.RequiresCustomEmailServer) {
+        setSendAlert({
+          variant: "destructive",
+          title: "Failed to send email",
+          description: error.message,
+        });
+        return;
+      }
+      throw error;
     }
   };
 
