@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS analytics_internal.users (
     client_read_only_metadata JSON,
     server_metadata JSON,
     is_anonymous UInt8,
+    restricted_by_admin UInt8,
+    restricted_by_admin_reason Nullable(String),
+    restricted_by_admin_private_details Nullable(String),
     sequence_id Int64,
     is_deleted UInt8,
     created_at DateTime64(3, 'UTC') DEFAULT now64(3)
@@ -86,7 +89,22 @@ const USERS_VIEW_SQL = `
 CREATE OR REPLACE VIEW default.users 
 SQL SECURITY DEFINER
 AS
-SELECT *
+SELECT
+  project_id,
+  branch_id,
+  id,
+  display_name,
+  profile_image_url,
+  primary_email,
+  primary_email_verified,
+  signed_up_at,
+  client_metadata,
+  client_read_only_metadata,
+  server_metadata,
+  is_anonymous,
+  restricted_by_admin,
+  restricted_by_admin_reason,
+  restricted_by_admin_private_details
 FROM analytics_internal.users
 FINAL
 WHERE is_deleted = 0;
