@@ -54,8 +54,12 @@ export async function createOrUpgradeAnonymousUserWithRules(
   }
 
   const existingRestrictionPrivateDetails = createOrUpdate.restricted_by_admin_private_details ?? currentUser?.restricted_by_admin_private_details;
-  const restrictionPrivateDetails = ruleResult.restrictedBecauseOfSignUpRuleId
-    ? `Restricted by sign-up rule: ${ruleResult.restrictedBecauseOfSignUpRuleId}`
+  const restrictionRuleId = ruleResult.restrictedBecauseOfSignUpRuleId;
+  const restrictionRuleDisplayName = restrictionRuleId
+    ? (tenancy.config.auth.signUpRules[restrictionRuleId].displayName ?? "")
+    : "";
+  const restrictionPrivateDetails = restrictionRuleId
+    ? `Restricted by sign-up rule: ${restrictionRuleId}${restrictionRuleDisplayName ? ` (${restrictionRuleDisplayName})` : ""}`
     : undefined;
 
   const enrichedCreateOrUpdate = {
