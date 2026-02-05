@@ -4,13 +4,11 @@ import { globalPrismaClient } from "@/prisma-client";
 export type ExternalDbSyncFusebox = {
   sequencerEnabled: boolean,
   pollerEnabled: boolean,
-  syncEngineEnabled: boolean,
 };
 
 const fuseboxSelect = {
   sequencerEnabled: true,
   pollerEnabled: true,
-  syncEngineEnabled: true,
 };
 
 export async function getExternalDbSyncFusebox(): Promise<ExternalDbSyncFusebox> {

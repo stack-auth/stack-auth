@@ -13,7 +13,6 @@ CREATE TABLE "ExternalDbSyncMetadata" (
     "singleton" "BooleanTrue" NOT NULL DEFAULT 'TRUE',
     "sequencerEnabled" BOOLEAN NOT NULL DEFAULT true,
     "pollerEnabled" BOOLEAN NOT NULL DEFAULT true,
-    "syncEngineEnabled" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

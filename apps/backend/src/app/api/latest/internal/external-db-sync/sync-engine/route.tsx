@@ -36,16 +36,6 @@ export const POST = createSmartRouteHandler({
       },
     }, async (span) => {
       await ensureUpstashSignature(fullReq);
-
-      const fusebox = await getExternalDbSyncFusebox();
-      span.setAttribute("stack.external-db-sync.sync-engine-enabled", fusebox.syncEngineEnabled);
-      if (!fusebox.syncEngineEnabled) {
-        return {
-          statusCode: 200,
-          bodyType: "success",
-        };
-      }
-
       const { tenancyId } = body;
 
       const tenancy = await traceSpan("external-db-sync.sync-engine.loadTenancy", async (tenancySpan) => {
