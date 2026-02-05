@@ -74,6 +74,7 @@ export async function proxy(request: NextRequest) {
     "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
     "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
     "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
+    "Vary": corsAllowedRequestHeaders.join(', '),
   } : undefined;
 
   // ensure our clients can handle 429 responses
