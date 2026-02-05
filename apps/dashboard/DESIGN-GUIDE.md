@@ -16,6 +16,7 @@ This guide documents the visual design system used in the Stack Auth dashboard. 
 8. [Animation Guidelines](#animation-guidelines)
 9. [Icons](#icons)
 10. [Charts & Data Visualization](#charts--data-visualization)
+11. [Catalog & Product Card Grid Design](#catalog--product-card-grid-design)
 
 ---
 
@@ -804,3 +805,340 @@ xl: 1280px  // Extra large
 - Mix different border-radius scales in the same component
 - Use pure black or white (use `foreground`/`background` variables)
 - Forget dark mode variants for custom colors
+
+---
+
+## Catalog & Product Card Grid Design
+
+This section documents the design patterns used for catalog views, product cards, and pricing displays. Use these patterns for any grid of cards showing products, plans, or pricing tiers.
+
+### Catalog Container
+
+The outer container uses a subtle surface with soft borders:
+
+```tsx
+// Container wrapping multiple product cards (horizontal scroll)
+<div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+  <div className="flex gap-4 justify-start overflow-x-auto p-5 min-h-20 pr-16">
+    {/* Product cards go here */}
+  </div>
+</div>
+```
+
+Key properties:
+- `rounded-2xl` - Large border radius for containers
+- `bg-foreground/[0.04]` - Very subtle background tint
+- `ring-1 ring-foreground/[0.06]` - Soft border using ring instead of border
+- `p-5` - Generous padding
+- `overflow-x-auto` - Allow horizontal scrolling for many items
+- `pr-16` - Extra right padding for scroll fade effect
+
+### Product Card (View Mode)
+
+Product cards use a dark, refined surface with sectioned layout:
+
+```tsx
+<div className={cn(
+  "group relative flex flex-col rounded-2xl overflow-hidden",
+  "bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)]",
+  "border border-border/50 dark:border-foreground/[0.12]",
+  "shadow-sm hover:shadow-md transition-all duration-150 hover:transition-none"
+)}>
+  {/* Card sections */}
+</div>
+```
+
+Key properties:
+- `rounded-2xl overflow-hidden` - Rounded corners clip children
+- `dark:bg-[hsl(240,10%,5.5%)]` - Very dark surface in dark mode
+- `border-foreground/[0.12]` - Slightly more visible border
+- `shadow-sm hover:shadow-md` - Subtle shadow depth with hover enhancement
+- `group` - For child hover states
+
+### Card Width
+
+```tsx
+// Fixed width for consistent card sizing
+"w-[320px]"  // View mode
+"w-[420px]"  // Edit mode (wider for form elements)
+```
+
+### Card Sections
+
+Cards are divided into distinct sections with subtle borders:
+
+```tsx
+// Header section
+<div className="relative px-5 pt-5 pb-3">
+  {/* Badge + Title */}
+</div>
+
+// Pricing section (darker background)
+<div className="border-t border-border/20 dark:border-foreground/[0.06] px-5 py-4 dark:bg-[hsl(240,10%,6%)]">
+  {/* Price display */}
+</div>
+
+// Items section
+<div className="border-t border-border/20 dark:border-foreground/[0.06] px-5 py-3">
+  {/* Item list */}
+</div>
+
+// Action footer
+<div className="border-t border-border/20 dark:border-foreground/[0.06] px-4 py-2.5 flex items-center justify-center gap-2">
+  {/* Action buttons */}
+</div>
+```
+
+### Product ID Badge
+
+Small monospace badge for product identifiers:
+
+```tsx
+<div className="flex justify-center mb-2">
+  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+    {productId}
+  </span>
+</div>
+```
+
+### Product Title
+
+```tsx
+<h3 className="text-lg font-semibold text-center tracking-tight">
+  {displayName || "Untitled Product"}
+</h3>
+```
+
+### Hover Action Menu
+
+Appears on card hover in top-right corner:
+
+```tsx
+<div className="absolute right-3 top-3 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none">
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <button className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none">
+        <MoreVertical className="h-4 w-4" />
+      </button>
+    </DropdownMenuTrigger>
+    {/* Menu content */}
+  </DropdownMenu>
+</div>
+```
+
+### Pricing Display (View Mode)
+
+Large, centered pricing with interval below:
+
+```tsx
+<div className="flex flex-col items-center gap-0.5">
+  {/* Price */}
+  <div className="text-2xl font-semibold tabular-nums tracking-tight">
+    {isFree ? 'Free' : `$${amount}`}
+  </div>
+  {/* Interval */}
+  {!isFree && (
+    <div className="text-xs text-muted-foreground capitalize">
+      {intervalText ?? 'One-time'}
+    </div>
+  )}
+</div>
+```
+
+### Free Trial Badge
+
+Green-tinted pill badge for trial periods:
+
+```tsx
+<span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20">
+  {trialPeriod} free trial
+</span>
+```
+
+### OR Separator (Between Pricing Options)
+
+```tsx
+<div className="flex items-center justify-center my-1">
+  <div className="flex-1 h-px bg-foreground/[0.06]" />
+  <span className="mx-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+    or
+  </span>
+  <div className="flex-1 h-px bg-foreground/[0.06]" />
+</div>
+```
+
+### Items List (Feature List)
+
+Simple two-column layout for included items:
+
+```tsx
+<div className="space-y-1">
+  {items.map(([itemId, item]) => (
+    <div key={itemId} className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{itemLabel}</span>
+      <span className="text-foreground tabular-nums">
+        {quantity}
+        <span className="text-muted-foreground text-xs ml-1">/mo</span>
+      </span>
+    </div>
+  ))}
+</div>
+```
+
+### Quick Action Buttons (Footer)
+
+Ghost buttons with icons for actions like "Copy code":
+
+```tsx
+<Button
+  variant="ghost"
+  size="sm"
+  className="h-7 px-3 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+>
+  <Code className="h-3 w-3" />
+  Copy code
+</Button>
+```
+
+### Add Product Button (Dashed Placeholder)
+
+Large dashed button for adding new items:
+
+```tsx
+<Button
+  variant="outline"
+  size="plain"
+  className={cn(
+    "self-stretch w-[320px] py-24 flex flex-col items-center justify-center",
+    "rounded-2xl border border-dashed border-foreground/[0.1]",
+    "bg-background/40 hover:bg-foreground/[0.03]",
+    "text-muted-foreground hover:text-foreground",
+    "transition-all duration-150 hover:transition-none"
+  )}
+>
+  <div className="flex flex-col items-center gap-2">
+    <Plus className="h-6 w-6" />
+    <span className="text-sm font-medium">Add product</span>
+  </div>
+</Button>
+```
+
+### Tab Selector (Customer Type Toggle)
+
+Pill toggle for switching between user/team/custom:
+
+```tsx
+<div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
+  {(['user', 'team', 'custom'] as const).map(t => (
+    <button
+      key={t}
+      onClick={() => setActiveType(t)}
+      className={cn(
+        "px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none capitalize",
+        activeType === t
+          ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+      )}
+    >
+      {t}
+    </button>
+  ))}
+</div>
+```
+
+### Toggle Option Pills (Edit Mode)
+
+Small toggleable pills for product options like "Server only", "Stackable":
+
+```tsx
+<button
+  className={cn(
+    "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-150 hover:transition-none",
+    isActive
+      ? "border-primary/40 bg-primary/10 text-primary"
+      : "border-border bg-background/80 text-muted-foreground line-through"
+  )}
+>
+  <IconComponent size={14} />
+  {label}
+</button>
+```
+
+### Section Heading (Edit Mode)
+
+Centered section divider with lines:
+
+```tsx
+<div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.35em] text-muted-foreground">
+  <div className="h-px flex-1 bg-border" />
+  <span>{label}</span>
+  <div className="h-px flex-1 bg-border" />
+</div>
+```
+
+### Form Label (Edit Mode)
+
+Uppercase tracking label for form fields:
+
+```tsx
+<Label className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
+  {labelText}
+</Label>
+```
+
+### Form Input (Edit Mode)
+
+Rounded input with consistent sizing:
+
+```tsx
+<Input
+  className="h-10 rounded-xl border border-border bg-background px-3 text-sm"
+  placeholder="..."
+/>
+```
+
+### Catalog View Quick Reference
+
+```tsx
+// Outer catalog container
+"rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]"
+
+// Product card container
+"rounded-2xl bg-gray-200/80 dark:bg-[hsl(240,10%,5.5%)] border border-border/50 dark:border-foreground/[0.12] shadow-sm"
+
+// Card section borders
+"border-t border-border/20 dark:border-foreground/[0.06]"
+
+// Product ID badge
+"rounded-full text-[10px] font-mono bg-foreground/[0.04] ring-1 ring-foreground/[0.06]"
+
+// Price display
+"text-2xl font-semibold tabular-nums tracking-tight"
+
+// Interval/subtitle
+"text-xs text-muted-foreground capitalize"
+
+// Trial badge
+"rounded-full text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20"
+
+// Items list row
+"flex items-center justify-between text-sm"
+
+// Action buttons
+"h-7 px-3 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+
+// Add button (dashed)
+"rounded-2xl border border-dashed border-foreground/[0.1] bg-background/40"
+
+// Toggle pill (active)
+"rounded-full border-primary/40 bg-primary/10 text-primary"
+
+// Toggle pill (inactive)
+"rounded-full border-border bg-background/80 text-muted-foreground line-through"
+
+// Tab selector container
+"rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm"
+
+// Active tab
+"bg-background shadow-sm ring-1 ring-foreground/[0.06]"
+```

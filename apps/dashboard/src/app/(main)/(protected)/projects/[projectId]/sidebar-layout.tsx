@@ -33,6 +33,7 @@ import {
   SidebarIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -170,7 +171,7 @@ function NavItem({
   );
 
   const caretClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-all duration-150 group-hover:transition-none",
+    "h-[13px] w-[13px] flex-shrink-0 transition-all duration-150 group-hover:transition-none",
     isHighlighted
       ? "text-blue-600 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground",
@@ -219,9 +220,11 @@ function NavItem({
               </Button>
             )}
           </TooltipTrigger>
-          <TooltipContent side="right">
-            {item.name}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="right" className="!z-[9999]">
+              {item.name}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       </div>
     );
@@ -432,7 +435,13 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
+      <div
+        className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}
+        style={{
+          maskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
+        }}
+      >
         <div className="space-y-3">
           <NavItem
             item={overviewItem}
@@ -486,12 +495,14 @@ function SidebarContent({
 
         {/* User button and collapse toggle */}
         <div className={cn(
-          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2",
+          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2 min-w-0",
           isCollapsed ? "justify-center" : "justify-between"
         )}>
           {!isCollapsed && (
-            <div>
-              <UserButton showUserInfo />
+            <div className="min-w-0 flex-1 overflow-hidden max-w-[calc(100%-3rem)]">
+              <div className="w-full min-w-0 [&_button]:min-w-0 [&_button]:w-full [&_button]:max-w-full">
+                <UserButton showUserInfo />
+              </div>
             </div>
           )}
           {onToggleCollapse && (
@@ -501,14 +512,16 @@ function SidebarContent({
                   variant="ghost"
                   size="icon"
                   onClick={onToggleCollapse}
-                  className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
+                  className="h-8 w-8 p-1 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
                 >
                   <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">
-                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent side="right" className="!z-[9999]">
+                  {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           )}
         </div>

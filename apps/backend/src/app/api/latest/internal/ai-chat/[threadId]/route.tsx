@@ -22,7 +22,25 @@ const toolCallContentSchema = yupObject({
 });
 
 const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema)).defined();
-const openai = createOpenAI({ apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY") });
+
+const messageSchema = yupObject({
+  role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
+  content: yupMixed().defined(),
+});
+
+// Mock mode sentinel value - when API key is not configured, we return mock responses
+const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
+const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
+
+// Only create OpenAI client if not in mock mode
+const openai = isMockMode ? null : createOpenAI({
+  apiKey,
+  baseURL: "https://openrouter.ai/api/v1",
+});
+
+// AI request timeout in milliseconds (2 minutes)
+const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -38,10 +56,7 @@ export const POST = createSmartRouteHandler({
     }),
     body: yupObject({
       context_type: yupString().oneOf(["email-theme", "email-template", "email-draft"]).defined(),
-      messages: yupArray(yupObject({
-        role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
-        content: yupMixed().defined(),
-      })).defined().min(1),
+      messages: yupArray(messageSchema).defined().min(1),
     }),
   }),
   response: yupObject({
@@ -52,39 +67,76 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, params, auth: { tenancy } }) {
-    const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
-    const result = await generateText({
-      model: openai("gpt-4o"),
-      system: adapter.systemPrompt,
-      messages: body.messages as any,
-      tools: adapter.tools,
-    });
+    // Mock mode: return a simple text response without calling AI
+    if (isMockMode) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          content: [{
+            type: "text",
+            text: "This is a mock AI response. Configure a real API key to enable AI features.",
+          }],
+        },
+      };
+    }
 
-    const contentBlocks: InferType<typeof contentSchema> = [];
-    result.steps.forEach((step) => {
-      if (step.text) {
-        contentBlocks.push({
-          type: "text",
-          text: step.text,
-        });
-      }
-      step.toolCalls.forEach(toolCall => {
-        contentBlocks.push({
-          type: "tool-call",
-          toolName: toolCall.toolName,
-          toolCallId: toolCall.toolCallId,
-          args: toolCall.args,
-          argsText: JSON.stringify(toolCall.args),
-          result: "success",
+    const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
+    // Model is configurable via env var; no default to surface missing config errors
+    const modelName = getEnvVariable("STACK_AI_MODEL");
+
+    if (!openai) {
+      // This shouldn't happen since we check isMockMode above, but guard anyway
+      throw new Error("OpenAI client not initialized - STACK_OPENROUTER_API_KEY may be missing");
+    }
+
+    // Validate messages structure before passing to AI
+    const validatedMessages = body.messages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })) as any; // Cast needed: content is a mixed type from yup schema that doesn't map to AI SDK's strict typing
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+
+    try {
+      const result = await generateText({
+        model: openai(modelName),
+        system: adapter.systemPrompt,
+        messages: validatedMessages,
+        tools: adapter.tools,
+        abortSignal: controller.signal,
+      });
+
+      const contentBlocks: InferType<typeof contentSchema> = [];
+      result.steps.forEach((step) => {
+        if (step.text) {
+          contentBlocks.push({
+            type: "text",
+            text: step.text,
+          });
+        }
+        step.toolCalls.forEach(toolCall => {
+          contentBlocks.push({
+            type: "tool-call",
+            toolName: toolCall.toolName,
+            toolCallId: toolCall.toolCallId,
+            args: toolCall.args,
+            argsText: JSON.stringify(toolCall.args),
+            result: "success",
+          });
         });
       });
-    });
 
-    return {
-      statusCode: 200,
-      bodyType: "json",
-      body: { content: contentBlocks },
-    };
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: { content: contentBlocks },
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 });
 

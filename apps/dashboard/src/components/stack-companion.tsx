@@ -5,7 +5,7 @@ import { ChangelogEntry } from '@/lib/changelog';
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
+import { BookOpenIcon, ClockClockwiseIcon, LightbulbIcon, QuestionIcon, XIcon } from '@phosphor-icons/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
@@ -82,7 +82,7 @@ const sidebarItems: SidebarItem[] = [
   {
     id: 'support',
     label: "Support",
-    icon: CircleNotchIcon,
+    icon: QuestionIcon,
     color: 'text-orange-600 dark:text-orange-400',
     hoverBg: 'hover:bg-orange-500/10',
   }
