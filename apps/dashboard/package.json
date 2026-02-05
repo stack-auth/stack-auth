@@ -103,7 +103,7 @@
     "three": "^0.169.0",
     "use-debounce": "^10.0.5",
     "yup": "^1.7.1",
-    "zod": "^3.25.76"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.6.4",
