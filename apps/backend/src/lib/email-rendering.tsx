@@ -1,6 +1,6 @@
 import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
 import {
@@ -80,9 +80,6 @@ type EmailRenderResult = {
   notificationCategory?: string,
   editableRegions?: Record<string, EditableMetadata>,
 };
-type ExecuteResult =
-  | { status: "ok", data: unknown }
-  | { status: "error", error: unknown };
 
 async function bundleAndExecute<T>(
   files: Record<string, string> & { '/entry.js': string },
