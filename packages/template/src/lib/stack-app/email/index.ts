@@ -36,6 +36,8 @@ export type AdminEmailOutboxSimpleStatus =
   | "ok"
   | "error";
 
+export type AdminEmailOutboxCreatedWith = "draft" | "programmatic-call";
+
 // =============================== BASE TYPES ===============================
 
 // Base fields present on all emails
@@ -45,6 +47,10 @@ type AdminEmailOutboxBase = {
   updatedAt: Date,
   to: AdminEmailOutboxRecipient,
   scheduledAt: Date,
+  // Source tracking for grouping emails by template/draft
+  createdWith: AdminEmailOutboxCreatedWith,
+  emailDraftId: string | null,
+  emailProgrammaticCallTemplateId: string | null,
   isPaused: false,
   hasRendered: false,
   hasDelivered: false,

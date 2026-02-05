@@ -1,7 +1,7 @@
 "use client";
 
 import { SettingCard } from "@/components/settings";
-import { ActionDialog, Badge, Button, Input, Label, Typography, useToast } from "@/components/ui";
+import { ActionDialog, Badge, Button, Input, Label, Spinner, Typography, useToast } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
@@ -56,28 +56,29 @@ function canCancelEmail(email: AdminEmailOutbox): boolean {
 
 function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
-    case "paused":
+    case "paused":{
       return "outline";
+    }
     case "preparing":
     case "rendering":
     case "scheduled":
     case "queued":
     case "sending":
-      return "default";
+    { return "default"; }
     case "sent":
     case "opened":
     case "clicked":
     case "skipped":
     case "delivery-delayed":
-      return "secondary";
+    { return "secondary"; }
     case "bounced":
     case "server-error":
     case "render-error":
-      return "destructive";
+    { return "destructive"; }
     case "marked-as-spam":
-      return "outline";
+    { return "outline"; }
     default:
-      return "default";
+    { return "default"; }
   }
 }
 
@@ -306,8 +307,9 @@ export default function PageClient({ emailId }: { emailId: string }) {
   if (loading) {
     return (
       <PageLayout title="Email Details" description="Loading...">
-        <div className="flex justify-center py-8">
-          <Typography>Loading email...</Typography>
+        <div className="flex items-center justify-center gap-2 py-8">
+          <Spinner size={16} />
+          <Typography variant="secondary">Loading email...</Typography>
         </div>
       </PageLayout>
     );

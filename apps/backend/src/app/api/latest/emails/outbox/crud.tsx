@@ -68,6 +68,10 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
     variables: (prismaModel.extraRenderVariables ?? {}) as Record<string, any>,
     skip_deliverability_check: prismaModel.shouldSkipDeliverabilityCheck,
     scheduled_at_millis: prismaModel.scheduledAt.getTime(),
+    // Source tracking for grouping emails by template/draft
+    created_with: (prismaModel.createdWith === "DRAFT" ? "draft" : "programmatic-call") as "draft" | "programmatic-call",
+    email_draft_id: prismaModel.emailDraftId,
+    email_programmatic_call_template_id: prismaModel.emailProgrammaticCallTemplateId,
     // Default flags (overridden in specific statuses)
     is_paused: false,
     has_rendered: false,

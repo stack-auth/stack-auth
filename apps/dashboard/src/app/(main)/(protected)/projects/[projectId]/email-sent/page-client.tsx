@@ -2,15 +2,18 @@
 
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
-import { Badge, DataTable, Switch, Typography } from "@/components/ui";
+import { Badge, Button, DataTable, Spinner, Switch, Typography } from "@/components/ui";
+import { XIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
+import { GroupedEmailTable } from "./grouped-email-table";
 
 // Status labels for display
 const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
@@ -145,7 +148,13 @@ const emailTableColumns: ColumnDef<AdminEmailOutbox>[] = [
   },
 ];
 
-function EmailSendDataTable() {
+type EmailFilter = {
+  draftId?: string,
+  templateId?: string,
+  noSource?: boolean,
+};
+
+function EmailSendDataTable({ filter }: { filter?: EmailFilter }) {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [emailLogs, setEmailLogs] = useState<AdminEmailOutbox[]>([]);
@@ -163,17 +172,42 @@ function EmailSendDataTable() {
     });
   }, [stackAdminApp]);
 
+  // Apply filter if provided
+  const filteredEmails = useMemo(() => {
+    if (!filter) {
+      return emailLogs;
+    }
+
+    return emailLogs.filter((email) => {
+      if (filter.draftId) {
+        return email.emailDraftId === filter.draftId;
+      }
+      if (filter.templateId) {
+        return email.emailProgrammaticCallTemplateId === filter.templateId;
+      }
+      if (filter.noSource) {
+        // Emails without template or draft
+        return (
+          (email.createdWith === "programmatic-call" && !email.emailProgrammaticCallTemplateId) ||
+          (email.createdWith === "draft" && !email.emailDraftId)
+        );
+      }
+      return true;
+    });
+  }, [emailLogs, filter]);
+
   if (loading) {
     return (
-      <div className="flex justify-center py-4">
-        <Typography>Loading email logs...</Typography>
+      <div className="flex items-center justify-center gap-2 py-8">
+        <Spinner size={16} />
+        <Typography variant="secondary">Loading emails...</Typography>
       </div>
     );
   }
 
   return (
     <DataTable
-      data={emailLogs}
+      data={filteredEmails}
       defaultColumnFilters={[]}
       columns={emailTableColumns}
       defaultSorting={[{ id: "scheduledAt", desc: true }]}
@@ -185,7 +219,45 @@ function EmailSendDataTable() {
 }
 
 export default function PageClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+
+  // Check for filter params - if present, show list view with filter
+  const draftId = searchParams.get("draftId");
+  const templateId = searchParams.get("templateId");
+  const noSource = searchParams.get("noSource") === "true";
+
+  const hasFilter = draftId || templateId || noSource;
+  const filter: EmailFilter | undefined = hasFilter ? {
+    draftId: draftId ?? undefined,
+    templateId: templateId ?? undefined,
+    noSource: noSource || undefined,
+  } : undefined;
+
+  // Get display name for the filter
+  const stackAdminApp = useAdminApp();
+  const drafts = stackAdminApp.useEmailDrafts();
+  const templates = stackAdminApp.useEmailTemplates();
+
+  const filterDisplayName = useMemo(() => {
+    if (draftId) {
+      const draft = drafts.find((d) => d.id === draftId);
+      return draft?.displayName ?? `Draft (${draftId.slice(0, 8)}...)`;
+    }
+    if (templateId) {
+      const template = templates.find((t) => t.id === templateId);
+      return template?.displayName ?? `Template (${templateId.slice(0, 8)}...)`;
+    }
+    if (noSource) {
+      return "(No template/draft)";
+    }
+    return null;
+  }, [draftId, templateId, noSource, drafts, templates]);
+
+  const clearFilter = () => {
+    router.push("email-sent");
+  };
 
   return (
     <AppEnabledGuard appId="emails">
@@ -196,11 +268,35 @@ export default function PageClient() {
         <div className="flex gap-6">
           {/* Left side: Email Log with toggle above right corner */}
           <div className="flex-1 flex flex-col gap-4">
-            <div className="flex justify-end">
-              <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
+            <div className="flex justify-between items-center">
+              {/* Filter indicator */}
+              {hasFilter && filterDisplayName ? (
+                <div className="flex items-center gap-2">
+                  <Typography className="text-sm text-muted-foreground">
+                    Filtering by: <span className="font-medium text-foreground">{filterDisplayName}</span>
+                  </Typography>
+                  <Button variant="ghost" size="sm" onClick={clearFilter}>
+                    <XIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div /> // Spacer
+              )}
+              {/* Toggle - only show when not filtering */}
+              {!hasFilter && (
+                <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
+              )}
             </div>
-            <SettingCard title="Email Log" description="Manage email sending history">
-              <EmailSendDataTable />
+            <SettingCard
+              title="Email Log"
+              description={hasFilter ? `Emails from ${filterDisplayName}` : "Manage email sending history"}
+            >
+              {/* Show list view if filtering OR if viewMode is list, otherwise show grouped */}
+              {hasFilter || viewMode === "list" ? (
+                <EmailSendDataTable filter={filter} />
+              ) : (
+                <GroupedEmailTable />
+              )}
             </SettingCard>
           </div>
 

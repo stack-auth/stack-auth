@@ -6,10 +6,10 @@ import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
@@ -712,6 +712,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       updatedAt: new Date(crud.updated_at_millis),
       to,
       scheduledAt: new Date(crud.scheduled_at_millis),
+      // Source tracking for grouping emails by template/draft
+      createdWith: crud.created_with as "draft" | "programmatic-call",
+      emailDraftId: crud.email_draft_id as string | null,
+      emailProgrammaticCallTemplateId: crud.email_programmatic_call_template_id as string | null,
       isPaused: false as const,
       hasRendered: false as const,
       hasDelivered: false as const,
