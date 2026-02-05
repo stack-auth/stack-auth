@@ -524,14 +524,14 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   test("Syncs users to ClickHouse by default", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-  
+
     const user = await User.create({ primary_email: "clickhouse-sync@example.com" });
     await niceBackendFetch(`/api/v1/users/${user.userId}`, {
       accessType: "admin",
       method: "PATCH",
       body: { display_name: "ClickHouse Sync User" },
     });
-  
+
     const response = await waitForClickhouseUser("clickhouse-sync@example.com", "ClickHouse Sync User");
     expect(response.status).toBe(200);
     expect(response.body?.result?.[0]).toMatchObject({
@@ -540,7 +540,5 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
   });
 });
-
-
 
 
