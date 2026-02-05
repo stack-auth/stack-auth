@@ -619,6 +619,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     }
 
+
     const BLOCKED_PROJECT_ID = "2397ef60-a33e-4efb-ad9b-300da67ee29e";
     const BLOCKED_DOMAINS = ["gsmoal.com", "virgilian.com"];
     if (context.tenancy.project.id === BLOCKED_PROJECT_ID) {
