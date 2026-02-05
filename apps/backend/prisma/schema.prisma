@@ -101,7 +101,6 @@ model ExternalDbSyncMetadata {
 
   sequencerEnabled  Boolean @default(true)
   pollerEnabled     Boolean @default(true)
-  syncEngineEnabled Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

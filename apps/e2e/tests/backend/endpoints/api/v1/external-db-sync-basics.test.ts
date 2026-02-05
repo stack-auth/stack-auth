@@ -468,7 +468,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       ok: true,
       sequencer_enabled: expect.any(Boolean),
       poller_enabled: expect.any(Boolean),
-      sync_engine_enabled: expect.any(Boolean),
     });
 
     const postResponse = await niceBackendFetch('/api/latest/internal/external-db-sync/fusebox', {
@@ -477,7 +476,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       body: {
         sequencer_enabled: getResponse.body.sequencer_enabled,
         poller_enabled: getResponse.body.poller_enabled,
-        sync_engine_enabled: getResponse.body.sync_engine_enabled,
       },
     });
 
@@ -486,7 +484,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       ok: true,
       sequencer_enabled: getResponse.body.sequencer_enabled,
       poller_enabled: getResponse.body.poller_enabled,
-      sync_engine_enabled: getResponse.body.sync_engine_enabled,
     });
   }, TEST_TIMEOUT);
 });

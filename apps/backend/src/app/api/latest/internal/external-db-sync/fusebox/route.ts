@@ -17,7 +17,6 @@ const fuseboxResponseSchema = yupObject({
     ok: yupBoolean().defined(),
     sequencer_enabled: yupBoolean().defined(),
     poller_enabled: yupBoolean().defined(),
-    sync_engine_enabled: yupBoolean().defined(),
   }).defined(),
 });
 
@@ -29,7 +28,6 @@ const fuseboxRequestSchema = yupObject({
   body: yupObject({
     sequencer_enabled: yupBoolean().defined(),
     poller_enabled: yupBoolean().defined(),
-    sync_engine_enabled: yupBoolean().defined(),
   }).defined(),
   method: yupString().oneOf(["POST"]).defined(),
 });
@@ -67,7 +65,6 @@ export const GET = createSmartRouteHandler({
         ok: true,
         sequencer_enabled: fusebox.sequencerEnabled,
         poller_enabled: fusebox.pollerEnabled,
-        sync_engine_enabled: fusebox.syncEngineEnabled,
       },
     };
   },
@@ -87,7 +84,6 @@ export const POST = createSmartRouteHandler({
     const fusebox = await updateExternalDbSyncFusebox({
       sequencerEnabled: body.sequencer_enabled,
       pollerEnabled: body.poller_enabled,
-      syncEngineEnabled: body.sync_engine_enabled,
     });
     return {
       statusCode: 200,
@@ -96,7 +92,6 @@ export const POST = createSmartRouteHandler({
         ok: true,
         sequencer_enabled: fusebox.sequencerEnabled,
         poller_enabled: fusebox.pollerEnabled,
-        sync_engine_enabled: fusebox.syncEngineEnabled,
       },
     };
   },

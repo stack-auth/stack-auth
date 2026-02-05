@@ -127,14 +127,12 @@ type ExternalDbSyncStatus = {
 type ExternalDbSyncFusebox = {
   sequencerEnabled: boolean,
   pollerEnabled: boolean,
-  syncEngineEnabled: boolean,
 };
 
 type ExternalDbSyncFuseboxResponse = {
   ok: true,
   sequencer_enabled: boolean,
   poller_enabled: boolean,
-  sync_engine_enabled: boolean,
 };
 
 type AdminAppInternals = {
@@ -293,7 +291,6 @@ export default function PageClient() {
     const nextFusebox = {
       sequencerEnabled: result.data.sequencer_enabled,
       pollerEnabled: result.data.poller_enabled,
-      syncEngineEnabled: result.data.sync_engine_enabled,
     };
     setFusebox(nextFusebox);
     setSavedFusebox(nextFusebox);
@@ -311,7 +308,6 @@ export default function PageClient() {
           body: JSON.stringify({
             sequencer_enabled: fusebox.sequencerEnabled,
             poller_enabled: fusebox.pollerEnabled,
-            sync_engine_enabled: fusebox.syncEngineEnabled,
           }),
           headers: { "content-type": "application/json" },
         },
@@ -335,7 +331,6 @@ export default function PageClient() {
     const nextFusebox = {
       sequencerEnabled: result.data.sequencer_enabled,
       pollerEnabled: result.data.poller_enabled,
-      syncEngineEnabled: result.data.sync_engine_enabled,
     };
     setFusebox(nextFusebox);
     setSavedFusebox(nextFusebox);
@@ -439,8 +434,7 @@ export default function PageClient() {
   const fuseboxDirty = useMemo(() => {
     if (!fusebox || !savedFusebox) return false;
     return fusebox.sequencerEnabled !== savedFusebox.sequencerEnabled
-      || fusebox.pollerEnabled !== savedFusebox.pollerEnabled
-      || fusebox.syncEngineEnabled !== savedFusebox.syncEngineEnabled;
+      || fusebox.pollerEnabled !== savedFusebox.pollerEnabled;
   }, [fusebox, savedFusebox]);
 
   if (adminApp.projectId !== "internal") {
@@ -722,16 +716,7 @@ export default function PageClient() {
                   onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, pollerEnabled: checked } : current)}
                 />
               </div>
-              <div className="flex items-center justify-between gap-6">
-                <div>
-                  <Typography type="p" className="text-sm font-medium">Sync engine</Typography>
-                  <Typography type="p" className="text-xs text-muted-foreground">Processes mapping batches for tenants.</Typography>
-                </div>
-                <Switch
-                  checked={fusebox.syncEngineEnabled}
-                  onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, syncEngineEnabled: checked } : current)}
-                />
-              </div>
+
               <div className="flex justify-end">
                 <Button onClick={saveFusebox} disabled={!fuseboxDirty || savingFusebox} loading={savingFusebox}>
                   Save
