@@ -134,6 +134,12 @@
   }
 }
 
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
 .bg-card {
   box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.02);
   backdrop-filter: blur(12px);
