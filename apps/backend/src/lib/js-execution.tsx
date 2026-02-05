@@ -244,7 +244,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
         { error: error, innerCode: code, innerOptions: options }
       ));
-      throw new StackAssertionError("Email rendering service unavailable", { cause: error, innerCode: code, innerOptions: options });
+      throw new StackAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }
 }
 
@@ -254,6 +254,6 @@ async function runWithoutFallback(code: string, options: ExecuteJavascriptOption
     const result = await freestyleEngine.execute(code, options);
     return result;
   } catch (error) {
-    throw new StackAssertionError("Email rendering service unavailable", { cause: error, innerCode: code, innerOptions: options });
+    throw new StackAssertionError("Freestyle rendering service unavailable when running without fallback", { cause: error, innerCode: code, innerOptions: options });
   }
 }

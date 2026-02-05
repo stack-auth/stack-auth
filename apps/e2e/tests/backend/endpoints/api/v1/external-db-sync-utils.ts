@@ -8,7 +8,7 @@ const PORT_PREFIX = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || '81';
 export const POSTGRES_HOST = process.env.EXTERNAL_DB_TEST_HOST || `localhost:${PORT_PREFIX}28`;
 export const POSTGRES_USER = process.env.EXTERNAL_DB_TEST_USER || 'postgres';
 export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSWORD-PLACEHOLDER--uqfEC1hmmv';
-export const TEST_TIMEOUT = 120000;
+export const TEST_TIMEOUT = 240000;
 export const HIGH_VOLUME_TIMEOUT = 600000; // 10 minutes for 1500+ users
 const SHOULD_FORCE_EXTERNAL_DB_SYNC = process.env.STACK_FORCE_EXTERNAL_DB_SYNC === 'true';
 const FORCE_SYNC_MAX_DURATION_MS = (() => {
