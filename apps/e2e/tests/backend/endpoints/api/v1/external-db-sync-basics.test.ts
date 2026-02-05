@@ -1,6 +1,7 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
-import { User, niceBackendFetch } from '../../../backend-helpers';
+import { Project, User, niceBackendFetch } from '../../../backend-helpers';
 import {
   TEST_TIMEOUT,
   TestDbManager,
@@ -12,6 +13,40 @@ import {
   waitForSyncedDeletion,
   waitForTable
 } from './external-db-sync-utils';
+
+async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+  return await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body,
+  });
+}
+
+async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
+  const timeoutMs = 120_000;
+  const intervalMs = 500;
+  const start = performance.now();
+
+  while (performance.now() - start < timeoutMs) {
+    const response = await runQueryForCurrentProject({
+      query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
+      params: {
+        email,
+      },
+    });
+    if (
+      response.status === 200
+      && Array.isArray(response.body?.result)
+      && response.body.result.length === 1
+      && response.body.result[0]?.display_name === expectedDisplayName
+    ) {
+      return response;
+    }
+    await wait(intervalMs);
+  }
+
+  throw new Error(`Timed out waiting for ClickHouse user ${email} to sync.`);
+}
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
 describe.sequential('External DB Sync - Basic Tests', () => {
@@ -486,4 +521,26 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       poller_enabled: getResponse.body.poller_enabled,
     });
   }, TEST_TIMEOUT);
+
+  test("Syncs users to ClickHouse by default", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  
+    const user = await User.create({ primary_email: "clickhouse-sync@example.com" });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "ClickHouse Sync User" },
+    });
+  
+    const response = await waitForClickhouseUser("clickhouse-sync@example.com", "ClickHouse Sync User");
+    expect(response.status).toBe(200);
+    expect(response.body?.result?.[0]).toMatchObject({
+      display_name: "ClickHouse Sync User",
+      primary_email: "clickhouse-sync@example.com",
+    });
+  });
 });
+
+
+
+

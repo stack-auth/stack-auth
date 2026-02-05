@@ -15,64 +15,6 @@ async function runQuery(body: { query: string, params?: Record<string, string>, 
   return response;
 }
 
-async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
-  return await niceBackendFetch("/api/v1/internal/analytics/query", {
-    method: "POST",
-    accessType: "admin",
-    body,
-  });
-}
-
-async function triggerExternalDbSync() {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    throw new Error("CRON_SECRET must be set to trigger external DB sync in analytics tests.");
-  }
-
-  await niceBackendFetch("/api/latest/internal/external-db-sync/sequencer", {
-    headers: { authorization: `Bearer ${cronSecret}` },
-    query: {
-      maxDurationMs: "5000",
-      stopWhenIdle: "true",
-    },
-  });
-
-  await niceBackendFetch("/api/latest/internal/external-db-sync/poller", {
-    headers: { authorization: `Bearer ${cronSecret}` },
-    query: {
-      maxDurationMs: "5000",
-      stopWhenIdle: "true",
-    },
-  });
-}
-
-async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
-  const timeoutMs = 120_000;
-  const intervalMs = 500;
-  const start = performance.now();
-
-  while (performance.now() - start < timeoutMs) {
-    await triggerExternalDbSync();
-    const response = await runQueryForCurrentProject({
-      query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
-      params: {
-        email,
-      },
-    });
-    if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 1
-      && response.body.result[0]?.display_name === expectedDisplayName
-    ) {
-      return response;
-    }
-    await wait(intervalMs);
-  }
-
-  throw new Error(`Timed out waiting for ClickHouse user ${email} to sync.`);
-}
-
 type ExpectLike = ((value: unknown) => { toEqual: (value: unknown) => void }) & {
   any: (constructor: unknown) => unknown,
 };
@@ -117,24 +59,6 @@ it("can execute a basic query with admin access", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-});
-
-it("syncs users to ClickHouse by default", async ({ expect }) => {
-  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-
-  const user = await User.create({ primary_email: "clickhouse-sync@example.com" });
-  await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-    accessType: "admin",
-    method: "PATCH",
-    body: { display_name: "ClickHouse Sync User" },
-  });
-
-  const response = await waitForClickhouseUser("clickhouse-sync@example.com", "ClickHouse Sync User");
-  expect(response.status).toBe(200);
-  expect(response.body?.result?.[0]).toMatchObject({
-    display_name: "ClickHouse Sync User",
-    primary_email: "clickhouse-sync@example.com",
-  });
 });
 
 it("returns a query_id for analytics queries", async ({ expect }) => {
