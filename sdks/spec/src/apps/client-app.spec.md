@@ -14,7 +14,8 @@ Optional:
   publishableClientKey: string
     From Stack Auth dashboard. If omitted, the SDK uses
     publishableClientKeyNotNecessarySentinel for OAuth client_secret (which
-    assumes that the project does not require a publishable client key).
+    assumes that the project does not require a publishable client key), and
+    no x-stack-publishable-client-key header is sent.
   baseUrl: string | { browser, server } 
     Default: "https://api.stack-auth.com"
     Can specify different URLs for browser vs server environments.

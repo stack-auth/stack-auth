@@ -6,6 +6,7 @@ import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/cru
 import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
+import { KnownError, KnownErrors } from '@stackframe/stack-shared/dist/known-errors';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { publishableClientKeyNotNecessarySentinel } from '@stackframe/stack-shared/dist/utils/oauth';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
@@ -17,6 +18,13 @@ export const secretServerKeyHeaderSchema = publishableClientKeyHeaderSchema;
 export const superSecretAdminKeyHeaderSchema = secretServerKeyHeaderSchema;
 
 export type CheckApiKeySetError = "invalid-key" | "publishable-key-required";
+
+export function throwCheckApiKeySetError(error: CheckApiKeySetError, projectId: string, invalidKeyError: KnownError): never {
+  if (error === "publishable-key-required") {
+    throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
+  }
+  throw invalidKeyError;
+}
 
 export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<Promise<Result<void, CheckApiKeySetError>>> {
   key = validateKeyType(key);

@@ -1,4 +1,4 @@
-import { checkApiKeySet, CheckApiKeySetError } from "@/lib/internal-api-keys";
+import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getProjectBranchFromClientId, oauthServer } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -7,13 +7,6 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { oauthResponseToSmartResponse } from "../oauth-helpers";
-
-function throwClientSecretError(error: CheckApiKeySetError, projectId: string): never {
-  if (error === "publishable-key-required") {
-    throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
-  }
-  throw new KnownErrors.InvalidOAuthClientIdOrSecret();
-}
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -46,7 +39,7 @@ export const POST = createSmartRouteHandler({
         if (clientSecret) {
           const keyCheck = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
           if (keyCheck.status === "error") {
-            throwClientSecretError(keyCheck.error, tenancy.project.id);
+            throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidOAuthClientIdOrSecret());
           }
         } else if (tenancy.config.project.requirePublishableClientKey) {
           throw new KnownErrors.PublishableClientKeyRequiredForProject(tenancy.project.id);

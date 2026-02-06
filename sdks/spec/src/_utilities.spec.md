@@ -19,7 +19,7 @@ Construct API URL: `{baseUrl}/api/v1{path}`
 
 x-stack-project-id: <projectId>
 x-stack-publishable-client-key: <publishableClientKey>
-  - Note that this is optional, although must functions will throw an error if requirePublishableClientKey is true and this is not given (if not given, use the publishableClientKeyNotNecessarySentinel for the OAuth client_secret).
+  - Note that this argument is optional, although if this is not given then the backend will return a PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT error if requirePublishableClientKey is true on the project and you should panic.
 x-stack-client-version: "<sdk-name>@<version>" (e.g., "python@1.0.0", "go@0.1.0")
 x-stack-access-type: "client" | "server" | "admin"
   - "client" for StackClientApp
