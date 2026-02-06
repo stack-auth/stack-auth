@@ -1,4 +1,3 @@
-import { getOrSetCacheValue } from "@/lib/cache";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, PrismaClientTransaction, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
@@ -11,19 +10,7 @@ import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../user
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
 
-const METRICS_CACHE_NAMESPACE = "metrics";
-const ONE_HOUR_MS = 60 * 60 * 1000;
 const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
-
-async function withMetricsCache<T>(tenancy: Tenancy, suffix: string, prisma: PrismaClientTransaction, includeAnonymous: boolean = false, loader: () => Promise<T>): Promise<T> {
-  return await getOrSetCacheValue<T>({
-    namespace: METRICS_CACHE_NAMESPACE,
-    cacheKey: `${tenancy.id}:${suffix}:${includeAnonymous ? "anon" : "non_anon"}`,
-    ttlMs: ONE_HOUR_MS,
-    prisma,
-    loader,
-  });
-}
 
 const DataPointsSchema = yupArray(yupObject({
   date: yupString().defined(),
@@ -284,20 +271,8 @@ export const GET = createSmartRouteHandler({
         where: { tenancyId: req.auth.tenancy.id, ...(includeAnonymous ? {} : { isAnonymous: false }) },
       }),
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
-      withMetricsCache(
-        req.auth.tenancy,
-        "daily_active_users",
-        prisma,
-        includeAnonymous,
-        () => loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous)
-      ),
-      withMetricsCache(
-        req.auth.tenancy,
-        "users_by_country",
-        prisma,
-        includeAnonymous,
-        () => loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous)
-      ),
+      loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
+      loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
