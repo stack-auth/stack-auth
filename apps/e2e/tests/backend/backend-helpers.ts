@@ -186,6 +186,36 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
   return mailbox;
 }
 
+// Helper to get emails from the outbox, filtered by subject if provided
+export async function getOutboxEmails(options?: { subject?: string }) {
+  const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+    method: "GET",
+    accessType: "server",
+  });
+  if (options?.subject) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return listResponse.body.items.filter((e: any) => e.subject === options.subject);
+  }
+  return listResponse.body.items;
+}
+
+// Helper to poll the outbox until an email with the expected subject and status appears
+export async function waitForOutboxEmailWithStatus(subject: string, status: string) {
+  const maxRetries = 24;
+  let emails: any[] = [];
+  for (let i = 0; i < maxRetries; i++) {
+    emails = await getOutboxEmails({ subject });
+    if (emails.length > 0 && emails[0].status === status) {
+      return emails;
+    }
+    await wait(500);
+  }
+  throw new StackAssertionError(
+    `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
+    { foundEmails: emails }
+  );
+}
+
 export namespace Auth {
   export async function fastSignUp(body: any = {}) {
     const { userId } = await User.create(body);
@@ -405,7 +435,11 @@ export namespace Auth {
         }
         await wait(100 + i * 20);
         if (i >= 30) {
-          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { response, messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })) });
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, {
+            response,
+            messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
+            outboxEmails: await getOutboxEmails(),
+          });
         }
       }
       return {

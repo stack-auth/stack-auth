@@ -10,18 +10,6 @@ export const POSTGRES_USER = process.env.EXTERNAL_DB_TEST_USER || 'postgres';
 export const POSTGRES_PASSWORD = process.env.EXTERNAL_DB_TEST_PASSWORD || 'PASSWORD-PLACEHOLDER--uqfEC1hmmv';
 export const TEST_TIMEOUT = 240000;
 export const HIGH_VOLUME_TIMEOUT = 600000; // 10 minutes for 1500+ users
-const SHOULD_FORCE_EXTERNAL_DB_SYNC = process.env.STACK_FORCE_EXTERNAL_DB_SYNC === 'true';
-const FORCE_SYNC_MAX_DURATION_MS = (() => {
-  const raw = process.env.STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS;
-  if (!raw) return 5000;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error('STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS must be a positive integer');
-  }
-  return parsed;
-})();
-const FORCE_SYNC_INTERVAL_MS = 2000;
-let lastForcedSyncAt = -Infinity;
 
 // Connection settings to prevent connection leaks
 const CLIENT_CONFIG: Partial<ClientConfig> = {
@@ -143,7 +131,6 @@ export async function waitForCondition(
 
   while (performance.now() - startTime < timeoutMs) {
     try {
-      await maybeForceExternalDbSync();
       if (await checkFn()) {
         return;
       }
@@ -160,46 +147,6 @@ export async function waitForCondition(
   }
 
   throw new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`);
-}
-
-export async function forceExternalDbSync(): Promise<boolean> {
-  if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return false;
-
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    throw new Error('CRON_SECRET is required when STACK_FORCE_EXTERNAL_DB_SYNC=true');
-  }
-
-  lastForcedSyncAt = performance.now();
-
-  await niceFetch(new URL('/api/latest/internal/external-db-sync/sequencer', STACK_BACKEND_BASE_URL), {
-    query: {
-      maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
-      stopWhenIdle: "true",
-    },
-    headers: {
-      Authorization: `Bearer ${cronSecret}`,
-    },
-  });
-  await niceFetch(new URL('/api/latest/internal/external-db-sync/poller', STACK_BACKEND_BASE_URL), {
-    query: {
-      maxDurationMs: String(FORCE_SYNC_MAX_DURATION_MS),
-      stopWhenIdle: "true",
-    },
-    headers: {
-      Authorization: `Bearer ${cronSecret}`,
-    },
-  });
-  return true;
-}
-
-async function maybeForceExternalDbSync() {
-  if (!SHOULD_FORCE_EXTERNAL_DB_SYNC) return;
-
-  const now = performance.now();
-  if (now - lastForcedSyncAt < FORCE_SYNC_INTERVAL_MS) return;
-
-  await forceExternalDbSync();
 }
 
 /**
