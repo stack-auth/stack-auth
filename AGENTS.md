@@ -97,6 +97,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
 - Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible. 
+- All migrations ABSOLUTELY MUST be O(n) (or logarithmic) in time complexity. Almost all tables have > 1mil rows in production. Use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL and create temporary indices if you are editing too many rows, see the other migration files for examples.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

@@ -1,10 +1,12 @@
--- Create temporary index to speed up the migration
+-- Create temporary expression index to speed up the migration
+-- (B-tree on the specific JSONB path, not GIN on the whole column,
+-- so the index is actually used by the #>> WHERE clause)
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "temp_project_require_publishable_client_key_idx"
 ON /* SCHEMA_NAME_SENTINEL */."Project"
-USING GIN ("projectConfigOverride");
+(("projectConfigOverride" #>> '{project,requirePublishableClientKey}'));
 -- SPLIT_STATEMENT_SENTINEL
 
 -- Set requirePublishableClientKey to true for existing projects when missing

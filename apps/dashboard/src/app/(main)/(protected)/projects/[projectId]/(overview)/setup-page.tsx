@@ -382,7 +382,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 headers={
                   'x-stack-access-type': 'server',
                   # You should store these in environment variables
-                  'x-stack-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("                  ")}
+                  'x-stack-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("  ")}
                   'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
                   **kwargs.pop('headers', {}),
                 },
