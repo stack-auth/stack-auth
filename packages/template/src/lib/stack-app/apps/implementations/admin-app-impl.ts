@@ -8,7 +8,7 @@ import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/proje
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
@@ -248,8 +248,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         const { requirePublishableClientKey, ...projectUpdate } = update;
         const updateOptions = adminProjectUpdateOptionsToCrud(projectUpdate);
         const hasConfigUpdate = !!updateOptions.config
-          && Object.values(updateOptions.config).some((value) => value !== undefined);
-        const hasProjectUpdate = Object.entries(updateOptions).some(([key, value]) => {
+          && typedValues(updateOptions.config).some((value) => value !== undefined);
+        const hasProjectUpdate = typedEntries(updateOptions).some(([key, value]) => {
           if (key === "config") return hasConfigUpdate;
           return value !== undefined;
         });

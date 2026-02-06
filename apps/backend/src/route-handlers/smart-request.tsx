@@ -269,7 +269,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
       throw new StatusError(401, "Development key override is only allowed in development or test environments");
     }
     const result = await checkApiKeySet("internal", { superSecretAdminKey: developmentKeyOverride });
-    if (!result) throw new StatusError(401, "Invalid development key override");
+    if (result.status === "error") throw new StatusError(401, "Invalid development key override");
   } else if (adminAccessToken) {
     // TODO put this into the bundled queries above (not so important because this path is quite rare)
     await extractUserFromAdminAccessToken({ token: adminAccessToken, projectId });  // assert that the admin token is valid
@@ -282,17 +282,22 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
           }
           break;
         }
-        if (!isClientKeyValid) throw new KnownErrors.InvalidPublishableClientKey(projectId);
+        if (isClientKeyValid.status === "error") {
+          if (isClientKeyValid.error === "publishable-key-required") {
+            throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
+          }
+          throw new KnownErrors.InvalidPublishableClientKey(projectId);
+        }
         break;
       }
       case "server": {
         if (!secretServerKey) throw new KnownErrors.ServerAuthenticationRequired();
-        if (!isServerKeyValid) throw new KnownErrors.InvalidSecretServerKey(projectId);
+        if (isServerKeyValid.status === "error") throw new KnownErrors.InvalidSecretServerKey(projectId);
         break;
       }
       case "admin": {
         if (!superSecretAdminKey) throw new KnownErrors.AdminAuthenticationRequired();
-        if (!isAdminKeyValid) throw new KnownErrors.InvalidSuperSecretAdminKey(projectId);
+        if (isAdminKeyValid.status === "error") throw new KnownErrors.InvalidSuperSecretAdminKey(projectId);
         break;
       }
       default: {

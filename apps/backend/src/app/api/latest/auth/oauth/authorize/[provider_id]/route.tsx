@@ -1,4 +1,4 @@
-import { checkApiKeySet } from "@/lib/internal-api-keys";
+import { checkApiKeySet, CheckApiKeySetError } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
@@ -12,6 +12,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
 import * as yup from "yup";
+
+function throwPublishableKeyError(error: CheckApiKeySetError, projectId: string): never {
+  if (error === "publishable-key-required") {
+    throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
+  }
+  throw new KnownErrors.InvalidPublishableClientKey(projectId);
+}
 
 const outerOAuthFlowExpirationInMinutes = 10;
 
@@ -60,8 +67,9 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
     }
 
-    if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret }))) {
-      throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
+    const keyCheck = await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret });
+    if (keyCheck.status === "error") {
+      throwPublishableKeyError(keyCheck.error, tenancy.project.id);
     }
 
     const providerRaw = Object.entries(tenancy.config.auth.oauth.providers).find(([providerId, _]) => providerId === params.provider_id);

@@ -31,7 +31,7 @@ const accessTokenSchema = yupObject({
 
 export const oauthCookieSchema = yupObject({
   tenancyId: yupString().defined(),
-  publishableClientKey: yupString().optional(),
+  publishableClientKey: yupString().defined(),
   innerCodeVerifier: yupString().defined(),
   redirectUri: yupString().defined(),
   scope: yupString().defined(),

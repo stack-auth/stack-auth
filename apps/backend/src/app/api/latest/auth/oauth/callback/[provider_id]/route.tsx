@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { CheckApiKeySetError, checkApiKeySet } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy, getTenancy } from "@/lib/tenancies";
@@ -14,6 +15,13 @@ import { deindent, extractScopes } from "@stackframe/stack-shared/dist/utils/str
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
+
+function throwPublishableKeyError(error: CheckApiKeySetError, projectId: string): never {
+  if (error === "publishable-key-required") {
+    throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
+  }
+  throw new KnownErrors.InvalidPublishableClientKey(projectId);
+}
 
 /**
  * Create a project user OAuth account with the provided data.
@@ -165,6 +173,12 @@ const handler = createSmartRouteHandler({
         if (!user) {
           throw new StackAssertionError("User not found");
         }
+      }
+
+      // Validate the publishable client key before proceeding with OAuth authorization
+      const keyCheck = await checkApiKeySet(tenancy.project.id, { publishableClientKey: outerInfo.publishableClientKey });
+      if (keyCheck.status === "error") {
+        throwPublishableKeyError(keyCheck.error, tenancy.project.id);
       }
 
       const oauthRequest = new OAuthRequest({

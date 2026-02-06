@@ -1,3 +1,4 @@
+import type { ProjectConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
@@ -1234,7 +1235,7 @@ export namespace Project {
     expect(response.status).toBe(200);
   }
 
-  export async function updateProjectConfig(config: any) {
+  export async function updateProjectConfig(config: ProjectConfigOverride) {
     const response = await niceBackendFetch(`/api/latest/internal/config/override/project`, {
       accessType: "admin",
       method: "PATCH",
