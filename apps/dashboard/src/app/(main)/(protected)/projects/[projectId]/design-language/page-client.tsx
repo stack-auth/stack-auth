@@ -175,7 +175,7 @@ function GlassCard({
   return (
     <div className={cn(
       "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
+      "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md",
       className
     )}>
@@ -213,7 +213,7 @@ function GlassCardWithTint({
   return (
     <div className={cn(
       "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
+      "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md",
       className
     )}>
@@ -479,7 +479,7 @@ function ListItemRow({
   return (
     <div className={cn(
       "group relative flex items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none",
-      "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
+      "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md"
     )}>
       <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />

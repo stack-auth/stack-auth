@@ -232,7 +232,7 @@ function GlassCard({
   return (
     <div className={cn(
       "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-black/[0.14] dark:ring-white/[0.06] hover:ring-black/[0.2] dark:hover:ring-white/[0.1]",
+      "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
       "shadow-sm hover:shadow-md",
       className
     )}>
