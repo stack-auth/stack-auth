@@ -103,7 +103,17 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           }
 
           // request duration warning
-          const allowedLongRequestPaths = ["/api/latest/internal/email-queue-step", "/api/latest/internal/analytics/query", "/health/email", "/api/latest/internal/metrics"];
+          const allowedLongRequestPaths = [
+            "/api/latest/internal/email-queue-step",
+            "/api/v1/internal/analytics/query",
+            "/api/latest/internal/analytics/query",
+            "/health/email",
+            "/api/v1/internal/metrics",
+            "/api/latest/internal/metrics",
+            "/api/latest/internal/external-db-sync/poller",
+            "/api/latest/internal/external-db-sync/sequencer",
+            "/api/latest/internal/external-db-sync/sync-engine",
+          ];
           if (!allowedLongRequestPaths.includes(req.nextUrl.pathname)) {
             const warnAfterSeconds = 12;
             runAsynchronously(async () => {

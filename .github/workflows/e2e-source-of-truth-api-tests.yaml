@@ -17,9 +17,13 @@ jobs:
     env:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      STACK_ACCESS_TOKEN_EXPIRATION_TIME: 30m
       STACK_OVERRIDE_SOURCE_OF_TRUTH: '{"type": "postgres", "connectionString": "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/source-of-truth-db?schema=sot-schema"}'
       STACK_TEST_SOURCE_OF_TRUTH: true
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_FORCE_EXTERNAL_DB_SYNC: "true"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
       matrix:
@@ -95,6 +99,9 @@ jobs:
 
       - name: Wait on Svix
         run: pnpx wait-on tcp:localhost:8113
+      
+      - name: Wait on QStash
+        run: pnpx wait-on tcp:localhost:8125
 
       - name: Create source-of-truth database and schema
         run: |
@@ -140,20 +147,29 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+      - name: Start run-cron-jobs in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-cron-jobs --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Wait 10 seconds
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test run --exclude "**/external-db-sync*.test.ts" # external-db-sync does not support external sot
 
-      - name: Run tests again, to make sure they are stable (attempt 1)
+      - name: Run tests again (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test
+        run: pnpm test run --exclude "**/external-db-sync*.test.ts"
 
-      - name: Run tests again, to make sure they are stable (attempt 2)
+      - name: Run tests again (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test
+        run: pnpm test run --exclude "**/external-db-sync*.test.ts"
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail

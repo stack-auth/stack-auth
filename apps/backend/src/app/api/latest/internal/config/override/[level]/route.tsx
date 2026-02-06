@@ -10,6 +10,7 @@ import {
   setEnvironmentConfigOverride,
   setProjectConfigOverride,
 } from "@/lib/config";
+import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
@@ -20,6 +21,19 @@ import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 const levelSchema = yupString().oneOf(["project", "branch", "environment"]).defined();
+
+function shouldEnqueueExternalDbSync(config: unknown): boolean {
+  if (!config || typeof config !== "object") return false;
+  const configRecord = config as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(configRecord, "dbSync.externalDatabases")) {
+    return true;
+  }
+  const dbSync = configRecord.dbSync;
+  if (dbSync && typeof dbSync === "object") {
+    return Object.prototype.hasOwnProperty.call(dbSync as Record<string, unknown>, "externalDatabases");
+  }
+  return false;
+}
 
 const levelConfigs = {
   project: {
@@ -194,6 +208,10 @@ export const PUT = createSmartRouteHandler({
       source: req.body.source as BranchConfigSourceApi,
     });
 
+    if (req.params.level === "environment" && shouldEnqueueExternalDbSync(parsedConfig)) {
+      await enqueueExternalDbSync(req.auth.tenancy.id);
+    }
+
     return {
       statusCode: 200 as const,
       bodyType: "success" as const,
@@ -231,10 +249,13 @@ export const PATCH = createSmartRouteHandler({
       config: parsedConfig,
     });
 
+    if (req.params.level === "environment" && shouldEnqueueExternalDbSync(parsedConfig)) {
+      await enqueueExternalDbSync(req.auth.tenancy.id);
+    }
+
     return {
       statusCode: 200 as const,
       bodyType: "success" as const,
     };
   },
 });
-

@@ -1,5 +1,6 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
@@ -244,9 +245,9 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
           projectUserId: options.refreshTokenObj.projectUserId,
         },
       },
-      data: {
+      data: withExternalDbSyncUpdate({
         lastActiveAt: now,
-      },
+      }),
     }),
     globalPrismaClient.projectUserRefreshToken.update({
       where: {
