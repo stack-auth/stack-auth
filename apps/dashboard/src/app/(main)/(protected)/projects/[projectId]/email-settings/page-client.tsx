@@ -2,6 +2,8 @@
 
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
+import { DomainSettings } from "./domain-settings";
+import { ThemeSettings } from "./theme-settings";
 
 export default function PageClient() {
   return (
@@ -10,7 +12,10 @@ export default function PageClient() {
         title="Email Settings"
         description="Configure email server and themes"
       >
-        {/* Email server settings and themes will go here */}
+        <div className="space-y-6">
+          <ThemeSettings />
+          <DomainSettings />
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );
