@@ -12,6 +12,18 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
   expect(response.body).toEqual(metricsResponse.body);
 }
 
+async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: string, expectedCount: number }): Promise<NiceResponse> {
+  let response!: NiceResponse;
+  for (let i = 0; i < 15; i++) {
+    response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+    if (response.body?.users_by_country?.[options.countryCode] === options.expectedCount) {
+      return response;
+    }
+    await wait(2_000);
+  }
+  return response;
+}
+
 it("should return metrics data", async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
@@ -117,8 +129,8 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
   backendContext.set({ mailbox: createMailbox(), ipData: { country: "US", ipAddress: "127.0.0.1", city: "New York", region: "NY", latitude: 40.7128, longitude: -74.0060, tzIdentifier: "America/New_York" } });
   await Auth.Otp.signIn();
 
-  // Store metrics so we can compare them later
-  const beforeMetrics = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  // ClickHouse ingestion is async; wait until the baseline metrics includes the regular user's country.
+  const beforeMetrics = await waitForMetricsToIncludeUsersByCountry({ countryCode: "US", expectedCount: 1 });
 
   // Create 2 anonymous users
   for (let i = 0; i < 2; i++) {
