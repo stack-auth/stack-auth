@@ -135,7 +135,7 @@ const TokenRefreshEventType = {
     refreshTokenId: yupString().defined(),
     ipInfo: endUserIpInfoSchema.nullable().defined(),
   }),
-  inherits: [],
+  inherits: [UserActivityEventType],
 } as const satisfies SystemEventTypeBase;
 
 
