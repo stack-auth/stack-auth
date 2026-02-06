@@ -284,8 +284,8 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       branchId: options.tenancy.branchId,
       userId: options.refreshTokenObj.projectUserId,
       refreshTokenId: options.refreshTokenObj.id,
-      organizationId: null,
       isAnonymous: user.is_anonymous,
+      teamId: "",
       ipInfo,
     }
   );
