@@ -1,4 +1,5 @@
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
+import { markProjectUserForExternalDbSync, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -68,9 +69,14 @@ export const contactChannelVerificationCodeHandler = createVerificationCodeHandl
 
     await prisma.contactChannel.update({
       where: uniqueKeys,
-      data: {
+      data: withExternalDbSyncUpdate({
         isVerified: true,
-      }
+      }),
+    });
+
+    await markProjectUserForExternalDbSync(prisma, {
+      tenancyId: tenancy.id,
+      projectUserId: data.user_id,
     });
 
     return {
