@@ -30,8 +30,11 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey?: string, secretServerKey: string } | null>(null);
   const projectConfig = adminApp.useProject().useConfig();
   const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
-  const publishableClientKeyLine = (line: string) => requirePublishableClientKey ? line : "";
   const publishableClientKeyValue = keys?.publishableClientKey ?? "...";
+  const optionalPublishableClientKeyProp = (indent: string) =>
+    requirePublishableClientKey ? `\n${indent}publishableClientKey: "${publishableClientKeyValue}",` : "";
+  const optionalPublishableClientKeyHeader = (indent: string) =>
+    requirePublishableClientKey ? `\n${indent}'x-stack-publishable-client-key': "${publishableClientKeyValue}",` : "";
 
   const onGenerateKeys = async () => {
     const newKey = await adminApp.createInternalApiKey({
@@ -132,8 +135,8 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             
             export const stackClientApp = new StackClientApp({
               // You should store these in environment variables
-              projectId: "${keys?.projectId ?? "..."}",
-${publishableClientKeyLine(`              publishableClientKey: "${publishableClientKeyValue}",\n`)}              tokenStore: "cookie",
+              projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
+              tokenStore: "cookie",
               redirectMethod: {
                 useNavigate,
               }
@@ -247,8 +250,8 @@ ${publishableClientKeyLine(`              publishableClientKey: "${publishableCl
 
                 const stackServerApp = new StackServerApp({
                   // You should store these in environment variables based on your project setup
-                  projectId: "${keys?.projectId ?? "..."}",
-${publishableClientKeyLine(`                  publishableClientKey: "${publishableClientKeyValue}",\n`)}                  secretServerKey: "${keys?.secretServerKey ?? "..."}",
+                  projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
+                  secretServerKey: "${keys?.secretServerKey ?? "..."}",
                   tokenStore: "memory",
                 });
               `}
@@ -264,8 +267,8 @@ ${publishableClientKeyLine(`                  publishableClientKey: "${publishab
 
                 const stackClientApp = new StackClientApp({
                   // You should store these in environment variables
-                  projectId: "your-project-id",
-${publishableClientKeyLine(`                  publishableClientKey: "your-publishable-client-key",\n`)}                  tokenStore: "cookie",
+                  projectId: "your-project-id",${optionalPublishableClientKeyProp("  ")}
+                  tokenStore: "cookie",
                 });
               `}
               title="stack/client.ts"
@@ -379,8 +382,8 @@ ${publishableClientKeyLine(`                  publishableClientKey: "your-publis
                 headers={
                   'x-stack-access-type': 'server',
                   # You should store these in environment variables
-                  'x-stack-project-id': "${keys?.projectId ?? "..."}",
-${publishableClientKeyLine(`                  'x-stack-publishable-client-key': "${publishableClientKeyValue}",\n`)}                  'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
+                  'x-stack-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("                  ")}
+                  'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
                   **kwargs.pop('headers', {}),
                 },
                 **kwargs,
