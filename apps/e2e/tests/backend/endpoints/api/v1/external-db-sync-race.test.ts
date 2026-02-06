@@ -10,13 +10,10 @@ import {
   TEST_TIMEOUT,
   TestDbManager,
   createProjectWithExternalDb as createProjectWithExternalDbRaw,
-  forceExternalDbSync,
   waitForCondition,
   waitForSyncedDeletion,
   waitForTable
 } from './external-db-sync-utils';
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 describe.sequential('External DB Sync - Race Condition Tests', () => {
   let dbManager: TestDbManager;
@@ -376,24 +373,25 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
             [user.userId],
           );
 
-          const forced = await forceExternalDbSync();
-          if (!forced) {
-            await sleep(70000);
-          }
-
-          const during = await externalClient.query<{
-            display_name: string | null,
-          }>(
-            `
-              SELECT "display_name"
-              FROM "users"
-              WHERE "primary_email" = $1
-            `,
-            [`${dbName}@example.com`],
+          let row: any;
+          await waitForCondition(
+            async () => {
+              const res = await externalClient.query<{
+                display_name: string | null,
+              }>(
+                `SELECT "display_name" FROM "users" WHERE "primary_email" = $1`,
+                [`${dbName}@example.com`],
+              );
+              if (res.rows.length !== 1) return false;
+              row = res.rows[0];
+              return true;
+            },
+            {
+              description: 'waiting for sync to complete',
+              timeoutMs: 10000,
+            },
           );
 
-          expect(during.rows.length).toBe(1);
-          const row = during.rows[0];
 
           // Uncommitted transaction should not be visible
           expect(row.display_name).not.toBe('Transaction 1');

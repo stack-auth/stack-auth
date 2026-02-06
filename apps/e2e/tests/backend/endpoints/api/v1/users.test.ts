@@ -13,7 +13,7 @@ describe("without project access", () => {
     await backendContext.with({
       projectKeys: InternalProjectKeys,
     }, async () => {
-      await Auth.Otp.signIn();
+      await Auth.fastSignUp();
     });
     const response = await niceBackendFetch("/api/v1/users/me");
     expect(response).toMatchInlineSnapshot(`

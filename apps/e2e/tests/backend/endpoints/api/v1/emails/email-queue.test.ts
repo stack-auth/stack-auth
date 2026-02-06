@@ -1,49 +1,10 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
 import { describe } from "vitest";
 import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Auth, Project, User, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
-
-type OutboxEmail = {
-  id: string,
-  subject?: string,
-  status: string,
-  skipped_reason?: string,
-  is_transactional?: boolean,
-  tsx_source?: string,
-};
-
-// Helper to get emails from the outbox, filtered by subject if provided
-async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
-  const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
-    method: "GET",
-    accessType: "server",
-  });
-  if (options?.subject) {
-    return listResponse.body.items.filter((e: any) => e.subject === options.subject);
-  }
-  return listResponse.body.items;
-}
-
-// Helper to poll the outbox until an email with the expected subject and status appears
-async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
-  const maxRetries = 20;
-  let emails: OutboxEmail[] = [];
-  for (let i = 0; i < maxRetries; i++) {
-    emails = await getOutboxEmails({ subject });
-    if (emails.length > 0 && emails[0].status === status) {
-      return emails;
-    }
-    await wait(500);
-  }
-  throw new StackAssertionError(
-    `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
-    { foundEmails: emails }
-  );
-}
+import { Auth, Project, User, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",

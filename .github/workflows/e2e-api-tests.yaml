@@ -19,7 +19,6 @@ jobs:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
-      STACK_FORCE_EXTERNAL_DB_SYNC: "true"
       STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
 
@@ -160,7 +159,7 @@ jobs:
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
 
       - name: Run tests again (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
