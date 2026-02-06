@@ -150,7 +150,7 @@ function NavItem({
   const isHighlighted = isDirectItemActive || isSectionActive;
 
   const inactiveClasses = cn(
-    "hover:bg-background/60",
+    "hover:bg-white/70 dark:hover:bg-background/60",
     "text-muted-foreground hover:text-foreground"
   );
 
@@ -474,7 +474,7 @@ function SidebarContent({
         <div className="flex-grow" />
       </div>
 
-      <div className={cn("sticky bottom-0 border-t border-border/30 py-3 backdrop-blur-sm transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
+      <div className={cn("sticky bottom-0 border-t border-border/30 bg-black/[0.01] dark:bg-transparent py-3 backdrop-blur-sm transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
