@@ -503,7 +503,6 @@ async function updateClickhouseSyncMetadata(
       tenancy_id: tenancyId,
       mapping_name: mappingId,
       last_synced_sequence_id: lastSequenceId,
-      updated_at: new Date(),
     }],
     format: "JSONEachRow",
   });
