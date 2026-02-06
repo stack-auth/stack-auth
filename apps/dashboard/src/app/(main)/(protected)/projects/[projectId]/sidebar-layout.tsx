@@ -7,31 +7,31 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import {
-  Button,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  Typography,
+    Button,
+    Sheet,
+    SheetContent,
+    SheetTitle,
+    SheetTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+    Typography,
 } from "@/components/ui";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import {
-  CaretDownIcon,
-  CaretRightIcon,
-  CubeIcon,
-  GearIcon,
-  GlobeIcon,
-  KeyIcon,
-  ListIcon,
-  SidebarIcon,
-  type Icon as PhosphorIcon,
+    CaretDownIcon,
+    CaretRightIcon,
+    CubeIcon,
+    GearIcon,
+    GlobeIcon,
+    KeyIcon,
+    ListIcon,
+    SidebarIcon,
+    type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { UserButton } from "@stackframe/stack";
@@ -474,7 +474,7 @@ function SidebarContent({
         <div className="flex-grow" />
       </div>
 
-      <div className={cn("sticky bottom-0 border-t border-border/30 bg-black/[0.01] dark:bg-transparent py-3 backdrop-blur-sm transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
+      <div className={cn("sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 bg-white/45 dark:bg-transparent py-3 backdrop-blur-xl transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
@@ -568,7 +568,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
     <TooltipProvider>
       <div className="mx-auto w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
         {/* Header - Sticky Floating */}
-        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
+        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-white/55 dark:bg-foreground/5 border border-black/[0.06] dark:border-foreground/5 backdrop-blur-2xl px-4 shadow-sm rounded-2xl">
           {/* Left section: Logo + Menu + Project Switcher */}
           <div className="flex grow-1 items-center gap-2">
             {/* Mobile: Menu button */}
@@ -588,7 +588,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               <SheetContent
                 aria-describedby={undefined}
                 side='left'
-                className="w-[248px] bg-gray-100/90 dark:bg-foreground/5 border-border/10 dark:border-foreground/5 p-0 backdrop-blur-xl shadow-sm"
+                className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
                 hasCloseButton={false}
               >
                 <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
@@ -642,7 +642,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           {/* Left Sidebar - Sticky */}
           <aside
             className={cn(
-              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
+              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-white/55 dark:bg-foreground/5 border border-black/[0.06] dark:border-foreground/5 backdrop-blur-2xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
               isCollapsed ? "w-[64px]" : "w-[248px]"
             )}
           >

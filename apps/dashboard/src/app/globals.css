@@ -44,6 +44,13 @@
 
     --rainbow-beam-blur: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899, #f59e0b, #10b981, #3b82f6);
     --rainbow-beam-sharp: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #fbbf24, #34d399, #60a5fa);
+
+    --page-ambient:
+      linear-gradient(120deg, hsl(0 0% 98%), hsl(215 25% 90%) 28%, hsl(0 0% 97%) 55%, hsl(210 30% 88%) 82%, hsl(0 0% 98%)),
+      radial-gradient(1200px 700px at 8% -12%, hsl(210 35% 92%), transparent 52%),
+      radial-gradient(1000px 620px at 95% 8%, hsl(200 40% 88%), transparent 58%),
+      radial-gradient(700px 420px at 25% 80%, hsl(35 35% 90%), transparent 58%),
+      repeating-linear-gradient(100deg, hsl(0 0% 100% / 0.45) 0 6px, hsl(0 0% 0% / 0.14) 6px 12px);
   }
 
   .dark {
@@ -82,6 +89,8 @@
     --input: 240 3.7% 25.9%;
     --input-in-card: 240 3.7% 43.9%;
     --ring: 240 4.9% 83.9%;
+
+    --page-ambient: none;
   }
 }
 
@@ -131,6 +140,28 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image: var(--page-ambient);
+    background-blend-mode: normal, screen, screen, normal;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.75;
+    background-image: var(--page-ambient);
+    background-blend-mode: normal, screen, screen, normal;
+    mix-blend-mode: normal;
+  }
+
+  .dark body::before {
+    opacity: 0;
   }
 }
 

@@ -75,7 +75,7 @@ const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
   cyan: "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20",
   purple: "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20",
   green: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 ring-1 ring-emerald-500/30 dark:ring-emerald-500/20",
-  orange: "text-orange-700 dark:text-orange-400 bg-orange-500/20 dark:bg-orange-500/10 ring-1 ring-orange-500/30 dark:ring-orange-500/20",
+  orange: "text-amber-700 dark:text-amber-300 bg-amber-500/20 dark:bg-amber-500/10 ring-1 ring-amber-500/30 dark:ring-amber-500/20",
   red: "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20",
 };
 
@@ -553,149 +553,149 @@ export default function PageClient() {
           </GlassCard>
         </div>
 
-      <div className="space-y-4">
-        <CategoryTabs
-          categories={categories}
-          selectedCategory={activeTab}
-          onSelect={(id) => setActiveTab(id as ActiveTab)}
-        />
+        <div className="space-y-4">
+          <CategoryTabs
+            categories={categories}
+            selectedCategory={activeTab}
+            onSelect={(id) => setActiveTab(id as ActiveTab)}
+          />
 
-        {activeTab === "operations" && (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-            <GlassCard gradientColor="default" className="overflow-hidden">
-              <div className="p-5">
-                <div className="flex w-full items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <SectionHeader icon={SquaresFourIcon} title="Open Incidents" />
-                    <Typography variant="secondary" className="text-sm mt-1">Operational incident queue with owners and current mitigation state</Typography>
+          {activeTab === "operations" && (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <GlassCard gradientColor="default" className="overflow-hidden">
+                <div className="p-5">
+                  <div className="flex w-full items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <SectionHeader icon={SquaresFourIcon} title="Open Incidents" />
+                      <Typography variant="secondary" className="text-sm mt-1">Operational incident queue with owners and current mitigation state</Typography>
+                    </div>
+                    {incidentTable && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <DataTableViewOptions
+                          key={JSON.stringify(incidentTableVisibility)}
+                          table={incidentTable}
+                        />
+                      </div>
+                    )}
                   </div>
-                  {incidentTable && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <DataTableViewOptions
-                        key={JSON.stringify(incidentTableVisibility)}
-                        table={incidentTable}
+                </div>
+
+                <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
+                  <DataTable
+                    columns={incidentColumns}
+                    data={INCIDENTS}
+                    defaultColumnFilters={[]}
+                    defaultSorting={[{ id: "severity", desc: false }]}
+                    showDefaultToolbar={false}
+                    showResetFilters={false}
+                    toolbarRender={(table) => (
+                      <TableInstanceBridge
+                        tableInstance={table}
+                        onTableInstance={setIncidentTable}
+                        onVisibilityChange={setIncidentTableVisibility}
                       />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-                <DataTable
-                  columns={incidentColumns}
-                  data={INCIDENTS}
-                  defaultColumnFilters={[]}
-                  defaultSorting={[{ id: "severity", desc: false }]}
-                  showDefaultToolbar={false}
-                  showResetFilters={false}
-                  toolbarRender={(table) => (
-                    <TableInstanceBridge
-                      tableInstance={table}
-                      onTableInstance={setIncidentTable}
-                      onVisibilityChange={setIncidentTableVisibility}
-                    />
-                  )}
-                />
-              </div>
-            </GlassCard>
-
-            <div className="space-y-4 sm:space-y-6">
-              <GlassCard gradientColor="default" className="p-5">
-                <SectionHeader icon={ShieldCheck} title="Rollout Controls" />
-                <Typography variant="secondary" className="mt-1 text-xs">Launch configuration used by the release coordinator</Typography>
-                <div className="mt-4">
-                  <div className="relative rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
-                    <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
-                    <div className="relative p-5">
-                      <EditableGrid items={settingsGridItems} columns={1} className="gap-x-6 gap-y-3" />
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-5 space-y-4">
-                  <div className="flex items-center justify-between rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-background/60 px-3 py-3">
-                    <div>
-                      <Typography className="text-sm font-medium">Compact mode</Typography>
-                      <Typography variant="secondary" className="text-xs">Use denser spacing on operator displays</Typography>
-                    </div>
-                    <Switch checked={compactMode} onCheckedChange={setCompactMode} />
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Checkbox
-                      id="include-backfill"
-                      checked={includeBackfill}
-                      onCheckedChange={(checked) => setIncludeBackfill(checked === true)}
-                    />
-                    <label htmlFor="include-backfill" className="text-sm leading-5 text-muted-foreground">Include historical events in rollout checks</label>
-                  </div>
+                    )}
+                  />
                 </div>
               </GlassCard>
 
-            </div>
-          </div>
-        )}
-
-        {activeTab === "milestones" && (
-          <GlassCard gradientColor="default" className="p-4 sm:p-5">
-            <div className="grid gap-2.5">
-              {MILESTONES.map((milestone) => {
-                const style = MILESTONE_META.get(milestone.status);
-                if (!style) throw new Error(`Unknown milestone status: ${milestone.status}`);
-
-                return (
-                  <div key={milestone.id} className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] px-3 py-2.5">
-                    <div className="min-w-0">
-                      <Typography className="truncate text-sm font-medium">{milestone.title}</Typography>
-                      <Typography variant="secondary" className="text-xs">Owner: {milestone.owner} · Due: {milestone.dueDate}</Typography>
+              <div className="space-y-4 sm:space-y-6">
+                <GlassCard gradientColor="default" className="p-5">
+                  <SectionHeader icon={ShieldCheck} title="Rollout Controls" />
+                  <Typography variant="secondary" className="mt-1 text-xs">Launch configuration used by the release coordinator</Typography>
+                  <div className="mt-4">
+                    <div className="relative rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
+                      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
+                      <div className="relative p-5">
+                        <EditableGrid items={settingsGridItems} columns={1} className="gap-x-6 gap-y-3" />
+                      </div>
                     </div>
-                    <StatusBadge label={style.label} color={style.color} size="sm" />
                   </div>
-                );
-              })}
-            </div>
-          </GlassCard>
-        )}
+                  <div className="mt-5 space-y-4">
+                    <div className="flex items-center justify-between rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-background/60 px-3 py-3">
+                      <div>
+                        <Typography className="text-sm font-medium">Compact mode</Typography>
+                        <Typography variant="secondary" className="text-xs">Use denser spacing on operator displays</Typography>
+                      </div>
+                      <Switch checked={compactMode} onCheckedChange={setCompactMode} />
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="include-backfill"
+                        checked={includeBackfill}
+                        onCheckedChange={(checked) => setIncludeBackfill(checked === true)}
+                      />
+                      <label htmlFor="include-backfill" className="text-sm leading-5 text-muted-foreground">Include historical events in rollout checks</label>
+                    </div>
+                  </div>
+                </GlassCard>
 
-        {activeTab === "settings" && (
-          <div className="grid gap-4 lg:grid-cols-2">
+              </div>
+            </div>
+          )}
+
+          {activeTab === "milestones" && (
             <GlassCard gradientColor="default" className="p-4 sm:p-5">
-              <SectionHeader icon={Bell} title="Notification Channel" />
-              <Typography variant="secondary" className="mt-1 text-xs">Where rollout updates are broadcast</Typography>
-              <div className="mt-4 space-y-3">
-                <Input value="#ops-release-watch" readOnly />
-                <Select value={notificationFrequency} onValueChange={setNotificationFrequency}>
-                  <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="every_update">Send every update</SelectItem>
-                    <SelectItem value="critical_only">Only critical updates</SelectItem>
-                    <SelectItem value="hourly_digest">Hourly digest</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-2.5">
+                {MILESTONES.map((milestone) => {
+                  const style = MILESTONE_META.get(milestone.status);
+                  if (!style) throw new Error(`Unknown milestone status: ${milestone.status}`);
+
+                  return (
+                    <div key={milestone.id} className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] px-3 py-2.5">
+                      <div className="min-w-0">
+                        <Typography className="truncate text-sm font-medium">{milestone.title}</Typography>
+                        <Typography variant="secondary" className="text-xs">Owner: {milestone.owner} · Due: {milestone.dueDate}</Typography>
+                      </div>
+                      <StatusBadge label={style.label} color={style.color} size="sm" />
+                    </div>
+                  );
+                })}
               </div>
             </GlassCard>
+          )}
 
-            <GlassCard gradientColor="default" className="p-4 sm:p-5">
-              <SectionHeader icon={UserCircle} title="Recent Responders" />
-              <Typography variant="secondary" className="mt-1 text-xs">On-call team members and recent SLA status</Typography>
-              <div className="mt-4 space-y-2">
-                {["NR", "DP", "AS", "MJ"].map((initials) => (
-                  <div key={initials} className="flex items-center gap-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] px-3 py-2">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs font-semibold">{initials}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <Typography className="text-sm font-medium">{initials} · On call</Typography>
-                      <Typography variant="secondary" className="text-xs">Responded within SLA</Typography>
+          {activeTab === "settings" && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <GlassCard gradientColor="default" className="p-4 sm:p-5">
+                <SectionHeader icon={Bell} title="Notification Channel" />
+                <Typography variant="secondary" className="mt-1 text-xs">Where rollout updates are broadcast</Typography>
+                <div className="mt-4 space-y-3">
+                  <Input value="#ops-release-watch" readOnly />
+                  <Select value={notificationFrequency} onValueChange={setNotificationFrequency}>
+                    <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="every_update">Send every update</SelectItem>
+                      <SelectItem value="critical_only">Only critical updates</SelectItem>
+                      <SelectItem value="hourly_digest">Hourly digest</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </GlassCard>
+
+              <GlassCard gradientColor="default" className="p-4 sm:p-5">
+                <SectionHeader icon={UserCircle} title="Recent Responders" />
+                <Typography variant="secondary" className="mt-1 text-xs">On-call team members and recent SLA status</Typography>
+                <div className="mt-4 space-y-2">
+                  {["NR", "DP", "AS", "MJ"].map((initials) => (
+                    <div key={initials} className="flex items-center gap-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] px-3 py-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs font-semibold">{initials}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <Typography className="text-sm font-medium">{initials} · On call</Typography>
+                        <Typography variant="secondary" className="text-xs">Responded within SLA</Typography>
+                      </div>
+                      <StatusBadge label="Online" color="green" size="sm" />
                     </div>
-                    <StatusBadge label="Online" color="green" size="sm" />
-                  </div>
-                ))}
-              </div>
-            </GlassCard>
-          </div>
-        )}
-      </div>
+                  ))}
+                </div>
+              </GlassCard>
+            </div>
+          )}
+        </div>
 
       </div>
     </PageLayout>

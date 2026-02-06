@@ -301,7 +301,7 @@ const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
   cyan: "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20",
   purple: "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20",
   green: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 ring-1 ring-emerald-500/30 dark:ring-emerald-500/20",
-  orange: "text-orange-700 dark:text-orange-400 bg-orange-500/20 dark:bg-orange-500/10 ring-1 ring-orange-500/30 dark:ring-orange-500/20",
+  orange: "text-amber-700 dark:text-amber-300 bg-amber-500/20 dark:bg-amber-500/10 ring-1 ring-amber-500/30 dark:ring-amber-500/20",
   red: "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20",
 };
 
@@ -1349,9 +1349,9 @@ export default function PageClient() {
             title="Warning Alert"
             description="Use for warnings that need attention"
           >
-            <Alert className="bg-orange-500/[0.06] border-orange-500/30">
-              <WarningCircle className="h-4 w-4 text-orange-500" />
-              <AlertTitle className="text-orange-600 dark:text-orange-400">Warning</AlertTitle>
+            <Alert className="bg-amber-500/[0.08] border-amber-500/40">
+              <WarningCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertTitle className="text-amber-700 dark:text-amber-300">Warning</AlertTitle>
               <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
             </Alert>
           </ComponentDemo>
