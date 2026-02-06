@@ -171,6 +171,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       });
     }
   );
+  private readonly _currentUserConnectedAccountsCache = createCacheBySession<[], OAuthConnection[]>(
+    async (session) => {
+      const result = await this._interface.listConnectedAccounts(session);
+      return result.items.map((item) => this._createOAuthConnectionFromCrudItem(item, session));
+    }
+  );
+  private readonly _currentUserOAuthConnectionAccessTokensByAccountCache = createCacheBySession<[string, string, string], { accessToken: string } | null>(
+    async (session, [providerId, providerAccountId, scope]) => {
+      try {
+        const result = await this._interface.createProviderAccessTokenByAccount(providerId, providerAccountId, scope, session);
+        return { accessToken: result.access_token };
+      } catch (err) {
+        if (KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err)) {
+          return null;
+        }
+        throw err;
+      }
+    }
+  );
   private readonly _teamMemberProfilesCache = createCacheBySession<[string], TeamMemberProfilesCrud['Client']['Read'][]>(
     async (session, [teamId]) => {
       return await this._interface.listTeamMemberProfiles({ teamId }, session);
@@ -369,12 +388,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
 
+    // Find the matching oauth provider to get the providerAccountId
+    // At this point, user is guaranteed to be non-null because we returned early if !hasConnection
+    const matchingProvider = user!.oauth_providers.find((p) => p.id === options.providerId);
+    const providerAccountId = matchingProvider?.account_id ?? "";
+
     return {
-      id: options.providerId,
+      id: options.providerId, // deprecated, for backward compat
+      provider: options.providerId,
+      providerAccountId,
       async getAccessToken() {
         const result = await options.getOrWaitOAuthToken();
         if (!result) {
-          throw new StackAssertionError("No access token available");
+          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
         }
         return result;
       },
@@ -382,10 +408,40 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       useAccessToken() {
         const result = options.useOAuthToken();
         if (!result) {
-          throw new StackAssertionError("No access token available");
+          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${options.providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
         }
         return result;
       }
+      // END_PLATFORM
+    };
+  }
+
+  protected _createOAuthConnectionFromCrudItem(
+    item: { provider: string, provider_account_id: string },
+    session: InternalSession,
+  ): OAuthConnection {
+    const app = this;
+    const providerId = item.provider;
+    const providerAccountId = item.provider_account_id;
+    return {
+      id: providerId, // deprecated, for backward compat
+      provider: providerId,
+      providerAccountId,
+      async getAccessToken() {
+        const result = Result.orThrow(await app._currentUserOAuthConnectionAccessTokensByAccountCache.getOrWait([session, providerId, providerAccountId, ""], "write-only"));
+        if (!result) {
+          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
+        }
+        return result;
+      },
+      // IF_PLATFORM react-like
+      useAccessToken() {
+        const result = useAsyncCache(app._currentUserOAuthConnectionAccessTokensByAccountCache, [session, providerId, providerAccountId, ""] as const, "connection.useAccessToken()");
+        if (!result) {
+          throw new StackAssertionError(`Failed to retrieve an access token for this connected account (provider: ${providerId}). This usually means the OAuth refresh token has been revoked or expired. The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`);
+        }
+        return result;
+      },
       // END_PLATFORM
     };
   }
@@ -1362,19 +1418,62 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   protected _createUserExtraFromCurrent(crud: NonNullable<CurrentUserCrud['Client']['Read']>, session: InternalSession): UserExtra {
     const app = this;
+    // Overloads for getConnectedAccount
     async function getConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): Promise<OAuthConnection | null>;
     async function getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>;
-    async function getConnectedAccount(id: ProviderType, options?: { or?: 'redirect', scopes?: string[] }): Promise<OAuthConnection | null> {
-      const scopeString = options?.scopes?.join(" ");
-      return Result.orThrow(await app._currentUserOAuthConnectionCache.getOrWait([session, id, scopeString || "", options?.or === 'redirect'], "write-only"));
+    async function getConnectedAccount(account: { provider: string, providerAccountId: string }, options?: { scopes?: string[] }): Promise<OAuthConnection | null>;
+    async function getConnectedAccount(
+      idOrAccount: ProviderType | { provider: string, providerAccountId: string },
+      options?: { or?: 'redirect', scopes?: string[] }
+    ): Promise<OAuthConnection | null> {
+      const scopeString = options?.scopes?.join(" ") ?? "";
+
+      // Check if it's the new object-based API
+      if (typeof idOrAccount === 'object' && 'provider' in idOrAccount && 'providerAccountId' in idOrAccount) {
+        const { provider, providerAccountId } = idOrAccount;
+        // Check if the account exists in the connected accounts list
+        const connectedAccounts = Result.orThrow(await app._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
+        const found = connectedAccounts.find(
+          a => a.provider === provider && a.providerAccountId === providerAccountId
+        );
+        if (!found) {
+          return null;
+        }
+        return found;
+      }
+
+      // Original behavior: by provider ID (returns first match)
+      return Result.orThrow(await app._currentUserOAuthConnectionCache.getOrWait([session, idOrAccount, scopeString, options?.or === 'redirect'], "write-only"));
     }
 
     // IF_PLATFORM react-like
+    // Overloads for useConnectedAccount
     function useConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): OAuthConnection | null;
     function useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection;
-    function useConnectedAccount(id: ProviderType, options?: { or?: 'redirect', scopes?: string[] }): OAuthConnection | null {
-      const scopeString = options?.scopes?.join(" ");
-      return useAsyncCache(app._currentUserOAuthConnectionCache, [session, id, scopeString || "", options?.or === 'redirect'] as const, "user.useConnectedAccount()");
+    function useConnectedAccount(account: { provider: string, providerAccountId: string }, options?: { scopes?: string[] }): OAuthConnection | null;
+    function useConnectedAccount(
+      idOrAccount: ProviderType | { provider: string, providerAccountId: string },
+      options?: { or?: 'redirect', scopes?: string[] }
+    ): OAuthConnection | null {
+      const scopeString = options?.scopes?.join(" ") ?? "";
+
+      // Check if it's the new object-based API
+      if (typeof idOrAccount === 'object' && 'provider' in idOrAccount && 'providerAccountId' in idOrAccount) {
+        const { provider, providerAccountId } = idOrAccount;
+        // Check if the account exists in the connected accounts list
+        const connectedAccounts = useAsyncCache(
+          app._currentUserConnectedAccountsCache,
+          [session] as const,
+          "user.useConnectedAccount()"
+        );
+        const found = connectedAccounts.find(
+          a => a.provider === provider && a.providerAccountId === providerAccountId
+        );
+        return found ?? null;
+      }
+
+      // Original behavior: by provider ID (returns first match)
+      return useAsyncCache(app._currentUserOAuthConnectionCache, [session, idOrAccount, scopeString, options?.or === 'redirect'] as const, "user.useConnectedAccount()");
     }
     // END_PLATFORM
     return {
@@ -1396,6 +1495,56 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like
+      async listConnectedAccounts() {
+        return Result.orThrow(await app._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
+      },
+      // IF_PLATFORM react-like
+      useConnectedAccounts() {
+        return useAsyncCache(app._currentUserConnectedAccountsCache, [session] as const, "user.useConnectedAccounts()");
+      },
+      // END_PLATFORM
+      async linkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
+        const scopeString = options?.scopes?.join(" ") ?? "";
+        await addNewOAuthProviderOrScope(
+          app._interface,
+          {
+            provider,
+            redirectUrl: app.urls.oauthCallback,
+            errorRedirectUrl: app.urls.error,
+            providerScope: mergeScopeStrings(scopeString, (app._oauthScopesOnSignIn[provider as ProviderType] ?? []).join(" ")),
+          },
+          session,
+        );
+        // This won't actually be reached since addNewOAuthProviderOrScope redirects
+        await neverResolve();
+      },
+      async getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
+        // List connected accounts and find the first one for this provider
+        const connectedAccounts = Result.orThrow(await app._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
+        const existing = connectedAccounts.find(a => a.provider === provider);
+
+        if (existing) {
+          // Try to get an access token to verify the connection is still valid
+          try {
+            await existing.getAccessToken();
+            return existing;
+          } catch {
+            // Token not available (refresh token revoked/expired), fall through to link
+          }
+        }
+
+        // No valid account found — redirect to OAuth flow
+        await this.linkConnectedAccount(provider, options);
+        return await neverResolve();
+      },
+      // IF_PLATFORM react-like
+      useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
+        const scopeString = options?.scopes?.join(" ") ?? "";
+        // This reuses the legacy cache which already handles the redirect logic
+        const result = useAsyncCache(app._currentUserOAuthConnectionCache, [session, provider as ProviderType, scopeString, true] as const, "user.useOrLinkConnectedAccount()");
+        return result!;
+      },
+      // END_PLATFORM
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
         return teams.find((t) => t.id === teamId) ?? null;

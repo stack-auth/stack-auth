@@ -11,7 +11,7 @@ import {
   ClientInterfaceOptions,
   StackClientInterface
 } from "./client-interface";
-import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
+import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ItemCrud } from "./crud/items";
@@ -460,6 +460,44 @@ export class StackServerInterface extends StackClientInterface {
         },
         body: JSON.stringify({ scope }),
       },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Get access token for a specific connected account by provider ID and provider account ID.
+   * This is the preferred method when dealing with multiple accounts of the same provider.
+   */
+  async createServerProviderAccessTokenByAccount(
+    userId: string,
+    providerId: string,
+    providerAccountId: string,
+    scope: string,
+  ): Promise<ConnectedAccountAccessTokenCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/connected-accounts/${userId}/${providerId}/${providerAccountId}/access-token`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ scope }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * List all connected accounts for a user.
+   */
+  async listServerConnectedAccounts(
+    userId: string,
+  ): Promise<ConnectedAccountCrud['Server']['List']> {
+    const response = await this.sendServerRequest(
+      urlString`/connected-accounts/${userId}`,
+      { method: "GET" },
       null,
     );
     return await response.json();

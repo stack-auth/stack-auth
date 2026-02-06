@@ -365,7 +365,7 @@
           if ((app.importance ?? 0) === importance) {
             // TODO escape HTML
             appContainer.innerHTML += `
-              <a href="http://localhost:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
+              <a href="http://${`${stackPortPrefix}` === "81" ? "" : `$p${stackPortPrefix}.`}localhost:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
                 <div class="port">:${withPrefix(app.portSuffix)}</div>
                 <div>
                   <img src=${app.img || `//localhost:${withPrefix(app.portSuffix)}/favicon.ico`} />
