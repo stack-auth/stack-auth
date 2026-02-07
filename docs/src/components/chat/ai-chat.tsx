@@ -236,6 +236,7 @@ export function AIChatDrawer() {
 
   const editableRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [pageLoadTime] = useState(Date.now());
@@ -331,8 +332,8 @@ export function AIChatDrawer() {
 
 
   // Calculate position based on homepage and scroll state
-  const topPosition = 'top-0';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
+  const topPosition = 'top-3';
+  const height = isHomePage && isScrolled ? 'h-[calc(100vh-1.5rem)]' : 'h-[calc(100vh-1.5rem)]';
 
   const {
     messages,
@@ -355,8 +356,19 @@ export function AIChatDrawer() {
 
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Check if user is near the bottom (within 100px)
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+
+    // Only auto-scroll if user is near the bottom or if this is a new message
+    if (isNearBottom || messages.length === 0) {
+      // Use requestAnimationFrame for smoother scrolling during streaming
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
     }
   }, [messages]);
 
@@ -476,14 +488,14 @@ export function AIChatDrawer() {
 
   return (
     <div
-      className={`fixed ${topPosition} right-0 ${height} bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 ${
+      className={`fixed ${topPosition} right-3 ${height} mb-3 bg-fd-background border border-fd-border rounded-xl flex flex-col transition-all duration-300 ease-out z-50 shadow-lg ${
         isChatExpanded ? 'w-[70vw] z-[70]' : 'w-96'
       } ${
-        isChatOpen ? 'translate-x-0' : 'translate-x-full'
+        isChatOpen ? 'translate-x-0' : 'translate-x-[calc(100%+0.75rem)]'
       }`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background">
+      <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background rounded-t-xl">
         <div className="flex items-center gap-2">
           <StackIcon size={18} className="text-fd-primary" />
           <div>
@@ -524,7 +536,7 @@ export function AIChatDrawer() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 ? (
           <div className="text-center py-6">
             <StackIcon size={24} className="text-fd-muted-foreground mx-auto mb-3" />
