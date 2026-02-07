@@ -170,13 +170,25 @@ export type UserExtra = {
 
   delete(): Promise<void>,
 
+  /** @deprecated Use `getOrLinkConnectedAccount` for redirect behavior, or `getConnectedAccount({ provider, providerAccountId })` for existence check */
   getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
+  /** @deprecated Use `getConnectedAccount({ provider, providerAccountId })` for existence check */
   getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
+  getConnectedAccount(account: { provider: string, providerAccountId: string }): Promise<OAuthConnection | null>,
 
   // IF_PLATFORM react-like
+  /** @deprecated Use `useOrLinkConnectedAccount` for redirect behavior, or `useConnectedAccount({ provider, providerAccountId })` for existence check */
   useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection,
+  /** @deprecated Use `useConnectedAccount({ provider, providerAccountId })` for existence check */
   useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): OAuthConnection | null,
+  useConnectedAccount(account: { provider: string, providerAccountId: string }): OAuthConnection | null,
   // END_PLATFORM
+
+  listConnectedAccounts(): Promise<OAuthConnection[]>,
+  useConnectedAccounts(): OAuthConnection[], // THIS_LINE_PLATFORM react-like
+  linkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<void>,
+  getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<OAuthConnection>,
+  useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): OAuthConnection, // THIS_LINE_PLATFORM react-like
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
   hasPermission(permissionId: string): Promise<boolean>,
