@@ -14,3 +14,12 @@ A: When setting `restricted_by_admin` to false, explicitly clear `restricted_by_
 
 Q: Where should `stackAppInternalsSymbol` be imported from in the dashboard?
 A: Use the shared `apps/dashboard/src/lib/stack-app-internals.ts` export to avoid duplicating the Symbol.for definition across files.
+
+Q: How do we control whether a project requires publishable client keys?
+A: Use the project-level config override field `project.requirePublishableClientKey` via `/api/v1/internal/config/override/project` or `AdminProject.update({ requirePublishableClientKey: ... })`. It defaults to false for new projects and is set true for existing projects via DB migration.
+
+Q: When adding new config fields, what else should be updated?
+A: Update the config schema fuzzer configs in `packages/stack-shared/src/config/schema-fuzzer.test.ts` (for example, add the new field under `projectSchemaFuzzerConfig`/`branchSchemaFuzzerConfig`).
+
+Q: Why can't `canNoLongerBeOverridden` accept dotted paths?
+A: It uses `schema.getNested`, which only allows keys with alphanumerics, `_`, `$`, `:`, or `-`. Dots are rejected, so mark the parent object key (e.g., `project`) as non-overridable instead.

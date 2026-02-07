@@ -419,6 +419,19 @@ const ClientAuthenticationRequired = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PublishableClientKeyRequiredForProject = createKnownErrorConstructor(
+  ProjectAuthenticationRequired,
+  "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+  (projectId?: string) => [
+    401,
+    "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+    {
+      project_id: projectId ?? null,
+    },
+  ] as const,
+  (json: any) => [json.project_id ?? undefined] as const,
+);
+
 /**
  * @deprecated Use InsufficientAccessType instead
  */
@@ -1783,6 +1796,7 @@ export const KnownErrors = {
   AdminAccessTokenIsNotAdmin,
   ProjectAuthenticationRequired,
   ClientAuthenticationRequired,
+  PublishableClientKeyRequiredForProject,
   ServerAuthenticationRequired,
   ClientOrServerAuthenticationRequired,
   ClientOrAdminAuthenticationRequired,

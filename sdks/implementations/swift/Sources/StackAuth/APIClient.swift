@@ -132,7 +132,7 @@ public struct TokenPair: Sendable {
 actor APIClient {
     let baseUrl: String
     let projectId: String
-    let publishableClientKey: String
+    let publishableClientKey: String?
     let secretServerKey: String?
     private let tokenStore: any TokenStoreProtocol
     
@@ -141,7 +141,7 @@ actor APIClient {
     init(
         baseUrl: String,
         projectId: String,
-        publishableClientKey: String,
+        publishableClientKey: String?,
         secretServerKey: String? = nil,
         tokenStore: any TokenStoreProtocol
     ) {
@@ -150,6 +150,10 @@ actor APIClient {
         self.publishableClientKey = publishableClientKey
         self.secretServerKey = secretServerKey
         self.tokenStore = tokenStore
+    }
+
+    func getOAuthClientSecret() -> String {
+        return publishableClientKey ?? publishableClientKeyNotNecessarySentinel
     }
     
     // MARK: - Request Methods
@@ -172,7 +176,9 @@ actor APIClient {
         
         // Required headers
         request.setValue(projectId, forHTTPHeaderField: "x-stack-project-id")
-        request.setValue(publishableClientKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        if let publishableClientKey = publishableClientKey {
+            request.setValue(publishableClientKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        }
         request.setValue("swift@\(Self.sdkVersion)", forHTTPHeaderField: "x-stack-client-version")
         request.setValue(serverOnly ? "server" : "client", forHTTPHeaderField: "x-stack-access-type")
         request.setValue("true", forHTTPHeaderField: "x-stack-override-error-status")
@@ -305,13 +311,16 @@ actor APIClient {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(projectId, forHTTPHeaderField: "x-stack-project-id")
-        request.setValue(publishableClientKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        if let publishableClientKey = publishableClientKey {
+            request.setValue(publishableClientKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        }
         
+        let oauthClientSecret = publishableClientKey ?? publishableClientKeyNotNecessarySentinel
         let body = [
             "grant_type=refresh_token",
             "refresh_token=\(formURLEncode(refreshToken))",
             "client_id=\(formURLEncode(projectId))",
-            "client_secret=\(formURLEncode(publishableClientKey))"
+            "client_secret=\(formURLEncode(oauthClientSecret))"
         ].joined(separator: "&")
         
         request.httpBody = body.data(using: .utf8)

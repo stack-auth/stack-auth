@@ -34,7 +34,7 @@ public actor StackClientApp {
     #if canImport(Security)
     public init(
         projectId: String,
-        publishableClientKey: String,
+        publishableClientKey: String? = nil,
         baseUrl: String = "https://api.stack-auth.com",
         tokenStore: TokenStoreInit = .keychain,
         noAutomaticPrefetch: Bool = false
@@ -78,7 +78,7 @@ public actor StackClientApp {
     #else
     public init(
         projectId: String,
-        publishableClientKey: String,
+        publishableClientKey: String? = nil,
         baseUrl: String = "https://api.stack-auth.com",
         tokenStore: TokenStoreInit = .memory,
         noAutomaticPrefetch: Bool = false
@@ -142,7 +142,7 @@ public actor StackClientApp {
         let codeChallenge = generateCodeChallenge(from: actualCodeVerifier)
         
         var components = URLComponents(string: "\(baseUrl)/api/v1/auth/oauth/authorize/\(provider.lowercased())")!
-        let publishableKey = await client.publishableClientKey
+        let publishableKey = await client.getOAuthClientSecret()
         components.queryItems = [
             URLQueryItem(name: "client_id", value: projectId),
             URLQueryItem(name: "client_secret", value: publishableKey),
@@ -272,8 +272,9 @@ public actor StackClientApp {
         request.setValue(projectId, forHTTPHeaderField: "x-stack-project-id")
         request.setValue("client", forHTTPHeaderField: "x-stack-access-type")
         
-        let publishableKey = await client.publishableClientKey
-        request.setValue(publishableKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        if let publishableKey = await client.publishableClientKey {
+            request.setValue(publishableKey, forHTTPHeaderField: "x-stack-publishable-client-key")
+        }
         
         let body = ["id_token": identityToken]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -330,7 +331,7 @@ public actor StackClientApp {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue(projectId, forHTTPHeaderField: "x-stack-project-id")
         
-        let publishableKey = await client.publishableClientKey
+        let publishableKey = await client.getOAuthClientSecret()
         let body = [
             "grant_type=authorization_code",
             "code=\(formURLEncode(code))",

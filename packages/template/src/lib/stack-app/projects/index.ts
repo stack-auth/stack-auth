@@ -128,6 +128,10 @@ export type AdminProjectUpdateOptions = {
   displayName?: string,
   description?: string,
   isProductionMode?: boolean,
+  /**
+   * Updates `project.requirePublishableClientKey` in the project-level config override.
+   */
+  requirePublishableClientKey?: boolean,
   logoUrl?: string | null,
   logoFullUrl?: string | null,
   logoDarkModeUrl?: string | null,

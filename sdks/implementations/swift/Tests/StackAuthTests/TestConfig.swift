@@ -49,7 +49,10 @@ struct TestConfig {
     /// Create a new client app instance for testing.
     /// By default uses a fresh isolated MemoryTokenStore (not from the registry)
     /// to avoid interference between parallel tests.
-    static func createClientApp(tokenStore: TokenStoreInit? = nil) -> StackClientApp {
+    static func createClientApp(
+        tokenStore: TokenStoreInit? = nil,
+        publishableClientKey: String? = TestConfig.publishableClientKey
+    ) -> StackClientApp {
         // Default to a fresh isolated memory store, not the shared registry singleton
         let store = tokenStore ?? .custom(MemoryTokenStore())
         return StackClientApp(
