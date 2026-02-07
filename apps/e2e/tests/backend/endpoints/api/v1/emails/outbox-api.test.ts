@@ -1,9 +1,10 @@
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Project, backendContext, bumpEmailAddress, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
+import { Project, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
@@ -601,10 +602,8 @@ describe("email outbox API", () => {
       expect(sendResponse.status).toBe(200);
 
       // Poll until we find the email and can pause it (with timeout)
-      let emailId: string | null = null;
-      let pauseSucceeded = false;
-
-      for (let i = 0; i < 20; i++) {
+      let emailId: string;
+      for (let i = 0;; i++) {
         const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
           method: "GET",
           accessType: "server",
@@ -622,18 +621,60 @@ describe("email outbox API", () => {
             },
           });
 
-          if (pauseResponse.status === 200 && pauseResponse.body.status === "paused") {
-            pauseSucceeded = true;
-            break;
+          expect(pauseResponse).toMatchInlineSnapshot(`
+            NiceResponse {
+              "status": 200,
+              "body": {
+                "created_at_millis": <stripped field 'created_at_millis'>,
+                "has_delivered": false,
+                "has_rendered": false,
+                "id": "<stripped UUID>",
+                "is_paused": true,
+                "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
+                "simple_status": "in-progress",
+                "skip_deliverability_check": false,
+                "status": "paused",
+                "theme_id": null,
+                "to": {
+                  "type": "user-primary-email",
+                  "user_id": "<stripped UUID>",
+                },
+                "tsx_source": deindent\`
+                  import { Container } from "@react-email/components";
+                  import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+                  
+                  // Artificial delay to make the email slow to render
+                  const startTime = performance.now();
+                  while (performance.now() - startTime < 500) {
+                    // Busy wait - 500ms delay
+                  }
+                  
+                  export function EmailTemplate({ user, project }) {
+                    return (
+                      <Container>
+                        <Subject value="Slow Render Cancel Test" />
+                        <NotificationCategory value="Transactional" />
+                        <div>Slow email content</div>
+                      </Container>
+                    );
+                  }
+                \`,
+                "updated_at_millis": <stripped field 'updated_at_millis'>,
+                "variables": {},
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
+          break;
+        } else {
+          if (i >= 20) {
+            throw new StackAssertionError(`Timeout waiting for email in the outbox`, {
+              outboxEmails: await getOutboxEmails(),
+            });
           }
+          await wait(25);
         }
-
-        await wait(25);
       }
-
-      // These assertions must always run - test fails if we couldn't pause
-      expect(emailId).not.toBeNull();
-      expect(pauseSucceeded).toBe(true);
 
       // Now edit the scheduled_at_millis
       const newScheduleTime = Date.now() + 3600000; // 1 hour from now
