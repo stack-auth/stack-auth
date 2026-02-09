@@ -53,11 +53,6 @@ function getPollerClaimLimit(): number {
   return parsed;
 }
 
-function getLocalApiBaseUrl(): string {
-  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-  return `http://localhost:${prefix}02`;
-}
-
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Poll outgoing requests and push to QStash",
@@ -70,7 +65,7 @@ export const GET = createSmartRouteHandler({
     auth: yupObject({}).nullable().optional(),
     method: yupString().oneOf(["GET"]).defined(),
     headers: yupObject({
-      authorization: yupTuple([yupString().defined()]).defined(),
+      authorization: yupTuple([yupString().defined()]).optional(),
     }).defined(),
     query: yupObject({
       maxDurationMs: yupString().optional(),
@@ -85,11 +80,13 @@ export const GET = createSmartRouteHandler({
       requests_processed: yupNumber().defined(),
     }).defined(),
   }),
-  handler: async ({ headers, query }) => {
-    const authHeader = headers.authorization[0];
-    if (authHeader !== `Bearer ${getEnvVariable("CRON_SECRET")}`) {
+  handler: async ({ headers, query, auth }) => {
+    const isAdmin = auth?.type === "admin" && auth.project.id === "internal";
+    const authHeader = headers.authorization?.[0];
+    if (!isAdmin && authHeader !== `Bearer ${getEnvVariable("CRON_SECRET")}`) {
       throw new StatusError(401, "Unauthorized");
     }
+
 
     return await traceSpan("external-db-sync.poller", async (span) => {
       const startTime = performance.now();
