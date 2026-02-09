@@ -892,7 +892,10 @@ export class StackServerInterface extends StackClientInterface {
     },
     capacity: {
       rate_per_second: number,
+      boost_multiplier: number,
       penalty_factor: number,
+      is_boost_active: boolean,
+      boost_expires_at: string | null,
     },
   }> {
     const res = await this.sendServerRequest(
@@ -902,6 +905,21 @@ export class StackServerInterface extends StackClientInterface {
         headers: {
           "Content-Type": "application/json"
         },
+      },
+      null,
+    );
+    return await res.json();
+  }
+
+  async activateEmailCapacityBoost(): Promise<{ expires_at: string }> {
+    const res = await this.sendServerRequest(
+      "/emails/capacity-boost",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({}),
       },
       null,
     );

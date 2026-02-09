@@ -1,5 +1,5 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
-import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
+import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
@@ -501,8 +501,11 @@ async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]
 
   const plan: TenancySendBatch[] = [];
   for (const entry of tenancyIds) {
-    const stats = await getEmailDeliveryStatsForTenancy(entry.tenancyId);
-    const capacity = calculateCapacityRate(stats);
+    const [stats, boostExpiresAt] = await Promise.all([
+      getEmailDeliveryStatsForTenancy(entry.tenancyId),
+      getEmailCapacityBoostExpiresAt(entry.tenancyId),
+    ]);
+    const capacity = calculateCapacityRate(stats, boostExpiresAt);
     const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
     if (quota <= 0) continue;
     const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);

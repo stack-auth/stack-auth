@@ -247,7 +247,10 @@ export type EmailDeliveryStats = {
 
 export type EmailDeliveryCapacity = {
   rate_per_second: number,
+  boost_multiplier: number,
   penalty_factor: number,
+  is_boost_active: boolean,
+  boost_expires_at: string | null,
 };
 
 export type EmailDeliveryInfo = {

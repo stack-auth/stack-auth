@@ -1394,6 +1394,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
   // END_PLATFORM
 
+  async refreshEmailDeliveryStats(): Promise<void> {
+    await this._emailDeliveryInfoCache.refresh([]);
+  }
+
+  async activateEmailCapacityBoost(): Promise<void> {
+    await this._interface.activateEmailCapacityBoost();
+    // Refresh the cache so UI updates immediately
+    await this._emailDeliveryInfoCache.refresh([]);
+  }
+
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([
       super._refreshUser(session),

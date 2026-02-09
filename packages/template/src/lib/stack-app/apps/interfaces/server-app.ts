@@ -84,6 +84,9 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     // IF_PLATFORM react-like
     useEmailDeliveryStats(): EmailDeliveryInfo,
     // END_PLATFORM
+
+    refreshEmailDeliveryStats(): Promise<void>,
+    activateEmailCapacityBoost(): Promise<void>,
   }
   & AsyncStoreProperty<"user", [id: string], ServerUser | null, false>
   & Omit<AsyncStoreProperty<"users", [], ServerUser[], true>, "listUsers" | "useUsers">
