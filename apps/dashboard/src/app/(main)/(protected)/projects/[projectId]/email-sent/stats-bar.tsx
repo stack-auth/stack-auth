@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 
 export type StatsBarData = {
   sent: number,       // Green - includes sent, opened, clicked, delivery-delayed, skipped
-  bounced: number,    // Red
+  bounced: number,    // Striped red - distinguishes from solid red errors
   spam: number,       // Yellow
-  errors: number,     // Orange - server-error, render-error
+  errors: number,     // Solid red - server-error, render-error
   inProgress: number, // Gray - includes preparing, rendering, scheduled, queued, sending, paused
 };
 
@@ -19,9 +19,9 @@ type StatsBarProps = {
  * A horizontal stacked bar showing proportions of email statuses.
  * Colors:
  * - Green: successfully delivered (sent, opened, clicked, delivery-delayed, skipped)
- * - Red: bounced
+ * - Striped red: bounced
  * - Yellow: marked as spam
- * - Orange: errors (server-error, render-error)
+ * - Solid red: errors (server-error, render-error)
  * - Gray: in-progress (preparing, rendering, scheduled, queued, sending, paused)
  */
 export function StatsBar({ data, className }: StatsBarProps) {
@@ -53,8 +53,11 @@ export function StatsBar({ data, className }: StatsBarProps) {
         )}
         {bouncedPercent > 0 && (
           <div
-            className="bg-red-500 h-full"
-            style={{ width: `${bouncedPercent}%` }}
+            className="h-full"
+            style={{
+              width: `${bouncedPercent}%`,
+              background: "repeating-linear-gradient(45deg, #ef4444, #ef4444 4px, #fca5a5 4px, #fca5a5 8px)",
+            }}
           />
         )}
         {spamPercent > 0 && (
@@ -65,7 +68,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
         )}
         {errorsPercent > 0 && (
           <div
-            className="bg-orange-500 h-full"
+            className="bg-red-500 h-full"
             style={{ width: `${errorsPercent}%` }}
           />
         )}
@@ -86,7 +89,10 @@ export function StatsBar({ data, className }: StatsBarProps) {
         )}
         {data.bounced > 0 && (
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ background: "repeating-linear-gradient(45deg, #ef4444, #ef4444 1px, #fca5a5 1px, #fca5a5 2px)" }}
+            />
             <span>bounced</span>
           </div>
         )}
@@ -98,7 +104,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
         )}
         {data.errors > 0 && (
           <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-orange-500" />
+            <span className="w-2 h-2 rounded-full bg-red-500" />
             <span>errors</span>
           </div>
         )}

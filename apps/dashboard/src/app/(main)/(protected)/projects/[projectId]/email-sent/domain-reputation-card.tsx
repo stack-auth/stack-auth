@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Typography } from "@/components/ui";
+import { Button, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useState } from "react";
@@ -10,7 +10,7 @@ import { useAdminApp } from "../use-admin-app";
 type ProgressBarProps = {
   value: number,
   max: number,
-  color: "black" | "red" | "yellow",
+  color: "black" | "red" | "striped-red" | "yellow",
   label: React.ReactNode,
   boosted?: boolean,
 };
@@ -18,11 +18,13 @@ type ProgressBarProps = {
 function ProgressBar({ value, max, color, label, boosted }: ProgressBarProps) {
   const percentage = max > 0 ? Math.min((value / max) * 100, 100) : 0;
 
-  const colorClasses = {
+  const colorClasses: Record<string, string> = {
     black: "bg-black dark:bg-white",
     red: "bg-red-500",
     yellow: "bg-yellow-400",
   };
+
+  const isStripedRed = color === "striped-red";
 
   return (
     <div className="space-y-1.5">
@@ -30,7 +32,7 @@ function ProgressBar({ value, max, color, label, boosted }: ProgressBarProps) {
         <div
           className={cn(
             "h-full rounded-full transition-all duration-300",
-            boosted ? "boosted-bar" : colorClasses[color]
+            boosted || isStripedRed ? "" : colorClasses[color]
           )}
           style={{
             width: `${percentage}%`,
@@ -39,6 +41,8 @@ function ProgressBar({ value, max, color, label, boosted }: ProgressBarProps) {
               backgroundSize: "28.28px 28.28px",
               animation: "stripe-move 1s linear infinite",
               boxShadow: "0 0 10px rgba(59, 130, 246, 0.5)",
+            } : isStripedRed ? {
+              background: "repeating-linear-gradient(45deg, #ef4444, #ef4444 4px, #fca5a5 4px, #fca5a5 8px)",
             } : {}),
           }}
         />
@@ -191,7 +195,7 @@ export function DomainReputationCard() {
       <Typography type="h3" className="font-semibold">
         Domain Reputation
       </Typography>
-      <Typography variant="secondary" className="text-base mt-2">
+      <Typography variant="secondary" className="text-xs mt-2">
         Warming up a domain & email server takes time, so Stack Auth automatically buffers your emails over time.
       </Typography>
 
@@ -206,9 +210,6 @@ export function DomainReputationCard() {
             label={capacityLabel}
             boosted={isBoostActive}
           />
-          <Typography variant="secondary" className="text-xs mt-2">
-            Send more emails to increase the email capacity available to you.
-          </Typography>
           {isBoostActive && boostExpiresAt ? (
             <BoostCountdownTimer
               expiresAt={boostExpiresAt}
@@ -228,18 +229,30 @@ export function DomainReputationCard() {
 
         {/* Bounce Rate */}
         <div>
-          <Typography className="text-base font-medium mb-2">Bounce Rate</Typography>
+          <div className="flex items-center gap-1 mb-2">
+            <Typography className="text-base font-medium">Bounce Rate</Typography>
+            <SimpleTooltip
+              type="info"
+              tooltip="Percentage of emails that couldn't be delivered. High bounce rates can hurt your sender reputation and deliverability."
+            />
+          </div>
           <ProgressBar
             value={bounceRate}
             max={maxBounceRate}
-            color="red"
+            color="striped-red"
             label={`${bounceRate.toFixed(2)}% of ${maxBounceRate}% max`}
           />
         </div>
 
         {/* Spam Complaint */}
         <div>
-          <Typography className="text-base font-medium mb-2">Spam Complaint</Typography>
+          <div className="flex items-center gap-1 mb-2">
+            <Typography className="text-base font-medium">Spam Complaint</Typography>
+            <SimpleTooltip
+              type="info"
+              tooltip="Percentage of recipients who marked your emails as spam. Keep this low to maintain good deliverability."
+            />
+          </div>
           <ProgressBar
             value={spamRate}
             max={maxSpamRate}

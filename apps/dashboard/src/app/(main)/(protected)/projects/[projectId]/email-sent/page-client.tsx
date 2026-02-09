@@ -34,24 +34,35 @@ const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
   "marked-as-spam": "Marked as Spam",
 };
 
-function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "secondary" | "destructive" | "outline" {
+// Badge variants matching schema colors:
+// 🟢 sent → green (success)
+// 🔵 opened → blue (info)
+// 🟣 clicked → purple
+// 🟡 marked-as-spam → yellow (warning)
+// 🔴 bounced, server-error, render-error → red (destructive)
+// ⚪ paused, preparing, rendering, scheduled, queued, sending, delivery-delayed, skipped → gray/neutral
+function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
   switch (status) {
-    case "paused": {
+    case "paused":
+    case "skipped": {
       return "outline";
     }
     case "preparing":
     case "rendering":
     case "scheduled":
     case "queued":
-    case "sending": {
-      return "default";
-    }
-    case "sent":
-    case "opened":
-    case "clicked":
-    case "skipped":
+    case "sending":
     case "delivery-delayed": {
       return "secondary";
+    }
+    case "sent": {
+      return "success";
+    }
+    case "opened": {
+      return "info";
+    }
+    case "clicked": {
+      return "purple";
     }
     case "bounced":
     case "server-error":
@@ -59,7 +70,7 @@ function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "sec
       return "destructive";
     }
     case "marked-as-spam": {
-      return "outline";
+      return "warning";
     }
     default: {
       return "default";
