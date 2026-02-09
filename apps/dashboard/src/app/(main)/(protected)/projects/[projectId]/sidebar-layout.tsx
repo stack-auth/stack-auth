@@ -7,31 +7,31 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
 import {
-    Button,
-    Sheet,
-    SheetContent,
-    SheetTitle,
-    SheetTrigger,
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-    Typography,
+  Button,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  Typography,
 } from "@/components/ui";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import {
-    CaretDownIcon,
-    CaretRightIcon,
-    CubeIcon,
-    GearIcon,
-    GlobeIcon,
-    KeyIcon,
-    ListIcon,
-    SidebarIcon,
-    type Icon as PhosphorIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  CubeIcon,
+  GearIcon,
+  GlobeIcon,
+  KeyIcon,
+  ListIcon,
+  SidebarIcon,
+  type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { UserButton } from "@stackframe/stack";
@@ -157,7 +157,7 @@ function NavItem({
   const buttonClasses = cn(
     "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 hover:transition-none",
     isHighlighted
-      ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+      ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
       : inactiveClasses,
     isSection ? "cursor-default" : "cursor-pointer",
     isSection && isExpanded && !isHighlighted && "bg-white/20 dark:bg-background/30"
@@ -311,7 +311,7 @@ function NavSubItem({
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:transition-none",
         isActive
-          ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+          ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
           : "text-muted-foreground hover:text-foreground hover:bg-white/40 dark:hover:bg-background/60"
       )}
     >
@@ -474,7 +474,7 @@ function SidebarContent({
         <div className="flex-grow" />
       </div>
 
-        <div className={cn("sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl dark:rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
+      <div className={cn("sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl dark:rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
@@ -580,67 +580,67 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
             }}
           />
           <div className="relative flex h-14 items-center justify-between px-5 dark:bg-foreground/5 dark:px-4 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm dark:rounded-2xl">
-          {/* Left section: Logo + Menu + Project Switcher */}
-          <div className="flex grow-1 items-center gap-2">
-            {/* Mobile: Menu button */}
-            <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
-              <SheetTitle className="hidden">
-                Sidebar Menu
-              </SheetTitle>
-              <SheetTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+            {/* Left section: Logo + Menu + Project Switcher */}
+            <div className="flex grow-1 items-center gap-2">
+              {/* Mobile: Menu button */}
+              <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
+                <SheetTitle className="hidden">
+                  Sidebar Menu
+                </SheetTitle>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <ListIcon className="h-4 w-4" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  aria-describedby={undefined}
+                  side='left'
+                  className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
+                  hasCloseButton={false}
                 >
-                  <ListIcon className="h-4 w-4" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                aria-describedby={undefined}
-                side='left'
-                className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
-                hasCloseButton={false}
-              >
-                <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
-              </SheetContent>
-            </Sheet>
+                  <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
+                </SheetContent>
+              </Sheet>
 
-            {/* Desktop: Logo + Breadcrumb + Project Switcher */}
-            <div className="hidden lg:flex items-center gap-2">
-              <Logo height={24} href="/" />
-              <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
+              {/* Desktop: Logo + Breadcrumb + Project Switcher */}
+              <div className="hidden lg:flex items-center gap-2">
+                <Logo height={24} href="/" />
+                <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
+                {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+                  <Logo full width={96} href="/projects" />
+                ) : (
+                  <ProjectSwitcher currentProjectId={projectId} />
+                )}
+              </div>
+
+              {/* Mobile: Logo */}
+              <div className="lg:hidden">
+                <Logo full height={24} href="/projects" />
+              </div>
+            </div>
+
+            {/* Middle section: Control Center (development only) */}
+            {process.env.NODE_ENV === "development" && (
+              <div className="grow-1">
+                <CmdKTrigger />
+              </div>
+            )}
+
+            {/* Right section: Search, Theme toggle and User button */}
+            <div className="flex grow-1 gap-2 items-center">
               {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-                <Logo full width={96} href="/projects" />
+                <ThemeToggle />
               ) : (
-                <ProjectSwitcher currentProjectId={projectId} />
+                <>
+                  <ThemeToggle />
+                  <UserButton />
+                </>
               )}
             </div>
-
-            {/* Mobile: Logo */}
-            <div className="lg:hidden">
-              <Logo full height={24} href="/projects" />
-            </div>
-          </div>
-
-          {/* Middle section: Control Center (development only) */}
-          {process.env.NODE_ENV === "development" && (
-            <div className="grow-1">
-              <CmdKTrigger />
-            </div>
-          )}
-
-          {/* Right section: Search, Theme toggle and User button */}
-          <div className="flex grow-1 gap-2 items-center">
-            {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-              <ThemeToggle />
-            ) : (
-              <>
-                <ThemeToggle />
-                <UserButton />
-              </>
-            )}
-          </div>
           </div>
         </div>
 
