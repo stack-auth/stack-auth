@@ -505,7 +505,7 @@ export function StackCompanion({ className }: { className?: string }) {
       <StackCompanionContext.Provider value={contextValue}>
         <aside
           className={cn(
-            "sticky top-20 h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
+            "sticky top-14 h-[calc(100vh-3.5rem)] dark:top-20 dark:h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
             isAnimating && !isResizing && "transition-[width] duration-300 ease-out",
             className
           )}

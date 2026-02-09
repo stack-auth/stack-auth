@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 230 45% 86%;
     --foreground: 240 10% 3.9%;
 
     --card: 0 0% 100% / 0.5;
@@ -20,9 +20,9 @@
     --secondary-in-card: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 240 4.8% 95.9%;
+    --muted: 232 30% 90%;
     --muted-in-card: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted-foreground: 232 12% 38%;
 
     --accent: 240 4.8% 95.9%;
     --accent-in-card: 240 4.8% 95.9%;
@@ -34,9 +34,9 @@
     --success: 120 40% 50%;
     --success-foreground: 0 0% 98%;
 
-    --border: 240 5.9% 90%;
+    --border: 230 25% 78%;
     --border-in-card: 240 5.9% 90%;
-    --input: 240 5.9% 80%;
+    --input: 230 20% 72%;
     --input-in-card: 240 5.9% 80%;
     --ring: 240 10% 3.9%;
 
@@ -46,11 +46,7 @@
     --rainbow-beam-sharp: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #fbbf24, #34d399, #60a5fa);
 
     --page-ambient:
-      linear-gradient(120deg, hsl(0 0% 98%), hsl(215 25% 90%) 28%, hsl(0 0% 97%) 55%, hsl(210 30% 88%) 82%, hsl(0 0% 98%)),
-      radial-gradient(1200px 700px at 8% -12%, hsl(210 35% 92%), transparent 52%),
-      radial-gradient(1000px 620px at 95% 8%, hsl(200 40% 88%), transparent 58%),
-      radial-gradient(700px 420px at 25% 80%, hsl(35 35% 90%), transparent 58%),
-      repeating-linear-gradient(100deg, hsl(0 0% 100% / 0.45) 0 6px, hsl(0 0% 0% / 0.14) 6px 12px);
+      linear-gradient(145deg, hsl(232 42% 88%) 0%, hsl(228 48% 84%) 40%, hsl(244 38% 86%) 100%);
   }
 
   .dark {
