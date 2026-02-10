@@ -2,7 +2,7 @@
 
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
-import { SettingCard, SettingText } from "@/components/settings";
+import { SettingCard } from "@/components/settings";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { AdminEmailConfig, AdminProject } from "@stackframe/stack";
@@ -11,8 +11,11 @@ import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { Alert, Button, useToast } from "@/components/ui";
-import { useMemo, useState } from "react";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Alert, Button, Form, Input, Label, Typography, useToast } from "@/components/ui";
+import { useCallback, useId, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { useAdminApp } from "../use-admin-app";
 
@@ -214,58 +217,90 @@ function EditEmailServerDialog(props: {
   />;
 }
 
-function EditSenderDialog(props: {
-  trigger: React.ReactNode,
+// Schema for inline sender editing
+const senderSchema = yup.object({
+  senderEmail: strictEmailSchema("Sender email must be a valid email").defined(),
+  senderName: yup.string().defined(),
+});
+
+type SenderFormValues = yup.InferType<typeof senderSchema>;
+
+// Inline editable sender information component
+function SenderInlineForm(props: {
+  defaultValues: SenderFormValues,
+  onSubmit: (values: SenderFormValues) => Promise<void>,
 }) {
-  const stackAdminApp = useAdminApp();
-  const project = stackAdminApp.useProject();
-  const config = project.useConfig();
-  const updateConfig = useUpdateConfig();
+  const formId = useId();
+  const form = useForm<SenderFormValues>({
+    resolver: yupResolver(senderSchema),
+    defaultValues: props.defaultValues,
+    mode: "onChange",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const buttonsDisabled = submitting || !form.formState.isDirty;
   const { toast } = useToast();
 
-  const emailConfig = config.emails.server;
-  if (emailConfig.isShared) {
-    throwErr("Cannot edit sender for shared email server");
-  }
+  const onSubmit = useCallback(async (values: SenderFormValues) => {
+    setSubmitting(true);
+    try {
+      await props.onSubmit(values);
+      form.reset(values);
+      toast({ title: 'Sender information updated', variant: 'success' });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [props, form, toast]);
 
-  const defaultValues = {
-    senderEmail: emailConfig.senderEmail,
-    senderName: emailConfig.senderName,
-  };
+  const handleFormSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    runAsynchronouslyWithAlert(form.handleSubmit(onSubmit)());
+  }, [form, onSubmit]);
 
-  return <FormDialog
-    trigger={props.trigger}
-    title="Edit Sender"
-    formSchema={yup.object({
-      senderEmail: strictEmailSchema("Sender email must be a valid email").defined().label("Sender Email"),
-      senderName: yup.string().defined().label("Sender Name"),
-    })}
-    defaultValues={defaultValues}
-    okButton={{ label: "Save" }}
-    onSubmit={async (values) => {
-      await updateConfig({
-        adminApp: stackAdminApp,
-        configUpdate: {
-          "emails.server.senderEmail": values.senderEmail,
-          "emails.server.senderName": values.senderName,
-        },
-        pushable: false,
-      });
+  const handleCancel = useCallback(() => {
+    form.reset();
+  }, [form]);
 
-      toast({
-        title: "Sender updated",
-        description: "The sender email and name have been updated.",
-        variant: 'success',
-      });
-    }}
-    cancelButton
-    render={(form) => (
-      <>
-        <InputField label="Sender Email" name="senderEmail" control={form.control} type="email" required />
-        <InputField label="Sender Name" name="senderName" control={form.control} type="text" required />
-      </>
-    )}
-  />;
+  return (
+    <Form {...form}>
+      <form onSubmit={handleFormSubmit} className="space-y-4 max-w-md" id={formId}>
+        <InputField
+          label="Sender Email"
+          name="senderEmail"
+          control={form.control}
+          type="email"
+          required
+        />
+        <InputField
+          label="Sender Name"
+          name="senderName"
+          control={form.control}
+          type="text"
+          required
+        />
+        {form.formState.isDirty && (
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              onClick={handleCancel}
+              variant="secondary"
+              size="sm"
+              disabled={buttonsDisabled}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              loading={submitting}
+              disabled={buttonsDisabled}
+            >
+              Save
+            </Button>
+          </div>
+        )}
+      </form>
+    </Form>
+  );
 }
 
 function TestSendingDialog(props: {
@@ -320,10 +355,17 @@ function TestSendingDialog(props: {
   />;
 }
 
+// Helper to mask sensitive values
+function maskSecret(value: string): string {
+  if (value.length <= 4) return "••••";
+  return "••••••••" + value.slice(-4);
+}
+
 export function DomainSettings() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
+  const updateConfig = useUpdateConfig();
 
   // In emulator mode, show mock emails UI
   if (getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true') {
@@ -341,38 +383,107 @@ export function DomainSettings() {
     );
   }
 
-  const senderEmail = emailConfig.isShared ? 'noreply@stackframe.co' : emailConfig.senderEmail;
-  const serverType = emailConfig.isShared 
-    ? 'Shared' 
+  const isShared = emailConfig.isShared;
+  const serverType = isShared
+    ? 'Shared'
     : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
+  // Get server details for accordion (only for non-shared)
+  const serverDetails = !isShared ? {
+    host: emailConfig.host,
+    port: emailConfig.port,
+    username: emailConfig.username,
+    password: emailConfig.password,
+  } : null;
+
+  const handleSenderSubmit = async (values: SenderFormValues) => {
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        "emails.server.senderEmail": values.senderEmail,
+        "emails.server.senderName": values.senderName,
+      },
+      pushable: false,
+    });
+  };
+
   return (
-    <SettingCard title="Domain Settings">
-      <div className="flex items-start justify-between">
-        <SettingText label="Sender's address">
-          {senderEmail}
-        </SettingText>
-        {!emailConfig.isShared && (
-          <EditSenderDialog trigger={<Button variant="ghost" size="sm">Edit</Button>} />
-        )}
+    <SettingCard>
+      {/* Custom header with buttons aligned to title */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <Typography type="h3" className="font-semibold">Email Server Configuration</Typography>
+          <Typography variant="secondary" className="text-sm mt-1">
+            Using {serverType === 'Shared' ? 'Stack Auth shared server' : serverType}
+          </Typography>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!isShared && (
+            <TestSendingDialog trigger={<Button variant="outline" size="sm">Send Test Email</Button>} />
+          )}
+          <EditEmailServerDialog trigger={
+            <Button size="sm" variant="outline" className="gap-1.5">
+              <span>Configure</span>
+              <ArrowRightIcon className="h-3.5 w-3.5" />
+            </Button>
+          } />
+        </div>
       </div>
 
-      <SettingText label="Email Server Type">
-        {serverType}
-      </SettingText>
+      {/* Sender Information - Inline Editable for non-shared, read-only for shared */}
+      {isShared ? (
+        <div className="space-y-3 mb-4">
+          <div>
+            <Label className="text-sm font-medium">Sender Email</Label>
+            <Typography className="text-sm text-muted-foreground">noreply@stackframe.co</Typography>
+          </div>
+          <div>
+            <Label className="text-sm font-medium">Sender Name</Label>
+            <Typography className="text-sm text-muted-foreground">{project.displayName}</Typography>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <SenderInlineForm
+            defaultValues={{
+              senderEmail: emailConfig.senderEmail ?? "",
+              senderName: emailConfig.senderName ?? "",
+            }}
+            onSubmit={handleSenderSubmit}
+          />
+        </div>
+      )}
 
-      {/* Bottom: Buttons */}
-      <div className="flex items-center justify-end gap-2 pt-4">
-        {!emailConfig.isShared && (
-          <TestSendingDialog trigger={<Button variant="outline" size="sm">Send Test Email</Button>} />
-        )}
-        <EditEmailServerDialog trigger={
-          <Button size="sm" variant="outline" className="gap-1.5">
-            <span>Configure</span>
-            <ArrowRightIcon className="h-3.5 w-3.5" />
-          </Button>
-        } />
-      </div>
+      {/* Server Details Accordion - Only for non-shared servers */}
+      {serverDetails && (
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="server-details" className="border rounded-lg px-4">
+            <AccordionTrigger className="text-sm font-medium">
+              Server Details
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3 pt-2 max-w-md">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Host</Label>
+                  <Input value={serverDetails.host} disabled className="bg-muted/50" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Port</Label>
+                  <Input value={String(serverDetails.port)} disabled className="bg-muted/50" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Username</Label>
+                  <Input value={serverDetails.username} disabled className="bg-muted/50" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Password</Label>
+                  <Input value={serverDetails.password ? maskSecret(serverDetails.password) : "••••"} disabled className="bg-muted/50" type="password" />
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      )}
     </SettingCard>
   );
 }
