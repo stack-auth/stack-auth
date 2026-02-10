@@ -24,6 +24,7 @@ import {
   type DesignEditableGridItem,
   DesignInput,
   DesignMenu,
+  DesignPillToggle,
   DesignSelectorDropdown
 } from "@/components/design-language";
 import {
@@ -255,47 +256,6 @@ function UnderlineTabsDemo() {
           )}
         </button>
       ))}
-    </div>
-  );
-}
-
-// =============================================================================
-// PILL TOGGLE / VIEWPORT SELECTOR
-// From: DESIGN-GUIDE.md - "Time Range Toggle (Pill Buttons)"
-// Used in: metrics-page.tsx, email-themes/page-client.tsx (ViewportSelector)
-// Container: rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm
-// Active: bg-background shadow-sm ring-1 ring-foreground/[0.06]
-// =============================================================================
-function ViewportSelector({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: Array<{ id: string, label: string, icon: React.ElementType }>,
-  selected: string,
-  onSelect: (id: string) => void,
-}) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] p-1 backdrop-blur-sm">
-      {options.map((option) => {
-        const isActive = selected === option.id;
-        const Icon = option.icon;
-        return (
-          <button
-            key={option.id}
-            onClick={() => onSelect(option.id)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
-              isActive
-                ? "bg-background text-foreground shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]"
-                : "text-muted-foreground hover:text-foreground hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            <span>{option.label}</span>
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -1081,7 +1041,14 @@ export default function PageClient() {
             title="Standard Pill Toggle"
             description="Default segmented control"
           >
-            <ViewportSelector options={viewportOptions} selected={selectedViewport} onSelect={setSelectedViewport} />
+            <DesignPillToggle
+              options={viewportOptions}
+              selected={selectedViewport}
+              onSelect={setSelectedViewport}
+              size="md"
+              glassmorphic={false}
+              gradient="default"
+            />
           </ComponentDemo>
 
           <ComponentDemo

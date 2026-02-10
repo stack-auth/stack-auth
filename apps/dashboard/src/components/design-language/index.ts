@@ -3,6 +3,7 @@ export * from "./card";
 export * from "./editable-grid";
 export * from "./input";
 export * from "./menu";
+export * from "./pill-toggle";
 export * from "./select";
 export * from "./table";
 export * from "./tabs";
