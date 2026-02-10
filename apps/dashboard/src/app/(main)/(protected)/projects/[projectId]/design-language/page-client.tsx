@@ -15,6 +15,7 @@ import {
 } from "@/components/ui";
 import { Link } from "@/components/link";
 import {
+  DesignButton,
   DesignCard,
   DesignCardTint,
   DesignCategoryTabs,
@@ -982,30 +983,30 @@ export default function PageClient() {
             description="Pair variants with action importance and context."
           >
             <div className="flex flex-wrap gap-2">
-              <Button variant="default" className="rounded-lg transition-all duration-150 hover:transition-none">
+              <DesignButton variant="default" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Primary
-              </Button>
-              <Button variant="ghost" className="rounded-lg transition-all duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton variant="ghost" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Ghost
-              </Button>
-              <Button variant="secondary" className="rounded-lg transition-all duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton variant="secondary" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Secondary
-              </Button>
-              <Button variant="outline" className="rounded-lg transition-all duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton variant="outline" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Outline
-              </Button>
-              <Button variant="destructive" className="rounded-lg transition-all duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton variant="destructive" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Delete
-              </Button>
-              <Button variant="link" className="rounded-lg transition-colors duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton variant="link" className="rounded-lg transition-colors duration-150 hover:transition-none">
                 Learn more
-              </Button>
-              <Button
+              </DesignButton>
+              <DesignButton
                 variant="plain"
                 className="rounded-lg bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
               >
                 Active
-              </Button>
+              </DesignButton>
             </div>
           </ComponentDemo>
 
@@ -1014,23 +1015,23 @@ export default function PageClient() {
             description="Use size for density, not prominence."
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" className="rounded-lg transition-all duration-150 hover:transition-none">
+              <DesignButton size="sm" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Small
-              </Button>
-              <Button className="rounded-lg transition-all duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton className="rounded-lg transition-all duration-150 hover:transition-none">
                 Default
-              </Button>
-              <Button size="lg" className="rounded-lg transition-all duration-150 hover:transition-none">
+              </DesignButton>
+              <DesignButton size="lg" className="rounded-lg transition-all duration-150 hover:transition-none">
                 Large
-              </Button>
-              <Button
+              </DesignButton>
+              <DesignButton
                 size="plain"
                 variant="plain"
                 className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all duration-150 hover:transition-none"
                 aria-label="Send email"
               >
                 <Envelope className="h-4 w-4" />
-              </Button>
+              </DesignButton>
             </div>
           </ComponentDemo>
 
@@ -1039,10 +1040,10 @@ export default function PageClient() {
             description="Buttons show a spinner while async actions run."
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Button loading className="rounded-lg transition-all duration-150 hover:transition-none">
+              <DesignButton loading className="rounded-lg transition-all duration-150 hover:transition-none">
                 Saving
-              </Button>
-              <Button
+              </DesignButton>
+              <DesignButton
                 variant="secondary"
                 className="rounded-lg transition-all duration-150 hover:transition-none"
                 onClick={() => new Promise<void>((resolve) => {
@@ -1050,7 +1051,7 @@ export default function PageClient() {
                 })}
               >
                 Async Action
-              </Button>
+              </DesignButton>
             </div>
           </ComponentDemo>
 
