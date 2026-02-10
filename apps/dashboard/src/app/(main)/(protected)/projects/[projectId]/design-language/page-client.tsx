@@ -1,9 +1,6 @@
 "use client";
 
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
   Button,
   DataTableColumnHeader,
   DropdownMenu,
@@ -15,6 +12,7 @@ import {
 } from "@/components/ui";
 import { Link } from "@/components/link";
 import {
+  DesignAlert,
   DesignButton,
   DesignCard,
   DesignCardTint,
@@ -1084,46 +1082,48 @@ export default function PageClient() {
             title="Success Alert"
             description="Use for successful operations"
           >
-            <Alert className="bg-green-500/[0.06] border-green-500/30">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <AlertTitle className="text-green-600 dark:text-green-400">Success</AlertTitle>
-              <AlertDescription>Your changes have been saved successfully.</AlertDescription>
-            </Alert>
+            <DesignAlert
+              variant="success"
+              icon={CheckCircle}
+              title="Success"
+              description="Your changes have been saved successfully."
+            />
           </ComponentDemo>
 
           <ComponentDemo
             title="Error Alert"
             description="Use for errors and failures"
           >
-            <Alert className="bg-red-500/[0.06] border-red-500/30">
-              <XCircle className="h-4 w-4 text-red-500" />
-              <AlertTitle className="text-red-600 dark:text-red-400">Error</AlertTitle>
-              <AlertDescription>An error occurred while processing your request.</AlertDescription>
-            </Alert>
+            <DesignAlert
+              variant="error"
+              icon={XCircle}
+              title="Error"
+              description="An error occurred while processing your request."
+            />
           </ComponentDemo>
 
           <ComponentDemo
             title="Warning Alert"
             description="Use for warnings that need attention"
           >
-            <Alert className="bg-amber-500/[0.08] border-amber-500/40">
-              <WarningCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              <AlertTitle className="text-amber-700 dark:text-amber-300">Warning</AlertTitle>
-              <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
-            </Alert>
+            <DesignAlert
+              variant="warning"
+              icon={WarningCircle}
+              title="Warning"
+              description="You are using a shared email server. Configure a custom SMTP server to customize email templates."
+            />
           </ComponentDemo>
 
           <ComponentDemo
             title="Info Alert"
             description="Use for informational messages without a title"
           >
-            <Alert className="bg-blue-500/[0.06] border-blue-500/30">
-              <Info className="h-4 w-4 text-blue-500" />
-              <AlertTitle className="text-blue-600 dark:text-blue-400">Info</AlertTitle>
-              <AlertDescription>
-                Configure a custom SMTP server to send manual emails. You can still create and edit drafts.
-              </AlertDescription>
-            </Alert>
+            <DesignAlert
+              variant="info"
+              icon={Info}
+              title="Info"
+              description="Configure a custom SMTP server to send manual emails. You can still create and edit drafts."
+            />
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
