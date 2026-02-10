@@ -12,18 +12,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Input,
   Typography,
   cn,
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignMenu } from "@/components/design-language";
+import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignMenu, DesignSelectorDropdown } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -851,18 +846,12 @@ export default function PageClient() {
             description="Use select triggers for compact yes/no or single-choice menus."
           >
             <div className="max-w-xs">
-              <Select value={selectedSelectorValue} onValueChange={setSelectedSelectorValue}>
-                <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectorOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DesignSelectorDropdown
+                value={selectedSelectorValue}
+                onValueChange={setSelectedSelectorValue}
+                options={selectorOptions}
+                size="sm"
+              />
             </div>
           </ComponentDemo>
 
@@ -871,8 +860,9 @@ export default function PageClient() {
             <PropsTable props={[
               { name: "value", type: "string", description: "Currently selected value." },
               { name: "onValueChange", type: "(value: string) => void", description: "Selection handler for the dropdown." },
-              { name: "trigger", type: "ReactElement", description: "Select trigger element (e.g., SelectTrigger)." },
-              { name: "options", type: "Array<{ value: string, label: string }>", description: "Selectable options rendered inside SelectContent." },
+              { name: "options", type: "Array<{ value: string, label: string, disabled?: boolean }>", description: "Selectable options rendered in the dropdown." },
+              { name: "placeholder", type: "string", default: "'Select'", description: "Placeholder label when no option is selected." },
+              { name: "size", type: "'sm' | 'md' | 'lg'", default: "'sm'", description: "Controls trigger height and text size." },
               { name: "disabled", type: "boolean", default: "false", description: "Disables the select and its trigger." },
             ]} />
           </div>
