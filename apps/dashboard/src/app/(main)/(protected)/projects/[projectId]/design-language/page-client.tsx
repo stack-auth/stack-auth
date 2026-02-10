@@ -28,6 +28,7 @@ import {
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
+import { DesignCard, DesignCardTint } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -143,88 +144,6 @@ function PropsTable({
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-// =============================================================================
-// GLASSMORPHIC CARD COMPONENT
-// From: DESIGN-GUIDE.md - "Glassmorphism & Surfaces" section
-// Used in: emails/page-client.tsx, email-themes/page-client.tsx, email-drafts/page-client.tsx
-// Key CSS: bg-background/60 backdrop-blur-xl ring-1 ring-foreground/[0.06]
-// CRITICAL: Always use "transition-all duration-150 hover:transition-none"
-// =============================================================================
-function GlassCard({
-  children,
-  className,
-  gradientColor = "blue",
-}: {
-  children: React.ReactNode,
-  className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "default" | "cyan",
-}) {
-  const hoverTints: Record<string, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
-    default: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
-  };
-
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// Demo card WITH hover tints - used only for demonstrating the hover effect
-function GlassCardWithTint({
-  children,
-  className,
-  gradientColor = "default",
-}: {
-  children: React.ReactNode,
-  className?: string,
-  gradientColor: "blue" | "purple" | "green" | "orange" | "default" | "cyan",
-}) {
-  const hoverTints: Record<string, string> = {
-    blue: "group-hover/tint:bg-blue-500/[0.02]",
-    purple: "group-hover/tint:bg-purple-500/[0.02]",
-    green: "group-hover/tint:bg-emerald-500/[0.02]",
-    orange: "group-hover/tint:bg-orange-500/[0.02]",
-    default: "group-hover/tint:bg-slate-500/[0.015]",
-    cyan: "group-hover/tint:bg-cyan-500/[0.02]",
-  };
-
-  return (
-    <div className={cn(
-      "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover/tint:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative">
-        {children}
-      </div>
     </div>
   );
 }
@@ -765,57 +684,44 @@ export default function PageClient() {
             title="Icon + Title + Subtitle"
             description="Header with supporting copy and a simple content area"
           >
-            <GlassCard gradientColor="default">
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <SectionHeader icon={Envelope} title="Email Drafts" />
-                    <Typography variant="secondary" className="text-sm mt-1">
-                      Create, edit, and send email drafts
-                    </Typography>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 py-4">
-                <Typography variant="secondary" className="text-sm">
-                  Placeholder content for the card body.
-                </Typography>
-              </div>
-            </GlassCard>
+            <DesignCard
+              variant="header"
+              icon={Envelope}
+              title="Email Drafts"
+              subtitle="Create, edit, and send email drafts"
+              gradient="default"
+            >
+              <Typography variant="secondary" className="text-sm">
+                Placeholder content for the card body.
+              </Typography>
+            </DesignCard>
           </ComponentDemo>
 
           <ComponentDemo
             title="Compact Header"
             description="Small header row with an optional icon"
           >
-            <GlassCard gradientColor="default">
-              <div className="p-5 flex items-center gap-2 border-b border-black/[0.12] dark:border-white/[0.06]">
-                <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-                  <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  Preview
-                </span>
-              </div>
-              <div className="px-5 py-4">
-                <Typography variant="secondary" className="text-sm">
-                  Placeholder content for the card body.
-                </Typography>
-              </div>
-            </GlassCard>
+            <DesignCard
+              variant="compact"
+              icon={HardDrive}
+              title="Preview"
+              gradient="default"
+            >
+              <Typography variant="secondary" className="text-sm">
+                Placeholder content for the card body.
+              </Typography>
+            </DesignCard>
           </ComponentDemo>
 
           <ComponentDemo
             title="Body Only"
             description="Use for simple content blocks without a header"
           >
-            <GlassCard gradientColor="default">
-              <div className="p-5">
-                <Typography variant="secondary" className="text-sm">
-                  Placeholder content for the card body.
-                </Typography>
-              </div>
-            </GlassCard>
+            <DesignCard variant="bodyOnly" gradient="default">
+              <Typography variant="secondary" className="text-sm">
+                Placeholder content for the card body.
+              </Typography>
+            </DesignCard>
           </ComponentDemo>
 
           <ComponentDemo
@@ -824,14 +730,14 @@ export default function PageClient() {
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {(["blue", "cyan", "purple", "green", "orange", "default"] as const).map((color) => (
-                <GlassCardWithTint key={color} gradientColor={color}>
+                <DesignCardTint key={color} gradient={color}>
                   <div className="p-4">
                     <SectionHeader icon={Cube} title={color} />
                     <Typography variant="secondary" className="text-xs mt-2">
                       Hover to see {color} tint
                     </Typography>
                   </div>
-                </GlassCardWithTint>
+                </DesignCardTint>
               ))}
             </div>
           </ComponentDemo>
@@ -1051,7 +957,7 @@ export default function PageClient() {
             title="Data Table"
             description="Matches the email log table styling and layout."
           >
-            <GlassCard gradientColor="default" className="overflow-hidden">
+            <DesignCard variant="bodyOnly" gradient="default" className="overflow-hidden p-0" contentClassName="p-0">
               <div className="p-5">
                 <div className="flex w-full items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -1087,7 +993,7 @@ export default function PageClient() {
                   )}
                 />
               </div>
-            </GlassCard>
+            </DesignCard>
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
