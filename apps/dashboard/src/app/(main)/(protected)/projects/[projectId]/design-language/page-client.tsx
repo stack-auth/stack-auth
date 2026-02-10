@@ -10,13 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Input,
   Typography,
   cn,
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignDataTable, DesignMenu, DesignSelectorDropdown } from "@/components/design-language";
+import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignDataTable, DesignInput, DesignMenu, DesignSelectorDropdown } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -896,7 +895,7 @@ export default function PageClient() {
             description="Default input for forms and settings."
           >
             <div className="max-w-sm">
-              <Input placeholder="Enter a value" />
+              <DesignInput placeholder="Enter a value" />
             </div>
           </ComponentDemo>
 
@@ -905,7 +904,7 @@ export default function PageClient() {
             description="Use size sm with a leading icon for compact search."
           >
             <div className="max-w-xs">
-              <Input
+              <DesignInput
                 size="sm"
                 leadingIcon={<MagnifyingGlassIcon className="h-3 w-3" />}
                 placeholder="Search products..."
@@ -919,7 +918,9 @@ export default function PageClient() {
               { name: "size", type: "'sm' | 'md' | 'lg'", default: "'md'", description: "Controls input height and text size." },
               { name: "leadingIcon", type: "ReactElement", description: "Optional icon rendered inside the input." },
               { name: "prefixItem", type: "ReactElement", description: "Optional leading segment for grouped inputs." },
+              { name: "value", type: "string", description: "Controlled input value." },
               { name: "placeholder", type: "string", description: "Placeholder text for empty states." },
+              { name: "disabled", type: "boolean", default: "false", description: "Disables input interactions." },
               { name: "onChange", type: "(event) => void", description: "Change handler for input updates." },
             ]} />
           </div>
