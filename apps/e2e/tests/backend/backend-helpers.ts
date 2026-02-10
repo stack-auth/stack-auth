@@ -186,25 +186,42 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
   return mailbox;
 }
 
+// Type for outbox email items (simplified - full type is EmailOutboxCrud["Server"]["Read"])
+type OutboxEmail = {
+  id: string,
+  subject?: string,
+  status: string,
+  simple_status: string,
+  to?: {
+    type: string,
+    user_id?: string,
+    [key: string]: unknown,
+  },
+  [key: string]: unknown,
+};
+
 // Helper to get emails from the outbox, filtered by subject if provided
-export async function getOutboxEmails(options?: { subject?: string }) {
+export async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
   const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
     method: "GET",
     accessType: "server",
   });
+  const items = listResponse.body.items as OutboxEmail[];
   if (options?.subject) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return listResponse.body.items.filter((e: any) => e.subject === options.subject);
+    return items.filter((e) => e.subject === options.subject);
   }
-  return listResponse.body.items;
+  return items;
 }
 
-// Helper to poll the outbox until an email with the expected subject and status appears
-export async function waitForOutboxEmailWithStatus(subject: string, status: string) {
+// Helper to poll the outbox until the most recent email with the expected subject has the expected status.
+// Note: emails are returned ordered by createdAt desc (newest first), so we check emails[0] specifically
+// to ensure we're waiting for the MOST RECENT email, not an older one with the same subject.
+export async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
   const maxRetries = 24;
-  let emails: any[] = [];
+  let emails: OutboxEmail[] = [];
   for (let i = 0; i < maxRetries; i++) {
     emails = await getOutboxEmails({ subject });
+    // Check the most recent email (first in the list due to createdAt desc ordering)
     if (emails.length > 0 && emails[0].status === status) {
       return emails;
     }

@@ -1155,8 +1155,9 @@ describe("email outbox API", () => {
       const emails = await waitForOutboxEmailWithStatus("Recipient Type Test", "sent");
       const email = emails[0];
 
-      expect(email.to.type).toBe("user-primary-email");
-      expect(email.to.user_id).toBe(userId);
+      expect(email.to).toBeDefined();
+      expect(email.to!.type).toBe("user-primary-email");
+      expect(email.to!.user_id).toBe(userId);
     });
 
     it("should show correct fields for PREPARING state (before rendering starts)", async ({ expect }) => {
@@ -1253,7 +1254,7 @@ describe("email outbox API", () => {
       expect(typeof email.skip_deliverability_check).toBe("boolean");
       expect(email.variables).toBeDefined();
       expect(email.to).toBeDefined();
-      expect(email.to.type).toBe("user-primary-email");
+      expect(email.to!.type).toBe("user-primary-email");
     });
 
     it("should list emails across multiple status types", async ({ expect }) => {
