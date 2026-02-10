@@ -138,10 +138,6 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
 
-    if (didUpdate) {
-      console.log(`[Sequencer] Backfilled USR=${projectUserTenants.length} CC=${contactChannelTenants.length} DEL=${deletedRowTenants.length}`);
-    }
-
     return didUpdate;
   });
 }

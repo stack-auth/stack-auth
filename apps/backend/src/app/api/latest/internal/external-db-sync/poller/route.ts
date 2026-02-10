@@ -245,10 +245,6 @@ export const GET = createSmartRouteHandler({
           const pendingRequests = await claimPendingRequests();
           iterationSpan.setAttribute("stack.external-db-sync.pending-count", pendingRequests.length);
 
-          if (pendingRequests.length > 0) {
-            console.log(`[Poller] Processing ${pendingRequests.length} pending requests`);
-          }
-
           const processed = await processRequests(pendingRequests);
           iterationSpan.setAttribute("stack.external-db-sync.processed-count", processed);
           return { stopReason: null, processed };
