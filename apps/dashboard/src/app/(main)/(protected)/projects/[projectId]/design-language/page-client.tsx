@@ -13,9 +13,18 @@ import {
   Typography,
   cn,
 } from "@/components/ui";
-import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignDataTable, DesignInput, DesignMenu, DesignSelectorDropdown } from "@/components/design-language";
+import {
+  DesignCard,
+  DesignCardTint,
+  DesignCategoryTabs,
+  DesignDataTable,
+  DesignEditableGrid,
+  type DesignEditableGridItem,
+  DesignInput,
+  DesignMenu,
+  DesignSelectorDropdown
+} from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -477,7 +486,7 @@ export default function PageClient() {
     },
   ], [demoDateFormatter]);
 
-  const editableGridItems = useMemo<EditableGridItem[]>(() => [
+  const editableGridItems = useMemo<DesignEditableGridItem[]>(() => [
     {
       type: "text",
       icon: <FileText className="h-4 w-4" />,
@@ -942,7 +951,7 @@ export default function PageClient() {
             <div className="relative rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
               <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
               <div className="relative p-5">
-                <EditableGrid items={editableGridItems} columns={2} className="gap-x-6 gap-y-3" />
+                <DesignEditableGrid items={editableGridItems} columns={2} className="gap-x-6 gap-y-3" />
               </div>
             </div>
           </ComponentDemo>
@@ -950,9 +959,9 @@ export default function PageClient() {
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "items", type: "EditableGridItem[]", description: "Defines editable rows and their input types." },
+              { name: "items", type: "DesignEditableGridItem[]", description: "Defines editable rows and their input types." },
               { name: "columns", type: "1 | 2", default: "2", description: "Number of columns in the grid." },
-              { name: "type", type: "'text' | 'boolean' | 'dropdown' | 'custom'", description: "Row type that controls the editor." },
+              { name: "type", type: "'text' | 'boolean' | 'dropdown' | 'custom-dropdown' | 'custom-button' | 'custom'", description: "Row type that controls the editor." },
               { name: "readOnly", type: "boolean", default: "false", description: "Disables editing for the row." },
               { name: "onUpdate", type: "(value) => Promise<void>", description: "Async handler for updates." },
             ]} />
