@@ -13,6 +13,8 @@ import {
 import { Link } from "@/components/link";
 import {
   DesignAlert,
+  DesignBadge,
+  type DesignBadgeColor,
   DesignButton,
   DesignCard,
   DesignCardTint,
@@ -174,8 +176,6 @@ function DesignSection({
 // STATUS BADGE COMPONENT
 // Gradient-based status pills with optional icons and size variants
 // =============================================================================
-type StatusBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
-type StatusBadgeSize = "sm" | "md";
 type ColumnKey = "recipient" | "subject" | "sentAt" | "status";
 type DemoEmailRow = {
   id: string,
@@ -185,48 +185,11 @@ type DemoEmailRow = {
   status: "sent" | "failed" | "scheduled",
 };
 
-const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
-  blue: "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20",
-  cyan: "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20",
-  purple: "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20",
-  green: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 ring-1 ring-emerald-500/30 dark:ring-emerald-500/20",
-  orange: "text-amber-700 dark:text-amber-300 bg-amber-500/20 dark:bg-amber-500/10 ring-1 ring-amber-500/30 dark:ring-amber-500/20",
-  red: "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20",
-};
-
-const DEMO_STATUS_MAP: Record<DemoEmailRow["status"], { label: string, color: StatusBadgeColor }> = {
+const DEMO_STATUS_MAP: Record<DemoEmailRow["status"], { label: string, color: DesignBadgeColor }> = {
   sent: { label: "Sent", color: "green" },
   failed: { label: "Failed", color: "red" },
   scheduled: { label: "Scheduled", color: "orange" },
 };
-
-function StatusBadge({
-  label,
-  color,
-  icon,
-  size = "md",
-}: {
-  label: string,
-  color: StatusBadgeColor,
-  icon?: React.ElementType,
-  size?: StatusBadgeSize,
-}) {
-  const Icon = icon;
-  const sizeClasses = size === "sm"
-    ? "px-2 py-0.5 text-[10px]"
-    : "px-2.5 py-1 text-[11px]";
-
-  return (
-    <div className={cn(
-      "inline-flex items-center gap-1.5 rounded-full font-medium",
-      STATUS_BADGE_STYLES[color],
-      sizeClasses
-    )}>
-      {Icon && <Icon className="h-3 w-3" />}
-      {label}
-    </div>
-  );
-}
 
 // =============================================================================
 // UNDERLINE TABS
@@ -440,7 +403,7 @@ export default function PageClient() {
       cell: ({ row }) => {
         const status = row.getValue("status") as DemoEmailRow["status"];
         const config = DEMO_STATUS_MAP[status];
-        return <StatusBadge label={config.label} color={config.color} size="sm" />;
+        return <DesignBadge label={config.label} color={config.color} size="sm" />;
       },
     },
   ], [demoDateFormatter]);
@@ -1151,12 +1114,12 @@ export default function PageClient() {
             description="Gradient status colors with optional icons"
           >
             <div className="flex flex-wrap gap-2">
-              <StatusBadge label="Success" color="green" icon={CheckCircle} />
-              <StatusBadge label="Warning" color="orange" />
-              <StatusBadge label="Error" color="red" icon={XCircle} />
-              <StatusBadge label="Info" color="blue" />
-              <StatusBadge label="New" color="purple" size="sm" />
-              <StatusBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
+              <DesignBadge label="Success" color="green" icon={CheckCircle} />
+              <DesignBadge label="Warning" color="orange" />
+              <DesignBadge label="Error" color="red" icon={XCircle} />
+              <DesignBadge label="Info" color="blue" />
+              <DesignBadge label="New" color="purple" size="sm" />
+              <DesignBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
             </div>
           </ComponentDemo>
 
