@@ -2,6 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
+import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -934,9 +935,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               isPrimary: "TRUE",
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             isVerified: data.primary_email_verified,
-          },
+          }),
         });
       }
 
@@ -952,9 +953,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               isPrimary: "TRUE",
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
-          },
+          }),
         });
       }
 
@@ -1130,7 +1131,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             projectUserId: params.user_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name === undefined ? undefined : (data.display_name || null),
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
@@ -1142,7 +1143,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
-        },
+        }),
         include: userFullInclude,
       });
 
@@ -1187,6 +1188,17 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         orderBy: {
           createdAt: 'asc',
         },
+      });
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "ProjectUser",
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncContactChannelDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
       });
 
       await tx.projectUser.delete({
