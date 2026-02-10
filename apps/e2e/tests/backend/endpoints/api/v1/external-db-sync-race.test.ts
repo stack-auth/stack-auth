@@ -363,6 +363,13 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
         await internalClient.connect();
 
         try {
+          // Capture the current sync position before we start the uncommitted transaction
+          const metadataBefore = await externalClient.query<{ last_synced_sequence_id: string }>(
+            `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = 'users'`
+          );
+          const seqBefore = Number(metadataBefore.rows[0]?.last_synced_sequence_id ?? -1);
+
+          // Start an uncommitted transaction that updates the baseline user
           await internalClient.query('BEGIN');
           await internalClient.query(
             `
@@ -373,29 +380,42 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
             [user.userId],
           );
 
-          let row: any;
+          // Create a "marker" user (committed) to give the sync something to process.
+          // Once this marker is synced, we know the sync ran after our uncommitted transaction started.
+          const markerEmail = `${dbName}-marker@example.com`;
+          await User.create({ primary_email: markerEmail, display_name: 'Sync Marker' });
+
+          // Wait for the marker user to appear in external DB, proving a sync occurred
           await waitForCondition(
             async () => {
-              const res = await externalClient.query<{
-                display_name: string | null,
-              }>(
+              const res = await externalClient.query<{ display_name: string | null }>(
                 `SELECT "display_name" FROM "users" WHERE "primary_email" = $1`,
-                [`${dbName}@example.com`],
+                [markerEmail],
               );
-              if (res.rows.length !== 1) return false;
-              row = res.rows[0];
-              return true;
+              return res.rows.length === 1 && res.rows[0].display_name === 'Sync Marker';
             },
             {
-              description: 'waiting for sync to complete',
-              timeoutMs: 10000,
+              description: 'waiting for marker user to sync to external DB',
+              timeoutMs: 120_000,
             },
           );
 
+          // Verify metadata also advanced
+          const metadataAfter = await externalClient.query<{ last_synced_sequence_id: string }>(
+            `SELECT "last_synced_sequence_id" FROM "_stack_sync_metadata" WHERE "mapping_name" = 'users'`
+          );
+          const seqAfter = Number(metadataAfter.rows[0]?.last_synced_sequence_id ?? -1);
+          expect(seqAfter).toBeGreaterThan(seqBefore);
 
-          // Uncommitted transaction should not be visible
-          expect(row.display_name).not.toBe('Transaction 1');
-          expect(row.display_name).toBe(baselineDisplayName);
+          // Now verify the uncommitted change is NOT visible in external DB
+          const row = await externalClient.query<{ display_name: string | null }>(
+            `SELECT "display_name" FROM "users" WHERE "primary_email" = $1`,
+            [`${dbName}@example.com`],
+          );
+
+          expect(row.rows.length).toBe(1);
+          expect(row.rows[0].display_name).not.toBe('Transaction 1');
+          expect(row.rows[0].display_name).toBe(baselineDisplayName);
 
           await internalClient.query('ROLLBACK');
         } finally {
