@@ -11,15 +11,15 @@ type Blast = {
   hue: number,
 };
 
-const BLAST_LIFETIME_MS = 720;
-const MAX_ACTIVE_BLASTS = 18;
+const DEFAULT_BLAST_LIFETIME_MS = 720;
+const DEFAULT_MAX_ACTIVE_BLASTS = 18;
 
 /** Minimum rapid clicks in the time window to count as a rage click */
-const RAGE_CLICK_THRESHOLD = 3;
+const DEFAULT_RAGE_CLICK_THRESHOLD = 3;
 /** Time window (ms) in which clicks must occur to be considered rage clicking */
-const RAGE_CLICK_WINDOW_MS = 600;
+const DEFAULT_RAGE_CLICK_WINDOW_MS = 600;
 /** Max distance (px) between clicks to still count as same-spot rage clicking */
-const RAGE_CLICK_RADIUS_PX = 60;
+const DEFAULT_RAGE_CLICK_RADIUS_PX = 60;
 
 type RecentClick = {
   time: number,
@@ -27,12 +27,54 @@ type RecentClick = {
   y: number,
 };
 
-export function CursorBlastEffect() {
+export type CursorBlastEffectProps = {
+  /** Lifetime of each blast animation in ms. Default: 720 */
+  blastLifetimeMs?: number,
+  /** Maximum number of concurrent active blasts. Default: 18 */
+  maxActiveBlasts?: number,
+  /** Minimum rapid clicks in the time window to trigger a blast. Default: 3 */
+  rageClickThreshold?: number,
+  /** Time window (ms) for counting rage clicks. Default: 600 */
+  rageClickWindowMs?: number,
+  /** Max distance (px) between clicks to count as same-spot rage clicking. Default: 60 */
+  rageClickRadiusPx?: number,
+  /**
+   * When provided, the blast effect is scoped to this container element.
+   * Clicks are only detected within the container and blasts are positioned
+   * relative to the container rather than the viewport.
+   */
+  containerRef?: React.RefObject<HTMLElement | null>,
+};
+
+export function CursorBlastEffect({
+  blastLifetimeMs = DEFAULT_BLAST_LIFETIME_MS,
+  maxActiveBlasts = DEFAULT_MAX_ACTIVE_BLASTS,
+  rageClickThreshold = DEFAULT_RAGE_CLICK_THRESHOLD,
+  rageClickWindowMs = DEFAULT_RAGE_CLICK_WINDOW_MS,
+  rageClickRadiusPx = DEFAULT_RAGE_CLICK_RADIUS_PX,
+  containerRef,
+}: CursorBlastEffectProps = {}) {
   const [blasts, setBlasts] = useState<Blast[]>([]);
   const [mounted, setMounted] = useState(false);
   const idCounterRef = useRef(0);
   const timeoutIdsRef = useRef<Map<number, number>>(new Map());
   const recentClicksRef = useRef<RecentClick[]>([]);
+
+  // Store latest config in refs so the effect callback always reads current values
+  const configRef = useRef({
+    blastLifetimeMs,
+    maxActiveBlasts,
+    rageClickThreshold,
+    rageClickWindowMs,
+    rageClickRadiusPx,
+  });
+  configRef.current = {
+    blastLifetimeMs,
+    maxActiveBlasts,
+    rageClickThreshold,
+    rageClickWindowMs,
+    rageClickRadiusPx,
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -49,6 +91,7 @@ export function CursorBlastEffect() {
     };
 
     const spawnBlast = (x: number, y: number) => {
+      const cfg = configRef.current;
       const nextId = idCounterRef.current;
       idCounterRef.current += 1;
 
@@ -62,24 +105,35 @@ export function CursorBlastEffect() {
 
       setBlasts((prev) => {
         const next = [...prev, nextBlast];
-        if (next.length <= MAX_ACTIVE_BLASTS) {
+        if (next.length <= cfg.maxActiveBlasts) {
           return next;
         }
-        return next.slice(next.length - MAX_ACTIVE_BLASTS);
+        return next.slice(next.length - cfg.maxActiveBlasts);
       });
 
-      const timeoutId = window.setTimeout(() => removeBlast(nextId), BLAST_LIFETIME_MS);
+      const timeoutId = window.setTimeout(() => removeBlast(nextId), cfg.blastLifetimeMs);
       timeoutIdsRef.current.set(nextId, timeoutId);
     };
 
     const onClick = (event: MouseEvent) => {
+      const cfg = configRef.current;
       const now = performance.now();
-      const x = event.clientX;
-      const y = event.clientY;
+
+      let x: number;
+      let y: number;
+
+      if (containerRef?.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        x = event.clientX - rect.left;
+        y = event.clientY - rect.top;
+      } else {
+        x = event.clientX;
+        y = event.clientY;
+      }
 
       // Prune clicks outside the time window
       recentClicksRef.current = recentClicksRef.current.filter(
-        (click) => now - click.time < RAGE_CLICK_WINDOW_MS,
+        (click) => now - click.time < cfg.rageClickWindowMs,
       );
 
       recentClicksRef.current.push({ time: now, x, y });
@@ -88,38 +142,34 @@ export function CursorBlastEffect() {
       const nearbyCount = recentClicksRef.current.filter((click) => {
         const dx = click.x - x;
         const dy = click.y - y;
-        return Math.sqrt(dx * dx + dy * dy) <= RAGE_CLICK_RADIUS_PX;
+        return Math.sqrt(dx * dx + dy * dy) <= cfg.rageClickRadiusPx;
       }).length;
 
-      if (nearbyCount >= RAGE_CLICK_THRESHOLD) {
+      if (nearbyCount >= cfg.rageClickThreshold) {
         spawnBlast(x, y);
       }
     };
 
-    window.addEventListener("click", onClick);
+    const target = containerRef?.current ?? window;
+    const timeoutIds = timeoutIdsRef.current;
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- EventTarget union requires cast
+    (target as EventTarget).addEventListener("click", onClick as EventListener);
     return () => {
-      window.removeEventListener("click", onClick);
-      for (const timeoutId of timeoutIdsRef.current.values()) {
+      (target as EventTarget).removeEventListener("click", onClick as EventListener);
+      for (const timeoutId of timeoutIds.values()) {
         window.clearTimeout(timeoutId);
       }
-      timeoutIdsRef.current.clear();
+      timeoutIds.clear();
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- containerRef identity is stable; config is read from ref
+  }, [containerRef]);
 
   if (!mounted) {
     return null;
   }
 
-  return createPortal(
-    <div
-      aria-hidden
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 2147483647,
-        pointerEvents: "none",
-      }}
-    >
+  const blastElements = (
+    <>
       {blasts.map((blast) => (
         <div
           key={blast.id}
@@ -241,6 +291,40 @@ export function CursorBlastEffect() {
           }
         }
       `}</style>
+    </>
+  );
+
+  // When scoped to a container, render inline (the container must have position: relative)
+  if (containerRef) {
+    return (
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 2147483647,
+          pointerEvents: "none",
+          overflow: "hidden",
+          borderRadius: "inherit",
+        }}
+      >
+        {blastElements}
+      </div>
+    );
+  }
+
+  // Default: portal to body with fixed positioning (original behaviour)
+  return createPortal(
+    <div
+      aria-hidden
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2147483647,
+        pointerEvents: "none",
+      }}
+    >
+      {blastElements}
     </div>,
     document.body,
   );

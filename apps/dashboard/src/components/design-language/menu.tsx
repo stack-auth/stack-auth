@@ -144,6 +144,7 @@ export function DesignMenu(props: DesignMenuProps) {
             key={option.id}
             checked={option.checked}
             onCheckedChange={(checked) => props.onToggleChange(option.id, !!checked)}
+            onSelect={(e) => e.preventDefault()}
           >
             {option.label}
           </DropdownMenuCheckboxItem>

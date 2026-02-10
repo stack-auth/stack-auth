@@ -403,7 +403,7 @@ function CustomButtonField({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground",
+        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground truncate",
         "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
         "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
         !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
@@ -428,7 +428,7 @@ function CustomDropdownField({
     <button
       disabled={disabled}
       className={cn(
-        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground",
+        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground truncate",
         "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
         "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
         !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",

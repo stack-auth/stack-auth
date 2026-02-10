@@ -17,6 +17,8 @@ export type DesignDataTableProps<TData, TValue> = {
   showDefaultToolbar?: boolean,
   showResetFilters?: boolean,
   viewOptions?: boolean,
+  /** When false, hides the entire header section (title, subtitle, icon, view options). Defaults to true. */
+  showHeader?: boolean,
   onRowClick?: (row: TData) => void,
   className?: string,
   contentClassName?: string,
@@ -33,6 +35,7 @@ export function DesignDataTable<TData, TValue>({
   showDefaultToolbar = false,
   showResetFilters = false,
   viewOptions = false,
+  showHeader = true,
   onRowClick,
   className,
   contentClassName,
@@ -46,7 +49,7 @@ export function DesignDataTable<TData, TValue>({
       className={cn("overflow-hidden p-0", className)}
       contentClassName="p-0"
     >
-      {(title || subtitle || Icon || viewOptions) && (
+      {showHeader && (title || subtitle || Icon || viewOptions) && (
         <div className="p-5">
           <div className="flex w-full items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
