@@ -9,13 +9,8 @@ import {
   DataTableColumnHeader,
   DataTableViewOptions,
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Select,
   SelectContent,
@@ -28,7 +23,7 @@ import {
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint, DesignCategoryTabs } from "@/components/design-language";
+import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignMenu } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -756,93 +751,72 @@ export default function PageClient() {
             title="Action Menu"
             description="Standard action list with icons and a destructive row."
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
-                  Open Menu
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[200px]">
-                <DropdownMenuItem icon={<PencilSimple className="h-4 w-4" />}>
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem icon={<Envelope className="h-4 w-4" />}>
-                  Send email
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-red-600 dark:text-red-400 focus:bg-red-500/10"
-                  icon={<Trash className="h-4 w-4" />}
-                  onClick={() => new Promise<void>((resolve) => {
+            <DesignMenu
+              variant="actions"
+              triggerLabel="Open Menu"
+              withIcons
+              items={[
+                {
+                  id: "edit",
+                  label: "Edit",
+                  icon: <PencilSimple className="h-4 w-4" />,
+                },
+                {
+                  id: "send-email",
+                  label: "Send email",
+                  icon: <Envelope className="h-4 w-4" />,
+                },
+                {
+                  id: "delete",
+                  label: "Delete",
+                  icon: <Trash className="h-4 w-4" />,
+                  itemVariant: "destructive",
+                  onClick: () => new Promise<void>((resolve) => {
                     setTimeout(() => resolve(), 5000);
-                  })}
-                >
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  }),
+                },
+              ]}
+            />
           </ComponentDemo>
 
           <ComponentDemo
             title="Selector Menu"
             description="Use radio items to switch between a small set of options."
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
-                  {menuFilterOptions.find((option) => option.id === selectedMenuFilter)?.label ?? "Select"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[200px]">
-                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Filter
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={selectedMenuFilter}
-                  onValueChange={setSelectedMenuFilter}
-                >
-                  {menuFilterOptions.map((option) => (
-                    <DropdownMenuRadioItem key={option.id} value={option.id}>
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DesignMenu
+              variant="selector"
+              triggerLabel={menuFilterOptions.find((option) => option.id === selectedMenuFilter)?.label ?? "Select"}
+              label="Filter"
+              options={menuFilterOptions}
+              value={selectedMenuFilter}
+              onValueChange={setSelectedMenuFilter}
+            />
           </ComponentDemo>
 
           <ComponentDemo
             title="Column Toggles"
             description="Use checkbox items for on/off configuration."
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
-                  Toggle columns
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[200px]">
-                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Toggle columns
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {columnOptions.map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={visibleColumns[column.id]}
-                    onCheckedChange={(checked) => {
-                      setVisibleColumns((prev) => ({
-                        ...prev,
-                        [column.id]: !!checked,
-                      }));
-                    }}
-                  >
-                    {column.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DesignMenu
+              variant="toggles"
+              triggerLabel="Toggle columns"
+              label="Toggle columns"
+              align="end"
+              options={columnOptions.map((column) => ({
+                id: column.id,
+                label: column.label,
+                checked: visibleColumns[column.id],
+              }))}
+              onToggleChange={(id, checked) => {
+                if (id !== "recipient" && id !== "subject" && id !== "sentAt" && id !== "status") {
+                  throw new Error(`Unknown column id "${id}" in column toggle menu`);
+                }
+                setVisibleColumns((prev) => ({
+                  ...prev,
+                  [id]: checked,
+                }));
+              }}
+            />
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
@@ -850,10 +824,15 @@ export default function PageClient() {
             <PropsTable props={[
               { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, radio selector menu, or checkbox settings menu." },
               { name: "trigger", type: "'button' | 'icon'", default: "'button'", description: "Trigger presentation for the menu." },
+              { name: "triggerLabel", type: "string", default: "'Open Menu'", description: "Label for button trigger or aria-label for icon trigger." },
               { name: "label", type: "string", description: "Optional section label for grouped items." },
-              { name: "itemVariant", type: "'default' | 'destructive' | 'checkbox'", default: "'default'", description: "Item style for actions or toggles." },
+              { name: "items", type: "Array<{ id: string, label: string, icon?: ReactNode, itemVariant?: 'default' | 'destructive', onClick?: () => void | Promise<void> }>", description: "Action menu items for variant='actions'." },
+              { name: "options", type: "Array<{ id: string, label: string }> | Array<{ id: string, label: string, checked: boolean }>", description: "Selector options or toggle options depending on variant." },
+              { name: "value", type: "string", description: "Selected option id when variant='selector'." },
+              { name: "onValueChange", type: "(value: string) => void", description: "Selection handler when variant='selector'." },
+              { name: "onToggleChange", type: "(id: string, checked: boolean) => void", description: "Checkbox toggle handler when variant='toggles'." },
               { name: "withIcons", type: "boolean", default: "false", description: "Adds leading icons for action menus." },
-              { name: "onClick", type: "(event) => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
+              { name: "item.onClick", type: "() => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
             ]} />
           </div>
         </DesignSection>
