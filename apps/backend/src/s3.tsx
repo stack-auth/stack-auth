@@ -34,6 +34,32 @@ export function getS3PublicUrl(key: string): string {
   }
 }
 
+export async function uploadBytes(options: {
+  key: string,
+  body: Uint8Array,
+  contentType?: string,
+  contentEncoding?: string,
+}) {
+  if (!s3Client) {
+    throw new StackAssertionError("S3 is not configured");
+  }
+
+  const command = new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: options.key,
+    Body: options.body,
+    ...(options.contentType ? { ContentType: options.contentType } : {}),
+    ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
+  });
+
+  await s3Client.send(command);
+
+  return {
+    key: options.key,
+    url: getS3PublicUrl(options.key),
+  };
+}
+
 async function uploadBase64Image({
   input,
   maxBytes = 1_000_000, // 1MB

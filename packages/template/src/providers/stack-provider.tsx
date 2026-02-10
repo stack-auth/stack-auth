@@ -9,6 +9,7 @@ function NextStackProvider({
   app,
   lang,
   translationOverrides,
+  analytics,
 }: {
   lang?: React.ComponentProps<typeof TranslationProvider>['lang'],
   /**
@@ -21,9 +22,13 @@ function NextStackProvider({
   children: React.ReactNode,
   // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
   app: StackClientApp<true> | StackServerApp<true> | StackAdminApp<true>,
+  /**
+   * Enables session recording uploads. Defaults to true.
+   */
+  analytics?: boolean,
 }) {
   return (
-    <StackProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true}>
+    <StackProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true} analytics={analytics}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
@@ -37,6 +42,7 @@ function ReactStackProvider({
   app,
   lang,
   translationOverrides,
+  analytics,
 }: {
   lang?: React.ComponentProps<typeof TranslationProvider>['lang'],
   /**
@@ -49,9 +55,13 @@ function ReactStackProvider({
   children: React.ReactNode,
   // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
   app: StackClientApp<true>,
+  /**
+   * Enables session recording uploads. Defaults to true.
+   */
+  analytics?: boolean,
 }) {
   return (
-    <StackProviderClient app={app as any} serialized={false}>
+    <StackProviderClient app={app as any} serialized={false} analytics={analytics}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
