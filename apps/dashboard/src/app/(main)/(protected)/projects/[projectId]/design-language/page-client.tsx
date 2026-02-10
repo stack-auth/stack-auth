@@ -5,9 +5,7 @@ import {
   AlertDescription,
   AlertTitle,
   Button,
-  DataTable,
   DataTableColumnHeader,
-  DataTableViewOptions,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -18,7 +16,7 @@ import {
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignMenu, DesignSelectorDropdown } from "@/components/design-language";
+import { DesignCard, DesignCardTint, DesignCategoryTabs, DesignDataTable, DesignMenu, DesignSelectorDropdown } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -38,34 +36,8 @@ import {
   WarningCircle,
   XCircle
 } from "@phosphor-icons/react";
-import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
-
-// Bridge component to capture table instance without violating React rules
-// (setState during render is not allowed, so we use useEffect instead)
-function TableInstanceBridge<T>({
-  tableInstance,
-  onTableInstance,
-  onVisibilityChange,
-}: {
-  tableInstance: TableType<T>,
-  onTableInstance: (table: TableType<T>) => void,
-  onVisibilityChange: (visibility: Record<string, boolean>) => void,
-}) {
-  useEffect(() => {
-    onTableInstance(tableInstance);
-  }, [tableInstance, onTableInstance]);
-
-  const currentVisibility = tableInstance.getState().columnVisibility;
-  // Serialize visibility to avoid unnecessary re-renders from object reference changes
-  const visibilityKey = JSON.stringify(currentVisibility);
-  useEffect(() => {
-    onVisibilityChange(currentVisibility as Record<string, boolean>);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally using serialized key for comparison
-  }, [visibilityKey, onVisibilityChange]);
-
-  return null;
-}
+import { ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 import {
   TimeRange,
   TimeRangeToggle
@@ -413,8 +385,6 @@ export default function PageClient() {
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
   const [selectedMenuFilter, setSelectedMenuFilter] = useState("all");
   const [selectedSelectorValue, setSelectedSelectorValue] = useState("no");
-  const [tableDemo, setTableDemo] = useState<TableType<DemoEmailRow> | null>(null);
-  const [tableDemoVisibility, setTableDemoVisibility] = useState({});
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
     recipient: true,
     subject: true,
@@ -881,52 +851,31 @@ export default function PageClient() {
             title="Data Table"
             description="Matches the email log table styling and layout."
           >
-            <DesignCard variant="bodyOnly" gradient="default" className="overflow-hidden p-0" contentClassName="p-0">
-              <div className="p-5">
-                <div className="flex w-full items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <SectionHeader icon={Envelope} title="Email Log" />
-                    <Typography variant="secondary" className="text-sm mt-1">
-                      Recent delivery activity with quick filters
-                    </Typography>
-                  </div>
-                  {tableDemo && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <DataTableViewOptions
-                        key={JSON.stringify(tableDemoVisibility)}
-                        table={tableDemo}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-                <DataTable
-                  data={demoEmailRows}
-                  columns={demoTableColumns}
-                  defaultColumnFilters={[]}
-                  defaultSorting={[{ id: "sentAt", desc: true }]}
-                  showDefaultToolbar={false}
-                  showResetFilters={false}
-                  toolbarRender={(tableInstance) => (
-                    <TableInstanceBridge
-                      tableInstance={tableInstance}
-                      onTableInstance={setTableDemo}
-                      onVisibilityChange={setTableDemoVisibility}
-                    />
-                  )}
-                />
-              </div>
-            </DesignCard>
+            <DesignDataTable
+              title="Email Log"
+              subtitle="Recent delivery activity with quick filters"
+              icon={Envelope}
+              data={demoEmailRows}
+              columns={demoTableColumns}
+              defaultColumnFilters={[]}
+              defaultSorting={[{ id: "sentAt", desc: true }]}
+              showDefaultToolbar={false}
+              showResetFilters={false}
+              viewOptions
+            />
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
+              { name: "title", type: "string", description: "Optional table card header title." },
+              { name: "subtitle", type: "string", description: "Optional supporting text below the header title." },
+              { name: "icon", type: "ReactElement", description: "Optional header icon shown before the title." },
               { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
               { name: "data", type: "Array<Record<string, unknown>>", description: "Row data to render in the table." },
+              { name: "defaultColumnFilters", type: "ColumnFiltersState", default: "[]", description: "Initial filter state for table columns." },
               { name: "defaultSorting", type: "SortingState", description: "Initial sort order for the table." },
-              { name: "showDefaultToolbar", type: "boolean", default: "true", description: "Toggle the built-in toolbar." },
+              { name: "showDefaultToolbar", type: "boolean", default: "false", description: "Toggle the built-in toolbar controls." },
               { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
               { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
             ]} />
