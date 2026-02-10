@@ -99,7 +99,7 @@ export default function RootLayout({
         <Analytics />
         <SpeedInsights />
         <ThemeProvider>
-          <StackProvider app={stackServerApp} lang={translationLocale as any} analytics={false}>
+          <StackProvider app={stackServerApp} lang={translationLocale as any}>
             <StackTheme>
               <ClientPolyfill />
               <RouterProvider>
