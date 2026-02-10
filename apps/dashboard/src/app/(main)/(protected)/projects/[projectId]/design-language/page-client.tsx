@@ -3,10 +3,6 @@
 import {
   Button,
   DataTableColumnHeader,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Typography,
   cn,
 } from "@/components/ui";
@@ -23,6 +19,8 @@ import {
   DesignEditableGrid,
   type DesignEditableGridItem,
   DesignInput,
+  DesignListItemRow,
+  DesignUserList,
   DesignMenu,
   DesignPillToggle,
   DesignSelectorDropdown
@@ -215,93 +213,6 @@ function UnderlineTabsDemo() {
           {activeTab === tab.id && (
             <div className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-cyan-500 dark:bg-[hsl(200,91%,70%)]" />
           )}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// =============================================================================
-// LIST ITEM ROW (EMAIL TEMPLATES STYLE)
-// From: email-templates/page-client.tsx - Template list item pattern
-// Used for: Lists of templates, themes, configurations
-// Features: Icon container with hover, edit button, dropdown menu
-// =============================================================================
-function ListItemRow({
-  icon: Icon,
-  title,
-  onEdit,
-  onDelete,
-}: {
-  icon: React.ElementType,
-  title: string,
-  onEdit?: () => void,
-  onDelete?: () => void,
-}) {
-  return (
-    <div className={cn(
-      "group relative flex items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none",
-      "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-      "shadow-sm hover:shadow-md"
-    )}>
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      <div className="relative flex items-center gap-4">
-        <div className="p-2.5 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] ring-1 ring-black/[0.1] dark:ring-white/[0.06] transition-colors duration-150 group-hover:bg-black/[0.12] dark:group-hover:bg-white/[0.08] group-hover:transition-none">
-          <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
-        </div>
-        <Typography className="font-semibold text-foreground">{title}</Typography>
-      </div>
-      <div className="relative flex items-center gap-2">
-        {onEdit && (
-          <Button variant="ghost" size="sm" className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg" onClick={onEdit}>
-            Edit
-          </Button>
-        )}
-        {onDelete && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg">
-                <DotsThree size={20} weight="bold" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem onClick={onDelete} className="py-2.5 text-red-600 dark:text-red-400 focus:bg-red-500/10 cursor-pointer justify-center">
-                <span className="font-medium">Delete</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// DEMO COMPONENTS (for showcasing overview page patterns)
-// =============================================================================
-
-function UserListItemDemo() {
-  const users = [
-    { name: "John Doe", email: "john@example.com", time: "Active 2h ago", color: "cyan" },
-    { name: "Jane Smith", email: "jane@example.com", time: "Active 5h ago", color: "blue" },
-  ];
-  return (
-    <div className="space-y-0.5 max-w-md">
-      {users.map((user) => (
-        <button
-          key={user.email}
-          className={cn(
-            "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
-            user.color === "cyan" ? "hover:bg-cyan-500/[0.1]" : "hover:bg-blue-500/[0.1]"
-          )}
-        >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-medium shrink-0">
-            {user.name.charAt(0)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate text-foreground">{user.name}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{user.time}</div>
-          </div>
         </button>
       ))}
     </div>
@@ -1149,7 +1060,7 @@ export default function PageClient() {
             description="Icon row with inline actions and overflow menu"
           >
             <div className="space-y-3">
-              <ListItemRow
+              <DesignListItemRow
                 icon={FileText}
                 title="Transactional Templates"
                 onEdit={() => setListAction("edit")}
@@ -1165,7 +1076,10 @@ export default function PageClient() {
             title="User List Item"
             description="Clickable user row with avatar and accent hover"
           >
-            <UserListItemDemo />
+            <DesignUserList users={[
+              { name: "John Doe", email: "john@example.com", time: "Active 2h ago", color: "cyan" },
+              { name: "Jane Smith", email: "jane@example.com", time: "Active 5h ago", color: "blue" },
+            ]} />
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.06]">
