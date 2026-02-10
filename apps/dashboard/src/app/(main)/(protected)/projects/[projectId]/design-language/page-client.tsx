@@ -28,7 +28,7 @@ import {
 } from "@/components/ui";
 import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
 import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint } from "@/components/design-language";
+import { DesignCard, DesignCardTint, DesignCategoryTabs } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -254,55 +254,6 @@ function StatusBadge({
     )}>
       {Icon && <Icon className="h-3 w-3" />}
       {label}
-    </div>
-  );
-}
-
-// =============================================================================
-// CATEGORY TABS (UNDERLINE STYLE)
-// From: apps/page-client.tsx - Category tabs with counts and underline indicator
-// Used for: Filtering lists, category navigation
-// =============================================================================
-function CategoryTabs({
-  categories,
-  selectedCategory,
-  onSelect,
-}: {
-  categories: Array<{ id: string, label: string, count: number }>,
-  selectedCategory: string,
-  onSelect: (id: string) => void,
-}) {
-  return (
-    <div className="flex items-center gap-1 border-b border-gray-300 dark:border-gray-800 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden">
-      {categories.map((category) => {
-        const isActive = selectedCategory === category.id;
-        return (
-          <button
-            key={category.id}
-            onClick={() => onSelect(category.id)}
-            className={cn(
-              "px-4 py-3 text-sm font-medium transition-all relative flex-shrink-0 whitespace-nowrap",
-              "hover:text-gray-900 dark:hover:text-gray-100",
-              isActive ? "text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-400"
-            )}
-          >
-            <span className="flex items-center gap-2">
-              {category.label}
-              <span className={cn(
-                "text-xs px-1.5 py-0.5 rounded-full",
-                isActive
-                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                  : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-              )}>
-                {category.count}
-              </span>
-            </span>
-            {isActive && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-700 dark:bg-blue-400" />
-            )}
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -769,21 +720,25 @@ export default function PageClient() {
             title="Category Tabs"
             description="Use for segmented lists with counts."
           >
-            <CategoryTabs
+            <DesignCategoryTabs
               categories={categories}
               selectedCategory={selectedCategory}
               onSelect={setSelectedCategory}
+              size="md"
+              glassmorphic={false}
+              gradient="blue"
             />
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "categories", type: "Array<{ id: string, label: string, count: number }>", description: "Tab items with counts for category tabs." },
+              { name: "categories", type: "Array<{ id: string, label: string, count?: number, badgeCount?: number }>", description: "Tab items. Set count/badgeCount to provide badge values." },
               { name: "selectedCategory", type: "string", description: "Currently selected category id." },
               { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
+              { name: "showBadge", type: "boolean", default: "true", description: "Enable/disable the number badge next to each tab label." },
               { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
-              { name: "glassmorphic", type: "boolean", default: "true", description: "Enable when tabs are outside a card." },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Enable when tabs are on glass surfaces." },
               { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
             ]} />
           </div>
