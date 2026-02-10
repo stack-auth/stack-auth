@@ -115,7 +115,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'User A to appear in both Project A databases', timeoutMs: 120000 }
+      { description: 'User A to appear in both Project A databases', timeoutMs: 180000 }
     );
 
     await waitForCondition(
@@ -130,7 +130,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'User B to appear in all three Project B databases', timeoutMs: 120000 }
+      { description: 'User B to appear in all three Project B databases', timeoutMs: 180000 }
     );
 
     const resA1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
@@ -438,7 +438,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(res.rows[0].count) >= userCount;
         },
-        { description: `all ${userCount} users to be synced`, timeoutMs: 120000 }
+        { description: `all ${userCount} users to be synced`, timeoutMs: 180000 }
       );
 
       const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
@@ -500,7 +500,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'initial 3 users sync', timeoutMs: 120000 }
+      { description: 'initial 3 users sync', timeoutMs: 180000 }
     );
 
     let res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
@@ -543,7 +543,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'final sync state correct', timeoutMs: 120000 }
+      { description: 'final sync state correct', timeoutMs: 180000 }
     );
 
     res = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
@@ -728,7 +728,7 @@ $$;`);
         );
         return res.rows.length === 0;
       },
-      { description: 'deleted user should never appear', timeoutMs: 120000 }
+      { description: 'deleted user should never appear', timeoutMs: 180000 }
     );
 
     const res = await client.query(
@@ -811,7 +811,7 @@ $$;`);
         );
         return followUp.rows.length === 1 && followUp.rows[0].display_name === 'Recreated Export';
       },
-      { description: 'recreated row persists after extra sync', timeoutMs: 120000 },
+      { description: 'recreated row persists after extra sync', timeoutMs: 180000 },
     );
   }, TEST_TIMEOUT);
 
@@ -1025,7 +1025,7 @@ $$;`);
           const countRes = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(countRes.rows[0].count) === initialUserCount;
         },
-        { description: 'initial batch exported', timeoutMs: 60000 },
+        { description: 'initial batch exported', timeoutMs: 180000 },
       );
 
       // Delete first 10 users

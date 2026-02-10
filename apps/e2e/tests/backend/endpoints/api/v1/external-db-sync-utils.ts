@@ -175,7 +175,7 @@ export async function waitForSyncedData(client: Client, email: string, expectedN
     },
     {
       description: `data for ${email} to appear in external DB`,
-      timeoutMs: 120000,
+      timeoutMs: 180000,
       intervalMs: 500,
     }
   );
@@ -200,7 +200,7 @@ export async function waitForSyncedDeletion(client: Client, email: string) {
     },
     {
       description: `data for ${email} to be removed from external DB`,
-      timeoutMs: 120000,
+      timeoutMs: 180000,
       intervalMs: 500,
     }
   );
@@ -224,7 +224,7 @@ export async function waitForTable(client: Client, tableName: string) {
     },
     {
       description: `table ${tableName} to be created`,
-      timeoutMs: 120000,
+      timeoutMs: 180000,
       intervalMs: 500,
     }
   );

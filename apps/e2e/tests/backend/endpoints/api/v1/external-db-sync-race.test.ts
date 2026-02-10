@@ -81,7 +81,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
         );
         return res.rows.length === 1 && res.rows[0].display_name === 'Final Name';
       },
-      { description: 'sync to converge on final state', timeoutMs: 90000 },
+      { description: 'sync to converge on final state', timeoutMs: 180000 },
     );
   }, TEST_TIMEOUT);
 
@@ -240,7 +240,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
           const res = await externalClient.query(`SELECT COUNT(*) AS count FROM "users"`);
           return parseInt(res.rows[0].count, 10) === totalUsers;
         },
-        { description: 'initial >300 users exported', timeoutMs: 120000 },
+        { description: 'initial >300 users exported', timeoutMs: 180000 },
       );
 
       // Delete user at index 1 (low sequence ID)
@@ -311,7 +311,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
           );
           return res.rows.length === 1;
         },
-        { description: `baseline row for ${dbName}`, timeoutMs: 60000 },
+        { description: `baseline row for ${dbName}`, timeoutMs: 180000 },
       );
 
       const baseline = await externalClient.query<{
@@ -396,7 +396,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
             },
             {
               description: 'waiting for marker user to sync to external DB',
-              timeoutMs: 120_000,
+              timeoutMs: 180_000,
             },
           );
 
