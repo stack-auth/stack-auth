@@ -30,13 +30,6 @@ function parseMaxDurationMs(value: string | undefined): number {
   return parsed;
 }
 
-function parseStopWhenIdle(value: string | undefined): boolean {
-  if (!value) return false;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new StatusError(400, "stopWhenIdle must be 'true' or 'false'");
-}
-
 function directSyncEnabled(): boolean {
   return getEnvVariable(DIRECT_SYNC_ENV, "") === "true";
 }
@@ -69,7 +62,6 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     query: yupObject({
       maxDurationMs: yupString().optional(),
-      stopWhenIdle: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -91,13 +83,11 @@ export const GET = createSmartRouteHandler({
     return await traceSpan("external-db-sync.poller", async (span) => {
       const startTime = performance.now();
       const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
-      const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
       const pollIntervalMs = 50;
       const staleClaimIntervalMinutes = 5;
       const pollerClaimLimit = getPollerClaimLimit();
 
       span.setAttribute("stack.external-db-sync.max-duration-ms", maxDurationMs);
-      span.setAttribute("stack.external-db-sync.stop-when-idle", stopWhenIdle);
       span.setAttribute("stack.external-db-sync.poll-interval-ms", pollIntervalMs);
       span.setAttribute("stack.external-db-sync.poller-claim-limit", pollerClaimLimit);
       span.setAttribute("stack.external-db-sync.direct-sync", directSyncEnabled());
@@ -235,7 +225,7 @@ export const GET = createSmartRouteHandler({
       }
 
       type PollerIterationResult = {
-        stopReason: "disabled" | "idle" | null,
+        stopReason: "disabled" | null,
         processed: number,
       };
 
@@ -254,10 +244,6 @@ export const GET = createSmartRouteHandler({
 
           const pendingRequests = await claimPendingRequests();
           iterationSpan.setAttribute("stack.external-db-sync.pending-count", pendingRequests.length);
-
-          if (stopWhenIdle && pendingRequests.length === 0) {
-            return { stopReason: "idle", processed: 0 };
-          }
 
           const processed = await processRequests(pendingRequests);
           iterationSpan.setAttribute("stack.external-db-sync.processed-count", processed);

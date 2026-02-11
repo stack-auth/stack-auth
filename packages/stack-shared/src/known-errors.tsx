@@ -653,7 +653,7 @@ const UserNotFound = createKnownErrorConstructor(
 const RestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
     {
