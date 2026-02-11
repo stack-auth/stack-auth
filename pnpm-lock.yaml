@@ -27,9 +27,6 @@ importers:
         specifier: ^2.4.5
         version: 2.6.0
     devDependencies:
-      '@babel/generator':
-        specifier: ^7.28.5
-        version: 7.28.5
       '@changesets/cli':
         specifier: ^2.27.9
         version: 2.27.9
