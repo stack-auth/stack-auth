@@ -733,6 +733,10 @@ export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ opena
 // Auth
 export const restrictedReasonTypes = ["anonymous", "email_not_verified", "restricted_by_administrator"] as const;
 export type RestrictedReasonType = typeof restrictedReasonTypes[number];
+export const restrictedReasonSchema = yupObject({
+  type: yupString().oneOf(restrictedReasonTypes).defined(),
+});
+export type RestrictedReason = yup.InferType<typeof restrictedReasonSchema>;
 
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
@@ -750,9 +754,7 @@ export const accessTokenPayloadSchema = yupObject({
   selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
   is_restricted: yupBoolean().defined(),
-  restricted_reason: yupObject({
-    type: yupString().oneOf(restrictedReasonTypes).defined(),
-  }).defined().nullable(),
+  restricted_reason: restrictedReasonSchema.defined().nullable(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });

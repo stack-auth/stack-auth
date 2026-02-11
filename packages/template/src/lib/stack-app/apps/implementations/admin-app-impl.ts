@@ -6,6 +6,7 @@ import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -1012,7 +1013,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: string,
       displayName: string | null,
       primaryEmail: string | null,
-      restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
+      restrictedReason: RestrictedReason,
     }>,
     totalAffectedCount: number,
   }> {
@@ -1025,7 +1026,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         id: u.id,
         displayName: u.display_name,
         primaryEmail: u.primary_email,
-        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
+        restrictedReason: u.restricted_reason as RestrictedReason,
       })),
       totalAffectedCount: result.total_affected_count,
     };
