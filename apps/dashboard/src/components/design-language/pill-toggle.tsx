@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Spinner } from "@/components/ui/spinner";
+import { useGlassmorphicDefault } from "./card";
 
 type DesignPillToggleSize = "sm" | "md" | "lg";
 type DesignPillToggleGradient = "blue" | "cyan" | "purple" | "green" | "orange" | "default";
@@ -14,10 +18,14 @@ export type DesignPillToggleOption = {
 export type DesignPillToggleProps = {
   options: DesignPillToggleOption[],
   selected: string,
-  onSelect: (id: string) => void,
+  onSelect: (id: string) => void | Promise<void>,
   size?: DesignPillToggleSize,
   glassmorphic?: boolean,
   gradient?: DesignPillToggleGradient,
+  /** Show the icon portion of each pill (when the option provides one). Defaults to true. At least one of showIcons/showLabels must be true. */
+  showIcons?: boolean,
+  /** Show the text label of each pill. Defaults to true. At least one of showIcons/showLabels must be true. */
+  showLabels?: boolean,
   className?: string,
 };
 
@@ -54,20 +62,39 @@ export function DesignPillToggle({
   selected,
   onSelect,
   size = "md",
-  glassmorphic = false,
+  glassmorphic: glassmorphicProp,
   gradient = "default",
+  showIcons = true,
+  showLabels = true,
   className,
 }: DesignPillToggleProps) {
+  const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
   const sizeClass = getMapValueOrThrow(sizeClasses, size, "sizeClasses");
   const activeRingClass = getMapValueOrThrow(gradientClasses, gradient, "gradientClasses");
+
+  // At least one of showIcons/showLabels must be true
+  const effectiveShowLabels = !showIcons ? true : showLabels;
+  const effectiveShowIcons = !showLabels ? true : showIcons;
+
+  const [loadingOptionId, setLoadingOptionId] = useState<string | null>(null);
+
+  const handleClick = (optionId: string) => {
+    const result = onSelect(optionId);
+    if (result && typeof (result as Promise<void>).then === "function") {
+      setLoadingOptionId(optionId);
+      runAsynchronouslyWithAlert(
+        Promise.resolve(result).finally(() => setLoadingOptionId(null))
+      );
+    }
+  };
 
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 p-1",
+        "inline-flex items-center gap-1 p-1 rounded-xl",
         glassmorphic
-          ? "rounded-xl bg-black/[0.08] dark:bg-white/[0.04] backdrop-blur-sm"
-          : "rounded-xl bg-black/[0.08] dark:bg-white/[0.04]",
+          ? "bg-foreground/[0.04] backdrop-blur-sm"
+          : "bg-black/[0.08] dark:bg-white/[0.04]",
         className
       )}
     >
@@ -77,17 +104,39 @@ export function DesignPillToggle({
         return (
           <button
             key={option.id}
-            onClick={() => onSelect(option.id)}
+            onClick={() => handleClick(option.id)}
+            disabled={loadingOptionId !== null}
             className={cn(
-              "flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
+              "relative flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
               sizeClass.button,
               isActive
-                ? cn("bg-background text-foreground shadow-sm ring-1", activeRingClass)
-                : "text-muted-foreground hover:text-foreground hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
+                ? cn(
+                  "bg-background text-foreground shadow-sm ring-1",
+                  glassmorphic
+                    ? "ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
+                    : activeRingClass
+                )
+                : cn(
+                  "text-muted-foreground hover:text-foreground",
+                  glassmorphic
+                    ? "hover:bg-background/50"
+                    : "hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
+                )
             )}
           >
-            {Icon && <Icon className={sizeClass.icon} />}
-            <span>{option.label}</span>
+            {loadingOptionId === option.id && (
+              <Spinner
+                size={12}
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              />
+            )}
+            <span className={cn(
+              "flex items-center gap-2",
+              loadingOptionId === option.id && "invisible"
+            )}>
+              {effectiveShowIcons && Icon && <Icon className={sizeClass.icon} />}
+              {effectiveShowLabels && option.label}
+            </span>
           </button>
         );
       })}
