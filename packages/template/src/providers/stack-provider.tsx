@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import { AnalyticsOptions } from '../components/stack-analytics';
 import { StackAdminApp, StackClientApp, StackServerApp, stackAppInternalsSymbol } from '../lib/stack-app';
 import { StackProviderClient } from './stack-provider-client';
 import { TranslationProvider } from './translation-provider';
@@ -9,6 +10,7 @@ function NextStackProvider({
   app,
   lang,
   translationOverrides,
+  analytics,
 }: {
   lang?: React.ComponentProps<typeof TranslationProvider>['lang'],
   /**
@@ -21,9 +23,13 @@ function NextStackProvider({
   children: React.ReactNode,
   // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
   app: StackClientApp<true> | StackServerApp<true> | StackAdminApp<true>,
+  /**
+   * Options for analytics and session recording. When omitted, replays are enabled with all inputs masked.
+   */
+  analytics?: AnalyticsOptions,
 }) {
   return (
-    <StackProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true}>
+    <StackProviderClient app={app[stackAppInternalsSymbol].toClientJson()} serialized={true} analytics={analytics}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}
@@ -37,6 +43,7 @@ function ReactStackProvider({
   app,
   lang,
   translationOverrides,
+  analytics,
 }: {
   lang?: React.ComponentProps<typeof TranslationProvider>['lang'],
   /**
@@ -49,9 +56,13 @@ function ReactStackProvider({
   children: React.ReactNode,
   // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
   app: StackClientApp<true>,
+  /**
+   * Options for analytics and session recording. When omitted, replays are enabled with all inputs masked.
+   */
+  analytics?: AnalyticsOptions,
 }) {
   return (
-    <StackProviderClient app={app as any} serialized={false}>
+    <StackProviderClient app={app as any} serialized={false} analytics={analytics}>
       <Suspense fallback={null} />
       <TranslationProvider lang={lang} translationOverrides={translationOverrides}>
         {children}

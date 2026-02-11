@@ -78,6 +78,7 @@
     "react-hook-form": "^7.70.0",
     "rimraf": "^6.1.2",
     "tailwindcss-animate": "^1.0.7",
+    "rrweb": "^1.1.3",
     "tsx": "^4.21.0",
     "yup": "^1.7.1"
   },
