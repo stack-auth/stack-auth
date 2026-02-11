@@ -159,6 +159,16 @@
   .dark body::before {
     opacity: 0;
   }
+
+  html:not(.dark) body:has([data-stack-handler-page]) {
+    background-color: white;
+    background-image: none;
+  }
+
+  html:not(.dark) body:has([data-stack-handler-page])::before {
+    opacity: 0;
+    background-image: none;
+  }
 }
 
 ::view-transition-old(root),
