@@ -650,6 +650,18 @@ const UserNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const RestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+    403,
+    `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
+);
 
 const ProjectNotFound = createKnownErrorConstructor(
   KnownError,
@@ -702,6 +714,19 @@ const SignUpNotEnabled = createKnownErrorConstructor(
     "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.",
   ] as const,
   () => [] as const,
+);
+
+const SignUpRejected = createKnownErrorConstructor(
+  KnownError,
+  "SIGN_UP_REJECTED",
+  (message?: string) => [
+    403,
+    message ?? "Your sign up was rejected. Please contact us for more information.",
+    {
+      message: message ?? "Your sign up was rejected. Please contact us for more information.",
+    },
+  ] as const,
+  (json: any) => [json.message] as const,
 );
 
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
@@ -1048,6 +1073,19 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
   (json: any) => [json.team_id, json.user_id] as const,
 );
 
+const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
+  KnownError,
+  "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
+    403,
+    `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
+    {
+      restricted_reason: restrictedReason,
+    },
+  ] as const,
+  (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
+);
+
 
 const EmailTemplateAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1158,6 +1196,16 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
   () => [
     400,
     "The OAuth provider is not found or not enabled.",
+  ] as const,
+  () => [] as const,
+);
+
+const AppleBundleIdNotConfigured = createKnownErrorConstructor(
+  KnownError,
+  "APPLE_BUNDLE_ID_NOT_CONFIGURED",
+  () => [
+    400,
+    "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
   ] as const,
   () => [] as const,
 );
@@ -1291,6 +1339,16 @@ const InvalidAuthorizationCode = createKnownErrorConstructor(
   () => [
     400,
     "The given authorization code is invalid.",
+  ] as const,
+  () => [] as const,
+);
+
+const InvalidAppleCredentials = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_APPLE_CREDENTIALS",
+  () => [
+    400,
+    "The Apple Sign In credentials could not be verified. Please try signing in again.",
   ] as const,
   () => [] as const,
 );
@@ -1647,6 +1705,52 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnalyticsQueryTimeout = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_TIMEOUT",
+  (timeoutMs: number) => [
+    400,
+    `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
+    { timeout_ms: timeoutMs },
+  ] as const,
+  (json) => [json.timeout_ms] as const,
+);
+
+const AnalyticsQueryError = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_ERROR",
+  (error: string) => [
+    400,
+    `${error}`,
+    { error },
+  ] as const,
+  (json) => [json.error] as const,
+);
+
+const DefaultPaymentMethodRequired = createKnownErrorConstructor(
+  KnownError,
+  "DEFAULT_PAYMENT_METHOD_REQUIRED",
+  (customerType: "user" | "team", customerId: string) => [
+    400,
+    "No default payment method is set for this customer.",
+    {
+      customer_type: customerType,
+      customer_id: customerId,
+    },
+  ] as const,
+  (json) => [json.customer_type, json.customer_id] as const,
+);
+
+const NewPurchasesBlocked = createKnownErrorConstructor(
+  KnownError,
+  "NEW_PURCHASES_BLOCKED",
+  () => [
+    403,
+    "New purchases are currently blocked for this project. Please contact support for more information.",
+  ] as const,
+  () => [] as const,
+);
+
 export type KnownErrors = {
   [K in keyof typeof KnownErrors]: InstanceType<typeof KnownErrors[K]>;
 };
@@ -1698,12 +1802,14 @@ export const KnownErrors = {
   EmailNotVerified,
   UserIdDoesNotExist,
   UserNotFound,
+  RestrictedUserNotAllowed,
   ApiKeyNotFound,
   PublicApiKeyCannotBeRevoked,
   ProjectNotFound,
   CurrentProjectNotFound,
   BranchDoesNotExist,
   SignUpNotEnabled,
+  SignUpRejected,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,
@@ -1731,6 +1837,7 @@ export const KnownErrors = {
   ContainedPermissionNotFound,
   TeamNotFound,
   TeamMembershipNotFound,
+  TeamInvitationRestrictedUserNotAllowed,
   EmailTemplateAlreadyExists,
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
@@ -1742,6 +1849,7 @@ export const KnownErrors = {
   UserAlreadyConnectedToAnotherOAuthConnection,
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
+  AppleBundleIdNotConfigured,
   OAuthProviderAccountIdAlreadyUsedForSignIn,
   MultiFactorAuthenticationRequired,
   InvalidTotpCode,
@@ -1752,6 +1860,7 @@ export const KnownErrors = {
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,
+  InvalidAppleCredentials,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
@@ -1776,8 +1885,12 @@ export const KnownErrors = {
   TestModePurchaseNonRefundable,
   ItemQuantityInsufficientAmount,
   StripeAccountInfoNotFound,
+  DefaultPaymentMethodRequired,
+  NewPurchasesBlocked,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
+  AnalyticsQueryTimeout,
+  AnalyticsQueryError,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

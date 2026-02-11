@@ -189,3 +189,247 @@ it("should prompt the user to re-authorize the connected account when the refres
     }
   `);
 });
+
+it("should handle access_denied error gracefully when refreshing token", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const response2 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response2.status).toBe(201);
+
+  const accessToken = response2.body.access_token;
+
+  // Simulate access_denied error on next refresh attempt
+  const setupError = await niceFetch(mockOAuthUrl("/simulate-refresh-error"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+      error_type: "access_denied",
+    }),
+  });
+  expect(setupError.status).toBe(200);
+
+  // Revoke the access token to force a refresh
+  await niceFetch(mockOAuthUrl("/revoke-access-token"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+    }),
+  });
+
+  // Try to get a new access token - should fail gracefully with OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE
+  const response3 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response3).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        "error": "The OAuth connection does not have the required scope.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should handle consent_required error gracefully when refreshing token", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const response2 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response2.status).toBe(201);
+
+  const accessToken = response2.body.access_token;
+
+  // Simulate consent_required error on next refresh attempt
+  const setupError = await niceFetch(mockOAuthUrl("/simulate-refresh-error"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+      error_type: "consent_required",
+    }),
+  });
+  expect(setupError.status).toBe(200);
+
+  // Revoke the access token to force a refresh
+  await niceFetch(mockOAuthUrl("/revoke-access-token"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+    }),
+  });
+
+  // Try to get a new access token - should fail gracefully
+  const response3 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response3).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        "error": "The OAuth connection does not have the required scope.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should handle invalid_token error gracefully when refreshing token", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const response2 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response2.status).toBe(201);
+
+  const accessToken = response2.body.access_token;
+
+  // Simulate invalid_token error on next refresh attempt
+  const setupError = await niceFetch(mockOAuthUrl("/simulate-refresh-error"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+      error_type: "invalid_token",
+    }),
+  });
+  expect(setupError.status).toBe(200);
+
+  // Revoke the access token to force a refresh
+  await niceFetch(mockOAuthUrl("/revoke-access-token"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+    }),
+  });
+
+  // Try to get a new access token - should fail gracefully
+  const response3 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response3).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        "error": "The OAuth connection does not have the required scope.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should handle unauthorized_client error gracefully when refreshing token", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const response2 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response2.status).toBe(201);
+
+  const accessToken = response2.body.access_token;
+
+  // Simulate unauthorized_client error on next refresh attempt
+  const setupError = await niceFetch(mockOAuthUrl("/simulate-refresh-error"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+      error_type: "unauthorized_client",
+    }),
+  });
+  expect(setupError.status).toBe(200);
+
+  // Revoke the access token to force a refresh
+  await niceFetch(mockOAuthUrl("/revoke-access-token"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      token: accessToken,
+    }),
+  });
+
+  // Try to get a new access token - should fail gracefully
+  const response3 = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      scope: "openid",
+    },
+  });
+  expect(response3).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        "error": "The OAuth connection does not have the required scope.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});

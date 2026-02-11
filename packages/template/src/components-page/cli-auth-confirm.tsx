@@ -61,11 +61,9 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
       <MessageCard
         title={t("CLI Authorization Successful")}
         fullPage={fullPage}
-        primaryButtonText={t("Close")}
-        primaryAction={() => window.close()}
       >
         <Typography>
-          {t("The CLI application has been authorized successfully. You can now close this window and return to the command line.")}
+          {t("The CLI application has been authorized successfully. You can close this window and return to the command line.")}
         </Typography>
       </MessageCard>
     );
@@ -78,8 +76,6 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
         fullPage={fullPage}
         primaryButtonText={t("Try Again")}
         primaryAction={() => setError(null)}
-        secondaryButtonText={t("Cancel")}
-        secondaryAction={() => window.close()}
       >
         <Typography className="text-red-600">
           {t("Failed to authorize the CLI application:")}
@@ -97,8 +93,6 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
       fullPage={fullPage}
       primaryButtonText={authorizing ? t("Authorizing...") : t("Authorize")}
       primaryAction={handleAuthorize}
-      secondaryButtonText={t("Cancel")}
-      secondaryAction={() => window.close()}
     >
       <Typography>
         {t("A command line application is requesting access to your account. Click the button below to authorize it.")}

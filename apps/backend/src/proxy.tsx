@@ -74,10 +74,11 @@ export async function proxy(request: NextRequest) {
     "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
     "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
     "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
+    "Vary": corsAllowedRequestHeaders.join(', '),
   } : undefined;
 
   // ensure our clients can handle 429 responses
-  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known")) {
+  if (isApiRequest && !request.headers.get('x-stack-disable-artificial-development-delay') && getNodeEnvironment() === 'development' && request.method !== 'OPTIONS' && !request.url.includes(".well-known") && !request.url.includes("/api/latest/internal/external-db-sync/")) {
     const now = Date.now();
     while (devRateLimitTimestamps.length > 0 && now - devRateLimitTimestamps[0] > DEV_RATE_LIMIT_WINDOW_MS) {
       devRateLimitTimestamps.shift();

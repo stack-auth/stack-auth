@@ -1,13 +1,15 @@
 "use client";
 
+import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { FormDialog } from "@/components/form-dialog";
 import { CheckboxField, InputField, SelectField } from "@/components/form-fields";
 import { IncludedItemEditorField } from "@/components/payments/included-item-editor";
 import { PriceEditorField } from "@/components/payments/price-editor";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, SimpleTooltip, toast } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { AdminProject } from "@stackframe/stack";
 import { priceOrIncludeByDefaultSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Checkbox, FormControl, FormField, FormItem, FormLabel, FormMessage, SimpleTooltip, toast } from "@/components/ui";
 import * as yup from "yup";
 
 type Props = {
@@ -28,7 +30,9 @@ type Props = {
   )
 
 export function ProductDialog({ open, onOpenChange, project, mode, initial }: Props) {
+  const adminApp = useAdminApp();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
   const localProductSchema = yup.object({
     productId: userSpecifiedIdSchema("productId").defined().label("Product ID"),
     displayName: yup.string().defined().label("Display Name"),
@@ -79,7 +83,11 @@ export function ProductDialog({ open, onOpenChange, project, mode, initial }: Pr
           serverOnly: values.serverOnly,
           stackable: values.stackable,
         };
-        await project.updateConfig({ [`payments.products.${values.productId}`]: payload });
+        await updateConfig({
+          adminApp,
+          configUpdate: { [`payments.products.${values.productId}`]: payload },
+          pushable: true,
+        });
       }}
       render={(form) => (
         <div className="space-y-4">

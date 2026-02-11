@@ -156,8 +156,9 @@ export function AppStoreEntry({
                       {onDisable && (
                         <Button
                           onClick={onDisable}
-                          variant="secondary"
-                          size="sm"
+                          variant="ghost"
+                          size="lg"
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
                         >
                           Disable
                         </Button>

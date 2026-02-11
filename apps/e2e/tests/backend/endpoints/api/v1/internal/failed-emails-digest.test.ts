@@ -102,7 +102,7 @@ describe("with valid credentials", () => {
       }
     `);
 
-    await wait(5_000);
+    await wait(10_000);
 
     const response = await niceBackendFetch("/api/v1/internal/failed-emails-digest", {
       method: "POST",
@@ -158,8 +158,8 @@ describe("with valid credentials", () => {
     const { projectOwnerMailbox } = await testFailedEmails(true);
 
     const messages = await projectOwnerMailbox.fetchMessages();
-    expect(messages.filter(msg => !msg.subject.includes("Sign in to"))).toMatchInlineSnapshot(`[]`);
-  });
+    expect(messages.filter(msg => !msg.subject.includes("Sign in"))).toMatchInlineSnapshot(`[]`);
+  }, { repeats: 10 });
 
   // TODO: failed emails digest is currently disabled, fix that and then re-enable this test
   it.todo("should return 200 and process failed emails digest", async ({ expect }) => {

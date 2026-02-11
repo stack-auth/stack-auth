@@ -4,6 +4,7 @@ import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { SubscriptionStatus } from "@/generated/prisma/client";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
@@ -56,9 +57,12 @@ export const POST = createSmartRouteHandler({
     if (!tenancy) {
       throw new StackAssertionError("No tenancy found from purchase code data tenancy id. This should never happen.");
     }
+    if (tenancy.config.payments.blockNewPurchases) {
+      throw new KnownErrors.NewPurchasesBlocked();
+    }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const { selectedPrice, conflictingCatalogSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, conflictingProductLineSubscriptions } = await validatePurchaseSession({
       prisma,
       tenancy,
       codeData: data,
@@ -69,8 +73,8 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("Price not resolved for purchase session");
     }
 
-    if (conflictingCatalogSubscriptions.length > 0) {
-      const conflicting = conflictingCatalogSubscriptions[0];
+    if (conflictingProductLineSubscriptions.length > 0) {
+      const conflicting = conflictingProductLineSubscriptions[0];
       if (conflicting.stripeSubscriptionId) {
         const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];

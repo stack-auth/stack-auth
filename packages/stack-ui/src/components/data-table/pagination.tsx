@@ -1,11 +1,12 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "@radix-ui/react-icons";
+import { Button } from "../ui/button";
 import {
-  Button, Select,
+  Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
-} from "@stackframe/stack-ui";
+  SelectValue,
+} from "../ui/select";
 import { Table } from "@tanstack/react-table";
 
 type DataTablePaginationProps<TData> = {

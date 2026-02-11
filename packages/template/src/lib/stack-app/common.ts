@@ -31,6 +31,15 @@ export type RedirectMethod = "window"
 export type GetCurrentUserOptions<HasTokenStore> =
   & {
     or?: 'redirect' | 'throw' | 'return-null' | 'anonymous' | /** @deprecated */ 'anonymous-if-exists[deprecated]',
+    /**
+     * Whether to include restricted users (users who haven't completed onboarding requirements like email verification).
+     * By default, restricted users are filtered out (treated similar to anonymous users).
+     *
+     * Note: This option cannot be set to false when `or: 'anonymous'` is used, as all anonymous users are also restricted.
+     *
+     * @default false
+     */
+    includeRestricted?: boolean,
     tokenStore?: TokenStoreInit,
   }
   & (HasTokenStore extends false ? {
@@ -94,6 +103,7 @@ export type HandlerUrls = {
   teamInvitation: string,
   mfa: string,
   error: string,
+  onboarding: string,
 }
 
 export type OAuthScopesOnSignIn = {

@@ -317,11 +317,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
     const emails = await globalPrismaClient.emailOutbox.findMany({
       where,
       orderBy: [
-        // Emails with finishedSendingAt come first (most recent first), then nulls
-        { finishedSendingAt: { sort: "desc", nulls: "last" } },
-        // For not-yet-sent emails: scheduled ones come first (most recent first), then nulls
-        { scheduledAtIfNotYetQueued: { sort: "desc", nulls: "last" } },
-        { priority: "asc" },
+        { createdAt: "desc" },
         { id: "asc" },
       ],
       // +1 to check if there's a next page

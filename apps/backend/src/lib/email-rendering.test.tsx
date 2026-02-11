@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderEmailsForTenancyBatched, type RenderEmailRequestForTenancy } from './email-rendering';
+import { renderEmailsForTenancyBatched, renderEmailWithTemplate, type RenderEmailRequestForTenancy } from './email-rendering';
 
 describe('renderEmailsForTenancyBatched', () => {
   const createSimpleTemplateSource = (content: string) => `
@@ -313,7 +313,7 @@ describe('renderEmailsForTenancyBatched', () => {
   });
 
   describe('error handling', () => {
-    it('should return error for invalid template syntax', async () => {
+    it('bundling error: invalid syntax', async () => {
       const request = createMockRequest(1, {
         templateSource: 'invalid syntax {{{ not jsx',
       });
@@ -326,22 +326,9 @@ describe('renderEmailsForTenancyBatched', () => {
       }
     });
 
-    it('should return error for invalid theme syntax', async () => {
-      const request = createMockRequest(1, {
-        themeSource: 'export function EmailTheme( { unclosed bracket',
-      });
-      const result = await renderEmailsForTenancyBatched([request]);
-
-      expect(result.status).toBe('error');
-      if (result.status === 'error') {
-        expect(result.error).toBeDefined();
-      }
-    });
-
-    it('should return error when template does not export EmailTemplate', async () => {
+    it('bundling error: missing required export', async () => {
       const request = createMockRequest(1, {
         templateSource: `
-          export const variablesSchema = (v: any) => v;
           export function WrongName() {
             return <div>Wrong function name</div>;
           }
@@ -355,11 +342,12 @@ describe('renderEmailsForTenancyBatched', () => {
       }
     });
 
-    it('should return error when theme does not export EmailTheme', async () => {
+    it('runtime error: component throws (returns JSON with message and stack)', async () => {
       const request = createMockRequest(1, {
-        themeSource: `
-          export function WrongThemeName({ children }: any) {
-            return <div>{children}</div>;
+        templateSource: `
+          export const variablesSchema = (v: any) => v;
+          export function EmailTemplate() {
+            throw new Error('Template render failed');
           }
         `,
       });
@@ -367,7 +355,55 @@ describe('renderEmailsForTenancyBatched', () => {
 
       expect(result.status).toBe('error');
       if (result.status === 'error') {
-        expect(result.error).toBeDefined();
+        expect(result.error).toContain('Template render failed');
+        // Verify error is JSON with stack trace
+        const parsed = JSON.parse(result.error);
+        expect(parsed.message).toContain('Template render failed');
+        expect(parsed.stack).toBeDefined();
+      }
+    });
+
+    it('runtime error: arktype validation fails', async () => {
+      const request = createMockRequest(1, {
+        templateSource: `
+          import { type } from "arktype";
+          export const variablesSchema = type({ requiredField: "string" });
+          export function EmailTemplate({ variables }: any) {
+            return <div>{variables.requiredField}</div>;
+          }
+        `,
+        input: {
+          user: { displayName: 'User 1' },
+          project: { displayName: 'Project 1' },
+          variables: { wrongField: 'value' },
+        },
+      });
+      const result = await renderEmailsForTenancyBatched([request]);
+
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.error).toContain('requiredField');
+      }
+    });
+
+    it('batch behavior: single failure fails entire batch', async () => {
+      const requests = [
+        createMockRequest(1),
+        createMockRequest(2, {
+          templateSource: `
+            export const variablesSchema = (v: any) => v;
+            export function EmailTemplate() {
+              throw new Error('Second template error');
+            }
+          `,
+        }),
+        createMockRequest(3),
+      ];
+      const result = await renderEmailsForTenancyBatched(requests);
+
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.error).toContain('Second template error');
       }
     });
   });
@@ -462,5 +498,57 @@ describe('renderEmailsForTenancyBatched', () => {
         });
       }
     }, 30000); // Extended timeout for large batch
+  });
+});
+
+describe('renderEmailWithTemplate', () => {
+  const simpleTemplate = `
+    export const variablesSchema = (v: any) => v;
+    export function EmailTemplate({ user, project }: any) {
+      return (
+        <div>
+          <span className="user">{user.displayName}</span>
+          <span className="project">{project.displayName}</span>
+        </div>
+      );
+    }
+  `;
+
+  const simpleTheme = `
+    export function EmailTheme({ children }: any) {
+      return <div className="theme">{children}</div>;
+    }
+  `;
+
+  it('preview mode: uses default user and project when not provided', async () => {
+    const result = await renderEmailWithTemplate(simpleTemplate, simpleTheme, {
+      previewMode: true,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.html).toContain('John Doe');
+      expect(result.data.html).toContain('My Project');
+    }
+  });
+
+  it('preview mode: merges PreviewVariables from template', async () => {
+    const templateWithPreviewVars = `
+      import { type } from "arktype";
+      export const variablesSchema = type({ greeting: "string" });
+      export function EmailTemplate({ variables }: any) {
+        return <div className="greeting">{variables.greeting}</div>;
+      }
+      EmailTemplate.PreviewVariables = { greeting: "Hello from preview!" };
+    `;
+
+    const result = await renderEmailWithTemplate(templateWithPreviewVars, simpleTheme, {
+      previewMode: true,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.html).toContain('Hello from preview!');
+    }
   });
 });

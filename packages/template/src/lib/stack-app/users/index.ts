@@ -19,16 +19,15 @@ import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, T
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
-export function attachUserDestructureGuard(target: object): void {
-  const descriptor = Object.getOwnPropertyDescriptor(target, "user");
-  if (descriptor?.get === guardGetter) {
-    return;
-  }
-
-  Object.defineProperty(target, "user", {
-    get: guardGetter,
-    configurable: false,
-    enumerable: false,
+export function withUserDestructureGuard<T extends object>(target: T): T {
+  Object.freeze(target);
+  return new Proxy(target, {
+    get(target, prop, receiver) {
+      if (prop === "user") {
+        return guardGetter();
+      }
+      return target[prop as keyof T];
+    },
   });
 }
 
@@ -172,6 +171,18 @@ export type BaseUser = {
   readonly isAnonymous: boolean,
 
   /**
+   * Whether the user is in restricted state (signed up but hasn't completed onboarding requirements).
+   * For example, if email verification is required but the user hasn't verified their email yet.
+   */
+  readonly isRestricted: boolean,
+
+  /**
+   * The reason why the user is restricted, e.g., { type: "email_not_verified" }, { type: "anonymous" }, or { type: "restricted_by_administrator" }.
+   * Null if the user is not restricted.
+   */
+  readonly restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null,
+
+  /**
    * Converts the user object to the format expected by the Stack Auth API.
    */
   toClientJson(): CurrentUserCrud["Client"]["Read"],
@@ -192,7 +203,7 @@ export type UserExtra = {
   /**
    * Sets the display name of the user.
    */
-  setDisplayName(displayName: string): Promise<void>,
+  setDisplayName(displayName: string | null): Promise<void>,
 
   /**
    * Sends a verification email to the user's primary email address.
@@ -297,10 +308,12 @@ export type UserExtra = {
    * The currently selected team for the user.
    */
   readonly selectedTeam: Team | null,
+
   /**
    * Sets the selected team for the user.
    */
-  setSelectedTeam(team: Team | null): Promise<void>,
+  setSelectedTeam(teamOrId: string | Team | null): Promise<void>,
+
   /**
    * Creates a new team with the user as a member.
    */
@@ -383,6 +396,8 @@ export type TokenPartialUser = Pick<
   | "primaryEmail"
   | "primaryEmailVerified"
   | "isAnonymous"
+  | "isRestricted"
+  | "restrictedReason"
 >
 
 export type SyncedPartialUser = TokenPartialUser & Pick<
@@ -397,6 +412,8 @@ export type SyncedPartialUser = TokenPartialUser & Pick<
   | "clientReadOnlyMetadata"
   | "isAnonymous"
   | "hasPassword"
+  | "isRestricted"
+  | "restrictedReason"
 >;
 
 
@@ -411,13 +428,14 @@ export type ActiveSession = {
 };
 
 export type UserUpdateOptions = {
-  displayName?: string,
+  displayName?: string | null,
   clientMetadata?: ReadonlyJson,
   selectedTeamId?: string | null,
   totpMultiFactorSecret?: Uint8Array | null,
   profileImageUrl?: string | null,
   otpAuthEnabled?: boolean,
-  passkeyAuthEnabled?:boolean,
+  passkeyAuthEnabled?: boolean,
+  primaryEmail?: string | null,
 }
 export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUserCrud["Client"]["Update"] {
   return {
@@ -428,6 +446,7 @@ export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUser
     profile_image_url: options.profileImageUrl,
     otp_auth_enabled: options.otpAuthEnabled,
     passkey_auth_enabled: options.passkeyAuthEnabled,
+    primary_email: options.primaryEmail,
   };
 }
 
@@ -455,6 +474,21 @@ export type ServerBaseUser = {
    * Sets the client read-only metadata that clients can read but not write.
    */
   setClientReadOnlyMetadata(metadata: any): Promise<void>,
+
+  /**
+   * Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.
+   */
+  readonly restrictedByAdmin: boolean,
+
+  /**
+   * Public reason shown to the user explaining why they are restricted. Optional.
+   */
+  readonly restrictedByAdminReason: string | null,
+
+  /**
+   * Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.
+   */
+  readonly restrictedByAdminPrivateDetails: string | null,
 
   /**
    * Creates a new team (server-side only).
@@ -571,9 +605,13 @@ export type ServerUserUpdateOptions = {
   clientReadOnlyMetadata?: ReadonlyJson,
   serverMetadata?: ReadonlyJson,
   password?: string,
+  restrictedByAdmin?: boolean,
+  restrictedByAdminReason?: string | null,
+  restrictedByAdminPrivateDetails?: string | null,
 } & UserUpdateOptions;
 export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions): CurrentUserCrud["Server"]["Update"] {
-  return {
+  // Base update options
+  const baseUpdate: CurrentUserCrud["Server"]["Update"] = {
     display_name: options.displayName,
     primary_email: options.primaryEmail,
     client_metadata: options.clientMetadata,
@@ -586,6 +624,13 @@ export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions):
     profile_image_url: options.profileImageUrl,
     totp_secret_base64: options.totpMultiFactorSecret != null ? encodeBase64(options.totpMultiFactorSecret) : options.totpMultiFactorSecret,
   };
+  // Add admin restriction fields (may not be in generated types yet but will be at runtime)
+  return {
+    ...baseUpdate,
+    restricted_by_admin: options.restrictedByAdmin,
+    restricted_by_admin_reason: options.restrictedByAdminReason,
+    restricted_by_admin_private_details: options.restrictedByAdminPrivateDetails,
+  } as CurrentUserCrud["Server"]["Update"];
 }
 
 

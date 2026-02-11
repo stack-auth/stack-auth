@@ -1,6 +1,6 @@
 "use client";
 
-import { stackAppInternalsSymbol } from "@/app/(main)/integrations/transfer-confirm-page";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { UserTable } from "@/components/data-table/user-table";
 import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
@@ -36,8 +36,9 @@ export default function PageClient() {
   const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
   const [exportOptions, setExportOptions] = useState<{
     search?: string,
+    includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeAnonymous: false });
+  }>({ includeRestricted: false, includeAnonymous: false });
 
   return (
     <AppEnabledGuard appId="authentication">

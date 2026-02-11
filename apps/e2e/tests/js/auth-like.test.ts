@@ -359,3 +359,151 @@ it("clientApp auth methods should match user auth methods", async ({ expect }) =
   const userAuthHeaders = await user.getAuthHeaders();
   expect(appAuthHeaders["x-stack-auth"]).toBe(userAuthHeaders["x-stack-auth"]);
 });
+
+// ============================================
+// Request-like tokenStore override tests
+// (Critical for Bun middleware compatibility - GitHub issue #1144)
+// ============================================
+
+/**
+ * Helper to build a cookie string for a request-like object.
+ */
+function buildCookieHeader(cookies: Record<string, string>): string {
+  return Object.entries(cookies)
+    .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+    .join("; ");
+}
+
+it("getUser should work with request-like tokenStore containing auth cookies", async ({ expect }) => {
+  // Use nextjs-cookie as default to simulate real middleware scenario.
+  // This ensures the fix prevents rscHeaders() from being called when an override is provided.
+  const { serverApp, clientApp } = await createApp({}, {
+    server: { tokenStore: "nextjs-cookie" },
+  });
+
+  // Create two different users
+  const userAEmail = `${crypto.randomUUID()}@user-a.test`;
+  const userBEmail = `${crypto.randomUUID()}@user-b.test`;
+  const password = "test-password-123";
+
+  // Sign up User A
+  await clientApp.signUpWithCredential({
+    email: userAEmail,
+    password,
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({ email: userAEmail, password });
+  const userA = await clientApp.getUser({ or: "throw" });
+  const userATokens = await userA.currentSession.getTokens();
+  await clientApp.signOut();
+
+  // Sign up User B and keep them signed in on clientApp
+  await clientApp.signUpWithCredential({
+    email: userBEmail,
+    password,
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({ email: userBEmail, password });
+  const userB = await clientApp.getUser({ or: "throw" });
+
+  // Verify the two users are different
+  expect(userA.id).not.toBe(userB.id);
+
+  // Verify serverApp's default nextjs-cookie store would fail outside Next.js context.
+  //  without passing tokenStore override rscHeaders() would be called and fail.
+  await expect(serverApp.getUser()).rejects.toThrow();
+
+  // Build cookies with User A's tokens (Option B - use different user's tokens)
+  const refreshCookieName = `stack-refresh-${serverApp.projectId}--default`;
+  const refreshCookieValue = JSON.stringify({
+    refresh_token: userATokens.refreshToken,
+    updated_at_millis: Date.now(),
+  });
+  const accessCookieValue = JSON.stringify([userATokens.refreshToken, userATokens.accessToken]);
+
+  const cookieHeader = buildCookieHeader({
+    [refreshCookieName]: refreshCookieValue,
+    "stack-access": accessCookieValue,
+  });
+
+  // Create a request-like object with User A's cookies
+  const requestLike = {
+    headers: new Headers({
+      cookie: cookieHeader,
+    }),
+  };
+
+  // Call getUser with the request-like tokenStore
+  // This MUST read from requestLike because:
+  // 1. serverApp's default store is empty
+  // 2. clientApp has User B signed in, not User A
+  // 3. Only requestLike contains User A's tokens
+  const serverUser = await serverApp.getUser({ tokenStore: requestLike });
+
+  expect(serverUser).not.toBeNull();
+  expect(serverUser!.id).toBe(userA.id); // Must be User A, not User B
+  expect(serverUser!.primaryEmail).toBe(userAEmail);
+});
+
+it("getUser should return null for request-like tokenStore with no auth cookies", async ({ expect }) => {
+  // Use nextjs-cookie as default to simulate real middleware scenario
+  const { serverApp } = await createApp({}, {
+    server: { tokenStore: "nextjs-cookie" },
+  });
+
+  // Create a request-like object with no auth cookies
+  const requestLike = {
+    headers: new Headers({
+      cookie: "",
+    }),
+  };
+
+  // Should return null, not throw
+  const serverUser = await serverApp.getUser({ tokenStore: requestLike });
+
+  expect(serverUser).toBeNull();
+});
+
+it("getUser should work with x-stack-auth header in request-like tokenStore", async ({ expect }) => {
+  const { serverApp, clientApp } = await createApp({});
+  await signIn(clientApp);
+
+  // Get the auth headers from the signed-in user
+  const authHeaders = await clientApp.getAuthHeaders();
+
+  // Create a request-like object with x-stack-auth header
+  const requestLike = {
+    headers: new Headers({
+      "x-stack-auth": authHeaders["x-stack-auth"],
+    }),
+  };
+
+  // Call getUser with the request-like tokenStore
+  const serverUser = await serverApp.getUser({ tokenStore: requestLike });
+  const clientUser = await clientApp.getUser({ or: "throw" });
+
+  expect(serverUser).not.toBeNull();
+  expect(serverUser!.primaryEmail).toBe("test@test.com");
+  expect(serverUser!.id).toBe(clientUser.id);
+});
+
+it("getUser with tokenStore override should not affect the app's default token store", async ({ expect }) => {
+  const { serverApp, clientApp } = await createApp({});
+  await signIn(clientApp);
+
+  const clientUser = await clientApp.getUser({ or: "throw" });
+
+  // Get user via serverApp with explicit tokenStore override
+  const tokens = await clientUser.currentSession.getTokens();
+  const serverUserWithOverride = await serverApp.getUser({
+    tokenStore: { accessToken: tokens.accessToken!, refreshToken: tokens.refreshToken! },
+  });
+
+  expect(serverUserWithOverride).not.toBeNull();
+  expect(serverUserWithOverride!.id).toBe(clientUser.id);
+
+  // serverApp's default token store (memory) should still be empty
+  // since we used an override, not the default
+  const serverUserDefault = await serverApp.getUser();
+  expect(serverUserDefault).toBeNull();
+});

@@ -90,6 +90,7 @@ describe("get email theme", () => {
         "status": 200,
         "body": {
           "display_name": "Default Light",
+          "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
             import { ThemeProps, ProjectLogo } from "@stackframe/emails";
@@ -233,6 +234,7 @@ describe("update email theme", () => {
         "status": 200,
         "body": {
           "display_name": "Default Light",
+          "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
             export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -363,6 +365,7 @@ describe("create, patch, and get email theme", () => {
         "status": 200,
         "body": {
           "display_name": "Custom Theme",
+          "id": "<stripped UUID>",
           "tsx_source": deindent\`
             import { Html, Tailwind, Body } from '@react-email/components';
             export function EmailTheme({ children }: { children: React.ReactNode }) {
@@ -386,4 +389,189 @@ describe("create, patch, and get email theme", () => {
   });
 });
 
+describe("invalid JSX inputs", () => {
+  it("should reject theme that throws an error when rendered", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "PATCH",
+        accessType: "admin",
+        body: {
+          tsx_source: `
+            import { Html } from '@react-email/components';
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
+              throw new Error('Intentional error from theme');
+            }
+          `,
+        },
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: "EMAIL_RENDERING_ERROR",
+    });
+    expect(response.body.error).toContain("Intentional error from theme");
+  });
+
+  it("should reject theme that does not export EmailTheme function", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "PATCH",
+        accessType: "admin",
+        body: {
+          tsx_source: `
+            import { Html } from '@react-email/components';
+            export function WrongFunctionName({ children }: { children: React.ReactNode }) {
+              return <Html>{children}</Html>;
+            }
+          `,
+        },
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchInlineSnapshot(`
+      {
+        "code": "EMAIL_RENDERING_ERROR",
+        "details": {
+          "error": deindent\`
+            Build failed with 1 error:
+            virtual:/render.tsx:9:9: ERROR: No matching export in "virtual:/theme.tsx" for import "EmailTheme"
+          \`,
+        },
+        "error": deindent\`
+          Failed to render email with theme: Build failed with 1 error:
+          virtual:/render.tsx:9:9: ERROR: No matching export in "virtual:/theme.tsx" for import "EmailTheme"
+        \`,
+      }
+    `);
+  });
+
+  it("should reject theme with invalid JSX syntax", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "PATCH",
+        accessType: "admin",
+        body: {
+          tsx_source: `
+            export function EmailTheme({ children }) {
+              return <div><span>unclosed tag
+            }
+          `,
+        },
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchInlineSnapshot(`
+      {
+        "code": "EMAIL_RENDERING_ERROR",
+        "details": {
+          "error": deindent\`
+            Build failed with 2 errors:
+            virtual:/theme.tsx:4:12: ERROR: The character "}" is not valid inside a JSX element
+            virtual:/theme.tsx:5:10: ERROR: Unexpected end of file before a closing "span" tag
+          \`,
+        },
+        "error": deindent\`
+          Failed to render email with theme: Build failed with 2 errors:
+          virtual:/theme.tsx:4:12: ERROR: The character "}" is not valid inside a JSX element
+          virtual:/theme.tsx:5:10: ERROR: Unexpected end of file before a closing "span" tag
+        \`,
+      }
+    `);
+  });
+
+  it.todo("should reject theme that causes infinite loop during rendering", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "PATCH",
+        accessType: "admin",
+        body: {
+          tsx_source: `
+            import { Html } from '@react-email/components';
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
+              while (true) {}
+              return <Html>{children}</Html>;
+            }
+          `,
+        },
+      }
+    );
+    // Should timeout or return an error, not hang indefinitely
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchInlineSnapshot("todo");
+  });
+
+  it.todo("should reject theme that allocates too much memory", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "PATCH",
+        accessType: "admin",
+        body: {
+          tsx_source: `
+            import { Html } from '@react-email/components';
+            export function EmailTheme({ children }: { children: React.ReactNode }) {
+              const arr = [];
+              for (let i = 0; i < 1e9; i++) {
+                arr.push(new Array(1e6).fill('x'));
+              }
+              return <Html>{children}</Html>;
+            }
+          `,
+        },
+      }
+    );
+    // Should fail due to memory limits, not hang or crash the server
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchInlineSnapshot("todo");
+  });
+
+  it("should reject theme that exports a non-function", async ({ expect }) => {
+    await Project.createAndSwitch({
+      display_name: "Test Email Theme Project",
+    });
+
+    const response = await niceBackendFetch(
+      `/api/latest/internal/email-themes/${validThemeId}`,
+      {
+        method: "PATCH",
+        accessType: "admin",
+        body: {
+          tsx_source: `
+            export const EmailTheme = "not a function";
+          `,
+        },
+      }
+    );
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      code: "EMAIL_RENDERING_ERROR",
+    });
+    // Error message varies by runtime (Bun vs Node), just check it indicates a type error
+    expect(response.body.error).toBeDefined();
+  });
+});
 

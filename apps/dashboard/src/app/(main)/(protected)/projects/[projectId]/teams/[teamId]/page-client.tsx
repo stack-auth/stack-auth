@@ -2,11 +2,12 @@
 import { TeamMemberSearchTable } from '@/components/data-table/team-member-search-table';
 import { TeamMemberTable } from '@/components/data-table/team-member-table';
 import { InputField } from '@/components/form-fields';
+import { MetadataSection } from '@/components/metadata-editor';
+import { ActionDialog, Button, Form, Separator } from '@/components/ui';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { ServerTeam } from '@stackframe/stack';
 import { strictEmailSchema, yupObject } from '@stackframe/stack-shared/dist/schema-fields';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
-import { ActionDialog, Button, Form, Separator } from '@/components/ui';
 import { notFound } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -39,10 +40,11 @@ export function AddUserDialog(props: {
     e?.preventDefault();
     setSubmitting(true);
     try {
-      const domain = project.config.domains[0]?.domain;
+      // TODO: Let the user choose which domain to use, or use a "primary domain" concept
+      const domain = project.config.domains.find(d => !d.domain.includes('*'))?.domain;
       if (!domain) {
         // TODO don't use JS alert for this, make the UX nicer
-        alert("You must configure at least one domain for this project before you can invite users.");
+        alert("You must configure at least one non-wildcard domain for this project before you can invite users.");
         return;
       }
       await props.team.inviteUser({
@@ -117,6 +119,22 @@ export default function PageClient(props: { teamId: string }) {
         }
       >
         <TeamMemberTable users={users || []} team={team} />
+        <MetadataSection
+          entityName="team"
+          docsUrl="https://docs.stack-auth.com/docs/concepts/teams"
+          clientMetadata={team.clientMetadata}
+          clientReadOnlyMetadata={team.clientReadOnlyMetadata}
+          serverMetadata={team.serverMetadata}
+          onUpdateClientMetadata={async (value) => {
+            await team.update({ clientMetadata: value });
+          }}
+          onUpdateClientReadOnlyMetadata={async (value) => {
+            await team.update({ clientReadOnlyMetadata: value });
+          }}
+          onUpdateServerMetadata={async (value) => {
+            await team.update({ serverMetadata: value });
+          }}
+        />
       </PageLayout>
     </AppEnabledGuard>
   );

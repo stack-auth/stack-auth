@@ -298,18 +298,16 @@ export function buildSubscriptionRenewalTransaction(options: {
   const selectedPrice = resolveSelectedPriceFromProduct(product, subscription.priceId ?? null);
   const chargedAmount = buildChargedAmount(selectedPrice, subscription.quantity);
 
-  const entries: TransactionEntry[] = [
-    {
-      type: "money_transfer",
-      adjusted_transaction_id: null,
-      adjusted_entry_index: null,
-      charged_amount: chargedAmount,
-      // todo: store net amount
-      net_amount: { USD: chargedAmount.USD },
-      customer_id: subscription.customerId,
-      customer_type: typedToLowercase(subscription.customerType),
-    },
-  ];
+  const entries: TransactionEntry[] = [];
+  const moneyTransfer = createMoneyTransferEntry({
+    customerType: typedToLowercase(subscription.customerType),
+    customerId: subscription.customerId,
+    chargedAmount,
+    skip: false,
+  });
+  if (moneyTransfer) {
+    entries.push(moneyTransfer);
+  }
 
   return {
     type: "subscription-renewal",

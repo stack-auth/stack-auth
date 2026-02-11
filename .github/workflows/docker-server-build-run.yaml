@@ -22,6 +22,13 @@ jobs:
           docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 8128:5432 postgres:latest
           sleep 5
           docker logs db
+      
+      - name: Setup clickhouse
+        run: |
+          docker run -d --name clickhouse -e CLICKHOUSE_DB=analytics -e CLICKHOUSE_USER=stackframe -e CLICKHOUSE_PASSWORD=password -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 -p 8133:8123 clickhouse/clickhouse-server:25.10
+          sleep 5
+          docker logs clickhouse
+
 
       - name: Build Docker image
         run: docker build -f docker/server/Dockerfile -t server .
@@ -29,7 +36,7 @@ jobs:
       - name: Run Docker container and check logs
         run: |
           docker run --add-host=host.docker.internal:host-gateway --env-file docker/server/.env.example -p 8101:8101 -p 8102:8102 -d --name stackframe-server server
-          sleep 60
+          sleep 120
           docker logs -t stackframe-server
 
       - name: Check server health

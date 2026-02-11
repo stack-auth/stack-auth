@@ -1,5 +1,5 @@
 import { it } from "../../../../../../helpers";
-import { Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
 
 
 it("should error on invalid code", async ({ expect }) => {
@@ -93,7 +93,7 @@ it("should set already_bought_non_stackable when user already owns non-stackable
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   // Create a code for test-offer and purchase it in test mode (creates DB subscription)
   const createUrlRes1 = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -178,7 +178,7 @@ it("should include conflicting_group_offers when switching within the same group
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // Subscribe to offerA in test mode
   const resUrlA = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {

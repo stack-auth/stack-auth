@@ -88,15 +88,16 @@ const CyclingExample = memo(function CyclingExample({
     return () => clearInterval(interval);
   }, [currentIndex]);
 
-  return <>
+  return <div className="relative">
     {EXAMPLE_QUERIES.map((example, index) => {
+      const isActive = index === currentIndex;
       return <button
         key={index}
         type="button"
         onClick={() => onSelectQuery?.(example.query)}
         className={cn(
-          "flex flex-col items-center gap-1 cursor-pointer group",
-          index === currentIndex ? "opacity-100" : "opacity-0",
+          "flex flex-col items-center gap-1 cursor-pointer group w-full",
+          isActive ? "opacity-100 relative" : "opacity-0 absolute inset-0 pointer-events-none",
           "transition-opacity duration-300"
         )}
       >
@@ -108,7 +109,7 @@ const CyclingExample = memo(function CyclingExample({
         </p>
       </button>;
     })}
-  </>;
+  </div>;
 });
 
 // Empty state placeholder component
@@ -118,33 +119,17 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
   onSelectQuery?: (query: string) => void,
 }) {
   return (
-    <div className="h-full flex flex-col gap-4 items-center select-none px-6 pt-8 pb-4">
-
+    <div className="h-full flex flex-col items-center select-none px-6">
+      {/* Top spacer */}
       <div className="flex-1" />
 
-      {/* Welcome header */}
-      <div className="relative text-center">
-        {/* Keybind reminder - like tape on the corner */}
-        <span className="absolute -top-4 -right-8 rotate-[30deg] flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
-          +
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
-        </span>
-        <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
-          Welcome to Control Center
-        </h2>
-        <p className="text-[11px] text-muted-foreground/50">
-          Your shortcut to everything
-        </p>
-      </div>
-
-      {/* Feature highlights with floating icons */}
+      {/* Welcome header + Feature highlights grouped together */}
       <div className="relative w-fit">
         {/* Floating decorative icons - left and right sides only */}
-        <div className="absolute -left-6 top-0 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
+        <div className="absolute -left-6 top-12 w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center rotate-[-12deg] opacity-70">
           <MagnifyingGlassIcon className="h-4.5 w-4.5 text-blue-500" />
         </div>
-        <div className="absolute -right-6 top-2 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
+        <div className="absolute -right-6 top-14 w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center rotate-[15deg] opacity-60">
           <SparkleIcon className="h-4 w-4 text-purple-500" />
         </div>
         <div className="absolute -left-16 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center rotate-[20deg] opacity-50">
@@ -153,11 +138,27 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         <div className="absolute -right-20 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-cyan-500/10 flex items-center justify-center rotate-[-8deg] opacity-60">
           <LayoutIcon className="h-4.5 w-4.5 text-cyan-500" />
         </div>
-        <div className="absolute -left-7 bottom-0 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
+        <div className="absolute -left-7 bottom-4 w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center rotate-[8deg] opacity-50">
           <PlayIcon className="h-3.5 w-3.5 text-amber-500" />
         </div>
-        <div className="absolute -right-5 bottom-2 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
+        <div className="absolute -right-5 bottom-6 w-8 h-8 rounded-xl bg-rose-500/10 flex items-center justify-center rotate-[-18deg] opacity-50">
           <SparkleIcon className="h-4 w-4 text-rose-500" />
+        </div>
+
+        {/* Welcome header */}
+        <div className="relative text-center mb-4">
+          {/* Keybind reminder - like tape on the corner */}
+          <span className="absolute -top-4 -right-8 rotate-[30deg] flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+            +
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
+          </span>
+          <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
+            Welcome to Control Center
+          </h2>
+          <p className="text-[11px] text-muted-foreground/50">
+            Your shortcut to everything
+          </p>
         </div>
 
         {/* Feature text content */}
@@ -184,45 +185,51 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         </div>
       </div>
 
-      <div className="w-full max-w-[max(50vw,320px)] pt-4 mt-2 border-t border-foreground/[0.06]"></div>
-
-      {/* Cycling example */}
-      <div className="w-full max-w-[max(50vw,320px)]">
-        <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-2.5 text-center pointer-events-none">Try something like</p>
-        <div className="flex justify-center">
-          <CyclingExample onSelectQuery={onSelectQuery} />
-        </div>
-      </div>
-
+      {/* Bottom spacer */}
       <div className="flex-1" />
 
-      {/* Keyboard hints footer */}
-      <div className="pt-4 mt-4 -mx-6 px-6 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
-          +
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
-          <span>open</span>
+      {/* Bottom section - separator, cycling example, and footer grouped together */}
+      <div className="w-full shrink-0 -mx-6 px-6">
+        {/* Separator */}
+        <div className="border-t border-foreground/[0.06]" />
+
+        {/* Cycling example */}
+        <div className="py-5">
+          <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-3 text-center pointer-events-none">Try something like</p>
+          <div className="flex justify-center">
+            <CyclingExample onSelectQuery={onSelectQuery} />
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↑</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↓</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">→</kbd>
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">←</kbd>
-          <span>navigate</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
-          <span>select</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
-          <span>close</span>
+
+        {/* Keyboard hints footer */}
+        <div className="py-3 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+            +
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
+            <span>open</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↑</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↓</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">→</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">←</kbd>
+            <span>navigate</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
+            <span>select</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
+            <span>close</span>
+          </div>
         </div>
       </div>
     </div>
   );
 });
+
 
 // Reusable Results List Component
 export const CmdKResultsList = memo(function CmdKResultsList({
@@ -400,6 +407,9 @@ export function CmdKSearch({
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
   const columnsContainerRef = useRef<HTMLDivElement>(null);
+  // Track previous selection to handle reordering
+  const prevSelectedIdRef = useRef<string | null>(null);
+  const prevSelectedIndexRef = useRef<number>(0);
 
   // Handle keyboard shortcut and custom event
   useEffect(() => {
@@ -440,7 +450,7 @@ export function CmdKSearch({
   // Get commands from the hook
   const commands = useCmdKCommands({ projectId, enabledApps, query, onEnableApp });
 
-  // Filter commands based on query
+  // Filter and sort commands based on query
   const filteredCommands = useMemo(() => {
     if (!query.trim()) return [];
 
@@ -468,14 +478,47 @@ export function CmdKSearch({
     return selectedIndices[activeDepth] ?? 0;
   }, [activeDepth, selectedIndices]);
 
-  // Reset selection and close nested columns when results change
+  // Handle selection when commands reorder
+  // - If currently selected item moved UP, keep it selected at new index
+  // - If currently selected item moved DOWN or is gone, reset to first item
   useEffect(() => {
-    setSelectedIndex(0);
-    setSelectedIndices([0]);
+    const prevId = prevSelectedIdRef.current;
+    const prevIndex = prevSelectedIndexRef.current;
+
+    if (prevId && filteredCommands.length > 0) {
+      const newIndex = filteredCommands.findIndex((cmd) => cmd.id === prevId);
+
+      if (newIndex !== -1 && newIndex <= prevIndex) {
+        // Item moved up or stayed same - keep it selected
+        setSelectedIndex(newIndex);
+        setSelectedIndices([newIndex]);
+      } else {
+        // Item moved down or is no longer in list - reset to first
+        setSelectedIndex(0);
+        setSelectedIndices([0]);
+      }
+    } else {
+      // No previous selection or empty list - reset to first
+      setSelectedIndex(0);
+      setSelectedIndices([0]);
+    }
+
+    // Always clear nested state when commands change
     setNestedColumns([]);
     setActiveDepth(0);
     setNestedBlurHandlers([]);
-  }, [filteredCommands.length]);
+  }, [filteredCommands]);
+
+  // Keep track of currently selected command for reorder detection
+  useEffect(() => {
+    if (filteredCommands.length > 0 && selectedIndex < filteredCommands.length) {
+      prevSelectedIdRef.current = filteredCommands[selectedIndex].id;
+      prevSelectedIndexRef.current = selectedIndex;
+    } else {
+      prevSelectedIdRef.current = null;
+      prevSelectedIndexRef.current = 0;
+    }
+  }, [selectedIndex, filteredCommands]);
 
   const registerOnFocus = useCallback((onFocus: () => void) => {
     setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
@@ -733,7 +776,7 @@ export function CmdKSearch({
         className="fixed inset-0 flex items-center justify-center z-50 px-4 pointer-events-none"
         style={{ animation: "spotlight-slide-in 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
-        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1000px)] pointer-events-auto">
+        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1500px)] pointer-events-auto">
           {/* Background layer */}
           <div className="absolute inset-[2px] rounded-[14px] -z-10 backdrop-blur-xl bg-gray-100/80 dark:bg-[#161616]/80" />
           <div
@@ -974,7 +1017,7 @@ export function CmdKTrigger() {
           "rounded-[12px]",
           "ring-2 ring-inset ring-foreground/[0.06]",
           "transition-all duration-300 hover:transition-none",
-          "hover:ring-blue-500/20 hover:shadow-[0_0_24px_rgba(59,130,246,0.15),inset_0_1px_0_rgba(255,255,255,0.05)]"
+          "hover:ring-[#9196F4]/20 hover:shadow-[0_0_20px_rgba(145,150,244,0.12),inset_0_1px_0_rgba(255,255,255,0.03)]"
         )}
       >
         <div

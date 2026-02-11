@@ -1,5 +1,5 @@
-import { uploadAndGetUrl } from "@/s3";
 import { Prisma } from "@/generated/prisma/client";
+import { uploadAndGetUrl } from "@/s3";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -189,6 +189,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
             clientSecret: provider.client_secret,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
+            appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies CompleteConfig['auth']['oauth']['providers'][string]
@@ -229,6 +230,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
     'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
     'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
     'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
+    // ======================= onboarding =======================
+    'onboarding.requireEmailVerification': dataOptions.require_email_verification,
   });
 
   if (options.type === "create") {

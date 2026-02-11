@@ -85,6 +85,7 @@ export async function applyMigrations(options: {
   artificialDelayInSeconds?: number,
   logging?: boolean,
   schema: string,
+  onBeforeMigration?: (migrationName: string) => Promise<void>,
 }): Promise<{
   newlyAppliedMigrationNames: string[],
 }> {
@@ -100,6 +101,10 @@ export async function applyMigrations(options: {
 
   const newlyAppliedMigrationNames: string[] = [];
   for (const migration of newMigrationFiles) {
+    // Call the callback before applying a new migration (not on conditional repeats)
+    if (options.onBeforeMigration) {
+      await options.onBeforeMigration(migration.migrationName);
+    }
 
     let shouldRepeat = true;
     for (let repeat = 0; shouldRepeat; repeat++) {

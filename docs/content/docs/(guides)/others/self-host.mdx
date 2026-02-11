@@ -1,6 +1,11 @@
 ---
 title: Self-host
+lastModified: "2026-01-10"
 ---
+
+<Info type="danger">
+**If you self-host, YOU will be responsible for updating Stack Auth and its dependencies.** Security patches, bug fixes, and new features require manual updates on your infrastructure. If you would like premium support to help with this, [contact us](mailto:team@stack-auth.com).
+</Info>
 
 Stack Auth is fully open-source and can be self-hosted on your own infrastructure. This guide will introduce each component of the project and how to set them up.
 
@@ -31,16 +36,14 @@ On a high level, Stack Auth is composed of the following services:
 Stack Auth provides a [pre-configured Docker](https://hub.docker.com/r/stackauth/server) image that bundles the dashboard and API backend into a single container. To complete the setup, you'll need to provide your own PostgreSQL database, and optionally configure an email server and Svix instance for webhooks.
 
 1. Use a cloud hosted Postgres or start a example Postgres database. Don't use this setting in production:
-  ```sh
-  docker run -d --name db -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password -e POSTGRES_DB=stackframe -p 5432:5432 postgres:latest
-  ```
+
+<PlatformCodeblock document="others/self-host" examples={["docker-postgres"]} hidePlatformSelector />
 
 2. Get the [example environment file](https://github.com/stack-auth/stack-auth/tree/main/docker/server/.env.example) and modify it to your needs (for security, you MUST edit at least the `STACK_SERVER_SECRET` value). You must also supply a `STACK_FREESTYLE_API_KEY` in order to send emails with Stack Auth (can be generated on [freestyle](https://freestyle.sh)). See the [full template here](https://github.com/stack-auth/stack-auth/blob/dev/docker/server/.env).
 
 3. Run the Docker container:
-  ```sh
-  docker run --env-file <your-env-file.env> -p 8101:8101 -p 8102:8102 stackauth/server:latest
-  ```
+
+<PlatformCodeblock document="others/self-host" examples={["docker-run"]} hidePlatformSelector />
 
   <Info>
   For M-series Mac users, you might need to add `--platform linux/x86_64` to the `docker run` command.  
@@ -59,34 +62,13 @@ Now, login with your admin account on the dashboard and follow the [normal setup
 
 Clone the repository and check out the directory:
 
-```sh
-git clone git@github.com:stack-auth/stack-auth.git
-cd stack
-```
+<PlatformCodeblock document="others/self-host" examples={["git-clone"]} hidePlatformSelector />
 
 Pre-populated .env files for the setup below are available and used by default in `.env.development` in each of the packages. (Note: If you're creating a production build (eg. with `pnpm run build`), you must supply the environment variables manually.)
 
 In a new terminal:
 
-```sh
-pnpm install
-
-# Run build to build everything once
-pnpm run build:dev
-
-# reset & start the dependencies (DB, Inbucket, etc.) as Docker containers, seeding the DB with the Prisma schema
-pnpm run start-deps
-# pnpm run restart-deps
-# pnpm run stop-deps
-
-# Start the dev server
-pnpm run dev
-# For systems with limited resources, you can run a minimal development setup with just the backend and dashboard
-# pnpm run dev:basic
-
-# In a different terminal, run tests in watch mode
-pnpm run test
-```
+<PlatformCodeblock document="others/self-host" examples={["local-dev-setup"]} hidePlatformSelector />
 
 You can now open the dev launchpad at [http://localhost:8100](http://localhost:8100). From there, you can navigate to the dashboard at [http://localhost:8101](http://localhost:8101), API on port 8102, demo on port 8103, docs on port 8104, Inbucket (e-mails) on port 8105, and Prisma Studio on port 8106. See the dev launchpad for a list of all running services.
 
@@ -94,9 +76,7 @@ Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply
 
 You can also open Prisma Studio to see the database interface and edit data directly:
 
-```sh
-pnpm run prisma studio
-```
+<PlatformCodeblock document="others/self-host" examples={["prisma-studio"]} hidePlatformSelector />
 
 ## Run individual services
 
@@ -108,47 +88,31 @@ Deploy these services with your preferred platform. Copy the URLs/API keys—you
 
 Clone the repository and check out the root directory:
 
-```sh
-git clone git@github.com:stack-auth/stack-auth.git
-cd stack
-```
+<PlatformCodeblock document="others/self-host" examples={["git-clone"]} hidePlatformSelector />
 
 Set all the necessary environment variables (you can check out `apps/backend/.env`). Note that `NEXT_PUBLIC_STACK_API_URL` should be the URL of your deployed domain (e.g., https://your-backend-url.com).
 
 Build and start the server:
 
-```sh
-pnpm install
-pnpm build:backend
-pnpm start:backend
-```
+<PlatformCodeblock document="others/self-host" examples={["backend-build"]} hidePlatformSelector />
 
 ### Dashboard
 
 Clone the repository (if you are running it on a separate server, or skip this step if you are using the same server as the API backend) and check out the dashboard directory:
 
-```sh
-git clone git@github.com:stack-auth/stack-auth.git
-cd stack
-```
+<PlatformCodeblock document="others/self-host" examples={["git-clone"]} hidePlatformSelector />
 
 Set all the necessary environment variables (you can check out `apps/dashboard/.env`). Note that `NEXT_PUBLIC_STACK_API_URL` should be the URL of your deployed backend (e.g., https://your-backend-url.com).
 
 Build and start the server:
 
-```sh
-pnpm install
-pnpm build:dashboard
-pnpm start:dashboard
-```
+<PlatformCodeblock document="others/self-host" examples={["dashboard-build"]} hidePlatformSelector />
 
 ### Initialize the database
 
 You need to initialize the database with the following command with the backend environment variables set:
 
-```sh
-pnpm db:init
-```
+<PlatformCodeblock document="others/self-host" examples={["db-init"]} hidePlatformSelector />
 
 Now you can go to the dashboard (e.g., https://your-dashboard-url.com) and sign up for an account.
 

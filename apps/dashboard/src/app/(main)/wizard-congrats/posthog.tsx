@@ -2,11 +2,10 @@
 
 import { useRouter } from "@/components/router";
 import { useSearchParams } from "next/navigation";
-import { usePostHog } from "posthog-js/react";
+import { posthog } from "posthog-js";
 import { useEffect } from "react";
 
 export default function PostHog() {
-  const posthog = usePostHog();
   const searchParams = useSearchParams();
   const router = useRouter();
   useEffect(() => {
@@ -26,7 +25,7 @@ export default function PostHog() {
         (newSearchParams.toString() ? `?${newSearchParams.toString()}` : '');
       router.replace(newUrl);
     }
-  }, [posthog, searchParams, router]);
+  }, [searchParams, router]);
 
   return null;
 }

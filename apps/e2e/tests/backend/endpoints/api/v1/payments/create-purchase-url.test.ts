@@ -1,17 +1,18 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
+import { Auth, niceBackendFetch, Payments, Project } from "../../../../backend-helpers";
 
 it("should not be able to create purchase URL without product_id or product_inline", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
-      customer_id: generateUuid(),
+      customer_id: userId,
     },
   });
   expect(response).toMatchInlineSnapshot(`
@@ -46,12 +47,13 @@ it("should error for non-existent product_id", async ({ expect }) => {
     },
   });
 
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
-      customer_id: generateUuid(),
+      customer_id: userId,
       product_id: "non-existent-product",
     },
   });
@@ -97,10 +99,9 @@ it("should error for invalid customer_id", async ({ expect }) => {
     },
   });
 
-  await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       customer_type: "team",
       customer_id: generateUuid(),
@@ -150,13 +151,13 @@ it("should error for no connected stripe account", async ({ expect }) => {
     },
   });
 
-  const user = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
     body: {
       customer_type: "user",
-      customer_id: user.userId,
+      customer_id: userId,
       product_id: "test-product",
     },
   });
@@ -221,7 +222,7 @@ it("should error for server-only product when calling from client", async ({ exp
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -386,7 +387,7 @@ it("should allow valid product_id", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -429,7 +430,7 @@ it("should error when customer already owns a non-stackable product", async ({ e
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const firstResponse = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -488,6 +489,43 @@ it("should error when customer already owns a non-stackable product", async ({ e
   `);
 });
 
+it("should error when client tries to create purchase URL for another user", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      products: {
+        "test-product": {
+          displayName: "Test Product",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          prices: {
+            "monthly": {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  await Auth.fastSignUp();
+  const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      customer_type: "user",
+      customer_id: generateUuid(),
+      product_id: "test-product",
+    },
+  });
+  expect(response.status).toBe(403);
+  expect(response.body).toBe("Clients can only create purchase URLs for their own user or teams they have admin access to.");
+});
+
 it("should error for untrusted return_url", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
@@ -511,7 +549,7 @@ it("should error for untrusted return_url", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",

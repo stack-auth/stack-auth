@@ -30,7 +30,7 @@ Sometimes, you want to retrieve the user only if they're signed in, and redirect
 
 ## Server Component basics
 
-Since `useUser()` is a stateful hook, you can't use it on server components. Instead, you can import `stackServerApp` from `stack/client.ts` and call `getUser()`:
+Since `useUser()` is a stateful hook, you can't use it on server components. Instead, you can import `stackServerApp` from `stack/server.ts` and call `getUser()`:
 
 ```tsx title="my-server-component.tsx"
 import { stackServerApp } from "@/stack/server";

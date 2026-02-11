@@ -6,8 +6,8 @@ import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
 import { AlertTriangle, ChevronDown, Key, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
+import { Button } from '../mdx/button';
 import { useAPIPageContext } from './api-page-wrapper';
-import { Button } from './button';
 
 type StackAuthHeaderKey =
   | 'X-Stack-Access-Type'
@@ -149,6 +149,15 @@ export function AuthPanel() {
 
   // Handle project selection
   const handleProjectSelect = (projectId: string) => {
+    // Handle deselection (empty string)
+    if (projectId === '') {
+      setSelectedProjectId('');
+      // Clear all headers when deselecting
+      updateSharedHeaders(defaultHeaders);
+      return;
+    }
+
+    // Validate project exists
     if (!projects.some((projectItem) => projectItem.id === projectId)) {
       return;
     }

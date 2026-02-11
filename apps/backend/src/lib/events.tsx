@@ -1,7 +1,7 @@
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
-import { urlSchema, yupBoolean, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
@@ -9,8 +9,45 @@ import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as yup from "yup";
+import { getClickhouseAdminClient } from "./clickhouse";
 import { getEndUserInfo } from "./end-users";
 import { DEFAULT_BRANCH_ID } from "./tenancies";
+
+export const endUserIpInfoSchema = yupObject({
+  ip: yupString().defined(),
+  isTrusted: yupBoolean().defined(),
+  countryCode: yupString().optional(),
+  regionCode: yupString().optional(),
+  cityName: yupString().optional(),
+  latitude: yupNumber().optional(),
+  longitude: yupNumber().optional(),
+  tzIdentifier: yupString().optional(),
+});
+
+export type EndUserIpInfo = yup.InferType<typeof endUserIpInfoSchema>;
+
+/**
+ * Extracts the end user IP info from the current request.
+ * Must be called before any async operations as it uses dynamic APIs.
+ */
+export async function getEndUserIpInfoForEvent(): Promise<EndUserIpInfo | null> {
+  const endUserInfo = await getEndUserInfo();
+  if (!endUserInfo) {
+    return null;
+  }
+
+  const info = endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+  return {
+    ip: info.ip,
+    isTrusted: !endUserInfo.maybeSpoofed,
+    countryCode: info.countryCode,
+    regionCode: info.regionCode,
+    cityName: info.cityName,
+    latitude: info.latitude,
+    longitude: info.longitude,
+    tzIdentifier: info.tzIdentifier,
+  };
+}
 
 type EventType = {
   id: string,
@@ -51,6 +88,7 @@ const UserActivityEventType = {
     userId: yupString().uuid().defined(),
     // old events of this type may not have an isAnonymous field, so we default to false
     isAnonymous: yupBoolean().defined().default(false),
+    teamId: yupString().optional().default(""),
   }),
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;
@@ -61,6 +99,20 @@ const SessionActivityEventType = {
     sessionId: yupString().defined(),
   }),
   inherits: [UserActivityEventType],
+} as const satisfies SystemEventTypeBase;
+
+const TokenRefreshEventType = {
+  id: "$token-refresh",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    organizationId: yupString().nullable().test("must-be-null", "Organization ID has not been implemented yet and must be null", (value) => value === null).defined(),
+    userId: yupString().uuid().defined(),
+    refreshTokenId: yupString().defined(),
+    isAnonymous: yupBoolean().defined(),
+    ipInfo: endUserIpInfoSchema.nullable().defined(),
+  }),
+  inherits: [],
 } as const satisfies SystemEventTypeBase;
 
 
@@ -77,13 +129,29 @@ const ApiRequestEventType = {
   ],
 } as const satisfies SystemEventTypeBase;
 
+const SignUpRuleTriggerEventType = {
+  id: "$sign-up-rule-trigger",
+  dataSchema: yupObject({
+    projectId: yupString().defined(),
+    branchId: yupString().defined(),
+    ruleId: yupString().defined(),
+    action: yupString().oneOf(['allow', 'reject', 'restrict', 'log']).defined(),
+    email: yupString().nullable().defined(),
+    authMethod: yupString().oneOf(['password', 'otp', 'oauth', 'passkey']).nullable().defined(),
+    oauthProvider: yupString().nullable().defined(),
+  }),
+  inherits: [],
+} as const satisfies SystemEventTypeBase;
+
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
   UserActivityEventType,
   SessionActivityEventType,
+  TokenRefreshEventType,
   ApiRequestEventType,
   LegacyApiEventType,
+  SignUpRuleTriggerEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 
@@ -152,6 +220,14 @@ export async function logEvent<T extends EventType[]>(
   // get end user information
   const endUserInfo = await getEndUserInfo();  // this is a dynamic API, can't run it asynchronously
   const endUserInfoInner = endUserInfo?.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo?.exactInfo;
+  const eventTypesArray = [...allEventTypes];
+  const clickhouseEventData = {
+    ...data as Record<string, unknown>,
+  };
+  const dataRecord = data as Record<string, unknown> | null | undefined;
+  const projectId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";
+  const branchId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.branchId === "string" ? dataRecord.branchId : DEFAULT_BRANCH_ID;
+  const userId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.userId === "string" ? dataRecord.userId : "";
 
 
   // rest is no more dynamic APIs so we can run it asynchronously
@@ -159,7 +235,7 @@ export async function logEvent<T extends EventType[]>(
     // log event in DB
     await globalPrismaClient.event.create({
       data: {
-        systemEventTypeIds: [...allEventTypes].map(eventType => eventType.id),
+        systemEventTypeIds: eventTypesArray.map(eventType => eventType.id),
         data: data as any,
         isEndUserIpInfoGuessTrusted: !endUserInfo?.maybeSpoofed,
         endUserIpInfoGuess: endUserInfoInner ? {
@@ -178,6 +254,30 @@ export async function logEvent<T extends EventType[]>(
         eventEndedAt: timeRange.end,
       },
     });
+
+    // Log specific events to ClickHouse
+    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
+    const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
+    if (matchingEventType) {
+      const clickhouseClient = getClickhouseAdminClient();
+      await clickhouseClient.insert({
+        table: "analytics_internal.events",
+        values: [{
+          event_type: matchingEventType.id,
+          event_at: timeRange.end,
+          data: clickhouseEventData,
+          project_id: projectId,
+          branch_id: branchId,
+          user_id: userId || null,
+          team_id: null,
+        }],
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          date_time_input_format: "best_effort",
+          async_insert: 1,
+        },
+      });
+    }
 
     // log event in PostHog
     if (getNodeEnvironment().includes("production") && !getEnvVariable("CI", "")) {

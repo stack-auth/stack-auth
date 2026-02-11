@@ -14,7 +14,7 @@ fi
 
 # Run typecheck and lint
 pnpm run typecheck 1>&2 || exit 2
-pnpm run lint 1>&2 || exit 2
+pnpm run lint --fix 1>&2 || exit 2
 
 exit 0
 

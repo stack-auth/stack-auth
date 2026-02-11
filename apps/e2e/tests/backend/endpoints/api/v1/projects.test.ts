@@ -1571,7 +1571,7 @@ it("should preserve API Keys app enabled state when updating allowUserApiKeys co
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Enable the API Keys app
-  const enableAppResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+  const enableAppResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
     accessType: "admin",
     method: "PATCH",
     headers: {

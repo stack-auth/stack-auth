@@ -1,8 +1,8 @@
+import { Prisma } from "@/generated/prisma/client";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
-import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/crud/team-member-profiles";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -12,13 +12,13 @@ import { userFullInclude, userPrismaToCrud } from "../users/crud";
 
 const fullInclude = { projectUser: { include: userFullInclude } };
 
-function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>) {
+function prismaToCrud(prisma: Prisma.TeamMemberGetPayload<{ include: typeof fullInclude }>, config: { onboarding: { requireEmailVerification?: boolean } }) {
   return {
     team_id: prisma.teamId,
     user_id: prisma.projectUserId,
     display_name: prisma.displayName ?? prisma.projectUser.displayName,
     profile_image_url: prisma.profileImageUrl ?? prisma.projectUser.profileImageUrl,
-    user: userPrismaToCrud(prisma.projectUser),
+    user: userPrismaToCrud(prisma.projectUser, config),
   };
 }
 
@@ -79,7 +79,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
       });
 
       return {
-        items: db.map((user) => prismaToCrud(user)),
+        items: db.map((user) => prismaToCrud(user, auth.tenancy.config)),
         is_paginated: false,
       };
     });
@@ -119,7 +119,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         throw new KnownErrors.TeamMembershipNotFound(params.team_id, params.user_id);
       }
 
-      return prismaToCrud(db);
+      return prismaToCrud(db, auth.tenancy.config);
     });
   },
   onUpdate: async ({ auth, data, params }) => {
@@ -153,7 +153,7 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
         include: fullInclude,
       });
 
-      return prismaToCrud(db);
+      return prismaToCrud(db, auth.tenancy.config);
     });
   },
 }));

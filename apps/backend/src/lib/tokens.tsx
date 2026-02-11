@@ -1,5 +1,6 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
@@ -11,8 +12,7 @@ import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
-import { getEndUserInfo } from './end-users';
-import { SystemEventTypes, logEvent } from './events';
+import { SystemEventTypes, getEndUserIpInfoForEvent, logEvent } from './events';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -24,6 +24,10 @@ const accessTokenSchema = yupObject({
   refreshTokenId: yupString().optional(),
   exp: yupNumber().defined(),
   isAnonymous: yupBoolean().defined(),
+  isRestricted: yupBoolean().defined(),
+  restrictedReason: yupObject({
+    type: yupString().oneOf(["anonymous", "email_not_verified"] as const).defined(),
+  }).nullable().defined(),
 }).defined();
 
 export const oauthCookieSchema = yupObject({
@@ -44,25 +48,40 @@ export const oauthCookieSchema = yupObject({
   afterCallbackRedirectUrl: yupString().optional(),
 });
 
-const getIssuer = (projectId: string, isAnonymous: boolean) => {
-  const url = new URL(`/api/v1/projects${isAnonymous ? "-anonymous-users" : ""}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
+type UserType = 'normal' | 'restricted' | 'anonymous';
+
+const getIssuer = (projectId: string, userType: UserType) => {
+  const suffix = userType === 'anonymous' ? '-anonymous-users' : userType === 'restricted' ? '-restricted-users' : '';
+  const url = new URL(`/api/v1/projects${suffix}/${projectId}`, getEnvVariable("NEXT_PUBLIC_STACK_API_URL"));
   return url.toString();
 };
-const getAudience = (projectId: string, isAnonymous: boolean) => {
-  // TODO: make the audience a URL, and encode the anonymity in a better way
-  return isAnonymous ? `${projectId}:anon` : projectId;
+const getAudience = (projectId: string, userType: UserType) => {
+  // TODO: make the audience a URL, and encode the user type in a better way
+  return userType === 'anonymous' ? `${projectId}:anon` : userType === 'restricted' ? `${projectId}:restricted` : projectId;
 };
 
-export async function getPublicProjectJwkSet(projectId: string, allowAnonymous: boolean) {
+const getUserType = (isAnonymous: boolean, isRestricted: boolean): UserType => {
+  if (isAnonymous) return 'anonymous';
+  if (isRestricted) return 'restricted';
+  return 'normal';
+};
+
+export async function getPublicProjectJwkSet(projectId: string, options: { allowRestricted: boolean, allowAnonymous: boolean }) {
   const privateJwks = [
-    ...await getPrivateJwks({ audience: getAudience(projectId, false) }),
-    ...allowAnonymous ? await getPrivateJwks({ audience: getAudience(projectId, true) }) : [],
+    ...await getPrivateJwks({ audience: getAudience(projectId, 'normal') }),
+    ...options.allowRestricted ? await getPrivateJwks({ audience: getAudience(projectId, 'restricted') }) : [],
+    ...options.allowAnonymous ? await getPrivateJwks({ audience: getAudience(projectId, 'anonymous') }) : [],
   ];
   return await getPublicJwkSet(privateJwks);
 }
 
-export async function decodeAccessToken(accessToken: string, { allowAnonymous }: { allowAnonymous: boolean }) {
+export async function decodeAccessToken(accessToken: string, { allowAnonymous, allowRestricted }: { allowAnonymous: boolean, allowRestricted: boolean }) {
   return await traceSpan("decoding access token", async (span) => {
+
+    if (allowAnonymous && !allowRestricted) {
+      throw new StackAssertionError("If allowAnonymous is true, allowRestricted must also be true");
+    }
+
     let payload: jose.JWTPayload;
     let decoded: jose.JWTPayload | undefined;
     let aud;
@@ -71,11 +90,16 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       decoded = jose.decodeJwt(accessToken);
       aud = decoded.aud?.toString() ?? "";
 
+      // Determine allowed issuers based on what types of tokens we accept
+      const projectId = aud.split(":")[0];
+      const allowedIssuers = [
+        getIssuer(projectId, 'normal'),
+        ...(allowRestricted ? [getIssuer(projectId, 'restricted')] : []),
+        ...(allowAnonymous ? [getIssuer(projectId, 'anonymous')] : []),
+      ];
+
       payload = await verifyJWT({
-        allowedIssuers: [
-          getIssuer(aud.split(":")[0], false),
-          ...(allowAnonymous ? [getIssuer(aud.split(":")[0], true)] : []),
-        ],
+        allowedIssuers,
         jwt: accessToken,
       });
     } catch (error) {
@@ -88,13 +112,37 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       throw error;
     }
 
-    const isAnonymous = payload.is_anonymous as boolean | undefined ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon';
+    // TODO next-release: Delete the legacy behavior from here
+    const isAnonymous = payload.is_anonymous as boolean;
+    // Legacy tokens default to non-restricted; also, anonymous users are always restricted
+    const isRestricted = (payload.is_restricted as boolean | undefined) ?? isAnonymous;
+    // For legacy anonymous tokens, infer restrictedReason as { type: "anonymous" }
+    const restrictedReason = (payload.restricted_reason as { type: "anonymous" | "email_not_verified" } | null | undefined)
+      ?? (isAnonymous ? { type: "anonymous" as const } : null);
+
+    // Anonymous users must be restricted
+    if (isAnonymous && !isRestricted) {
+      throw new StackAssertionError("Unparsable access token. User is anonymous but not restricted.", { accessToken, payload });
+    }
+
+    // Enforce consistency between isRestricted and restrictedReason
+    if (isRestricted && !restrictedReason) {
+      throw new StackAssertionError("Unparsable access token. User is restricted but restrictedReason is missing.", { accessToken, payload });
+    }
+    if (!isRestricted && restrictedReason) {
+      throw new StackAssertionError("Unparsable access token. User is not restricted but restrictedReason is present.", { accessToken, payload });
+    }
+
+    // Validate audience matches the user type
     if (aud.endsWith(":anon") && !isAnonymous) {
-      console.warn("Unparsable access token. Role is set to anon, but audience is not an anonymous audience.", { accessToken, payload });
-      return Result.error(new KnownErrors.UnparsableAccessToken());
+      throw new StackAssertionError("Unparsable access token. Audience is an anonymous audience, but user is not anonymous.", { accessToken, payload });
     } else if (!aud.endsWith(":anon") && isAnonymous) {
-      console.warn("Unparsable access token. Audience is not an anonymous audience, but role is set to anon.", { accessToken, payload });
-      return Result.error(new KnownErrors.UnparsableAccessToken());
+      throw new StackAssertionError("Unparsable access token. Audience is not an anonymous audience, but user is anonymous.", { accessToken, payload });
+    }
+    if (aud.endsWith(":restricted") && !isRestricted) {
+      throw new StackAssertionError("Unparsable access token. User is not restricted, but audience is a restricted audience.", { accessToken, payload });
+    } else if (!aud.endsWith(":restricted") && isRestricted && !isAnonymous) {
+      throw new StackAssertionError("Unparsable access token. Audience is not a restricted audience, but user is restricted.", { accessToken, payload });
     }
 
     const branchId = payload.branch_id ?? payload.branchId;
@@ -109,32 +157,32 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous }:
       branchId: branchId,
       refreshTokenId: payload.refresh_token_id ?? payload.refreshTokenId,
       exp: payload.exp,
-      isAnonymous: payload.is_anonymous ?? /* legacy, now we always set role to authenticated, TODO next-release remove */ payload.role === 'anon',
+      isAnonymous,
+      isRestricted,
+      restrictedReason,
     });
 
     return Result.ok(result);
   });
 }
 
-export async function isRefreshTokenValid(options: {
+type RefreshTokenOptions = {
   tenancy: Tenancy,
   refreshTokenObj: null | {
     projectUserId: string,
     id: string,
     expiresAt: Date | null,
   },
-}) {
-  return !!await generateAccessTokenFromRefreshTokenIfValid(options);
-}
+};
 
-export async function generateAccessTokenFromRefreshTokenIfValid(options: {
-  tenancy: Tenancy,
-  refreshTokenObj: null | {
-    projectUserId: string,
-    id: string,
-    expiresAt: Date | null,
-  },
-}) {
+/**
+ * Validates a refresh token and returns the user if valid.
+ * This function has NO side effects - it doesn't log events or update timestamps.
+ * Use this when you just need to check validity without triggering analytics.
+ *
+ * @returns The user object if the token is valid, null otherwise.
+ */
+async function validateRefreshTokenAndGetUser(options: RefreshTokenOptions) {
   if (!options.refreshTokenObj) {
     return null;
   }
@@ -143,13 +191,13 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     return null;
   }
 
-  let user;
   try {
-    user = await usersCrudHandlers.adminRead({
+    const user = await usersCrudHandlers.adminRead({
       tenancy: options.tenancy,
       user_id: options.refreshTokenObj.projectUserId,
       allowedErrorTypes: [KnownErrors.UserNotFound],
     });
+    return user;
   } catch (error) {
     if (error instanceof KnownErrors.UserNotFound) {
       // The user was deleted — their refresh token still exists because we don't cascade deletes across source-of-truth/global tables.
@@ -158,14 +206,36 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     }
     throw error;
   }
+}
+
+/**
+ * Checks if a refresh token is valid.
+ */
+export async function isRefreshTokenValid(options: RefreshTokenOptions) {
+  return !!(await validateRefreshTokenAndGetUser(options));
+}
+
+/**
+ * Generates an access token from a refresh token if the token is valid.
+ *
+ * This function has side effects:
+ * - Updates last active timestamps on the user and session
+ * - Logs session activity and token refresh events for analytics
+ *
+ * @returns The access token string if valid, null otherwise.
+ */
+export async function generateAccessTokenFromRefreshTokenIfValid(options: RefreshTokenOptions) {
+  const user = await validateRefreshTokenAndGetUser(options);
+  if (!user || !options.refreshTokenObj) {
+    return null;
+  }
 
   // Update last active at on user and session
   const now = new Date();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
 
-  // Get end user IP info for session tracking
-  const endUserInfo = await getEndUserInfo();
-  const ipInfo = endUserInfo ? (endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo) : undefined;
+  // Get end user IP info for session tracking and event logging
+  const ipInfo = await getEndUserIpInfoForEvent();
 
   await Promise.all([
     prisma.projectUser.update({
@@ -175,9 +245,9 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
           projectUserId: options.refreshTokenObj.projectUserId,
         },
       },
-      data: {
+      data: withExternalDbSyncUpdate({
         lastActiveAt: now,
-      },
+      }),
     }),
     globalPrismaClient.projectUserRefreshToken.update({
       where: {
@@ -188,7 +258,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       },
       data: {
         lastActiveAt: now,
-        lastActiveAtIpInfo: ipInfo,
+        lastActiveAtIpInfo: ipInfo ?? undefined,
       },
     }),
   ]);
@@ -202,6 +272,21 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
+      teamId: "",
+    }
+  );
+
+  // Log token refresh event for ClickHouse analytics
+  await logEvent(
+    [SystemEventTypes.TokenRefresh],
+    {
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      userId: options.refreshTokenObj.projectUserId,
+      refreshTokenId: options.refreshTokenObj.id,
+      organizationId: null,
+      isAnonymous: user.is_anonymous,
+      ipInfo,
     }
   );
 
@@ -216,11 +301,14 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     email_verified: user.primary_email_verified,
     selected_team_id: user.selected_team_id,
     is_anonymous: user.is_anonymous,
+    is_restricted: user.is_restricted,
+    restricted_reason: user.restricted_reason,
   };
 
+  const userType = getUserType(user.is_anonymous, user.is_restricted);
   return await signJWT({
-    issuer: getIssuer(options.tenancy.project.id, user.is_anonymous),
-    audience: getAudience(options.tenancy.project.id, user.is_anonymous),
+    issuer: getIssuer(options.tenancy.project.id, userType),
+    audience: getAudience(options.tenancy.project.id, userType),
     expirationTime: getEnvVariable("STACK_ACCESS_TOKEN_EXPIRATION_TIME", "10min"),
     payload,
   });

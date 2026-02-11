@@ -210,10 +210,33 @@ export class InternalSession {
     return accessToken ? { accessToken, refreshToken: this._refreshToken } : null;
   }
 
-  markAccessTokenExpired(accessToken: AccessToken) {
-    // TODO we don't need this anymore, since we now check the expiry by ourselves
-    if (this._accessToken.get() === accessToken) {
+  /**
+   * Manually mark the access token as expired, even if the date on its payload may still be valid.
+   *
+   * You don't usually have to call this function anymore, but you may want to call suggestAccessTokenExpired
+   * to hint that the access token should be refreshed as its data may have changed, if possible.
+   */
+  markAccessTokenExpired(accessToken?: AccessToken) {
+    if (!accessToken || this._accessToken.get()?.token === accessToken.token) {
       this._accessToken.set(null);
+    }
+  }
+
+  /**
+   * Strongly suggests that the access token should be refreshed as its data may have changed, although it's up to this
+   * implementation to decide whether or when the access token will be refreshed.
+   *
+   * This is particularly useful when the data associated with the access token may have changed for example due to an
+   * update to the user's profile.
+   *
+   * The current implementation marks the access token as expired if and only if a refresh token is available (regardless of
+   * whether the refresh token is actually valid or not), although this is not a guarantee and subject to change.
+   *
+   * If you need a stronger guarantee of revoking an access token, use markAccessTokenExpired instead.
+   */
+  suggestAccessTokenExpired(): void {
+    if (this._refreshToken) {
+      this.markAccessTokenExpired();
     }
   }
 

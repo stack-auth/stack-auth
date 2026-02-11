@@ -21,11 +21,65 @@ type AggregateStats = {
   averageTimeMs: number,
 };
 
+type PgPoolSingleStats = {
+  total: number,
+  idle: number,
+  waiting: number,
+};
+
+type PgPoolStats = {
+  pools: Record<string, PgPoolSingleStats>,
+  total: number,
+  idle: number,
+  waiting: number,
+};
+
+type EventLoopDelayStats = {
+  minMs: number,
+  maxMs: number,
+  meanMs: number,
+  p50Ms: number,
+  p95Ms: number,
+  p99Ms: number,
+};
+
+type EventLoopUtilizationStats = {
+  utilization: number,
+  idle: number,
+  active: number,
+};
+
+type MemoryStats = {
+  heapUsedMB: number,
+  heapTotalMB: number,
+  rssMB: number,
+  externalMB: number,
+  arrayBuffersMB: number,
+};
+
+type PerformanceSnapshot = {
+  timestamp: number,
+  pgPool: PgPoolStats | null,
+  eventLoopDelay: EventLoopDelayStats | null,
+  eventLoopUtilization: EventLoopUtilizationStats | null,
+  memory: MemoryStats,
+};
+
+type PerfAggregate = {
+  pgPool: { avgTotal: number, avgIdle: number, maxWaiting: number } | null,
+  eventLoopDelay: { avgP50Ms: number, avgP99Ms: number, maxP99Ms: number } | null,
+  eventLoopUtilization: { avgUtilization: number, maxUtilization: number } | null,
+  memory: { avgHeapUsedMB: number, avgRssMB: number, maxRssMB: number },
+};
+
 type StatsData = {
   aggregate: AggregateStats,
   mostCommon: RequestStat[],
   mostTimeConsuming: RequestStat[],
   slowest: RequestStat[],
+  perfCurrent: PerformanceSnapshot,
+  perfHistory: PerformanceSnapshot[],
+  perfAggregate: PerfAggregate,
 };
 
 type SortColumn = "endpoint" | "count" | "totalTime" | "avgTime" | "minTime" | "maxTime" | "lastCalled";
@@ -139,6 +193,676 @@ function StatCard({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Health Status Indicator
+// ============================================================================
+
+type HealthStatus = "good" | "warning" | "critical" | "unknown";
+
+function getHealthColor(status: HealthStatus): { bg: string, text: string, border: string } {
+  if (status === "good") {
+    return { bg: "rgba(16, 185, 129, 0.2)", text: "#6ee7b7", border: "rgba(16, 185, 129, 0.4)" };
+  } else if (status === "warning") {
+    return { bg: "rgba(245, 158, 11, 0.2)", text: "#fcd34d", border: "rgba(245, 158, 11, 0.4)" };
+  } else if (status === "critical") {
+    return { bg: "rgba(239, 68, 68, 0.2)", text: "#fca5a5", border: "rgba(239, 68, 68, 0.4)" };
+  } else {
+    return { bg: "rgba(100, 116, 139, 0.2)", text: "#cbd5e1", border: "rgba(100, 116, 139, 0.4)" };
+  }
+}
+
+function HealthBadge({ status, label }: { status: HealthStatus, label: string }) {
+  const colors = getHealthColor(status);
+  return (
+    <span
+      style={{
+        padding: "4px 12px",
+        fontSize: "12px",
+        fontWeight: 600,
+        borderRadius: "6px",
+        border: `1px solid ${colors.border}`,
+        backgroundColor: colors.bg,
+        color: colors.text,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ============================================================================
+// Mini Sparkline Graph
+// ============================================================================
+
+function Sparkline({
+  data,
+  width = 200,
+  height = 40,
+  color = "#22d3ee",
+  showDots = false,
+}: {
+  data: number[],
+  width?: number,
+  height?: number,
+  color?: string,
+  showDots?: boolean,
+}) {
+  if (data.length === 0) {
+    return (
+      <div style={{ width, height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ color: "#64748b", fontSize: "12px" }}>No data</span>
+      </div>
+    );
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const padding = 4;
+
+  const points = data.map((v, i) => {
+    const x = padding + (i / Math.max(data.length - 1, 1)) * (width - padding * 2);
+    const y = height - padding - ((v - min) / range) * (height - padding * 2);
+    return { x, y, v };
+  });
+
+  const pathD = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
+
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <defs>
+        <linearGradient id={`sparkline-gradient-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* Area fill */}
+      <path
+        d={`${pathD} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`}
+        fill={`url(#sparkline-gradient-${color.replace("#", "")})`}
+      />
+      {/* Line */}
+      <path
+        d={pathD}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Dots */}
+      {showDots && points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="3" fill={color} />
+      ))}
+    </svg>
+  );
+}
+
+// ============================================================================
+// Performance Metric Card with Graph
+// ============================================================================
+
+function PerfMetricCard({
+  title,
+  description,
+  value,
+  unit,
+  history,
+  status,
+  statusLabel,
+  color,
+  thresholds,
+}: {
+  title: string,
+  description: string,
+  value: number | null,
+  unit: string,
+  history: number[],
+  status: HealthStatus,
+  statusLabel: string,
+  color: string,
+  thresholds: { good: string, warning: string, critical: string },
+}) {
+  const [showThresholds, setShowThresholds] = useState(false);
+
+  return (
+    <div
+      style={{
+        borderRadius: "12px",
+        backgroundColor: "rgba(30, 41, 59, 0.5)",
+        border: "1px solid rgba(51, 65, 85, 0.5)",
+        padding: "20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: "16px", fontWeight: 600, color: "white" }}>{title}</h4>
+          <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#94a3b8" }}>{description}</p>
+        </div>
+        <HealthBadge status={status} label={statusLabel} />
+      </div>
+
+      <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+        <span style={{ fontSize: "32px", fontWeight: 700, color, fontFamily: "monospace" }}>
+          {value !== null ? value.toFixed(2) : "—"}
+        </span>
+        <span style={{ fontSize: "14px", color: "#94a3b8" }}>{unit}</span>
+      </div>
+
+      <div style={{ marginTop: "4px" }}>
+        <Sparkline data={history} width={280} height={50} color={color} />
+      </div>
+
+      <button
+        onClick={() => setShowThresholds(!showThresholds)}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "#64748b",
+          fontSize: "11px",
+          cursor: "pointer",
+          padding: "4px 0",
+          textAlign: "left",
+          textDecoration: "underline",
+          textDecorationStyle: "dotted",
+        }}
+      >
+        {showThresholds ? "Hide" : "Show"} thresholds
+      </button>
+
+      {showThresholds && (
+        <div style={{ fontSize: "11px", color: "#94a3b8", lineHeight: "1.6" }}>
+          <div><span style={{ color: "#6ee7b7" }}>● Good:</span> {thresholds.good}</div>
+          <div><span style={{ color: "#fcd34d" }}>● Warning:</span> {thresholds.warning}</div>
+          <div><span style={{ color: "#fca5a5" }}>● Critical:</span> {thresholds.critical}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Performance Section
+// ============================================================================
+
+// ============================================================================
+// Raw History Table
+// ============================================================================
+
+function RawHistoryTable({ perfHistory }: { perfHistory: PerformanceSnapshot[] }) {
+  const reversedHistory = useMemo(() => [...perfHistory].reverse(), [perfHistory]);
+
+  if (reversedHistory.length === 0) {
+    return (
+      <div style={{ padding: "32px", textAlign: "center", color: "#94a3b8" }}>
+        No measurements recorded yet. Wait a few seconds for data to accumulate.
+      </div>
+    );
+  }
+
+  const cellStyle: React.CSSProperties = {
+    padding: "8px 12px",
+    fontFamily: "monospace",
+    fontSize: "12px",
+    whiteSpace: "nowrap",
+    borderBottom: "1px solid rgba(51, 65, 85, 0.3)",
+  };
+
+  const headerStyle: React.CSSProperties = {
+    ...cellStyle,
+    fontWeight: 600,
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    fontSize: "10px",
+    letterSpacing: "0.05em",
+    position: "sticky" as const,
+    top: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.95)",
+    borderBottom: "1px solid rgba(51, 65, 85, 0.5)",
+  };
+
+  return (
+    <div
+      style={{
+        borderRadius: "8px",
+        backgroundColor: "rgba(15, 23, 42, 0.5)",
+        border: "1px solid rgba(51, 65, 85, 0.5)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ maxHeight: "500px", overflowY: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={{ ...headerStyle, textAlign: "left" }}>Timestamp</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>ELU</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>EL p50</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>EL p99</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>EL Max</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>Heap MB</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>RSS MB</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>PG Total</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>PG Idle</th>
+              <th style={{ ...headerStyle, textAlign: "right" }}>PG Wait</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reversedHistory.map((snapshot, i) => {
+              const date = new Date(snapshot.timestamp);
+              const timeStr = date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+              const msStr = String(date.getMilliseconds()).padStart(3, "0");
+
+              return (
+                <tr key={snapshot.timestamp} style={{ backgroundColor: i % 2 === 0 ? "transparent" : "rgba(30, 41, 59, 0.3)" }}>
+                  <td style={{ ...cellStyle, textAlign: "left", color: "#e2e8f0" }}>
+                    {timeStr}.{msStr}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#22d3ee" }}>
+                    {snapshot.eventLoopUtilization?.utilization.toFixed(3) ?? "—"}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#a78bfa" }}>
+                    {snapshot.eventLoopDelay?.p50Ms.toFixed(2) ?? "—"}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#f472b6" }}>
+                    {snapshot.eventLoopDelay?.p99Ms.toFixed(2) ?? "—"}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#fb923c" }}>
+                    {snapshot.eventLoopDelay?.maxMs.toFixed(2) ?? "—"}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#34d399" }}>
+                    {snapshot.memory.heapUsedMB.toFixed(1)}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#fb923c" }}>
+                    {snapshot.memory.rssMB.toFixed(1)}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#60a5fa" }}>
+                    {snapshot.pgPool?.total ?? "—"}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#34d399" }}>
+                    {snapshot.pgPool?.idle ?? "—"}
+                  </td>
+                  <td style={{ ...cellStyle, textAlign: "right", color: "#f87171" }}>
+                    {snapshot.pgPool?.waiting ?? "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(51, 65, 85, 0.5)", fontSize: "12px", color: "#64748b" }}>
+        Showing {reversedHistory.length} measurements (newest first)
+      </div>
+    </div>
+  );
+}
+
+function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
+  perfCurrent: PerformanceSnapshot,
+  perfHistory: PerformanceSnapshot[],
+  perfAggregate: PerfAggregate,
+}) {
+  const [viewMode, setViewMode] = useState<"graphs" | "table">("graphs");
+
+  // Extract time series for graphs
+  const eluHistory = perfHistory.map(s => s.eventLoopUtilization?.utilization ?? 0).slice(-60);
+  const p50History = perfHistory.map(s => s.eventLoopDelay?.p50Ms ?? 0).slice(-60);
+  const p99History = perfHistory.map(s => s.eventLoopDelay?.p99Ms ?? 0).slice(-60);
+  const heapHistory = perfHistory.map(s => s.memory.heapUsedMB).slice(-60);
+  const rssHistory = perfHistory.map(s => s.memory.rssMB).slice(-60);
+  const pgTotalHistory = perfHistory.map(s => s.pgPool?.total ?? 0).slice(-60);
+  const pgWaitingHistory = perfHistory.map(s => s.pgPool?.waiting ?? 0).slice(-60);
+
+  // Calculate health status for each metric
+  function getELUStatus(elu: number | null): { status: HealthStatus, label: string } {
+    if (elu === null) return { status: "unknown", label: "N/A" };
+    if (elu < 0.5) return { status: "good", label: "Healthy" };
+    if (elu < 0.8) return { status: "warning", label: "Elevated" };
+    return { status: "critical", label: "High Load" };
+  }
+
+  function getEventLoopDelayStatus(p99: number | null): { status: HealthStatus, label: string } {
+    if (p99 === null) return { status: "unknown", label: "N/A" };
+    if (p99 < 50) return { status: "good", label: "Fast" };
+    if (p99 < 200) return { status: "warning", label: "Slow" };
+    return { status: "critical", label: "Very Slow" };
+  }
+
+  function getPgPoolStatus(waiting: number, total: number): { status: HealthStatus, label: string } {
+    if (total === 0) return { status: "unknown", label: "No Pool" };
+    if (waiting === 0) return { status: "good", label: "Healthy" };
+    if (waiting < 5) return { status: "warning", label: "Queueing" };
+    return { status: "critical", label: "Saturated" };
+  }
+
+  function getMemoryStatus(rss: number): { status: HealthStatus, label: string } {
+    if (rss < 500) return { status: "good", label: "Low" };
+    if (rss < 1000) return { status: "warning", label: "Moderate" };
+    return { status: "critical", label: "High" };
+  }
+
+  const eluStatus = getELUStatus(perfCurrent.eventLoopUtilization?.utilization ?? null);
+  const delayStatus = getEventLoopDelayStatus(perfCurrent.eventLoopDelay?.p99Ms ?? null);
+  const pgStatus = getPgPoolStatus(perfCurrent.pgPool?.waiting ?? 0, perfCurrent.pgPool?.total ?? 0);
+  const memStatus = getMemoryStatus(perfCurrent.memory.rssMB);
+
+  return (
+    <div
+      style={{
+        borderRadius: "12px",
+        backgroundColor: "rgba(30, 41, 59, 0.3)",
+        border: "1px solid rgba(51, 65, 85, 0.5)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(51, 65, 85, 0.5)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <h3 style={{ fontSize: "20px", fontWeight: 600, color: "white", margin: 0 }}>
+            🔬 Performance Metrics
+          </h3>
+          <p style={{ fontSize: "14px", color: "#94a3b8", marginTop: "4px", marginBottom: 0 }}>
+            Real-time Node.js process and PostgreSQL pool statistics
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "4px", backgroundColor: "rgba(15, 23, 42, 0.5)", borderRadius: "8px", padding: "4px" }}>
+          <button
+            onClick={() => setViewMode("graphs")}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "12px",
+              fontWeight: 500,
+              cursor: "pointer",
+              backgroundColor: viewMode === "graphs" ? "rgba(34, 211, 238, 0.2)" : "transparent",
+              color: viewMode === "graphs" ? "#67e8f9" : "#94a3b8",
+              transition: "background-color 0.15s, color 0.15s",
+            }}
+          >
+            📊 Graphs
+          </button>
+          <button
+            onClick={() => setViewMode("table")}
+            style={{
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "12px",
+              fontWeight: 500,
+              cursor: "pointer",
+              backgroundColor: viewMode === "table" ? "rgba(34, 211, 238, 0.2)" : "transparent",
+              color: viewMode === "table" ? "#67e8f9" : "#94a3b8",
+              transition: "background-color 0.15s, color 0.15s",
+            }}
+          >
+            📋 Raw Data ({perfHistory.length})
+          </button>
+        </div>
+      </div>
+
+      {viewMode === "table" ? (
+        <div style={{ padding: "24px" }}>
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "#67e8f9", margin: "0 0 16px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Raw Measurements
+          </h4>
+          <RawHistoryTable perfHistory={perfHistory} />
+        </div>
+      ) : (
+        <div style={{ padding: "24px" }}>
+          {/* Event Loop Section */}
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "#67e8f9", margin: "0 0 16px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Event Loop
+          </h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px", marginBottom: "32px" }}>
+            <PerfMetricCard
+              title="Event Loop Utilization"
+              description="Ratio of time the event loop is busy (0-1)"
+              value={perfCurrent.eventLoopUtilization?.utilization ?? null}
+              unit=""
+              history={eluHistory}
+              status={eluStatus.status}
+              statusLabel={eluStatus.label}
+              color="#22d3ee"
+              thresholds={{
+                good: "< 0.5 — Plenty of headroom for handling requests",
+                warning: "0.5–0.8 — Getting busy, consider optimizing",
+                critical: "> 0.8 — Event loop is saturated, requests may queue",
+              }}
+            />
+            <PerfMetricCard
+              title="Event Loop Delay (p50)"
+              description="Median delay between scheduled callbacks"
+              value={perfCurrent.eventLoopDelay?.p50Ms ?? null}
+              unit="ms"
+              history={p50History}
+              status={delayStatus.status}
+              statusLabel={delayStatus.label}
+              color="#a78bfa"
+              thresholds={{
+                good: "< 20ms — Callbacks run promptly",
+                warning: "20–100ms — Some blocking occurring",
+                critical: "> 100ms — Significant blocking, impacts responsiveness",
+              }}
+            />
+            <PerfMetricCard
+              title="Event Loop Delay (p99)"
+              description="99th percentile callback delay"
+              value={perfCurrent.eventLoopDelay?.p99Ms ?? null}
+              unit="ms"
+              history={p99History}
+              status={delayStatus.status}
+              statusLabel={delayStatus.label}
+              color="#f472b6"
+              thresholds={{
+                good: "< 50ms — Rare spikes only",
+                warning: "50–200ms — Occasional blocking spikes",
+                critical: "> 200ms — Frequent blocking, tail latency issues",
+              }}
+            />
+          </div>
+
+          {/* Memory Section */}
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "#67e8f9", margin: "0 0 16px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Memory
+          </h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px", marginBottom: "32px" }}>
+            <PerfMetricCard
+              title="Heap Used"
+              description="V8 heap memory currently in use"
+              value={perfCurrent.memory.heapUsedMB}
+              unit="MB"
+              history={heapHistory}
+              status={memStatus.status}
+              statusLabel={memStatus.label}
+              color="#34d399"
+              thresholds={{
+                good: "< 200 MB — Normal for development",
+                warning: "200–500 MB — Getting large, watch for leaks",
+                critical: "> 500 MB — May cause GC pressure",
+              }}
+            />
+            <PerfMetricCard
+              title="RSS (Resident Set Size)"
+              description="Total memory allocated by the OS for this process"
+              value={perfCurrent.memory.rssMB}
+              unit="MB"
+              history={rssHistory}
+              status={memStatus.status}
+              statusLabel={memStatus.label}
+              color="#fb923c"
+              thresholds={{
+                good: "< 500 MB — Normal footprint",
+                warning: "500–1000 MB — Getting heavy",
+                critical: "> 1000 MB — Very large, may impact system",
+              }}
+            />
+          </div>
+
+          {/* PostgreSQL Pool Section */}
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "#67e8f9", margin: "0 0 16px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            PostgreSQL Connection Pool
+          </h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px", marginBottom: "32px" }}>
+            <PerfMetricCard
+              title="Total Connections"
+              description="Active + idle connections in the pool"
+              value={perfCurrent.pgPool?.total ?? null}
+              unit="connections"
+              history={pgTotalHistory}
+              status={pgStatus.status}
+              statusLabel={pgStatus.label}
+              color="#60a5fa"
+              thresholds={{
+                good: "< 15 — Pool is sized appropriately",
+                warning: "15–23 — Nearing max pool size (25)",
+                critical: "≥ 25 — Pool is maxed out",
+              }}
+            />
+            <PerfMetricCard
+              title="Waiting Queries"
+              description="Queries waiting for a connection"
+              value={perfCurrent.pgPool?.waiting ?? null}
+              unit="queries"
+              history={pgWaitingHistory}
+              status={pgStatus.status}
+              statusLabel={pgStatus.label}
+              color="#f87171"
+              thresholds={{
+                good: "0 — No queue, instant connection",
+                warning: "1–5 — Short queue, slight delays",
+                critical: "> 5 — Long queue, significant delays",
+              }}
+            />
+            <div
+              style={{
+                borderRadius: "12px",
+                backgroundColor: "rgba(30, 41, 59, 0.5)",
+                border: "1px solid rgba(51, 65, 85, 0.5)",
+                padding: "20px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+              }}
+            >
+              <h4 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 600, color: "white" }}>Pool Breakdown</h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {perfCurrent.pgPool?.pools && Object.entries(perfCurrent.pgPool.pools).map(([label, stats]) => (
+                  <div key={label}>
+                    <div style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "8px", textTransform: "capitalize" }}>{label}</div>
+                    <div style={{ display: "flex", gap: "16px" }}>
+                      <div>
+                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#60a5fa", fontFamily: "monospace" }}>
+                          {stats.total}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Total</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#34d399", fontFamily: "monospace" }}>
+                          {stats.idle}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Idle</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: "20px", fontWeight: 700, color: "#f87171", fontFamily: "monospace" }}>
+                          {stats.waiting}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748b" }}>Waiting</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {(!perfCurrent.pgPool?.pools || Object.keys(perfCurrent.pgPool.pools).length === 0) && (
+                  <div style={{ color: "#64748b" }}>No pools registered</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Aggregate Stats Table */}
+          <h4 style={{ fontSize: "14px", fontWeight: 600, color: "#67e8f9", margin: "0 0 16px 0", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Aggregate Statistics (Last 60 seconds)
+          </h4>
+          <div
+            style={{
+              borderRadius: "8px",
+              backgroundColor: "rgba(15, 23, 42, 0.5)",
+              border: "1px solid rgba(51, 65, 85, 0.5)",
+              overflow: "hidden",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(51, 65, 85, 0.5)" }}>
+                  <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: 600, color: "#94a3b8", textTransform: "uppercase" }}>Metric</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "12px", fontWeight: 600, color: "#94a3b8", textTransform: "uppercase" }}>Average</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right", fontSize: "12px", fontWeight: 600, color: "#94a3b8", textTransform: "uppercase" }}>Max</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ borderBottom: "1px solid rgba(51, 65, 85, 0.3)" }}>
+                  <td style={{ padding: "12px 16px", color: "#e2e8f0" }}>Event Loop Utilization</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#22d3ee" }}>
+                    {perfAggregate.eventLoopUtilization?.avgUtilization.toFixed(3) ?? "—"}
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#f472b6" }}>
+                    {perfAggregate.eventLoopUtilization?.maxUtilization.toFixed(3) ?? "—"}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: "1px solid rgba(51, 65, 85, 0.3)" }}>
+                  <td style={{ padding: "12px 16px", color: "#e2e8f0" }}>Event Loop Delay (p50)</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#22d3ee" }}>
+                    {perfAggregate.eventLoopDelay?.avgP50Ms.toFixed(2) ?? "—"} ms
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#94a3b8" }}>—</td>
+                </tr>
+                <tr style={{ borderBottom: "1px solid rgba(51, 65, 85, 0.3)" }}>
+                  <td style={{ padding: "12px 16px", color: "#e2e8f0" }}>Event Loop Delay (p99)</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#22d3ee" }}>
+                    {perfAggregate.eventLoopDelay?.avgP99Ms.toFixed(2) ?? "—"} ms
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#f472b6" }}>
+                    {perfAggregate.eventLoopDelay?.maxP99Ms.toFixed(2) ?? "—"} ms
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: "1px solid rgba(51, 65, 85, 0.3)" }}>
+                  <td style={{ padding: "12px 16px", color: "#e2e8f0" }}>Heap Used</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#22d3ee" }}>
+                    {perfAggregate.memory.avgHeapUsedMB.toFixed(1)} MB
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#94a3b8" }}>—</td>
+                </tr>
+                <tr style={{ borderBottom: "1px solid rgba(51, 65, 85, 0.3)" }}>
+                  <td style={{ padding: "12px 16px", color: "#e2e8f0" }}>RSS</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#22d3ee" }}>
+                    {perfAggregate.memory.avgRssMB.toFixed(1)} MB
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#f472b6" }}>
+                    {perfAggregate.memory.maxRssMB.toFixed(1)} MB
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ padding: "12px 16px", color: "#e2e8f0" }}>PG Pool Connections</td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#22d3ee" }}>
+                    {perfAggregate.pgPool?.avgTotal.toFixed(1) ?? "—"}
+                  </td>
+                  <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", color: "#94a3b8" }}>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -598,8 +1322,8 @@ export default function DevStatsPage() {
               No stats loaded yet
             </h2>
             <p style={{ color: "#94a3b8", marginBottom: "24px", textAlign: "center", maxWidth: "400px" }}>
-              Click the &ldquo;Refresh&rdquo; button to load request statistics.
-              Stats are collected automatically when requests hit the API.
+              Click the &ldquo;Refresh&rdquo; button to load request and performance statistics.
+              Stats are collected automatically in development mode.
             </p>
             <button
               onClick={() => runAsynchronously(fetchStats())}
@@ -653,6 +1377,13 @@ export default function DevStatsPage() {
                 gradient="linear-gradient(to bottom right, #db2777, #831843)"
               />
             </div>
+
+            {/* Performance Metrics */}
+            <PerformanceSection
+              perfCurrent={stats.perfCurrent}
+              perfHistory={stats.perfHistory}
+              perfAggregate={stats.perfAggregate}
+            />
 
             {/* Tables */}
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>

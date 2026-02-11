@@ -7,6 +7,7 @@ import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { SettingCard } from "@/components/settings";
 import { ActionDialog, Button, Typography } from "@/components/ui";
+import { useUpdateConfig } from "@/lib/config-update";
 import { CheckIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -19,8 +20,10 @@ import { useAdminApp } from "../use-admin-app";
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
+  const config = project.useConfig();
   const themes = stackAdminApp.useEmailThemes();
-  const activeTheme = project.config.emailTheme;
+  const activeTheme = config.emails.selectedThemeId;
+  const updateConfig = useUpdateConfig();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogSelectedThemeId, setDialogSelectedThemeId] = useState<string>(activeTheme);
 
@@ -29,8 +32,12 @@ export default function PageClient() {
   };
 
   const handleSaveTheme = async () => {
-    await project.update({
-      config: { emailTheme: dialogSelectedThemeId }
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        'emails.selectedThemeId': dialogSelectedThemeId,
+      },
+      pushable: true,
     });
   };
 

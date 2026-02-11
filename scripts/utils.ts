@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 
 
-export const COMMENT_LINE = "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY";
+export const COMMENT_LINE = "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template";
 export const COMMENT_BLOCK = `\n//===========================================\n// ${COMMENT_LINE}\n//===========================================\n`
 
 export const PLATFORMS = {

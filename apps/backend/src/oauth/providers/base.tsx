@@ -1,5 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, generators } from "openid-client";
 import { OAuthUserInfo } from "../utils";
@@ -182,12 +183,42 @@ export abstract class OAuthBaseProvider {
     };
   }
 
+  /**
+   * Refreshes the access token using a refresh token.
+   *
+   * Returns a Result to differentiate between:
+   * - Success: the token was refreshed successfully
+   * - Handled error: the refresh token is invalid/expired (user needs to re-authenticate)
+   * - Thrown error: unexpected failures that may indicate bugs or configuration issues
+   */
   async getAccessToken(options: {
     refreshToken: string,
     scope?: string,
-  }): Promise<TokenSet> {
-    const tokenSet = await this.oauthClient.refresh(options.refreshToken, { exchangeBody: { scope: options.scope } });
-    return processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis);
+  }): Promise<Result<TokenSet, string>> {
+    let tokenSet;
+    try {
+      tokenSet = await this.oauthClient.refresh(options.refreshToken, { exchangeBody: { scope: options.scope } });
+    } catch (error: any) {
+      // Handle known OAuth error cases where the refresh token is no longer valid
+      // These are expected scenarios that don't indicate bugs
+      if (error?.error === "invalid_grant" || error?.error?.error === "invalid_grant") {
+        return Result.error("Refresh token is invalid or expired");
+      }
+      if (error?.error === "access_denied" || error?.error === "consent_required") {
+        return Result.error("Access was denied or consent was revoked");
+      }
+      if (error?.error === "invalid_token") {
+        return Result.error("Refresh token is invalid");
+      }
+      if (error?.error === "unauthorized_client") {
+        return Result.error("OAuth Client ID is no longer authorized to use this refresh token");
+      }
+
+      // For unknown errors, throw so they can be investigated
+      throw new StackAssertionError(`Failed to refresh access token: ${error}`, { cause: error });
+    }
+
+    return Result.ok(processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis));
   }
 
   // If the token can be revoked before it expires, override this method to make an API call to the provider to check if the token is valid

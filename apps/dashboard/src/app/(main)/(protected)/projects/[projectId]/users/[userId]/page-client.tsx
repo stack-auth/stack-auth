@@ -3,52 +3,58 @@
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
-import { StyledLink } from "@/components/link";
-import { SettingCard } from "@/components/settings";
+import { MetadataSection } from "@/components/metadata-editor";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
   ActionCell,
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
   Button,
+  cn,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
   Separator,
-  SimpleTooltip,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  Textarea,
   Typography,
-  cn,
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { useThemeWatcher } from '@/lib/theme';
-import MonacoEditor from '@monaco-editor/react';
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
+import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
-const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
+const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
 type UserInfoProps = {
   icon: React.ReactNode,
@@ -66,95 +72,6 @@ function UserInfo({ icon, name, children }: UserInfoProps) {
       {children}
     </>
   );
-}
-
-type MetadataEditorProps = {
-  title: string,
-  initialValue: string,
-  hint: string,
-  onUpdate?: (value: any) => Promise<void>,
-}
-function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorProps) {
-  const formatJson = (json: string) => JSON.stringify(JSON.parse(json), null, 2);
-  const [hasChanged, setHasChanged] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  const { mounted, theme } = useThemeWatcher();
-
-  const [value, setValue] = useState(formatJson(initialValue));
-  const isJson = useMemo(() => {
-    return isJsonSerializable(value);
-  }, [value]);
-
-  // Ensure proper mounting lifecycle
-  useEffect(() => {
-    setIsMounted(true);
-    return () => {
-      setIsMounted(false);
-    };
-  }, []);
-
-  const handleSave = async () => {
-    if (isJson) {
-      const formatted = formatJson(value);
-      setValue(formatted);
-      await onUpdate?.(JSON.parse(formatted));
-      setHasChanged(false);
-    }
-  };
-
-  // Only render Monaco when both mounted states are true
-  const shouldRenderMonaco = mounted && isMounted;
-
-  return <div className="flex flex-col">
-    <h3 className='text-sm mb-4 font-semibold'>
-      {title}
-      <SimpleTooltip tooltip={hint} type="info" inline className="ml-2 mb-[2px]" />
-    </h3>
-    {shouldRenderMonaco ? (
-      <div className={cn("rounded-md overflow-hidden", theme !== 'dark' && "border")}>
-        <MonacoEditor
-          key={`monaco-${theme}`} // Force recreation on theme change
-          height="240px"
-          defaultLanguage="json"
-          value={value}
-          onChange={(x) => {
-            setValue(x ?? '');
-            setHasChanged(true);
-          }}
-          theme={theme === 'dark' ? 'vs-dark' : 'vs'}
-          options={{
-            tabSize: 2,
-            minimap: {
-              enabled: false,
-            },
-            scrollBeyondLastLine: false,
-            overviewRulerLanes: 0,
-            lineNumbersMinChars: 3,
-            showFoldingControls: 'never',
-          }}
-        />
-      </div>
-    ) : (
-      <div className={cn("rounded-md overflow-hidden h-[240px] flex items-center justify-center", theme !== 'dark' && "border")}>
-        <div className="text-sm text-muted-foreground">Loading editor...</div>
-      </div>
-    )}
-    <div className={cn('self-end flex items-end gap-2 transition-all h-0 opacity-0 overflow-hidden', hasChanged && 'h-[48px] opacity-100')}>
-      <Button
-        variant="ghost"
-        onClick={() => {
-          setValue(formatJson(initialValue));
-          setHasChanged(false);
-        }}>
-        Revert
-      </Button>
-      <Button
-        variant={isJson ? "default" : "secondary"}
-        disabled={!isJson}
-        onClick={handleSave}>Save</Button>
-    </div>
-  </div>;
 }
 
 export default function PageClient({ userId }: { userId: string }) {
@@ -247,6 +164,224 @@ function UserHeader({ user }: UserHeaderProps) {
   );
 }
 
+// Get the human-readable restriction reason
+function getRestrictionReasonText(user: ServerUser): string {
+  const restrictedReason = user.restrictedReason;
+  if (!restrictedReason) return '';
+
+  switch (restrictedReason.type) {
+    case 'anonymous': {
+      return 'Anonymous user';
+    }
+    case 'email_not_verified': {
+      return 'Unverified email';
+    }
+    case 'restricted_by_administrator': {
+      return 'Manually restricted';
+    }
+    default: {
+      return 'Restricted';
+    }
+  }
+}
+
+// Restriction dialog for editing restriction details
+function RestrictionDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: ServerUser,
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+}) {
+  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
+  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
+  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
+
+  const [publicReason, setPublicReason] = useState(restrictedByAdminReason ?? '');
+  const [privateDetails, setPrivateDetails] = useState(restrictedByAdminPrivateDetails ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Reset form when dialog opens
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) {
+      setPublicReason(restrictedByAdminReason ?? '');
+      setPrivateDetails(restrictedByAdminPrivateDetails ?? '');
+    }
+    onOpenChange(newOpen);
+  };
+
+  const handleSaveAndRestrict = async () => {
+    if (!privateDetails.trim()) {
+      alert('Please enter the private details for the restriction.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await user.update({ restrictedByAdmin: true, restrictedByAdminReason: publicReason.trim() || null, restrictedByAdminPrivateDetails: privateDetails.trim() || null } as any);
+      onOpenChange(false);
+    } catch (error) {
+      captureError(`user-restriction-save-and-restrict-error`, new StackAssertionError(`Failed to save and restrict user ${user.id}`, { cause: error }));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemoveRestriction = async () => {
+    setIsSaving(true);
+    try {
+      await user.update({
+        restrictedByAdmin: false,
+        restrictedByAdminReason: null,
+        restrictedByAdminPrivateDetails: null,
+      } as any);
+      onOpenChange(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>User Restriction</DialogTitle>
+          <DialogDescription>
+            Restricted users cannot access your app by default. You can optionally provide a public reason (shown to the user) and private details (for internal notes).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Public reason (shown to user)</label>
+            <Input
+              value={publicReason}
+              onChange={(e) => setPublicReason(e.target.value)}
+              placeholder="Optional message visible to the user"
+              disabled={isSaving}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium">Private details (internal only)</label>
+            <Textarea
+              value={privateDetails}
+              onChange={(e) => setPrivateDetails(e.target.value)}
+              placeholder="Internal notes, e.g., which sign-up rule triggered"
+              required
+              className="min-h-[80px]"
+              disabled={isSaving}
+            />
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {restrictedByAdmin && (
+            <Button
+              variant="destructive"
+              onClick={handleRemoveRestriction}
+              disabled={isSaving}
+              className="sm:mr-auto"
+            >
+              Remove manual restriction
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+          <Button
+
+            onClick={handleSaveAndRestrict}
+            disabled={isSaving}
+          >
+            Save &amp; restrict user
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Restriction row that looks like an editable input but opens a dialog
+function RestrictedStatusRow({ user }: { user: ServerUser }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const isRestricted = user.isRestricted;
+  const reasonText = getRestrictionReasonText(user);
+
+  const displayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
+
+  return (
+    <>
+      <UserInfo icon={<ProhibitIcon size={16}/>} name="Restricted">
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className={cn(
+            "w-full text-left px-1 py-0 rounded-md text-sm",
+            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
+            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
+            "transition-colors hover:transition-none",
+          )}
+        >
+          {displayValue}
+        </button>
+      </UserInfo>
+      <RestrictionDialog
+        user={user}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+    </>
+  );
+}
+
+// Restriction banner shown at top of page when user is restricted
+function RestrictionBanner({ user }: { user: ServerUser }) {
+  if (!user.isRestricted) return null;
+
+  const restrictedByAdmin = (user as any).restrictedByAdmin ?? false;
+  const restrictedByAdminReason = (user as any).restrictedByAdminReason ?? null;
+  const restrictedByAdminPrivateDetails = (user as any).restrictedByAdminPrivateDetails ?? null;
+  const reasonText = getRestrictionReasonText(user);
+
+  return (
+    <Alert variant="destructive" className="mb-4">
+      <ProhibitIcon size={16} />
+      <AlertTitle>This user is currently restricted</AlertTitle>
+      <AlertDescription className="mt-2">
+        <p className="mb-2">
+          Restricted users cannot access your app by default. This user is restricted because: <strong>{reasonText}</strong>.
+        </p>
+        {user.restrictedReason?.type === 'email_not_verified' && (
+          <p className="text-sm opacity-80">
+            The user needs to verify their email address to remove this restriction.
+          </p>
+        )}
+        {user.restrictedReason?.type === 'anonymous' && (
+          <p className="text-sm opacity-80">
+            Anonymous users must sign up with credentials to remove this restriction.
+          </p>
+        )}
+        {user.restrictedReason?.type === 'restricted_by_administrator' && (
+          <div className="text-sm opacity-80">
+            <p>This user was manually restricted by an administrator.</p>
+            {restrictedByAdminReason && (
+              <p className="mt-1"><strong>Public reason:</strong> {restrictedByAdminReason}</p>
+            )}
+            {restrictedByAdminPrivateDetails && (
+              <p className="mt-1"><strong>Private details:</strong> {restrictedByAdminPrivateDetails}</p>
+            )}
+          </div>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 type UserDetailsProps = {
   user: ServerUser,
 };
@@ -282,6 +417,7 @@ function UserDetails({ user }: UserDetailsProps) {
       <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
       </UserInfo>
+      <RestrictedStatusRow user={user} />
     </div>
   );
 }
@@ -1126,55 +1262,11 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   );
 }
 
-type MetadataSectionProps = {
-  user: ServerUser,
-};
-
-function MetadataSection({ user }: MetadataSectionProps) {
-  return (
-    <SettingCard
-      title="Metadata"
-      description={
-        <>
-          Use metadata to store a custom JSON object on the user.{" "}
-          <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
-        </>
-      }
-    >
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
-        <MetadataEditor
-          title="Client"
-          hint="Custom JSON clients can read and update; avoid sensitive data."
-          initialValue={JSON.stringify(user.clientMetadata)}
-          onUpdate={async (value) => {
-            await user.setClientMetadata(value);
-          }}
-        />
-        <MetadataEditor
-          title="Client Read-Only"
-          hint="Custom JSON clients can read but only your backend can change."
-          initialValue={JSON.stringify(user.clientReadOnlyMetadata)}
-          onUpdate={async (value) => {
-            await user.setClientReadOnlyMetadata(value);
-          }}
-        />
-        <MetadataEditor
-          title="Server"
-          hint="Custom JSON reserved for server-side logic and never exposed to clients."
-          initialValue={JSON.stringify(user.serverMetadata)}
-          onUpdate={async (value) => {
-            await user.setServerMetadata(value);
-          }}
-        />
-      </div>
-    </SettingCard>
-  );
-}
-
 function UserPage({ user }: { user: ServerUser }) {
   return (
     <PageLayout>
       <div className="flex flex-col gap-6">
+        <RestrictionBanner user={user} />
         <UserHeader user={user} />
         <Separator />
         <UserDetails user={user} />
@@ -1182,7 +1274,22 @@ function UserPage({ user }: { user: ServerUser }) {
         <ContactChannelsSection user={user} />
         <UserTeamsSection user={user} />
         <OAuthProvidersSection user={user} />
-        <MetadataSection user={user} />
+        <MetadataSection
+          entityName="user"
+          docsUrl={userMetadataDocsUrl}
+          clientMetadata={user.clientMetadata}
+          clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+          serverMetadata={user.serverMetadata}
+          onUpdateClientMetadata={async (value) => {
+            await user.setClientMetadata(value);
+          }}
+          onUpdateClientReadOnlyMetadata={async (value) => {
+            await user.setClientReadOnlyMetadata(value);
+          }}
+          onUpdateServerMetadata={async (value) => {
+            await user.setServerMetadata(value);
+          }}
+        />
       </div>
     </PageLayout>
   );

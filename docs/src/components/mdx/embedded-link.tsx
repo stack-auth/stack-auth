@@ -23,7 +23,7 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
   // Handle absolute paths
   if (href.startsWith('/')) {
     // Already embedded - leave as is
-    if (href.startsWith('/docs-embed/') || href.startsWith('/api-embed/') || href.startsWith('/dashboard-embed/')) {
+    if (href.startsWith('/docs-embed/') || href.startsWith('/api-embed/')) {
       return href;
     }
 
@@ -34,9 +34,6 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
     if (href.startsWith('/api/')) {
       return href.replace('/api/', '/api-embed/');
     }
-    if (href.startsWith('/dashboard/')) {
-      return href.replace('/dashboard/', '/dashboard-embed/');
-    }
 
     // Other absolute paths - leave as is
     return href;
@@ -44,7 +41,7 @@ const getEmbeddedUrl = (href: string, currentPath?: string): string => {
 
   // Handle relative links (like ./setup.mdx or users.mdx)
   // These need to be resolved relative to the current embedded path
-  if (currentPath && (currentPath.startsWith('/docs-embed/') || currentPath.startsWith('/api-embed/') || currentPath.startsWith('/dashboard-embed/'))) {
+  if (currentPath && (currentPath.startsWith('/docs-embed/') || currentPath.startsWith('/api-embed/'))) {
     // Remove .mdx extension if present
     const cleanHref = href.replace(/\.mdx?$/, '');
 

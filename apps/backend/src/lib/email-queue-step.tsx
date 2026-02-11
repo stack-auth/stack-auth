@@ -8,7 +8,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction 
 import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvBoolean, getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
@@ -18,6 +18,9 @@ import { randomUUID } from "node:crypto";
 import { lowLevelSendEmailDirectViaProvider } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
+
+// Track if email queue has run at least once since server start (used to suppress first-run delta warnings in dev)
+const emailQueueFirstRunKey = Symbol.for("__stack_email_queue_first_run_completed");
 
 type EmailableVerificationResult =
   | { status: "ok" }
@@ -253,8 +256,15 @@ async function updateLastExecutionTime(): Promise<number> {
   }
 
   if (delta > 30) {
-    captureError("email-queue-step-delta-too-large", new StackAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
+    const isFirstRun = !(globalThis as any)[emailQueueFirstRunKey];
+    if (isFirstRun && getNodeEnvironment() === "development") {
+      // In development, the first run after server start often has a large delta because the server wasn't running
+      console.log(`[email-queue] Skipping delta warning on first run (delta: ${delta.toFixed(2)}s) — this is normal after server restart`);
+    } else {
+      captureError("email-queue-step-delta-too-large", new StackAssertionError(`Email queue step delta is too large: ${delta}. Either the previous step took too long, or something is wrong.`));
+    }
   }
+  (globalThis as any)[emailQueueFirstRunKey] = true;
 
   return delta;
 }
@@ -393,7 +403,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 
     const result = await renderEmailsForTenancyBatched(requests);
     if (result.status === "error") {
-      captureError("email-rendering-failed", result.error);
       for (const row of rowsWithKnownCategory) {
         await markRenderError(row, result.error);
       }
@@ -413,7 +422,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
     const firstPassResult = await renderEmailsForTenancyBatched(firstPassRequests);
 
     if (firstPassResult.status === "error") {
-      captureError("email-rendering-failed", firstPassResult.error);
       for (const row of rowsWithUnknownCategory) {
         await markRenderError(row, firstPassResult.error);
       }
@@ -452,7 +460,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 
       const secondPassResult = await renderEmailsForTenancyBatched(secondPassRequests);
       if (secondPassResult.status === "error") {
-        captureError("email-rendering-failed-second-pass", secondPassResult.error);
         for (const { row } of needsSecondPass) {
           await markRenderError(row, secondPassResult.error);
         }
@@ -609,6 +616,26 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           email,
         });
         return;
+      }
+    }
+
+    const BLOCKED_PROJECT_ID = "2397ef60-a33e-4efb-ad9b-300da67ee29e";
+    const BLOCKED_DOMAINS = ["gsmoal.com", "virgilian.com"];
+    if (context.tenancy.project.id === BLOCKED_PROJECT_ID) {
+      for (const email of resolution.emails) {
+        const emailDomain = email.split("@")[1]?.toLowerCase();
+        const blockedDomain = emailDomain
+          ? BLOCKED_DOMAINS.find((domain) => emailDomain === domain || emailDomain.endsWith(`.${domain}`))
+          : undefined;
+        if (blockedDomain) {
+          console.warn(`[email-queue] Blocked email to ${email} from project ${BLOCKED_PROJECT_ID} — domain @${blockedDomain} (or subdomain) is blocked for this project`);
+          await markSkipped(row, EmailOutboxSkippedReason.LIKELY_NOT_DELIVERABLE, {
+            reason: "domain_blocked_for_project",
+            blockedDomain,
+            email,
+          });
+          return;
+        }
       }
     }
 

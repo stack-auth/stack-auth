@@ -54,6 +54,12 @@ export const ALL_APPS = {
     tags: ["auth", "security"],
     stage: "stable",
   },
+  "onboarding": {
+    displayName: "Onboarding",
+    subtitle: "Configure user onboarding requirements",
+    tags: ["auth"],
+    stage: "alpha",
+  },
   "teams": {
     displayName: "Teams",
     subtitle: "Team collaboration and management",
@@ -137,5 +143,11 @@ export const ALL_APPS = {
     subtitle: "Deploy your Stack Auth project to Vercel",
     tags: ["integration", "developers"],
     stage: "stable",
+  },
+  "analytics": {
+    displayName: "Analytics",
+    subtitle: "View and explore analytics data",
+    tags: ["developers", "operations"],
+    stage: "alpha",
   },
 } as const satisfies Record<string, App>;

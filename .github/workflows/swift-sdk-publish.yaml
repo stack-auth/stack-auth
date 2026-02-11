@@ -1,0 +1,100 @@
+name: Publish Swift SDK to prerelease repo
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sdks/implementations/swift/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel publishing in progress
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' source/sdks/implementations/swift/package.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Swift SDK version: $VERSION"
+
+      - name: Check if tag already exists in target repo
+        id: check-tag
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          echo "Checking if tag $TAG exists in stack-auth/swift-sdk-prerelease..."
+          
+          # Use the GitHub API to check if the tag exists
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.SWIFT_SDK_PUBLISH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/stack-auth/swift-sdk-prerelease/git/refs/tags/$TAG")
+          
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Tag $TAG already exists, skipping publish"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $TAG does not exist, will publish"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Clone target repo
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          git clone https://x-access-token:${{ secrets.SWIFT_SDK_PUBLISH_TOKEN }}@github.com/stack-auth/swift-sdk-prerelease.git target
+
+      - name: Copy Swift SDK to target repo
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          # Remove all files except .git from target
+          cd target
+          find . -maxdepth 1 -not -name '.git' -not -name '.' -exec rm -rf {} +
+          cd ..
+          
+          # Copy everything from Swift SDK
+          cp -r source/sdks/implementations/swift/* target/
+          cp source/sdks/implementations/swift/.gitignore target/ 2>/dev/null || true
+          
+          # Remove package.json (it's only for turborepo integration, not part of the Swift package)
+          rm -f target/package.json
+
+      - name: Commit and push to target repo
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          cd target
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          
+          git add -A
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Release v${{ steps.version.outputs.version }}"
+          fi
+          
+          # Create and push tag
+          TAG="v${{ steps.version.outputs.version }}"
+          git tag "$TAG"
+          git push origin main --tags
+          
+          echo "Successfully published Swift SDK v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check-tag.outputs.exists }}" = "true" ]; then
+            echo "::notice::Skipped publishing - tag v${{ steps.version.outputs.version }} already exists"
+          else
+            echo "::notice::Published Swift SDK v${{ steps.version.outputs.version }} to stack-auth/swift-sdk-prerelease"
+          fi

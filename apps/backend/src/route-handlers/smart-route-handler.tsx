@@ -1,5 +1,6 @@
 import "../polyfills";
 
+import { recordRequestStats } from "@/lib/dev-request-stats";
 import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@stackframe/stack-shared/dist/crud";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -10,7 +11,6 @@ import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/pro
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
-import { recordRequestStats } from "@/lib/dev-request-stats";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
 
@@ -103,15 +103,24 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           }
 
           // request duration warning
-          if (req.nextUrl.pathname !== "/api/latest/internal/email-queue-step") {
-            const warnAfterSeconds = 12;
-            runAsynchronously(async () => {
-              await wait(warnAfterSeconds * 1000);
-              if (!hasRequestFinished) {
-                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-              }
-            });
-          }
+          const allowedLongRequestPaths = [
+            "/api/latest/internal/email-queue-step",
+            "/api/v1/internal/analytics/query",
+            "/api/latest/internal/analytics/query",
+            "/health/email",
+            "/api/v1/internal/metrics",
+            "/api/latest/internal/metrics",
+            "/api/latest/internal/external-db-sync/poller",
+            "/api/latest/internal/external-db-sync/sequencer",
+            "/api/latest/internal/external-db-sync/sync-engine",
+          ];
+          const warnAfterSeconds = allowedLongRequestPaths.includes(req.nextUrl.pathname) ? 180 : 12;
+          runAsynchronously(async () => {
+            await wait(warnAfterSeconds * 1000);
+            if (!hasRequestFinished) {
+              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+            }
+          });
 
           if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
           const timeStart = performance.now();

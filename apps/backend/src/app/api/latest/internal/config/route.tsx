@@ -3,6 +3,7 @@ import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } fro
 
 export const GET = createSmartRouteHandler({
   metadata: {
+    hidden: true,
     summary: 'Get the config',
     description: 'Get the config for a project and branch',
     tags: ['Config'],

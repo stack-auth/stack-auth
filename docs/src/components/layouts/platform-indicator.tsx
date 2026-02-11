@@ -163,7 +163,8 @@ export function PlatformIndicator({ className }: { className?: string }) {
               <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-fd-muted-foreground">
                 Platform
               </div>
-              {PLATFORMS.map((platformConfig) => (
+              {/* Filter out Shell platform - it's only used internally for shell commands */}
+              {PLATFORMS.filter(p => p.name !== 'Shell').map((platformConfig) => (
                 <button
                   key={platformConfig.name}
                   onClick={(e) => {

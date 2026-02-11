@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -74,6 +74,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
       { displayName: "Auth Methods", href: "../auth-methods" },
+      { displayName: "Sign-up Rules", href: "../sign-up-rules" },
       { displayName: "Trusted Domains", href: "../domains" },
     ],
     screenshots: getScreenshots('auth', 6),
@@ -82,6 +83,21 @@ export const ALL_APPS_FRONTEND = {
         <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
         <p>Browse and create users, tune sign-up behavior, and configure auth methods without leaving the dashboard.</p>
         <p>When it is time to harden production, manage trusted domains and other guardrails in the same place.</p>
+      </>
+    ),
+  },
+  onboarding: {
+    icon: ClipboardTextIcon,
+    href: "onboarding",
+    navigationItems: [
+      { displayName: "Onboarding", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Onboarding lets you define requirements users must complete before gaining full access.</p>
+        <p>Configure email verification and other onboarding steps to ensure users are properly validated.</p>
+        <p>Users who haven&apos;t completed onboarding are filtered from normal API responses until they finish the required steps.</p>
       </>
     ),
   },
@@ -136,17 +152,18 @@ export const ALL_APPS_FRONTEND = {
     icon: CreditCardIcon,
     href: "payments",
     navigationItems: [
-      { displayName: "Catalogs", href: "./catalogs" },
+      { displayName: "Product Lines", href: "./product-lines" },
       { displayName: "Products & Items", href: "./products" },
       { displayName: "Customers", href: "./customers" },
       { displayName: "Transactions", href: "./transactions" },
       { displayName: "Payouts", href: "./payouts" },
+      { displayName: "Settings", href: "./settings" },
     ],
     screenshots: getScreenshots('payments', 7),
     storeDescription: (
       <>
         <p>Payments brings Stack&apos;s product-first pricing model into the dashboard.</p>
-        <p>Design catalogs of products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
+        <p>Design product lines with products, prices, and entitlements, segment user or team customers, and generate checkout URLs with the right guardrails.</p>
         <p>Purchase history and transactions stay visible without leaving the console.</p>
       </>
     ),
@@ -286,6 +303,20 @@ export const ALL_APPS_FRONTEND = {
     ],
     screenshots: getScreenshots('vercel', 2),
     storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
+  },
+  analytics: {
+    icon: ChartLineIcon,
+    href: "analytics",
+    navigationItems: [
+      { displayName: "Tables", href: "./tables" },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
+        <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+      </>
+    ),
   },
 } as const satisfies Record<AppId, AppFrontend>;
 

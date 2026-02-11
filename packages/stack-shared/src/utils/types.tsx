@@ -64,9 +64,9 @@ export type RequiredKeys<T> = {
  * Returns a type whose keys are the intersection of the keys of T and U, deeply.
  */
 export type KeyIntersect<T, U> =
-  | { [K in keyof T & keyof U]?: T[K] & U[K] }
-  | { [K in RequiredKeys<T> & keyof U]: T[K] & U[K] }
-  | { [K in RequiredKeys<U> & keyof T]: U[K] & T[K] }
+  & { [K in keyof T & keyof U]?: T[K] & U[K] }
+  & { [K in RequiredKeys<T> & keyof U]: T[K] & U[K] }
+  & { [K in RequiredKeys<U> & keyof T]: U[K] & T[K] }
 
 /**
  * Returns ALL keys of all union elements.
