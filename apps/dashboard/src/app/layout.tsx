@@ -99,7 +99,7 @@ export default function RootLayout({
         <Analytics />
         <SpeedInsights />
         <ThemeProvider>
-          <StackProvider app={stackServerApp} lang={translationLocale as any} analytics={{ replays: { enabled: false } }}>
+          <StackProvider app={stackServerApp} lang={translationLocale as any} analytics={{ replays: { maskAllInputs: false } }}>
             <StackTheme>
               <ClientPolyfill />
               <RouterProvider>

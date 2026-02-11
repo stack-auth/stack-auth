@@ -19,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ArrowsClockwiseIcon, FastForwardIcon, GearIcon, PauseIcon, PlayIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, FastForwardIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon } from "@phosphor-icons/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -1385,6 +1385,7 @@ export default function PageClient() {
   const onSelectActiveTab = useCallback((tabKey: TabKey) => {
     const now = getCurrentGlobalTimeMs();
     setActiveTab(tabKey);
+    suppressAutoFollowUntilRef.current = performance.now() + 5000;
     pausedAtGlobalRef.current = now;
     setIsSkipping(false);
 
@@ -1797,12 +1798,21 @@ export default function PageClient() {
                 </div>
               ) : (
                 <div className="flex-1 grid place-items-center">
-                  <div className="text-center space-y-2 p-6">
-                    <Skeleton className="h-2 w-48 mx-auto" />
-                    <Typography className="text-sm text-muted-foreground">
-                      Loading replay...
-                    </Typography>
-                  </div>
+                  {loadingInitial ? (
+                    <div className="text-center space-y-2 p-6">
+                      <Skeleton className="h-2 w-48 mx-auto" />
+                      <Typography className="text-sm text-muted-foreground">
+                        Loading replay...
+                      </Typography>
+                    </div>
+                  ) : (
+                    <div className="text-center p-6">
+                      <MonitorPlayIcon className="h-12 w-12 text-muted-foreground/40 mx-auto" />
+                      <Typography className="mt-3 text-sm font-medium text-muted-foreground">
+                        No session replays yet
+                      </Typography>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
