@@ -33,7 +33,6 @@ import {
   Envelope,
   FileText,
   HardDrive,
-  Info,
   MagnifyingGlassIcon,
   Palette,
   PencilSimple,
