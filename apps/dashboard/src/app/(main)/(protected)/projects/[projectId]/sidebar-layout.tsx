@@ -666,7 +666,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 pt-1 pb-3 pr-3 dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
+          <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
             <div className="relative flex flex-col min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20 dark:min-h-0 dark:h-full dark:overflow-auto dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:pr-0">
               {props.children}
             </div>
