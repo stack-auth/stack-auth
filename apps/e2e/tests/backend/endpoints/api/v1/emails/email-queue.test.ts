@@ -97,19 +97,15 @@ describe("email queue edge cases", () => {
     });
     expect(deleteResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(10_000);
+    // Poll until outbox shows SKIPPED with USER_ACCOUNT_DELETED
+    const outboxEmails = await waitForOutboxEmailWithStatus("Slow Render Test Email", "skipped");
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_ACCOUNT_DELETED");
 
     // Verify no email was received (user was deleted)
     const messages = await mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows SKIPPED with USER_ACCOUNT_DELETED
-    const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_ACCOUNT_DELETED");
   });
 
   it("should skip email when user removes primary email after email is queued", async ({ expect }) => {
@@ -168,19 +164,15 @@ describe("email queue edge cases", () => {
     });
     expect(deleteChannelResponse.status).toBe(200);
 
-    // Wait for email processing to complete (rendering + sending)
-    await wait(10_000);
+    // Poll until outbox shows SKIPPED with USER_HAS_NO_PRIMARY_EMAIL
+    const outboxEmails = await waitForOutboxEmailWithStatus("Slow Render Test Email", "skipped");
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
 
     // Verify no email with our subject was received (primary email was removed before sending)
     const messages = await mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows SKIPPED with USER_HAS_NO_PRIMARY_EMAIL
-    const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
   });
 
   it("should skip email when user unsubscribes after email is queued", async ({ expect }) => {
@@ -236,19 +228,15 @@ describe("email queue edge cases", () => {
     );
     expect(unsubscribeResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(10_000);
+    // Poll until outbox shows SKIPPED with USER_UNSUBSCRIBED
+    const outboxEmails = await waitForOutboxEmailWithStatus("Slow Render Test Email", "skipped");
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_UNSUBSCRIBED");
 
     // Verify no email with our subject was received (user unsubscribed)
     const messages = await backendContext.value.mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows SKIPPED with USER_UNSUBSCRIBED
-    const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_UNSUBSCRIBED");
   });
 
   it("should NOT skip transactional email even when user unsubscribes from marketing", async ({ expect }) => {
@@ -1360,10 +1348,7 @@ describe("theme and template deletion after scheduling", () => {
     // For a proper test, we'd need to pause the email, but the send-email endpoint
     // doesn't support is_paused directly.
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -1445,10 +1430,7 @@ describe("theme and template deletion after scheduling", () => {
       }
     }
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -1535,10 +1517,7 @@ describe("theme and template deletion after scheduling", () => {
     // that the architecture is designed to handle template deletion safely
     // because the source is copied to the outbox at scheduling time.
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Template Deletion Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(messages[0].body?.html).toContain("Content from template that will be deleted");
@@ -1625,10 +1604,7 @@ describe("theme and template deletion after scheduling", () => {
     });
     expect(sendResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully with the custom theme
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Custom Theme Baseline Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -1838,9 +1814,9 @@ describe("email outbox pagination", () => {
       expect(sendResponse.status).toBe(200);
     }
 
-    // Poll until all 3 emails appear in outbox
-    const maxAttempts = 30;
-    const pollInterval = 200;
+    // Poll until all 3 emails appear in outbox (wait up to 12s, matching waitForOutboxEmailWithStatus)
+    const maxAttempts = 24;
+    const pollInterval = 500;
     let emails: Array<{ subject?: string, created_at_millis: number }> = [];
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1867,6 +1843,6 @@ describe("email outbox pagination", () => {
       const next = emails[i + 1];
       expect(current.created_at_millis).toBeGreaterThanOrEqual(next.created_at_millis);
     }
-  });
+  }, 60_000);
 });
 
