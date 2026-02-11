@@ -180,7 +180,7 @@ function DesignEditableInput({
       tabIndex={readOnly ? -1 : undefined}
       size="sm"
       className={cn(
-        "w-full px-3 h-8",
+        "w-full px-3 h-8 text-sm",
         !readOnly && "hover:cursor-pointer",
         !readOnly && "focus:cursor-[unset]",
         readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
@@ -266,14 +266,14 @@ function EditableBooleanField({
 
   if (readOnly) {
     return (
-      <span className="inline-flex h-8 items-center rounded-xl bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]">
+      <span className="flex h-8 w-full items-center rounded-xl bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]">
         {value ? trueLabel : falseLabel}
       </span>
     );
   }
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <Select
         value={value ? "true" : "false"}
         onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
@@ -336,14 +336,14 @@ function EditableDropdownField({
 
   if (readOnly) {
     return (
-      <span className="inline-flex h-8 items-center rounded-xl bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]">
+      <span className="flex h-8 w-full items-center rounded-xl bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06] px-3 text-sm text-muted-foreground shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]">
         {selectedOption?.label ?? value}
       </span>
     );
   }
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <Select
         value={value}
         onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
@@ -526,7 +526,7 @@ function GridItemContent({ item, isModified }: { item: DesignEditableGridItem, i
   return (
     <>
       <GridLabel icon={item.icon} name={item.name} tooltip={item.tooltip} isModified={isModified} />
-      <div className="min-w-0 min-h-8 flex items-center">
+      <div className="min-w-0 min-h-8 w-full flex items-center">
         <GridItemValue item={item} />
       </div>
     </>

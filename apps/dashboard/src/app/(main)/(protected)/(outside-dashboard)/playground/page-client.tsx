@@ -1,5 +1,6 @@
 "use client";
 
+import { CodeBlock } from "@/components/code-block";
 import {
   CursorBlastEffect,
   DesignAlert,
@@ -19,7 +20,6 @@ import {
   DesignSelectorDropdown,
   DesignUserList,
 } from "@/components/design-language";
-import { CodeBlock } from "@/components/code-block";
 import { DataTableColumnHeader, Typography } from "@/components/ui";
 import {
   CheckCircle,
@@ -544,9 +544,9 @@ export default function PageClient() {
     }
     if (selected === "editable-grid") {
       return (
-        <div className="w-full max-w-xl">
+        <div className="w-full max-w-3xl">
           <div className="rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               <DesignEditableGrid
                 items={editableItems}
                 columns={gridCols}
@@ -1591,7 +1591,7 @@ export default function PageClient() {
 
         {/* Preview */}
         <div
-          className="relative rounded-2xl border border-black/[0.08] dark:border-white/[0.09] bg-gradient-to-b from-black/[0.03] to-black/[0.05] dark:from-white/[0.02] dark:to-white/[0.04] min-h-[340px] p-4 sm:p-6 overflow-hidden"
+          className="relative rounded-2xl border border-black/[0.08] dark:border-white/[0.09] bg-gradient-to-b from-black/[0.03] to-black/[0.05] dark:from-white/[0.02] dark:to-white/[0.04] p-2 sm:p-3 overflow-hidden"
           style={{
             backgroundImage:
               "radial-gradient(circle, hsl(var(--foreground) / 0.05) 1px, transparent 1px)",
@@ -1600,7 +1600,7 @@ export default function PageClient() {
         >
           <div
             ref={blastPreviewRef}
-            className="relative w-full min-h-[292px] rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white/85 dark:bg-[hsl(240,12%,9%)] shadow-sm flex items-center justify-center p-6 sm:p-10"
+            className="relative w-full rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white/85 dark:bg-[hsl(240,12%,9%)] shadow-sm flex items-center justify-center p-3 sm:p-4"
           >
             {renderPreview()}
           </div>
