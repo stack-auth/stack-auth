@@ -878,6 +878,40 @@ export default function PageClient() {
 
           const stream2 = streamsByKeyRef.current.get(tabKey) ?? null;
           const streamStartTs2 = stream2?.firstEventAt.getTime() ?? globalStartTsRef.current;
+
+          // If still downloading and this tab is expected to have more
+          // events, buffer and poll for data. Must run BEFORE the tab-
+          // switching / gap-forward logic to prevent jumping away while
+          // the current tab's chunks are still in flight.
+          const tabExpectedDurationMs = stream2
+            ? stream2.lastEventAt.getTime() - stream2.firstEventAt.getTime()
+            : null;
+          if (isDownloadingRef.current && tabExpectedDurationMs !== null && tabExpectedDurationMs > localTime + 500) {
+            const globalOffset = localOffsetToGlobalOffset(globalStartTsRef.current, streamStartTs2, localTime);
+            pausedAtGlobalRef.current = globalOffset;
+            setIsBuffering(true);
+            setPlayerIsPlaying(false);
+
+            // Poll until enough buffer exists ahead, then resume.
+            // Using setTimeout avoids the rapid buffer→resume→finish loop
+            // that onChunkLoaded auto-resume can cause when loaded ≈ target.
+            const pollResume = () => {
+              if (selectionGenRef.current !== gen) return;
+              if (activeTabKeyRef.current !== tabKey) return;
+              if (!isBufferingRef.current) return; // user toggled play/pause
+              const newLoaded = loadedDurationByTabMsRef.current.get(tabKey) ?? 0;
+              if (newLoaded > localTime + 2000 || !isDownloadingRef.current) {
+                setIsBuffering(false);
+                playActiveAtGlobalOffset(globalOffset);
+                setPlayerIsPlaying(true);
+              } else {
+                setTimeout(pollResume, 500);
+              }
+            };
+            setTimeout(pollResume, 500);
+            return;
+          }
+
           let globalOffset = localOffsetToGlobalOffset(globalStartTsRef.current, streamStartTs2, localTime);
 
           // Find the best OTHER tab at this offset (exclude the exhausted tab).
@@ -907,12 +941,16 @@ export default function PageClient() {
           }
 
           // No alternative tab — check for gap, buffer, or true finish.
+          const currentTabHasMoreExpectedEvents = tabExpectedDurationMs !== null
+            && tabExpectedDurationMs > localTime + 500;
+
           const nextStart = findNextTabStartAfterGlobalOffset(globalOffset);
           const finishAction = getReplayFinishAction({
             hasBestTabAtCurrentTime: false,
             isDownloading: isDownloadingRef.current,
             nextStartGlobalOffsetMs: nextStart?.globalOffsetMs ?? null,
             currentGlobalOffsetMs: Math.max(globalOffset, currentGlobalTimeMsForUiRef.current),
+            currentTabHasMoreExpectedEvents,
           });
           if (finishAction.type === "gap_fast_forward" && nextStart) {
             gapFastForwardRef.current = {
@@ -1118,7 +1156,12 @@ export default function PageClient() {
           );
           const loaded = loadedDurationByTabMsRef.current.get(tabKey) ?? 0;
 
-          if (loaded >= targetLocal) {
+          // Require a minimum 2s buffer ahead while downloading to avoid a
+          // rapid buffer→resume→finish loop when events stream in at the edge
+          // of loaded data. Once downloading completes the safety-net effect
+          // resumes immediately without the buffer-ahead requirement.
+          const bufferAhead = isDownloadingRef.current ? 2000 : 0;
+          if (loaded >= targetLocal + bufferAhead) {
             const seekTo = bufferingAtGlobalRef.current;
             bufferingAtGlobalRef.current = null;
             setIsBuffering(false);

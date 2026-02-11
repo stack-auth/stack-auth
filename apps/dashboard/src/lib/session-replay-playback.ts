@@ -44,9 +44,17 @@ export function getReplayFinishAction(options: {
   isDownloading: boolean,
   nextStartGlobalOffsetMs: number | null,
   currentGlobalOffsetMs?: number,
+  currentTabHasMoreExpectedEvents?: boolean,
 }) : ReplayFinishAction {
   if (options.hasBestTabAtCurrentTime) {
     throw new Error("getReplayFinishAction() expects hasBestTabAtCurrentTime=false");
+  }
+  // If the current tab still has unloaded events, buffer instead of jumping
+  // to the next tab. Without this check a premature rrweb "finish" (fired
+  // before all chunks have loaded) would see the next tab's start offset and
+  // fast-forward there, skipping the rest of the current tab.
+  if (options.isDownloading && options.currentTabHasMoreExpectedEvents) {
+    return { type: "buffer_at_current" };
   }
   if (
     options.nextStartGlobalOffsetMs !== null
