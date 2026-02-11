@@ -1,8 +1,17 @@
 "use client";
 
+import { CheckCircle, Info, WarningCircle, XCircle } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 type DesignAlertVariant = "default" | "success" | "error" | "warning" | "info";
+
+const variantIconMap = new Map<DesignAlertVariant, React.ElementType>([
+  ["default", Info],
+  ["success", CheckCircle],
+  ["error", XCircle],
+  ["warning", WarningCircle],
+  ["info", Info],
+]);
 
 type VariantStyles = {
   container: string,
@@ -63,7 +72,6 @@ function getMapValueOrThrow<TKey, TValue>(map: Map<TKey, TValue>, key: TKey, map
 
 export type DesignAlertProps = React.HTMLAttributes<HTMLDivElement> & {
   variant?: DesignAlertVariant,
-  icon?: React.ElementType,
   title?: React.ReactNode,
   description?: React.ReactNode,
   glassmorphic?: boolean,
@@ -71,7 +79,6 @@ export type DesignAlertProps = React.HTMLAttributes<HTMLDivElement> & {
 
 export function DesignAlert({
   variant = "default",
-  icon: Icon,
   title,
   description,
   glassmorphic = false,
@@ -80,6 +87,7 @@ export function DesignAlert({
   ...props
 }: DesignAlertProps) {
   const styles = getMapValueOrThrow(variantStyles, variant, "variantStyles");
+  const Icon = getMapValueOrThrow(variantIconMap, variant, "variantIconMap");
 
   return (
     <div
@@ -93,9 +101,7 @@ export function DesignAlert({
       )}
       {...props}
     >
-      {Icon && (
-        <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", styles.icon)} />
-      )}
+      <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", styles.icon)} />
       <div className="min-w-0">
         {title && (
           <h5 className={cn("mb-1 font-medium leading-none tracking-tight", styles.title)}>

@@ -1,13 +1,14 @@
 "use client";
 
 import {
+  CursorBlastEffect,
   DesignAlert,
   DesignBadge,
   type DesignBadgeColor,
+  type DesignBadgeContentMode,
   DesignButton,
   DesignCard,
   DesignCategoryTabs,
-  CursorBlastEffect,
   DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
@@ -25,7 +26,6 @@ import {
   Envelope,
   FileText,
   HardDrive,
-  Info,
   MagnifyingGlassIcon,
   Package,
   PencilSimple,
@@ -34,8 +34,6 @@ import {
   StackSimple,
   Tag,
   Trash,
-  WarningCircle,
-  XCircle,
 } from "@phosphor-icons/react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useRef, useState } from "react";
@@ -183,18 +181,18 @@ export default function PageClient() {
   const [alertVariant, setAlertVariant] = useState<"default" | "success" | "error" | "warning" | "info">("success");
   const [alertTitle, setAlertTitle] = useState("Order placed");
   const [alertDesc, setAlertDesc] = useState("Your order has been confirmed.");
-  const [alertIcon, setAlertIcon] = useState(true);
 
   // Badge
   const [badgeLabel, setBadgeLabel] = useState("In stock");
   const [badgeColor, setBadgeColor] = useState<DesignBadgeColor>("green");
   const [badgeSize, setBadgeSize] = useState<"sm" | "md">("md");
   const [badgeIcon, setBadgeIcon] = useState(true);
+  const [badgeContentMode, setBadgeContentMode] = useState<DesignBadgeContentMode>("both");
 
   // Button
   const [btnLabel, setBtnLabel] = useState("Buy now");
   const [btnVariant, setBtnVariant] = useState<"default" | "secondary" | "outline" | "destructive" | "ghost" | "link" | "plain">("default");
-  const [btnSize, setBtnSize] = useState<"default" | "sm" | "lg" | "icon" | "plain">("default");
+  const [btnSize, setBtnSize] = useState<"default" | "sm" | "lg" | "icon">("default");
   const [btnLoading, setBtnLoading] = useState(false);
 
   // Card
@@ -405,21 +403,12 @@ export default function PageClient() {
 
   // ─── Preview renderer ────────────────────────────────────────────────────
 
-  const alertIconMap: Record<string, React.ElementType> = {
-    success: CheckCircle,
-    error: XCircle,
-    warning: WarningCircle,
-    info: Info,
-    default: Info,
-  };
-
   function renderPreview() {
     if (selected === "alert") {
       return (
         <div className="w-full max-w-lg">
           <DesignAlert
             variant={alertVariant}
-            icon={alertIcon ? alertIconMap[alertVariant] : undefined}
             title={alertTitle}
             description={alertDesc}
           />
@@ -427,12 +416,16 @@ export default function PageClient() {
       );
     }
     if (selected === "badge") {
+      const badgeIconProp = badgeContentMode === "icon"
+        ? CheckCircle
+        : (badgeIcon ? CheckCircle : undefined);
       return (
         <DesignBadge
           label={badgeLabel || "Badge"}
           color={badgeColor}
           size={badgeSize}
-          icon={badgeIcon ? CheckCircle : undefined}
+          icon={badgeIconProp}
+          contentMode={badgeContentMode}
         />
       );
     }
@@ -737,9 +730,6 @@ export default function PageClient() {
           <PropField label="Description">
             <DesignInput size="sm" value={alertDesc} onChange={(e) => setAlertDesc(e.target.value)} />
           </PropField>
-          <PropField label="Icon">
-            <BoolToggle value={alertIcon} onChange={setAlertIcon} on="Show" off="Hide" />
-          </PropField>
         </div>
       );
     }
@@ -787,9 +777,29 @@ export default function PageClient() {
               size="sm"
             />
           </PropField>
-          <PropField label="Icon">
-            <BoolToggle value={badgeIcon} onChange={setBadgeIcon} on="Show" off="Hide" />
+          <PropField label="Content">
+            <DesignSelectorDropdown
+              value={badgeContentMode}
+              onValueChange={(v) => {
+                if (v === "both" || v === "text" || v === "icon") {
+                  setBadgeContentMode(v);
+                  return;
+                }
+                throw new Error(`Unknown badge content mode "${v}"`);
+              }}
+              options={[
+                { value: "both", label: "Both" },
+                { value: "text", label: "Text only" },
+                { value: "icon", label: "Icon only" },
+              ]}
+              size="sm"
+            />
           </PropField>
+          {badgeContentMode === "both" && (
+            <PropField label="Icon">
+              <BoolToggle value={badgeIcon} onChange={setBadgeIcon} on="Show" off="Hide" />
+            </PropField>
+          )}
         </div>
       );
     }
@@ -825,7 +835,7 @@ export default function PageClient() {
             <DesignSelectorDropdown
               value={btnSize}
               onValueChange={(v) => {
-                if (v === "default" || v === "sm" || v === "lg" || v === "icon" || v === "plain") {
+                if (v === "default" || v === "sm" || v === "lg" || v === "icon") {
                   setBtnSize(v);
                   return;
                 }
@@ -836,7 +846,6 @@ export default function PageClient() {
                 { value: "sm", label: "Small" },
                 { value: "lg", label: "Large" },
                 { value: "icon", label: "Icon" },
-                { value: "plain", label: "Plain" },
               ]}
               size="sm"
             />

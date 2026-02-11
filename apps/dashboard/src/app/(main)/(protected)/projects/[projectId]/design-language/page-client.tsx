@@ -440,7 +440,6 @@ export default function PageClient() {
           >
             <DesignAlert
               variant="success"
-              icon={CheckCircle}
               title="Success"
               description="Your changes have been saved successfully."
             />
@@ -452,7 +451,6 @@ export default function PageClient() {
           >
             <DesignAlert
               variant="error"
-              icon={XCircle}
               title="Error"
               description="An error occurred while processing your request."
             />
@@ -464,7 +462,6 @@ export default function PageClient() {
           >
             <DesignAlert
               variant="warning"
-              icon={WarningCircle}
               title="Warning"
               description="You are using a shared email server. Configure a custom SMTP server to customize email templates."
             />
@@ -476,7 +473,6 @@ export default function PageClient() {
           >
             <DesignAlert
               variant="info"
-              icon={Info}
               title="Info"
               description="Configure a custom SMTP server to send manual emails. You can still create and edit drafts."
             />
@@ -487,7 +483,6 @@ export default function PageClient() {
             <PropsTable props={[
               { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
               { name: "title", type: "ReactNode", description: "Optional. Use AlertTitle when needed." },
-              { name: "icon", type: "ReactElement", description: "Optional icon displayed before content." },
               { name: "glassmorphic", type: "boolean", default: "false", description: "Only enable if used on glass surfaces." },
             ]} />
           </div>
@@ -516,12 +511,24 @@ export default function PageClient() {
             </div>
           </ComponentDemo>
 
+          <ComponentDemo
+            title="Content modes"
+            description="Text only, icon only, or both. At least one must be shown."
+          >
+            <div className="flex flex-wrap gap-2 items-center">
+              <DesignBadge label="Text only" color="blue" contentMode="text" />
+              <DesignBadge label="Icon only" color="green" icon={CheckCircle} contentMode="icon" />
+              <DesignBadge label="Both" color="cyan" icon={DotsThree} contentMode="both" size="sm" />
+            </div>
+          </ComponentDemo>
+
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "label", type: "string", description: "Text for the badge" },
+              { name: "label", type: "string", description: "Text for the badge (used as aria-label when contentMode is 'icon')" },
               { name: "color", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'red'", description: "Gradient color theme" },
-              { name: "icon", type: "ReactElement", description: "Optional icon displayed before text" },
+              { name: "icon", type: "ReactElement", description: "Optional icon. Required when contentMode is 'icon'." },
+              { name: "contentMode", type: "'both' | 'text' | 'icon'", default: "'both'", description: "What to display. At least one of text or icon must be shown." },
               { name: "size", type: "'sm' | 'md'", default: "'md'", description: "Badge size" },
               { name: "glassmorphic", type: "boolean", default: "false", description: "Enable only when badges sit on glass." },
             ]} />
@@ -584,9 +591,9 @@ export default function PageClient() {
                 Large
               </DesignButton>
               <DesignButton
-                size="plain"
+                size="icon"
                 variant="plain"
-                className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all duration-150 hover:transition-none"
+                className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all duration-150 hover:transition-none"
                 aria-label="Send email"
               >
                 <Envelope className="h-4 w-4" />
@@ -618,7 +625,7 @@ export default function PageClient() {
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
               { name: "variant", type: "'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'plain'", default: "'default'", description: "Visual style for the button." },
-              { name: "size", type: "'default' | 'sm' | 'lg' | 'icon' | 'plain'", default: "'default'", description: "Controls padding and button height." },
+              { name: "size", type: "'default' | 'sm' | 'lg' | 'icon'", default: "'default'", description: "Controls padding and button height." },
               { name: "loading", type: "boolean", default: "false", description: "Shows a spinner and disables the button." },
               { name: "loadingStyle", type: "'spinner' | 'disabled'", default: "'spinner'", description: "Spinner overlay or disabled-only state." },
               { name: "asChild", type: "boolean", default: "false", description: "Renders a child component instead of a native button." },
