@@ -25,6 +25,9 @@ const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
 
+const MAX_PREAUTH_BUFFER_EVENTS = 10_000;
+const MAX_PREAUTH_BUFFER_BYTES = 5_000_000;
+
 type StoredSession = {
   session_id: string,
   created_at_ms: number,
@@ -195,6 +198,12 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
           if (events.length >= MAX_EVENTS_PER_BATCH || approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
             runAsynchronously(() => flush({ keepalive: false }), { noErrorLogging: true });
           }
+
+          // Cap pre-auth buffer to prevent unbounded memory growth
+          if (!accessTokenRef.current && (events.length > MAX_PREAUTH_BUFFER_EVENTS || approxBytes > MAX_PREAUTH_BUFFER_BYTES)) {
+            events = [];
+            approxBytes = 0;
+          }
         },
         maskAllInputs: props.replayOptions?.maskAllInputs ?? true,
         ...(props.replayOptions?.blockClass !== undefined ? { blockClass: props.replayOptions.blockClass } : {}),
@@ -228,19 +237,24 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
       recording = false;
     };
 
-    // Periodically flushes events. Recording start/stop is driven by
-    // the accessToken dependency below, not by polling.
+    // Periodically flushes events.
+    let wasAuthenticated = !!accessTokenRef.current;
     const tick = () => {
       if (cancelled) return;
-      if (accessTokenRef.current && events.length > 0) {
+      const hasAuth = !!accessTokenRef.current;
+      // Clear buffer on logout to prevent cross-user event leakage
+      if (wasAuthenticated && !hasAuth) {
+        events = [];
+        approxBytes = 0;
+      }
+      wasAuthenticated = hasAuth;
+      if (hasAuth && events.length > 0) {
         runAsynchronously(() => flush({ keepalive: false }), { noErrorLogging: true });
       }
     };
 
-    // Start or stop recording based on current auth state.
-    if (accessTokenRef.current) {
-      runAsynchronously(() => startRecording(), { noErrorLogging: true });
-    }
+    // Start recording immediately so pre-login activity is captured.
+    runAsynchronously(() => startRecording(), { noErrorLogging: true });
 
     flushTimer = window.setInterval(tick, FLUSH_INTERVAL_MS);
 
@@ -253,7 +267,7 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
       runAsynchronously(() => flush({ keepalive: true }), { noErrorLogging: true });
       stopCurrentRecording();
     };
-  }, [app, tabId, !!accessToken]);
+  }, [app, tabId]);
 
   return null;
 }
