@@ -40,6 +40,19 @@ const emailOutboxBaseSchema = fieldSchema.yupObject({
   skip_deliverability_check: fieldSchema.yupBoolean().defined(),
   scheduled_at_millis: fieldSchema.yupNumber().defined(),
 
+  // Retry-related fields (for debugging/testing deferred retry logic)
+  failed_send_attempt_count: fieldSchema.yupNumber().defined(),
+  next_send_retry_at_millis: fieldSchema.yupNumber().nullable().defined(),
+  // Array of errors from each failed send attempt, each with internal/external messages
+  send_attempt_errors: fieldSchema.yupArray(fieldSchema.yupObject({
+    attempt_number: fieldSchema.yupNumber().defined(),
+    timestamp: fieldSchema.yupString().defined(),
+    external_message: fieldSchema.yupString().defined(),
+    external_details: fieldSchema.yupRecord(fieldSchema.yupString(), fieldSchema.jsonSchema).defined(),
+    internal_message: fieldSchema.yupString().defined(),
+    internal_details: fieldSchema.yupRecord(fieldSchema.yupString(), fieldSchema.jsonSchema).defined(),
+  }).defined()).nullable().defined(),
+
   status: fieldSchema.yupString().defined(),
   simple_status: fieldSchema.yupString().defined(),
 

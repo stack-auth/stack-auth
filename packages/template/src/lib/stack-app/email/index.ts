@@ -36,6 +36,16 @@ export type AdminEmailOutboxSimpleStatus =
   | "ok"
   | "error";
 
+// Error entry from a failed send attempt
+export type AdminSendAttemptError = {
+  attemptNumber: number,
+  timestamp: string,
+  externalMessage: string,
+  externalDetails: Record<string, unknown>,
+  internalMessage: string,
+  internalDetails: Record<string, unknown>,
+};
+
 // =============================== BASE TYPES ===============================
 
 // Base fields present on all emails
@@ -48,6 +58,10 @@ type AdminEmailOutboxBase = {
   isPaused: false,
   hasRendered: false,
   hasDelivered: false,
+  // Retry tracking fields
+  failedSendAttemptCount: number,
+  nextSendRetryAt: Date | null,
+  sendAttemptErrors: AdminSendAttemptError[] | null,
 };
 
 // Fields available after rendering completes successfully
