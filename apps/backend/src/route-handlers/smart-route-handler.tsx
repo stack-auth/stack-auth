@@ -114,7 +114,7 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
             "/api/latest/internal/external-db-sync/sequencer",
             "/api/latest/internal/external-db-sync/sync-engine",
           ];
-          const warnAfterSeconds = allowedLongRequestPaths.includes(req.nextUrl.pathname) ? 180 : 12;
+          const warnAfterSeconds = allowedLongRequestPaths.includes(req.nextUrl.pathname) ? 240 : 12;
           runAsynchronously(async () => {
             await wait(warnAfterSeconds * 1000);
             if (!hasRequestFinished) {
