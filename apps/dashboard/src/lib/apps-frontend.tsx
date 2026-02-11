@@ -309,6 +309,7 @@ export const ALL_APPS_FRONTEND = {
     href: "analytics",
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
+      { displayName: "Replays", href: "./replays" },
     ],
     screenshots: [],
     storeDescription: (
