@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CursorBlastEffect,
   DesignAlert,
   DesignBadge,
   type DesignBadgeColor,
@@ -412,7 +411,6 @@ export default function PageClient() {
 
   return (
     <PageLayout>
-      <CursorBlastEffect />
       <div className="flex flex-col gap-12">
         <div className="rounded-2xl border border-blue-500/30 bg-blue-500/[0.06] p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
