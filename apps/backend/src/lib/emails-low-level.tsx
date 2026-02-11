@@ -214,7 +214,23 @@ export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSen
   canRetry: boolean,
   message?: string,
 }>> {
-  return await _lowLevelSendEmailWithoutRetries(options);
+  if (!options.to) {
+    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
+  }
+
+  const result = await _lowLevelSendEmailWithoutRetries(options);
+
+  if (result.status === 'error') {
+    console.warn("Failed to send email.", {
+      host: options.emailConfig.host,
+      from: options.emailConfig.senderEmail,
+      to: options.to,
+      subject: options.subject,
+      error: result.error,
+    }, result.error.rawError);
+  }
+
+  return result;
 }
 
 // currently unused, although in the future we may want to use this to minimize the number of requests to Resend
