@@ -74,11 +74,14 @@ export default function PageClient(props: { templateId: string }) {
           setSelectedThemeId(found.themeId);
         }
       } catch (error) {
+        if (cancelled) return;
         const fetchError = error instanceof Error ? error : new Error(String(error));
         setFetchError(fetchError);
         throw fetchError;
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 

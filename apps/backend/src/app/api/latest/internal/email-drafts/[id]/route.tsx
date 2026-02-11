@@ -1,4 +1,3 @@
-import { Prisma } from "@/generated/prisma/client";
 import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -27,14 +26,9 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, params }) {
     const prisma = await getPrismaClientForTenancy(tenancy);
-    let d;
-    try {
-      d = await prisma.emailDraft.findFirstOrThrow({ where: { tenancyId: tenancy.id, id: params.id } });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-        throw new StatusError(StatusError.NotFound, "No draft found with given id");
-      }
-      throw error;
+    const d = await prisma.emailDraft.findFirst({ where: { tenancyId: tenancy.id, id: params.id } });
+    if (!d) {
+      throw new StatusError(StatusError.NotFound, "No draft found with given id");
     }
     return {
       statusCode: 200,
@@ -104,16 +98,13 @@ export const DELETE = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, params }) {
     const prisma = await getPrismaClientForTenancy(tenancy);
-    try {
-      await prisma.emailDraft.delete({
-        where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
-      });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-        throw new StatusError(StatusError.NotFound, "No draft found with given id");
-      }
-      throw error;
+    const existing = await prisma.emailDraft.findFirst({ where: { tenancyId: tenancy.id, id: params.id } });
+    if (!existing) {
+      throw new StatusError(StatusError.NotFound, "No draft found with given id");
     }
+    await prisma.emailDraft.delete({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
+    });
     return {
       statusCode: 200,
       bodyType: "json",
