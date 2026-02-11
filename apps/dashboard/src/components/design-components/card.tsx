@@ -68,12 +68,14 @@ type WithTitleProps = {
   title: React.ReactNode,
   subtitle?: React.ReactNode,
   icon: React.ElementType,
+  actions?: React.ReactNode,
 };
 
 type WithoutTitleProps = {
   title?: never,
   subtitle?: never,
   icon?: never,
+  actions?: never,
 };
 
 export type DesignCardProps = DesignCardBaseProps & (WithTitleProps | WithoutTitleProps);
@@ -82,6 +84,7 @@ export function DesignCard({
   title,
   subtitle,
   icon: Icon,
+  actions,
   glassmorphic: glassmorphicProp,
   gradient = "default",
   children,
@@ -91,6 +94,7 @@ export function DesignCard({
 }: DesignCardProps) {
   const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
   const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
+  const hasContent = React.Children.count(children) > 0;
 
   // Derive layout from which props were provided
   const variant = title != null
@@ -143,31 +147,45 @@ export function DesignCard({
                     </p>
                   )}
                 </div>
+                {actions && (
+                  <div className="flex-shrink-0">
+                    {actions}
+                  </div>
+                )}
               </div>
             </div>
           )}
           {variant === "compact" && (
-            <div className="p-5 flex items-center gap-2 border-b border-black/[0.12] dark:border-white/[0.06]">
-              {Icon && (
-                <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-                  <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="p-5 flex items-center justify-between gap-4 border-b border-black/[0.12] dark:border-white/[0.06]">
+              <div className="flex items-center gap-2 min-w-0">
+                {Icon && (
+                  <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                )}
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  {title}
+                </span>
+              </div>
+              {actions && (
+                <div className="flex-shrink-0">
+                  {actions}
                 </div>
               )}
-              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                {title}
-              </span>
             </div>
           )}
-          <div
-            className={cn(
-              variant === "header" ? "border-t border-black/[0.12] dark:border-white/[0.06]" : "",
-              variant === "compact" ? "px-5 py-4" : "",
-              variant === "bodyOnly" || variant === "header" ? bodyPaddingClass : "",
-              contentClassName
-            )}
-          >
-            {children}
-          </div>
+          {hasContent && (
+            <div
+              className={cn(
+                variant === "header" ? "border-t border-black/[0.12] dark:border-white/[0.06]" : "",
+                variant === "compact" ? "px-5 py-4" : "",
+                variant === "bodyOnly" || variant === "header" ? bodyPaddingClass : "",
+                contentClassName
+              )}
+            >
+              {children}
+            </div>
+          )}
         </div>
       </Card>
     </DesignCardNestingContext.Provider>

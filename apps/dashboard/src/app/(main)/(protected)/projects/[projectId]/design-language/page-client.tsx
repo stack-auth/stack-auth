@@ -17,7 +17,7 @@ import {
   DesignPillToggle,
   DesignSelectorDropdown,
   DesignUserList
-} from "@/components/design-language";
+} from "@/components/design-components";
 import { Link } from "@/components/link";
 import {
   Button,

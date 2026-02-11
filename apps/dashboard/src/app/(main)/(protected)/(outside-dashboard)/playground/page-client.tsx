@@ -19,7 +19,7 @@ import {
   DesignPillToggle,
   DesignSelectorDropdown,
   DesignUserList,
-} from "@/components/design-language";
+} from "@/components/design-components";
 import { DataTableColumnHeader, Typography } from "@/components/ui";
 import {
   CheckCircle,
@@ -224,6 +224,7 @@ export default function PageClient() {
   const [cardSubtitle, setCardSubtitle] = useState("Save 20% this week.");
   const [cardGradient, setCardGradient] = useState<Gradient>("default");
   const [cardGlass, setCardGlass] = useState<boolean | undefined>(true);
+  const [cardShowActions, setCardShowActions] = useState(false);
 
   // Category Tabs
   const [tabSize, setTabSize] = useState<"sm" | "md">("sm");
@@ -470,7 +471,17 @@ export default function PageClient() {
           title: cardTitle,
           icon: Package,
           ...(cardSubtitle ? { subtitle: cardSubtitle } : {}),
-        } satisfies { title: React.ReactNode, icon: React.ElementType, subtitle?: React.ReactNode }
+          ...(cardShowActions
+            ? {
+              actions: (
+                <DesignButton variant="secondary" size="sm" className="h-8 px-3 text-xs gap-1.5">
+                  <Sliders className="h-3.5 w-3.5" />
+                  Configure
+                </DesignButton>
+              )
+            }
+            : {}),
+        } satisfies { title: React.ReactNode, icon: React.ElementType, subtitle?: React.ReactNode, actions?: React.ReactNode }
         : {};
       return (
         <div className="w-full max-w-md">
@@ -915,6 +926,17 @@ export default function PageClient() {
           </PropField>
           <PropField label="Glassmorphic">
             <GlassmorphicToggle value={cardGlass} onChange={setCardGlass} />
+          </PropField>
+          <PropField label="Header Actions">
+            <BoolToggle
+              value={cardTitle ? cardShowActions : false}
+              onChange={(next) => {
+                if (!cardTitle) return;
+                setCardShowActions(next);
+              }}
+              on="Show"
+              off="Hide"
+            />
           </PropField>
         </div>
       );
@@ -1389,7 +1411,11 @@ export default function PageClient() {
     if (selected === "card") {
       const glassProp = cardGlass === undefined ? "" : `\n  glassmorphic={${cardGlass}}`;
       const titleProps = cardTitle
-        ? `\n  icon={Package}\n  title="${escapeAttr(cardTitle)}"` + (cardSubtitle ? `\n  subtitle="${escapeAttr(cardSubtitle)}"` : "")
+        ? `\n  icon={Package}\n  title="${escapeAttr(cardTitle)}"`
+          + (cardSubtitle ? `\n  subtitle="${escapeAttr(cardSubtitle)}"` : "")
+          + (cardShowActions
+            ? "\n  actions={\n    <DesignButton variant=\"secondary\" size=\"sm\" className=\"h-8 px-3 text-xs gap-1.5\">\n      <Sliders className=\"h-3.5 w-3.5\" />\n      Configure\n    </DesignButton>\n  }"
+            : "")
         : "";
       return `<DesignCard${titleProps}
   gradient="${cardGradient}"${glassProp}

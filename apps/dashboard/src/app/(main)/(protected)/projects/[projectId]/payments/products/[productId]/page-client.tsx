@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-language";
+import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
