@@ -266,6 +266,7 @@ export default function PageClient() {
   const [listSubtitle, setListSubtitle] = useState("3 seats remaining");
   const [listSize, setListSize] = useState<"sm" | "lg">("lg");
   const [listWithIcon, setListWithIcon] = useState(true);
+  const [listClickable, setListClickable] = useState(false);
   const [listShowEditBtn, setListShowEditBtn] = useState(true);
   const [listShowMenuBtn, setListShowMenuBtn] = useState(true);
   const [listLastAction, setListLastAction] = useState("");
@@ -611,6 +612,7 @@ export default function PageClient() {
             title={listTitle}
             subtitle={listSubtitle || undefined}
             size={listSize}
+            onClick={listClickable ? () => setListLastAction("row clicked") : undefined}
             buttons={listButtons.length > 0 ? listButtons : undefined}
           />
           {listLastAction && (
@@ -1159,6 +1161,9 @@ export default function PageClient() {
           <PropField label="With Icon">
             <BoolToggle value={listWithIcon} onChange={setListWithIcon} on="Yes" off="No" />
           </PropField>
+          <PropField label="Clickable">
+            <BoolToggle value={listClickable} onChange={setListClickable} on="Yes" off="No" />
+          </PropField>
           <PropField label="Text Button">
             <BoolToggle value={listShowEditBtn} onChange={setListShowEditBtn} on="Show" off="Hide" />
           </PropField>
@@ -1464,9 +1469,10 @@ export default function PageClient() {
         : "";
       const iconProp = listWithIcon ? "\n  icon={Cube}" : "";
       const subtitleProp = listSubtitle ? `\n  subtitle="${escapeAttr(listSubtitle)}"` : "";
+      const clickProp = listClickable ? "\n  onClick={() => handleRowClick()}" : "";
       return `<DesignListItemRow${iconProp}
   title="${escapeAttr(listTitle)}"${subtitleProp}
-  size="${listSize}"${buttonsProp}
+  size="${listSize}"${clickProp}${buttonsProp}
 />`;
     }
     if (selected === "menu") {
