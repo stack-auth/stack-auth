@@ -11,10 +11,9 @@ import {
   CardTitle,
   Typography,
 } from "@/components/ui";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useAdminApp, useProjectId } from '../use-admin-app';
 import { DonutChartDisplay, LineChartDisplay, LineChartDisplayConfig } from './line-chart';
-
-const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
 const dailySignUpsConfig = {
   name: 'Daily Sign-ups',

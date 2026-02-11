@@ -1,0 +1,7 @@
+{
+  "name": "@stackframe/sdk-spec",
+  "version": "2.8.66",
+  "private": true,
+  "description": "Stack Auth SDK specification files",
+  "scripts": {}
+}

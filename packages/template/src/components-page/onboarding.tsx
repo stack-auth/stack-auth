@@ -60,7 +60,7 @@ export function Onboarding(props: {
         await user.signOut();
       }}
     >
-      <p>{t("Please complete your account setup to continue.")}</p>
+      <p>{t("You have not yet completed your account setup. Please reach out to support if you believe this is an error.")}</p>
     </MessageCard>
   );
 }

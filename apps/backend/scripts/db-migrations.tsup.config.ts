@@ -12,6 +12,9 @@ const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
 // tsup config to build the self-hosting migration script so it can be
 // run in the Docker container with no extra dependencies.
+type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
+const basePlugin = createBasePlugin({}) as unknown as EsbuildPlugin;
+
 export default defineConfig({
   entry: ['scripts/db-migrations.ts'],
   format: ['esm'],
@@ -32,7 +35,6 @@ const __filename = __fileURLToPath(import.meta.url);
 const __dirname = __dirname_fn(__filename);
 const require = __createRequire(import.meta.url);`,
   },
-  esbuildPlugins: [
-    createBasePlugin({}),
-  ],
+  // Cast to tsup's esbuild plugin type to avoid esbuild version mismatch in typecheck.
+  esbuildPlugins: [basePlugin],
 } satisfies Options);

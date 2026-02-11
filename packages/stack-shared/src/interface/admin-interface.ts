@@ -1,8 +1,10 @@
 import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
-import { branchConfigSourceSchema } from "../schema-fields";
+import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
+import type { MoneyAmount } from "../utils/currency-constants";
 import { Result } from "../utils/results";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
@@ -42,6 +44,25 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
   publishable_client_key?: string,
   secret_server_key?: string,
   super_secret_admin_key?: string,
+};
+
+export type ClickhouseMigrationRequest = {
+  min_created_at_millis: number,
+  max_created_at_millis: number,
+  cursor?: {
+    created_at_millis: number,
+    id: string,
+  },
+  limit?: number,
+};
+
+export type ClickhouseMigrationResponse = {
+  migrated_events: number,
+  inserted_rows: number,
+  next_cursor: {
+    created_at_millis: number,
+    id: string,
+  } | null,
 };
 
 export class StackAdminInterface extends StackServerInterface {
@@ -686,9 +707,36 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {
+  async refundTransaction(options: {
+    type: "subscription" | "one-time-purchase",
+    id: string,
+    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
+  }): Promise<{ success: boolean }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: options.type,
+          id: options.id,
+          refund_entries: options.refundEntries.map((entry) => ({
+            entry_index: entry.entryIndex,
+            quantity: entry.quantity,
+            amount_usd: entry.amountUsd,
+          })),
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async migrateEventsToClickhouse(options: ClickhouseMigrationRequest): Promise<ClickhouseMigrationResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/clickhouse/migrate-events",
       {
         method: "POST",
         headers: {
@@ -709,7 +757,7 @@ export class StackAdminInterface extends StackServerInterface {
       id: string,
       display_name: string | null,
       primary_email: string | null,
-      restricted_reason: { type: "anonymous" | "email_not_verified" },
+      restricted_reason: RestrictedReason,
     }>,
     total_affected_count: number,
   }> {
@@ -727,6 +775,28 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    const data = await response.json();
+    return {
+      result: data.result,
+      query_id: data.query_id,
+    };
+  }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
     const qs = new URLSearchParams();

@@ -1,15 +1,17 @@
 import { CheckIcon } from "@radix-ui/react-icons";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
-  Badge, Button, Command,
+  Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator, Popover,
-  PopoverContent,
-  PopoverTrigger, Separator
-} from "@stackframe/stack-ui";
+  CommandSeparator,
+} from "../ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Separator } from "../ui/separator";
 import { Column } from "@tanstack/react-table";
 import { ListFilter } from "lucide-react";
 import React from "react";

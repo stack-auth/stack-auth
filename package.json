@@ -19,7 +19,7 @@
     "restart-dev-in-background": "pnpm pre && pnpm run kill-dev:named && (pnpm run dev:named > dev-server.log.untracked.txt 2>&1 &) && echo 'Starting dev server in background... (Logs are in dev-server.log.untracked.txt)' && pnpx wait-on http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02 -t 120000 && echo 'Dev server running.'",
     "restart-dev-environment": "pnpm pre && pnpm run build:packages && pnpm run codegen && pnpm run restart-deps && pnpm run restart-dev-in-background",
     "stop-dev-environment": "pnpm pre && pnpm run kill-dev:named && pnpm run stop-deps",
-    "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules",
+    "clean": "pnpm pre-no-codegen && turbo run clean && rimraf --glob **/.next && rimraf --glob **/.turbo && rimraf .turbo && rimraf --glob **/node_modules && rimraf node_modules",
     "codegen": "pnpm pre && turbo run codegen && pnpm run generate-sdks",
     "codegen:backend": "pnpm pre && turbo run codegen --filter=@stackframe/stack-backend...",
     "deps-compose": "docker compose -p stack-dependencies-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81} -f docker/dependencies/docker.compose.yaml",
@@ -31,6 +31,7 @@
     "restart-deps": "pnpm pre && pnpm run stop-deps && pnpm run start-deps",
     "restart-deps:no-delay": "pnpm pre && pnpm run stop-deps && pnpm run start-deps:no-delay",
     "psql": "pnpm pre && pnpm run --filter=@stackframe/stack-backend psql",
+    "clickhouse": "pnpm pre && pnpm run --filter=@stackframe/stack-backend clickhouse",
     "explain-query": "pnpm pre && echo 'Paste your query (end with Ctrl-D):' && query=$(cat) && echo 'Connecting to Postgres...' && printf \"EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON)\n$query\" | pnpm run --silent psql -qAt | sed -n '/\\[/,$p' > explained-query.untracked.json && echo 'Explained query saved to explained-query.untracked.json. To analyze it, open it in the query analyzer at https://tatiyants.com/pev/#/plans/new'",
     "db:migration-gen": "pnpm pre && pnpm run --filter=@stackframe/stack-backend db:migration-gen",
     "db:reset": "pnpm pre && pnpm run --filter=@stackframe/stack-backend db:reset",
@@ -52,6 +53,7 @@
     "start:mock-oauth-server": "pnpm pre && turbo run start --concurrency 99999 --filter=@stackframe/mock-oauth-server",
     "lint": "pnpm pre && turbo run lint --continue -- --max-warnings=0",
     "release": "pnpm pre && release",
+    "dotenv": "dotenv",
     "peek": "pnpm pre && pnpm release --peek",
     "changeset": "pnpm pre && changeset",
     "test": "pnpm pre && vitest",
@@ -89,7 +91,8 @@
     "typescript": "5.3.3",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^1.6.0",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.1",
+    "dotenv-cli": "^7.3.0"
   },
   "pnpm": {
     "overrides": {

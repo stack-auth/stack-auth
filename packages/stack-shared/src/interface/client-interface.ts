@@ -229,7 +229,6 @@ export class StackClientInterface {
       refreshToken: null,
     });
 
-
     return await this._networkRetry(
       () => this.sendClientRequestInner(path, requestOptions, session!, requestType),
       session,
@@ -1805,6 +1804,7 @@ export class StackClientInterface {
       { itemId: string, customCustomerId: string }
     ),
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<ItemCrud['Client']['Read']> {
     let customerType: "user" | "team" | "custom";
     let customerId: string;
@@ -1821,10 +1821,12 @@ export class StackClientInterface {
       throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
     }
 
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       urlString`/payments/items/${customerType}/${customerId}/${options.itemId}`,
       {},
       session,
+      requestType,
     );
     return await response.json();
   }
@@ -1832,16 +1834,19 @@ export class StackClientInterface {
   async listProducts(
     options: ListCustomerProductsOptions,
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<CustomerProductsListResponse> {
     const queryParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
       limit: options.limit !== undefined ? options.limit.toString() : undefined,
     }));
     const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}`;
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {},
       session,
+      requestType,
     );
     return await response.json();
   }
@@ -1915,11 +1920,13 @@ export class StackClientInterface {
     productIdOrInline: string | yup.InferType<typeof inlineProductSchema>,
     session: InternalSession | null,
     returnUrl?: string,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<string> {
     const productBody = typeof productIdOrInline === "string" ?
       { product_id: productIdOrInline } :
       { inline_product: productIdOrInline };
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       "/payments/purchases/create-purchase-url",
       {
         method: "POST",
@@ -1928,7 +1935,8 @@ export class StackClientInterface {
         },
         body: JSON.stringify({ customer_type, customer_id, ...productBody, return_url: returnUrl }),
       },
-      session
+      session,
+      requestType,
     );
     const { url } = await response.json() as { url: string };
     return url;

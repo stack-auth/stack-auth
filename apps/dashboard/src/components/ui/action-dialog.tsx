@@ -45,6 +45,9 @@ export function ActionDialog(props: ActionDialogProps) {
   const [confirmed, setConfirmed] = React.useState(false);
   const confirmId = useId();
   const [invalidationCount, setInvalidationCount] = React.useState(0);
+  const okButtonExtraProps = okButton && typeof okButton === "object" ? okButton.props : undefined;
+  const { disabled: okButtonDisabledProp, ...okButtonProps } = okButtonExtraProps ?? {};
+  const okButtonDisabled = (!!props.confirmText && !confirmed) || !!okButtonDisabledProp;
 
   const onOpenChange = (open: boolean) => {
     if (!open) {
@@ -122,14 +125,14 @@ export function ActionDialog(props: ActionDialogProps) {
           )}
           {okButton && (
             <Button
-              disabled={!!props.confirmText && !confirmed}
+              disabled={okButtonDisabled}
               variant={props.danger ? "destructive" : "default"}
               onClick={async () => {
                 if (await okButton.onClick?.() !== "prevent-close") {
                   onOpenChange(false);
                 }
               }}
-              {...okButton.props}
+              {...okButtonProps}
             >
               {okButton.label ?? "OK"}
             </Button>
@@ -139,4 +142,3 @@ export function ActionDialog(props: ActionDialogProps) {
     </Dialog>
   );
 }
-

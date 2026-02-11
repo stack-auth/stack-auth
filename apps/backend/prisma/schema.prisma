@@ -94,6 +94,18 @@ model EnvironmentConfigOverride {
   @@id([projectId, branchId])
 }
 
+model ExternalDbSyncMetadata {
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+
+  singleton BooleanTrue @unique @default(TRUE)
+
+  sequencerEnabled  Boolean @default(true)
+  pollerEnabled     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Team {
   tenancyId String @db.Uuid
   teamId    String @default(uuid()) @db.Uuid
@@ -190,6 +202,9 @@ model ProjectUser {
   updatedAt    DateTime @updatedAt
   lastActiveAt DateTime @default(now())
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   displayName            String?
   serverMetadata         Json?
   clientReadOnlyMetadata Json?
@@ -198,6 +213,11 @@ model ProjectUser {
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
+
+  // Admin restriction fields - can be set by signup rules or manually by admins
+  restrictedByAdmin               Boolean @default(false)
+  restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
+  restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
@@ -222,6 +242,8 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
+  @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUser_shouldUpdateSequenceId_idx")
 }
 
 // This should be renamed to "OAuthAccount" as it is not always bound to a user
@@ -268,6 +290,9 @@ model ContactChannel {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   type        ContactChannelType
   isPrimary   BooleanTrue?
   usedForAuth BooleanTrue?
@@ -283,6 +308,8 @@ model ContactChannel {
   @@unique([tenancyId, projectUserId, type, value])
   // only one contact channel per project with the same value and type can be used for auth
   @@unique([tenancyId, type, value, usedForAuth])
+  @@index([tenancyId, sequenceId], name: "ContactChannel_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ContactChannel_shouldUpdateSequenceId_idx")
 }
 
 model AuthMethod {
@@ -659,6 +686,8 @@ model Event {
   // =============================== END END USER PROPERTIES ===============================
 
   @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@index([createdAt])
+  @@index([createdAt, id])
 }
 
 // An IP address that was seen in an event. Use the location fields instead of refetching the location from the ip, as the real-world geoip data may have changed since the event was logged.
@@ -1050,4 +1079,39 @@ model SubscriptionInvoice {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeInvoiceId])
+}
+
+model OutgoingRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  qstashOptions       Json
+  startedFulfillingAt DateTime?
+  deduplicationKey String?
+
+  @@unique([deduplicationKey])
+  @@index([startedFulfillingAt, createdAt])
+  @@index([startedFulfillingAt, deduplicationKey])
+}
+
+model DeletedRow {
+  id        String @id @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  tableName String
+
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
+  primaryKey Json
+  data       Json?
+
+  deletedAt           DateTime  @default(now())
+  startedFulfillingAt DateTime?
+
+  @@index([tableName])
+  @@index([tenancyId])
+  // composite index for efficient querying of deleted rows by tenant and table, ordered by sequence
+  @@index([tenancyId, tableName, sequenceId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "DeletedRow_shouldUpdateSequenceId_idx")
 }
