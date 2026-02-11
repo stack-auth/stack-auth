@@ -1,6 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
@@ -135,7 +136,7 @@ export type BaseUser = {
    * The reason why the user is restricted, e.g., { type: "email_not_verified" }, { type: "anonymous" }, or { type: "restricted_by_administrator" }.
    * Null if the user is not restricted.
    */
-  readonly restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null,
+  readonly restrictedReason: RestrictedReason | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**

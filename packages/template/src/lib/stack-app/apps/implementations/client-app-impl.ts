@@ -17,6 +17,7 @@ import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
@@ -2167,7 +2168,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
       isRestricted: auth.is_restricted as boolean,
-      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null) ?? null,
+      restrictedReason: (auth.restricted_reason as RestrictedReason | null) ?? null,
     };
   }
 
