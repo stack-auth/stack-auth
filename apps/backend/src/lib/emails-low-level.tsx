@@ -10,8 +10,6 @@ import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/pro
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
-import { Resend } from 'resend';
-import { getTenancy } from './tenancies';
 
 export function isSecureEmailPort(port: number | string) {
   // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
@@ -231,102 +229,4 @@ export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSen
   }
 
   return result;
-}
-
-// currently unused, although in the future we may want to use this to minimize the number of requests to Resend
-export async function lowLevelSendEmailResendBatchedDirect(resendApiKey: string, emailOptions: LowLevelSendEmailOptions[]) {
-  if (emailOptions.length === 0) {
-    return Result.ok([]);
-  }
-  if (emailOptions.length > 100) {
-    throw new StackAssertionError("sendEmailResendBatchedDirect expects at most 100 emails to be sent at once", { emailOptions });
-  }
-  if (emailOptions.some(option => option.tenancyId !== emailOptions[0].tenancyId)) {
-    throw new StackAssertionError("sendEmailResendBatchedDirect expects all emails to be sent from the same tenancy", { emailOptions });
-  }
-  const tenancy = await getTenancy(emailOptions[0].tenancyId);
-  if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found");
-  }
-  const resend = new Resend(resendApiKey);
-  const result = await Result.retry(async (_) => {
-    const { data, error } = await resend.batch.send(emailOptions.map((option) => ({
-      from: option.emailConfig.senderEmail,
-      to: option.to,
-      subject: option.subject,
-      html: option.html ?? "",
-      text: option.text,
-    })));
-
-    if (data) {
-      return Result.ok(data.data);
-    }
-    if (error.name === "rate_limit_exceeded" || error.name === "internal_server_error") {
-      // these are the errors we want to retry
-      return Result.error(error);
-    }
-    throw new StackAssertionError("Failed to send email with Resend", { error });
-  }, 3, { exponentialDelayBase: 2000 });
-
-  return result;
-}
-
-export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEmailOptions): Promise<Result<undefined, {
-  rawError: any,
-  errorType: string,
-  canRetry: boolean,
-  message?: string,
-}>> {
-  if (!options.to) {
-    throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
-  }
-
-  class DoNotRetryError extends Error {
-    constructor(public readonly errorObj: {
-      rawError: any,
-      errorType: string,
-      canRetry: boolean,
-      message?: string,
-    }) {
-      super("This error should never be caught anywhere else but inside the lowLevelSendEmailDirectViaProvider function, something went wrong if you see this!");
-    }
-  }
-
-  let result;
-  try {
-    result = await Result.retry(async (attempt) => {
-      const result = await lowLevelSendEmailDirectWithoutRetries(options);
-
-      if (result.status === 'error') {
-        const extraData = {
-          host: options.emailConfig.host,
-          from: options.emailConfig.senderEmail,
-          to: options.to,
-          subject: options.subject,
-          error: result.error,
-        };
-
-        if (result.error.canRetry) {
-          console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
-          return Result.error(result.error);
-        }
-
-        console.warn("Failed to send email, and error is not transient, so not retrying.", extraData, result.error.rawError);
-        throw new DoNotRetryError(result.error);
-      }
-
-      return result;
-    }, 9, { exponentialDelayBase: 125 });
-  } catch (error) {
-    if (error instanceof DoNotRetryError) {
-      return Result.error(error.errorObj);
-    }
-    throw error;
-  }
-
-  if (result.status === 'error') {
-    console.warn("Failed to send email after all retries!", result.error);
-    return Result.error(result.error.errors[0]);
-  }
-  return Result.ok(undefined);
 }
