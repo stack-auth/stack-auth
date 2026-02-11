@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
@@ -32,6 +32,77 @@ export function getS3PublicUrl(key: string): string {
   } else {
     return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
   }
+}
+
+export async function uploadBytes(options: {
+  key: string,
+  body: Uint8Array,
+  contentType?: string,
+  contentEncoding?: string,
+}) {
+  if (!s3Client) {
+    throw new StackAssertionError("S3 is not configured");
+  }
+
+  const command = new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: options.key,
+    Body: options.body,
+    ...(options.contentType ? { ContentType: options.contentType } : {}),
+    ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
+  });
+
+  await s3Client.send(command);
+
+  return {
+    key: options.key,
+    url: getS3PublicUrl(options.key),
+  };
+}
+
+async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
+  if (body instanceof Uint8Array) return body;
+  if (Buffer.isBuffer(body)) return new Uint8Array(body);
+
+  // Web ReadableStream (some runtimes)
+  if (typeof body === "object" && body !== null && "transformToByteArray" in body && typeof (body as any).transformToByteArray === "function") {
+    return (body as any).transformToByteArray();
+  }
+
+  // Node.js Readable or any AsyncIterable<Uint8Array>
+  if (typeof body === "object" && body !== null && Symbol.asyncIterator in (body as any)) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body as any) {
+      if (chunk instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunk));
+      } else if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+      } else {
+        throw new StackAssertionError("Unexpected S3 body chunk type");
+      }
+    }
+    return new Uint8Array(Buffer.concat(chunks));
+  }
+
+  throw new StackAssertionError("Unexpected S3 body type");
+}
+
+export async function downloadBytes(options: { key: string }): Promise<Uint8Array> {
+  if (!s3Client) {
+    throw new StackAssertionError("S3 is not configured");
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: options.key,
+  });
+
+  const res = await s3Client.send(command);
+  if (!res.Body) {
+    throw new StackAssertionError("S3 getObject returned empty body");
+  }
+
+  return await readBodyToBytes(res.Body);
 }
 
 async function uploadBase64Image({
