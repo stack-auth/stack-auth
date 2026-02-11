@@ -14,8 +14,10 @@ import { Resend } from 'resend';
 import { getTenancy } from './tenancies';
 
 export function isSecureEmailPort(port: number | string) {
+  // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
+  // STARTTLS ports (25/587/2587) should return false.
   let parsedPort = parseInt(port.toString());
-  return parsedPort === 465;
+  return parsedPort === 465 || parsedPort === 2465;
 }
 
 export type LowLevelEmailConfig = {
@@ -184,6 +186,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
         }
 
         // ============ unknown error ============
+        captureError("unknown-email-send-error", new StackAssertionError("Unknown error while sending email. We should add a better error description for the user.", { cause: error }));
         return Result.error({
           rawError: error,
           errorType: 'UNKNOWN',
