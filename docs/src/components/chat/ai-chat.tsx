@@ -386,7 +386,7 @@ export function AIChatDrawer() {
         response: response,
         metadata: {
           sessionId: sessionId,
-          model: 'gemini-2.0-flash',
+          model: 'anthropic/claude-4.5-sonnet',
           temperature: 0,
         }
       };
