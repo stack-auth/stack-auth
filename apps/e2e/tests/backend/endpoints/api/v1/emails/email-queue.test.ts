@@ -1777,7 +1777,7 @@ describe("email outbox pagination", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should order emails with finishedSendingAt first (nulls last)", async ({ expect }) => {
+  it("should order emails by createdAt descending (newest first)", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Ordering Project",
       config: {
@@ -1785,16 +1785,9 @@ describe("email outbox pagination", () => {
       },
     });
 
-    // Create a slow-rendering draft (so we have time to pause it)
     const templateSource = deindent`
       import { Container } from "@react-email/components";
-      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
-
-      // Artificial delay to make the email slow to render
-      const startTime = performance.now();
-      while (performance.now() - startTime < 200) {
-        // Busy wait
-      }
+      import { Subject, NotificationCategory } from "@stackframe/emails";
 
       export function EmailTemplate({ user, project }) {
         return (
@@ -1832,8 +1825,8 @@ describe("email outbox pagination", () => {
     expect(createUserResponse.status).toBe(201);
     const userId = createUserResponse.body.id;
 
-    // Send 2 emails to the user and wait for them to be sent
-    for (let i = 0; i < 2; i++) {
+    // Send 3 emails sequentially (need distinct timestamps for ordering test)
+    for (let i = 0; i < 3; i++) {
       const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
         method: "POST",
         accessType: "server",
@@ -1845,35 +1838,35 @@ describe("email outbox pagination", () => {
       expect(sendResponse.status).toBe(200);
     }
 
-    // Wait for email processing - they should be sent
-    await wait(5_000);
+    // Poll until all 3 emails appear in outbox
+    const maxAttempts = 30;
+    const pollInterval = 200;
+    let emails: Array<{ subject?: string, created_at_millis: number }> = [];
 
-    // Verify at least one email was sent
-    const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
-      method: "GET",
-      accessType: "server",
-    });
-    expect(listResponse.status).toBe(200);
-    const emails = listResponse.body.items.filter((e: { subject?: string }) =>
-      e.subject === "Ordering Test Email"
-    );
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(listResponse.status).toBe(200);
 
-    // Check ordering: finished emails should come before non-finished ones
-    // Statuses that have finishedSendingAt set (email has completed processing)
-    const finishedStatuses = new Set(["sent", "opened", "clicked", "marked-as-spam", "server-error", "bounced", "delivery-delayed", "skipped"]);
-    let foundNonFinished = false;
-    for (const email of emails) {
-      const hasFinished = finishedStatuses.has(email.status);
-      if (!hasFinished) {
-        foundNonFinished = true;
-      } else if (foundNonFinished) {
-        // We found a finished email after a non-finished email - wrong ordering
-        expect.fail(`Wrong ordering: found '${email.status}' after non-finished emails`);
-      }
+      emails = listResponse.body.items.filter((e: { subject?: string }) =>
+        e.subject === "Ordering Test Email"
+      );
+
+      if (emails.length >= 3) break;
+      await wait(pollInterval);
     }
-    // We should have at least one finished email
-    const hasSentEmails = emails.some((e: { status: string }) => finishedStatuses.has(e.status));
-    expect(hasSentEmails).toBe(true);
+
+    // Verify we have our emails
+    expect(emails.length).toBeGreaterThanOrEqual(3);
+
+    // Check ordering: emails should be ordered by createdAt descending (newest first)
+    for (let i = 0; i < emails.length - 1; i++) {
+      const current = emails[i];
+      const next = emails[i + 1];
+      expect(current.created_at_millis).toBeGreaterThanOrEqual(next.created_at_millis);
+    }
   });
 });
 
