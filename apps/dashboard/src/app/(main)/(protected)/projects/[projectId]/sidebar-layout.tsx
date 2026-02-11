@@ -667,7 +667,15 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
           {/* Main Content Area */}
           <main className="flex-1 min-w-0 h-[calc(100vh-3.5rem)] pt-1 pb-3 px-3 lg:pl-0 dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
-            <div className="relative flex flex-col h-full overflow-auto min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20 dark:min-h-0 dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:pr-0">
+            <div className={cn(
+              "relative flex flex-col h-full overflow-auto",
+              // Light mode card styling
+              "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20",
+              // Dark mode: remove card styling
+              "dark:min-h-0 dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:pr-0",
+              // Full-bleed pages (email editors etc.): remove card styling in light mode too (keep lg:pr-20 for companion space)
+              "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
+            )}>
               {props.children}
             </div>
           </main>

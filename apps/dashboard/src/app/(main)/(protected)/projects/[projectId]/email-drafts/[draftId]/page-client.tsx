@@ -108,7 +108,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
   return (
     <AppEnabledGuard appId="emails">
       {stage === "edit" ? (
-        <div className="flex h-full flex-col">
+        <div data-full-bleed className="flex h-full flex-col">
           {saveAlert && (
             <div className="px-3 pt-3 md:px-6 md:pt-4">
               <Alert variant={saveAlert.variant}>

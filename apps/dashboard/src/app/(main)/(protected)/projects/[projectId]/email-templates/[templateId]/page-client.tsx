@@ -222,7 +222,7 @@ export default function PageClient(props: { templateId: string }) {
 
   return (
     <AppEnabledGuard appId="emails">
-      <div className="flex h-full flex-col">
+      <div data-full-bleed className="flex h-full flex-col">
         {saveAlert && (
           <div className="px-3 pt-3 md:px-6 md:pt-4">
             <Alert variant={saveAlert.variant}>
@@ -238,6 +238,7 @@ export default function PageClient(props: { templateId: string }) {
             viewport={viewport}
             onViewportChange={setViewport}
             onSave={handleSaveTemplate}
+            useOffWhiteLightChrome
             saveLabel="Save template"
             onUndo={handleUndo}
             isDirty={isDirty}
@@ -272,6 +273,7 @@ export default function PageClient(props: { templateId: string }) {
                 chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
+                useOffWhiteLightMode
               />
             }
           />

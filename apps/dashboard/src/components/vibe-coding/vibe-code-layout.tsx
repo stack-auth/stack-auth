@@ -51,6 +51,8 @@ type VibeCodeEditorLayoutProps = {
   editModeEnabled?: boolean,
   /** Debug info for WYSIWYG editing (dev mode only) */
   wysiwygDebugInfo?: WysiwygDebugInfo,
+  /** Use off-white light mode chrome (page-specific opt-in) */
+  useOffWhiteLightChrome?: boolean,
 }
 
 export default function VibeCodeLayout({
@@ -70,6 +72,7 @@ export default function VibeCodeLayout({
   primaryAction,
   editModeEnabled = false,
   wysiwygDebugInfo,
+  useOffWhiteLightChrome = false,
 }: VibeCodeEditorLayoutProps) {
   // Use localStorage for isEditorOpen state - initialize with false to avoid hydration mismatch
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -121,6 +124,8 @@ export default function VibeCodeLayout({
     });
   };
 
+  const lightModeChromeBackgroundClass = useOffWhiteLightChrome ? "bg-slate-50/90" : "bg-background/60";
+
   return (
     <TooltipProvider delayDuration={300}>
       {/* Mobile Layout - visible on small screens, hidden on md+ */}
@@ -129,7 +134,10 @@ export default function VibeCodeLayout({
         <div className="px-3 pt-3 pb-2 shrink-0">
           <div className="flex flex-col gap-2">
             {/* Primary Actions Row */}
-            <div className="flex items-center gap-2 px-2 py-2 rounded-lg bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
+            <div className={cn(
+              "flex items-center gap-2 px-2 py-2 rounded-lg dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]",
+              lightModeChromeBackgroundClass,
+            )}>
               {/* Viewport Switcher - Compact */}
               <div className="flex items-center gap-0.5 rounded-md bg-foreground/[0.04] p-0.5">
                 {/* Edit Mode - leftmost when enabled */}
@@ -288,7 +296,10 @@ export default function VibeCodeLayout({
 
             {/* Header Action Row (Theme selector, etc) */}
             {headerAction && (
-              <div className="px-2 py-1.5 rounded-lg bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
+              <div className={cn(
+                "px-2 py-1.5 rounded-lg dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]",
+                lightModeChromeBackgroundClass,
+              )}>
                 <div className="scale-90 origin-left">
                   {headerAction}
                 </div>
@@ -301,7 +312,10 @@ export default function VibeCodeLayout({
         <div className="flex-1 overflow-hidden flex flex-col px-3 pb-3 gap-2">
           {/* Preview Panel - Always visible when neither editor nor chat is open */}
           {!isEditorOpen && !isChatOpen && (
-            <div className="flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+            <div className={cn(
+              "flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl",
+              lightModeChromeBackgroundClass,
+            )}>
               <div className="h-full bg-gradient-to-br from-muted/30 via-muted/20 to-muted/30 dark:from-foreground/[0.02] dark:via-foreground/[0.01] dark:to-foreground/[0.02]">
                 <div className="h-full overflow-auto flex justify-center items-start p-2">
                   <div className="w-full h-full">
@@ -314,7 +328,10 @@ export default function VibeCodeLayout({
 
           {/* Code Editor - Shown when toggled */}
           {isEditorOpen && (
-            <div className="flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+            <div className={cn(
+              "flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl",
+              lightModeChromeBackgroundClass,
+            )}>
               <div className="h-full overflow-hidden">
                 {editorComponent}
               </div>
@@ -323,7 +340,10 @@ export default function VibeCodeLayout({
 
           {/* Chat Panel - Shown when toggled */}
           {isChatOpen && (
-            <div className="flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+            <div className={cn(
+              "flex-1 overflow-hidden rounded-xl shadow-lg ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl",
+              lightModeChromeBackgroundClass,
+            )}>
               {chatComponent}
             </div>
           )}
@@ -335,7 +355,10 @@ export default function VibeCodeLayout({
         <div className="flex-1 overflow-hidden flex flex-col">
           {/* Top Header / Toolbar - with consistent inset spacing */}
           <div className="px-6 pt-4 pb-3">
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-background/60 dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]">
+            <div className={cn(
+              "flex items-center gap-3 px-4 py-2.5 rounded-xl dark:bg-background/40 backdrop-blur-xl shadow-sm ring-1 ring-foreground/[0.06]",
+              lightModeChromeBackgroundClass,
+            )}>
               {/* Viewport Switcher */}
               <div className="flex items-center gap-1 rounded-lg bg-foreground/[0.04] p-1">
                 {/* Edit Mode - leftmost when enabled */}
@@ -562,7 +585,13 @@ export default function VibeCodeLayout({
             {/* Left Panel - Preview & Code */}
             <ResizablePanel defaultSize={67} minSize={33} className="relative">
               <div className="absolute inset-0 pl-6 pr-2 pb-6 flex flex-col gap-4">
-                <ResizablePanelGroup direction="vertical" className="flex-1 rounded-2xl overflow-hidden shadow-xl ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+                <ResizablePanelGroup
+                  direction="vertical"
+                  className={cn(
+                    "flex-1 rounded-2xl overflow-hidden shadow-xl ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl",
+                    lightModeChromeBackgroundClass,
+                  )}
+                >
                   {/* Preview Panel */}
                   <ResizablePanel defaultSize={isEditorOpen ? 50 : 100} minSize={20} className="relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-muted/30 via-muted/20 to-muted/30 dark:from-foreground/[0.02] dark:via-foreground/[0.01] dark:to-foreground/[0.02]">
@@ -644,7 +673,10 @@ export default function VibeCodeLayout({
               className="relative"
             >
               <div className="absolute inset-0 pl-2 pr-6 pb-6 flex flex-col">
-                <div className="flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-foreground/[0.06] bg-background/60 dark:bg-background/40 backdrop-blur-xl">
+                <div className={cn(
+                  "flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl",
+                  lightModeChromeBackgroundClass,
+                )}>
                   {chatComponent}
                 </div>
               </div>

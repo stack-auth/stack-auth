@@ -13,15 +13,23 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui";
 
-export const Thread: FC = () => {
+export const Thread: FC<{ useOffWhiteLightMode?: boolean }> = ({ useOffWhiteLightMode = false }) => {
   return (
     <ThreadPrimitive.Root
-      className="bg-background box-border flex h-0 flex-grow flex-col overflow-hidden"
+      className={cn(
+        "box-border flex h-0 flex-grow flex-col overflow-hidden",
+        useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
+      )}
       style={{
         ["--thread-max-width" as string]: "100%",
       }}
     >
-      <ThreadPrimitive.Viewport className="flex h-full flex-col items-center overflow-y-auto scroll-smooth bg-inherit px-3">
+      <ThreadPrimitive.Viewport
+        className={cn(
+          "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
+          useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
+        )}
+      >
         <ThreadWelcome />
 
         <ThreadPrimitive.Messages
@@ -36,7 +44,12 @@ export const Thread: FC = () => {
           <div className="min-h-6 flex-grow" />
         </ThreadPrimitive.If>
 
-        <div className="sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t from-background via-background to-transparent pt-6 pb-3">
+        <div className={cn(
+          "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
+          useOffWhiteLightMode
+            ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
+            : "from-background via-background",
+        )}>
           <ThreadScrollToBottom />
           <Composer />
         </div>
@@ -108,7 +121,7 @@ const ThreadWelcomeSuggestions: FC = () => {
 
 const Composer: FC = () => {
   return (
-    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-background/90 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
+    <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-white dark:bg-background/90 backdrop-blur-xl shadow-sm dark:shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       <ComposerPrimitive.Input
         rows={1}
         autoFocus
