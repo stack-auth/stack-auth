@@ -48,8 +48,8 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`email_verified`**: Whether the user's email has been verified
 - **`selected_team_id`**: The currently selected team ID (nullable)
 - **`is_anonymous`**: Whether this is an anonymous user session
-- **`is_restricted`**: Whether the user is restricted (e.g., unverified email or anonymous)
-- **`restricted_reason`**: Why the user is restricted (nullable). The `type` field is either `anonymous` or `email_not_verified`
+- **`is_restricted`**: Whether the user is restricted (e.g., unverified email, anonymous, or restricted by an administrator)
+- **`restricted_reason`**: Why the user is restricted (nullable). The `type` field is `anonymous`, `email_not_verified`, or `restricted_by_administrator`
 
 ## Example JWT Payload
 
@@ -90,6 +90,13 @@ Restricted user tokens (e.g., users who haven't verified their email when verifi
 - `aud` becomes `<project-id>:restricted`
 - `is_restricted` is `true`
 - `restricted_reason` is `{ "type": "email_not_verified" }`
+
+Users restricted by an administrator (e.g., via [sign-up rules](/docs/concepts/sign-up-rules)) have the same structure:
+
+- `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
+- `aud` becomes `<project-id>:restricted`
+- `is_restricted` is `true`
+- `restricted_reason` is `{ "type": "restricted_by_administrator" }`
 
 ## Working with JWTs
 
