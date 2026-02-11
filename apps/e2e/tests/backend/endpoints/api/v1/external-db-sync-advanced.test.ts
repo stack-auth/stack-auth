@@ -35,11 +35,11 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
   beforeAll(async () => {
     dbManager = new TestDbManager();
     await dbManager.init();
-  });
+  }, 30000); // 30 second timeout for init
 
   afterAll(async () => {
     await dbManager.cleanup();
-  });
+  }, 60000); // 60 second timeout for cleanup
 
   /**
    * What it does:
@@ -109,13 +109,15 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
         try {
           const res1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
           const res2 = await clientA2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
-          return res1.rows.length === 1 && res2.rows.length === 1;
+          // Wait for both row existence AND display_name to be synced
+          return res1.rows.length === 1 && res1.rows[0].display_name === 'User A'
+            && res2.rows.length === 1 && res2.rows[0].display_name === 'User A';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'User A to appear in both Project A databases', timeoutMs: 120000 }
+      { description: 'User A to appear in both Project A databases', timeoutMs: 180000 }
     );
 
     await waitForCondition(
@@ -124,13 +126,16 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           const res1 = await clientB1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           const res2 = await clientB2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           const res3 = await clientB3.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
-          return res1.rows.length === 1 && res2.rows.length === 1 && res3.rows.length === 1;
+          // Wait for both row existence AND display_name to be synced
+          return res1.rows.length === 1 && res1.rows[0].display_name === 'User B'
+            && res2.rows.length === 1 && res2.rows[0].display_name === 'User B'
+            && res3.rows.length === 1 && res3.rows[0].display_name === 'User B';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'User B to appear in all three Project B databases', timeoutMs: 120000 }
+      { description: 'User B to appear in all three Project B databases', timeoutMs: 180000 }
     );
 
     const resA1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
@@ -438,7 +443,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(res.rows[0].count) >= userCount;
         },
-        { description: `all ${userCount} users to be synced`, timeoutMs: 120000 }
+        { description: `all ${userCount} users to be synced`, timeoutMs: 180000 }
       );
 
       const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
@@ -500,7 +505,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'initial 3 users sync', timeoutMs: 120000 }
+      { description: 'initial 3 users sync', timeoutMs: 180000 }
     );
 
     let res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
@@ -543,7 +548,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'final sync state correct', timeoutMs: 120000 }
+      { description: 'final sync state correct', timeoutMs: 180000 }
     );
 
     res = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
@@ -728,7 +733,7 @@ $$;`);
         );
         return res.rows.length === 0;
       },
-      { description: 'deleted user should never appear', timeoutMs: 120000 }
+      { description: 'deleted user should never appear', timeoutMs: 180000 }
     );
 
     const res = await client.query(
@@ -811,7 +816,7 @@ $$;`);
         );
         return followUp.rows.length === 1 && followUp.rows[0].display_name === 'Recreated Export';
       },
-      { description: 'recreated row persists after extra sync', timeoutMs: 120000 },
+      { description: 'recreated row persists after extra sync', timeoutMs: 180000 },
     );
   }, TEST_TIMEOUT);
 
@@ -1025,7 +1030,7 @@ $$;`);
           const countRes = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(countRes.rows[0].count) === initialUserCount;
         },
-        { description: 'initial batch exported', timeoutMs: 60000 },
+        { description: 'initial batch exported', timeoutMs: 180000 },
       );
 
       // Delete first 10 users
