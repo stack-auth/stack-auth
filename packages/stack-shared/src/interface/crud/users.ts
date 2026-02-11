@@ -60,9 +60,7 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   last_active_at_millis: fieldSchema.userLastActiveAtMillisSchema.nonNullable().defined(),
   is_anonymous: fieldSchema.yupBoolean().defined(),
   is_restricted: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is in restricted state (has signed up but not completed onboarding requirements)', exampleValue: false } }),
-  restricted_reason: fieldSchema.yupObject({
-    type: fieldSchema.yupString().oneOf(fieldSchema.restrictedReasonTypes).defined(),
-  }).nullable().defined().meta({ openapiField: { description: 'The reason why the user is restricted (e.g., type: "email_not_verified", "anonymous", or "restricted_by_administrator"), null if not restricted', exampleValue: null } }),
+  restricted_reason: fieldSchema.restrictedReasonSchema.nullable().defined().meta({ openapiField: { description: 'The reason why the user is restricted (e.g., type: "email_not_verified", "anonymous", or "restricted_by_administrator"), null if not restricted', exampleValue: null } }),
   restricted_by_admin: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
   restricted_by_admin_reason: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
   restricted_by_admin_private_details: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),

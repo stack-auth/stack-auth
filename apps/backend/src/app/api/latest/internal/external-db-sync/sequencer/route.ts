@@ -27,13 +27,6 @@ function parseMaxDurationMs(value: string | undefined): number {
   return parsed;
 }
 
-function parseStopWhenIdle(value: string | undefined): boolean {
-  if (!value) return false;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new StatusError(400, "stopWhenIdle must be 'true' or 'false'");
-}
-
 function getSequencerBatchSize(): number {
   const rawValue = getEnvVariable(SEQUENCER_BATCH_SIZE_ENV, "");
   if (!rawValue) return DEFAULT_BATCH_SIZE;
@@ -169,7 +162,6 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     query: yupObject({
       maxDurationMs: yupString().optional(),
-      stopWhenIdle: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -190,19 +182,17 @@ export const GET = createSmartRouteHandler({
     return await traceSpan("external-db-sync.sequencer", async (span) => {
       const startTime = performance.now();
       const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
-      const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
       const pollIntervalMs = 50;
       const batchSize = getSequencerBatchSize();
 
       span.setAttribute("stack.external-db-sync.max-duration-ms", maxDurationMs);
-      span.setAttribute("stack.external-db-sync.stop-when-idle", stopWhenIdle);
       span.setAttribute("stack.external-db-sync.poll-interval-ms", pollIntervalMs);
       span.setAttribute("stack.external-db-sync.batch-size", batchSize);
 
       let iterations = 0;
 
       type SequencerIterationResult = {
-        stopReason: "disabled" | "idle" | null,
+        stopReason: "disabled" | null,
       };
 
       while (performance.now() - startTime < maxDurationMs) {
@@ -221,9 +211,6 @@ export const GET = createSmartRouteHandler({
           try {
             const didUpdate = await backfillSequenceIds(batchSize);
             iterationSpan.setAttribute("stack.external-db-sync.did-update", didUpdate);
-            if (stopWhenIdle && !didUpdate) {
-              return { stopReason: "idle" };
-            }
           } catch (error) {
             iterationSpan.setAttribute("stack.external-db-sync.iteration-error", true);
             captureError(
