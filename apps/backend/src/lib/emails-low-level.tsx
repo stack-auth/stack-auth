@@ -184,6 +184,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
         }
 
         // ============ unknown error ============
+        captureError("unknown-email-send-error", new StackAssertionError("Unknown error while sending email. We should add a better error description for the user.", { cause: error }));
         return Result.error({
           rawError: error,
           errorType: 'UNKNOWN',
