@@ -11,9 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DotsThree } from "@phosphor-icons/react";
+import { DesignButton } from "./button";
 
 type DesignMenuTrigger = "button" | "icon";
 type DesignMenuItemVariant = "default" | "destructive";
@@ -83,18 +83,18 @@ export function DesignMenu(props: DesignMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {trigger === "button" ? (
-          <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
+          <DesignButton variant="outline" size="sm" className="h-8 px-3 rounded-lg">
             {triggerLabel}
-          </Button>
+          </DesignButton>
         ) : (
-          <Button
+          <DesignButton
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
             aria-label={triggerLabel}
           >
             {triggerIcon}
-          </Button>
+          </DesignButton>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent

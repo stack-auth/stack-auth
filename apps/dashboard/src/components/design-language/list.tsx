@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { DotsThree } from "@phosphor-icons/react";
 import { DesignButton } from "./button";
+import { DesignMenu } from "./menu";
 
 export type DesignListItemRowProps = {
   icon: React.ElementType,
@@ -52,22 +46,19 @@ export function DesignListItemRow({
           </DesignButton>
         )}
         {onDelete && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <DesignButton
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg"
-              >
-                <DotsThree size={20} weight="bold" />
-              </DesignButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem onClick={onDelete} className="py-2.5 text-red-600 dark:text-red-400 focus:bg-red-500/10 cursor-pointer justify-center">
-                <span className="font-medium">Delete</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <DesignMenu
+            trigger="icon"
+            triggerLabel="Options"
+            variant="actions"
+            align="end"
+            contentClassName="min-w-[180px]"
+            items={[{
+              id: "delete",
+              label: "Delete",
+              itemVariant: "destructive",
+              onClick: onDelete,
+            }]}
+          />
         )}
       </div>
     </div>
