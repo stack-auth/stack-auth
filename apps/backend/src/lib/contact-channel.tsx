@@ -1,4 +1,5 @@
 import { BooleanTrue, ContactChannelType } from "@/generated/prisma/client";
+import { markProjectUserForExternalDbSync, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { normalizeEmail } from "./emails";
 import { PrismaTransaction } from "./types";
@@ -34,9 +35,13 @@ export async function demoteAllContactChannelsToNonPrimary(
       type: options.type,
       isPrimary: BooleanTrue.TRUE,
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       isPrimary: null,
-    },
+    }),
+  });
+  await markProjectUserForExternalDbSync(tx, {
+    tenancyId: options.tenancyId,
+    projectUserId: options.projectUserId,
   });
 }
 
@@ -100,10 +105,14 @@ export async function setContactChannelAsPrimaryById(
         id: options.contactChannelId,
       },
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       isPrimary: BooleanTrue.TRUE,
       ...options.additionalUpdates,
-    },
+    }),
+  });
+  await markProjectUserForExternalDbSync(tx, {
+    tenancyId: options.tenancyId,
+    projectUserId: options.projectUserId,
   });
 }
 
@@ -141,10 +150,14 @@ export async function setContactChannelAsPrimaryByValue(
         value: options.value,
       },
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       isPrimary: BooleanTrue.TRUE,
       ...options.additionalUpdates,
-    },
+    }),
+  });
+  await markProjectUserForExternalDbSync(tx, {
+    tenancyId: options.tenancyId,
+    projectUserId: options.projectUserId,
   });
 }
 
