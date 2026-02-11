@@ -397,7 +397,7 @@ export function StackCompanion({ className }: { className?: string }) {
       style={{ opacity: contentOpacity }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-foreground/[0.06] shrink-0 bg-background/40">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06] dark:border-foreground/[0.06] shrink-0 bg-white dark:bg-background/40">
         <div className="flex items-center gap-2.5">
           {currentItem && (
             <>
@@ -443,7 +443,7 @@ export function StackCompanion({ className }: { className?: string }) {
     >
       {/* The Handle Pill */}
       <div className={cn(
-        "flex flex-col items-center gap-3 px-2 py-3 bg-foreground/[0.03] backdrop-blur-xl border border-foreground/5 shadow-sm transition-all duration-300 select-none",
+        "flex flex-col items-center gap-3 px-2 py-3 bg-white dark:bg-foreground/[0.03] dark:backdrop-blur-xl border border-black/[0.06] dark:border-foreground/5 shadow-md transition-all duration-300 select-none",
         // Only show grab cursor when an item is selected (drawer can be resized)
         activeItem && "cursor-grab active:cursor-grabbing",
         // Shape morphing
@@ -505,7 +505,7 @@ export function StackCompanion({ className }: { className?: string }) {
       <StackCompanionContext.Provider value={contextValue}>
         <aside
           className={cn(
-            "sticky top-20 h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
+            "sticky top-14 h-[calc(100vh-3.5rem)] dark:top-20 dark:h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
             isAnimating && !isResizing && "transition-[width] duration-300 ease-out",
             className
           )}
@@ -515,7 +515,7 @@ export function StackCompanion({ className }: { className?: string }) {
           {showDrawerContainerSplit && (
             <div
               className={cn(
-                "h-full bg-gray-100/80 dark:bg-foreground/5 backdrop-blur-xl border border-border/10 dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-sm",
+              "h-full bg-white dark:bg-foreground/5 dark:backdrop-blur-xl border border-black/[0.06] dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-md",
                 isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
               )}
               style={{ width: drawerWidth }}
@@ -545,7 +545,7 @@ export function StackCompanion({ className }: { className?: string }) {
         {showDrawerContainer && (
           <div
             className={cn(
-              "h-full overflow-hidden pointer-events-auto relative bg-background/80 backdrop-blur-xl border-l border-foreground/[0.08] shadow-2xl",
+              "h-full overflow-hidden pointer-events-auto relative bg-white dark:bg-background/80 dark:backdrop-blur-xl border-l border-black/[0.06] dark:border-foreground/[0.08] shadow-2xl",
               isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
             )}
             style={{ width: drawerWidth }}

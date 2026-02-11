@@ -24,7 +24,7 @@ type DataTableViewOptionsProps<TData> = {
 export function DataTableViewOptions<TData>({
   table,
   variant = "secondary",
-  className = "ml-auto hidden h-8 px-3 text-xs gap-1.5 lg:flex",
+  className = "ml-auto hidden h-8 px-3 text-xs gap-1.5 lg:flex rounded-xl bg-foreground/[0.04] hover:bg-foreground/[0.06] dark:bg-foreground/[0.08] dark:hover:bg-foreground/[0.12]",
   iconClassName = "h-3.5 w-3.5",
 }: DataTableViewOptionsProps<TData>) {
   return (

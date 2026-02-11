@@ -77,12 +77,12 @@ export function TableView<TData, TValue>(props: {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={(ev) => {
+                  onClick={props.onRowClick ? (ev) => {
                     // only trigger onRowClick if the element is a direct descendant; don't trigger for portals
                     if (ev.target instanceof Node && ev.currentTarget.contains(ev.target)) {
                       props.onRowClick?.(row.original);
                     }
-                  }}
+                  } : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

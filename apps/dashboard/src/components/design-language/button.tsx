@@ -6,9 +6,9 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Spinner } from "./spinner";
+import { Spinner } from "@/components/ui/spinner";
 
-const buttonVariants = cva(
+const designButtonVariants = cva(
   "stack-scope inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
@@ -30,7 +30,6 @@ const buttonVariants = cva(
         sm: "h-8 rounded-md px-3 text-xs",
         lg: "h-10 rounded-md px-8",
         icon: "h-9 w-9",
-        plain: "",
       },
     },
     defaultVariants: {
@@ -40,31 +39,31 @@ const buttonVariants = cva(
   }
 );
 
-export type OriginalButtonProps = {
+export type DesignOriginalButtonProps = {
   asChild?: boolean,
-} & React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>
+} & React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof designButtonVariants>;
 
-const OriginalButton = forwardRefIfNeeded<HTMLButtonElement, OriginalButtonProps>(
+const DesignOriginalButton = forwardRefIfNeeded<HTMLButtonElement, DesignOriginalButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(designButtonVariants({ variant, size, className }))}
         ref={ref}
         {...props}
       />
     );
   }
 );
-OriginalButton.displayName = "Button";
+DesignOriginalButton.displayName = "DesignButton";
 
-type ButtonProps = {
+export type DesignButtonProps = {
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>,
   loading?: boolean,
   loadingStyle?: "spinner" | "disabled",
-} & OriginalButtonProps
+} & DesignOriginalButtonProps;
 
-const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
+export const DesignButton = forwardRefIfNeeded<HTMLButtonElement, DesignButtonProps>(
   ({ onClick, loading: loadingProp, loadingStyle = "spinner", children, size, ...props }, ref) => {
     const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
       await onClick?.(e);
@@ -73,7 +72,7 @@ const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
     const loading = loadingProp || isLoading;
 
     return (
-      <OriginalButton
+      <DesignOriginalButton
         {...props}
         ref={ref}
         disabled={props.disabled || loading}
@@ -85,12 +84,9 @@ const Button = forwardRefIfNeeded<HTMLButtonElement, ButtonProps>(
         <Slottable>
           {typeof children === "string" ? <span>{children}</span> : children}
         </Slottable>
-      </OriginalButton>
+      </DesignOriginalButton>
     );
   }
 );
-Button.displayName = "Button";
-
-export { Button, buttonVariants };
-export type { ButtonProps };
+DesignButton.displayName = "DesignButton";
 

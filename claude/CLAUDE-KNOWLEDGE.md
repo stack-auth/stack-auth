@@ -25,3 +25,12 @@ A: When setting `restricted_by_admin` to false, explicitly clear `restricted_by_
 
 Q: Where should `stackAppInternalsSymbol` be imported from in the dashboard?
 A: Use the shared `apps/dashboard/src/lib/stack-app-internals.ts` export to avoid duplicating the Symbol.for definition across files.
+
+Q: Where is the editable-grid preview spacing controlled in the dashboard playground?
+A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/playground/page-client.tsx`, the `selected === "editable-grid"` branch controls the card width/padding and the main preview container now uses `isExpandedPreview` to reduce outer gray padding only for editable-grid.
+
+Q: Why do editable-grid dropdown/boolean values sometimes not fill the full value column width?
+A: In `apps/dashboard/src/components/design-language/editable-grid.tsx`, the value wrappers must be explicitly full-width (`w-full`) for boolean and dropdown fields, and the grid value cell container should also include `w-full`; otherwise controls shrink to content width.
+
+Q: How should dashboard inline editable text fields match the new design-language style?
+A: Use `DesignInput` and `DesignButton` in `apps/dashboard/src/components/editable-input.tsx` (instead of legacy `Input`/`Button`) and style accept/reject actions as subtle glassy icon buttons with muted ring/border plus semantic hover tints.

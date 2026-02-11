@@ -138,11 +138,13 @@ const DropdownMenuItem = forwardRefIfNeeded<
     }
   };
 
+  const paddingClasses = inset || icon ? "pl-9 pr-2.5" : "px-2.5";
+
   return <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "stack-scope relative flex cursor-default select-none items-center rounded-lg px-2.5 py-2 text-sm outline-none transition-all duration-150 hover:transition-none focus:bg-foreground/[0.05] focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      (inset || icon) && "pl-9",
+      "stack-scope relative flex cursor-default select-none items-center rounded-lg py-2 text-sm outline-none transition-all duration-150 hover:transition-none focus:bg-foreground/[0.05] focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      paddingClasses,
       className
     )}
     {...props}

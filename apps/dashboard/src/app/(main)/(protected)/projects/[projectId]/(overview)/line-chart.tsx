@@ -182,12 +182,12 @@ export function ChartCard({
   gradientColor?: GradientColor,
 }) {
   const hoverTints: Record<GradientColor, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
+    blue: "group-hover:bg-slate-500/[0.02]",
+    purple: "group-hover:bg-slate-500/[0.02]",
+    green: "group-hover:bg-slate-500/[0.02]",
+    orange: "group-hover:bg-slate-500/[0.02]",
     slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
+    cyan: "group-hover:bg-slate-500/[0.02]",
   };
 
   return (
@@ -204,13 +204,13 @@ export function ChartCard({
         `}
       </style>
       <div className={cn(
-        "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
-        "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
+        "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
+        "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
         "shadow-sm hover:shadow-md hover:z-10",
         className
       )}>
         {/* Subtle glassmorphic background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+        <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.02] dark:from-foreground/[0.03] dark:via-foreground/[0.01] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
         {/* Accent hover tint */}
         <div className={cn(
           "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
