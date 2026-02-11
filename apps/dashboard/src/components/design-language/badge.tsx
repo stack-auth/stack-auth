@@ -39,15 +39,18 @@ function getShowLabelShowIcon(
   hasIcon: boolean,
 ): { showLabel: boolean, showIcon: boolean } {
   switch (contentMode) {
-    case "both":
+    case "both": {
       return { showLabel: true, showIcon: hasIcon };
-    case "text":
+    }
+    case "text": {
       return { showLabel: true, showIcon: false };
-    case "icon":
+    }
+    case "icon": {
       if (!hasIcon) {
         throw new Error("DesignBadge contentMode 'icon' requires the icon prop to be provided.");
       }
       return { showLabel: false, showIcon: true };
+    }
     default: {
       const _exhaustive: never = contentMode;
       throw new Error(`Unknown contentMode: ${String(_exhaustive)}`);
