@@ -109,7 +109,9 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
         try {
           const res1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
           const res2 = await clientA2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
-          return res1.rows.length === 1 && res2.rows.length === 1;
+          // Wait for both row existence AND display_name to be synced
+          return res1.rows.length === 1 && res1.rows[0].display_name === 'User A'
+            && res2.rows.length === 1 && res2.rows[0].display_name === 'User A';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
@@ -124,7 +126,10 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           const res1 = await clientB1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           const res2 = await clientB2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           const res3 = await clientB3.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
-          return res1.rows.length === 1 && res2.rows.length === 1 && res3.rows.length === 1;
+          // Wait for both row existence AND display_name to be synced
+          return res1.rows.length === 1 && res1.rows[0].display_name === 'User B'
+            && res2.rows.length === 1 && res2.rows[0].display_name === 'User B'
+            && res3.rows.length === 1 && res3.rows[0].display_name === 'User B';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
