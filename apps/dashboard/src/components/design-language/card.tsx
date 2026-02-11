@@ -29,7 +29,6 @@ export function useGlassmorphicDefault(explicit: boolean | undefined): boolean {
   return explicit ?? insideCard;
 }
 
-type DesignCardVariant = "header" | "compact" | "bodyOnly";
 type DesignCardGradient = "blue" | "cyan" | "purple" | "green" | "orange" | "default";
 
 const hoverTintClasses = new Map<DesignCardGradient, string>([
@@ -52,18 +51,34 @@ const demoTintClasses = new Map<DesignCardGradient, string>([
 
 const bodyPaddingClass = "p-5";
 
-export type DesignCardProps = {
-  variant?: DesignCardVariant,
-  title?: React.ReactNode,
-  subtitle?: React.ReactNode,
-  icon?: React.ElementType,
+// ─── Discriminated props ──────────────────────────────────────────────────
+// - If title is given, icon is required.
+// - The layout is derived automatically:
+//     title + subtitle → "header"   (full header block with subtitle)
+//     title only       → "compact"  (slim bar with border-b)
+//     no title         → "bodyOnly" (just the body)
+
+type DesignCardBaseProps = {
   glassmorphic?: boolean,
   gradient?: DesignCardGradient,
   contentClassName?: string,
-} & Omit<React.ComponentProps<typeof Card>, "title">
+} & Omit<React.ComponentProps<typeof Card>, "title">;
+
+type WithTitleProps = {
+  title: React.ReactNode,
+  subtitle?: React.ReactNode,
+  icon: React.ElementType,
+};
+
+type WithoutTitleProps = {
+  title?: never,
+  subtitle?: never,
+  icon?: never,
+};
+
+export type DesignCardProps = DesignCardBaseProps & (WithTitleProps | WithoutTitleProps);
 
 export function DesignCard({
-  variant = "compact",
   title,
   subtitle,
   icon: Icon,
@@ -76,6 +91,11 @@ export function DesignCard({
 }: DesignCardProps) {
   const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
   const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
+
+  // Derive layout from which props were provided
+  const variant = title != null
+    ? (subtitle != null ? "header" : "compact")
+    : "bodyOnly";
 
   return (
     <DesignCardNestingContext.Provider value={true}>
@@ -105,31 +125,25 @@ export function DesignCard({
         <div className="relative">
           {variant === "header" && (
             <div className={bodyPaddingClass}>
-              {(title || subtitle || Icon) && (
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    {(title || Icon) && (
-                      <div className="flex items-center gap-2">
-                        {Icon && (
-                          <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
-                            <Icon className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
-                          </div>
-                        )}
-                        {title && (
-                          <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                            {title}
-                          </span>
-                        )}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    {Icon && (
+                      <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                        <Icon className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
                       </div>
                     )}
-                    {subtitle && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {subtitle}
-                      </p>
-                    )}
+                    <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                      {title}
+                    </span>
                   </div>
+                  {subtitle && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {subtitle}
+                    </p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
           {variant === "compact" && (
@@ -139,11 +153,9 @@ export function DesignCard({
                   <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
               )}
-              {title && (
-                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  {title}
-                </span>
-              )}
+              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                {title}
+              </span>
             </div>
           )}
           <div

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Spinner } from "@/components/ui/spinner";
 import { useGlassmorphicDefault } from "./card";
@@ -22,9 +24,7 @@ export type DesignPillToggleProps = {
   size?: DesignPillToggleSize,
   glassmorphic?: boolean,
   gradient?: DesignPillToggleGradient,
-  /** Show the icon portion of each pill (when the option provides one). Defaults to true. At least one of showIcons/showLabels must be true. */
-  showIcons?: boolean,
-  /** Show the text label of each pill. Defaults to true. At least one of showIcons/showLabels must be true. */
+  /** When false, hides labels and shows a tooltip on hover instead. Defaults to true. */
   showLabels?: boolean,
   className?: string,
 };
@@ -64,17 +64,12 @@ export function DesignPillToggle({
   size = "md",
   glassmorphic: glassmorphicProp,
   gradient = "default",
-  showIcons = true,
   showLabels = true,
   className,
 }: DesignPillToggleProps) {
   const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
   const sizeClass = getMapValueOrThrow(sizeClasses, size, "sizeClasses");
   const activeRingClass = getMapValueOrThrow(gradientClasses, gradient, "gradientClasses");
-
-  // At least one of showIcons/showLabels must be true
-  const effectiveShowLabels = !showIcons ? true : showLabels;
-  const effectiveShowIcons = !showLabels ? true : showIcons;
 
   const [loadingOptionId, setLoadingOptionId] = useState<string | null>(null);
 
@@ -101,7 +96,8 @@ export function DesignPillToggle({
       {options.map((option) => {
         const isActive = selected === option.id;
         const Icon = option.icon;
-        return (
+
+        const pill = (
           <button
             key={option.id}
             onClick={() => handleClick(option.id)}
@@ -134,11 +130,28 @@ export function DesignPillToggle({
               "flex items-center gap-2",
               loadingOptionId === option.id && "invisible"
             )}>
-              {effectiveShowIcons && Icon && <Icon className={sizeClass.icon} />}
-              {effectiveShowLabels && option.label}
+              {Icon && <Icon className={sizeClass.icon} />}
+              {showLabels && option.label}
             </span>
           </button>
         );
+
+        if (!showLabels) {
+          return (
+            <Tooltip key={option.id} delayDuration={0}>
+              <TooltipTrigger asChild>
+                {pill}
+              </TooltipTrigger>
+              <TooltipPortal>
+                <TooltipContent side="top">
+                  {option.label}
+                </TooltipContent>
+              </TooltipPortal>
+            </Tooltip>
+          );
+        }
+
+        return pill;
       })}
     </div>
   );

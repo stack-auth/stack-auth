@@ -19,6 +19,7 @@ import {
   DesignSelectorDropdown,
   DesignUserList,
 } from "@/components/design-language";
+import { CodeBlock } from "@/components/code-block";
 import { DataTableColumnHeader, Typography } from "@/components/ui";
 import {
   CheckCircle,
@@ -143,6 +144,29 @@ function BoolToggle({
   );
 }
 
+function GlassmorphicToggle({
+  value,
+  onChange,
+}: {
+  value: boolean | undefined,
+  onChange: (v: boolean | undefined) => void,
+}) {
+  return (
+    <div className="max-w-[132px]">
+      <DesignSelectorDropdown
+        value={value === undefined ? "default" : value ? "true" : "false"}
+        onValueChange={(v) => onChange(v === "default" ? undefined : v === "true")}
+        options={[
+          { value: "default", label: "Default" },
+          { value: "true", label: "On" },
+          { value: "false", label: "Off" },
+        ]}
+        size="sm"
+      />
+    </div>
+  );
+}
+
 // ─── Demo data ───────────────────────────────────────────────────────────────
 
 type DemoProduct = {
@@ -196,16 +220,14 @@ export default function PageClient() {
   const [btnLoading, setBtnLoading] = useState(false);
 
   // Card
-  const [cardVariant, setCardVariant] = useState<"header" | "compact" | "bodyOnly">("compact");
   const [cardTitle, setCardTitle] = useState("Featured Bundle");
   const [cardSubtitle, setCardSubtitle] = useState("Save 20% this week.");
   const [cardGradient, setCardGradient] = useState<Gradient>("default");
-  const [cardGlass, setCardGlass] = useState(true);
-  const [cardShowIcon, setCardShowIcon] = useState(true);
+  const [cardGlass, setCardGlass] = useState<boolean | undefined>(true);
 
   // Category Tabs
   const [tabSize, setTabSize] = useState<"sm" | "md">("sm");
-  const [tabGlass, setTabGlass] = useState(false);
+  const [tabGlass, setTabGlass] = useState<boolean | undefined>(false);
   const [tabGradient, setTabGradient] = useState<Gradient>("blue");
   const [tabSelected, setTabSelected] = useState("all");
   const [tabShowBadge, setTabShowBadge] = useState(true);
@@ -220,10 +242,6 @@ export default function PageClient() {
   const [blastRageRadius, setBlastRageRadius] = useState(60);
 
   // Data Table
-  const [tableTitle, setTableTitle] = useState("Products");
-  const [tableSubtitle, setTableSubtitle] = useState("All items in catalog");
-  const [tableShowHeader, setTableShowHeader] = useState(true);
-  const [tableShowIcon, setTableShowIcon] = useState(true);
   const [tableClickableRows, setTableClickableRows] = useState(false);
   const [tableLastRowClick, setTableLastRowClick] = useState("");
 
@@ -245,9 +263,11 @@ export default function PageClient() {
 
   // List Item Row
   const [listTitle, setListTitle] = useState("Premium Support Plan");
-  const [listShowIcon, setListShowIcon] = useState(true);
-  const [listEdit, setListEdit] = useState(true);
-  const [listDelete, setListDelete] = useState(true);
+  const [listSubtitle, setListSubtitle] = useState("3 seats remaining");
+  const [listSize, setListSize] = useState<"sm" | "lg">("lg");
+  const [listWithIcon, setListWithIcon] = useState(true);
+  const [listShowEditBtn, setListShowEditBtn] = useState(true);
+  const [listShowMenuBtn, setListShowMenuBtn] = useState(true);
   const [listLastAction, setListLastAction] = useState("");
 
   // Menu
@@ -264,9 +284,9 @@ export default function PageClient() {
 
   // Pill Toggle
   const [pillSize, setPillSize] = useState<Size3>("md");
-  const [pillGlass, setPillGlass] = useState(false);
-  const [pillShowIcons, setPillShowIcons] = useState(true);
+  const [pillGlass, setPillGlass] = useState<boolean | undefined>(false);
   const [pillShowLabels, setPillShowLabels] = useState(true);
+  const [pillWithIcons, setPillWithIcons] = useState(true);
   const [pillSelected, setPillSelected] = useState("a");
 
   // Selector Dropdown
@@ -442,13 +462,19 @@ export default function PageClient() {
       );
     }
     if (selected === "card") {
+      // Title/icon/subtitle props are conditional: when a title is provided,
+      // icon is required by the DesignCard type system.
+      const titleProps = cardTitle
+        ? {
+          title: cardTitle,
+          icon: Package,
+          ...(cardSubtitle ? { subtitle: cardSubtitle } : {}),
+        } satisfies { title: React.ReactNode, icon: React.ElementType, subtitle?: React.ReactNode }
+        : {};
       return (
         <div className="w-full max-w-md">
           <DesignCard
-            variant={cardVariant}
-            title={cardTitle}
-            subtitle={cardSubtitle}
-            icon={cardShowIcon ? Package : undefined}
+            {...titleProps}
             gradient={cardGradient}
             glassmorphic={cardGlass}
           >
@@ -502,10 +528,6 @@ export default function PageClient() {
       return (
         <div className="w-full max-w-2xl">
           <DesignDataTable
-            title={tableTitle}
-            subtitle={tableSubtitle}
-            icon={tableShowIcon ? Package : undefined}
-            showHeader={tableShowHeader}
             data={DEMO_PRODUCTS}
             columns={tableColumns}
             defaultSorting={[{ id: "name", desc: false }]}
@@ -566,14 +588,30 @@ export default function PageClient() {
       );
     }
     if (selected === "list-item-row") {
+      const listButtons = [
+        ...(listShowEditBtn ? [{
+          id: "edit",
+          label: "Edit",
+          onClick: () => setListLastAction("edit"),
+        }] : []),
+        ...(listShowMenuBtn ? [{
+          id: "more",
+          label: "Options",
+          display: "icon" as const,
+          onClick: [
+            { id: "duplicate", label: "Duplicate", onClick: () => setListLastAction("duplicate") },
+            { id: "delete", label: "Delete", itemVariant: "destructive" as const, onClick: () => setListLastAction("delete") },
+          ],
+        }] : []),
+      ];
       return (
         <div className="w-full max-w-lg space-y-2">
           <DesignListItemRow
-            icon={Cube}
+            icon={listWithIcon ? Cube : undefined}
             title={listTitle}
-            showIcon={listShowIcon}
-            onEdit={listEdit ? () => setListLastAction("edit") : undefined}
-            onDelete={listDelete ? () => setListLastAction("delete") : undefined}
+            subtitle={listSubtitle || undefined}
+            size={listSize}
+            buttons={listButtons.length > 0 ? listButtons : undefined}
           />
           {listLastAction && (
             <Typography variant="secondary" className="text-xs pl-1">
@@ -647,15 +685,14 @@ export default function PageClient() {
       return (
         <DesignPillToggle
           options={[
-            { id: "a", label: "Phone", icon: Envelope },
-            { id: "b", label: "Tablet", icon: HardDrive },
-            { id: "c", label: "Desktop", icon: Sparkle },
+            { id: "a", label: "Phone", ...(pillWithIcons ? { icon: Envelope } : {}) },
+            { id: "b", label: "Tablet", ...(pillWithIcons ? { icon: HardDrive } : {}) },
+            { id: "c", label: "Desktop", ...(pillWithIcons ? { icon: Sparkle } : {}) },
           ]}
           selected={pillSelected}
           onSelect={setPillSelected}
           size={pillSize}
           glassmorphic={pillGlass}
-          showIcons={pillShowIcons}
           showLabels={pillShowLabels}
         />
       );
@@ -857,29 +894,11 @@ export default function PageClient() {
     if (selected === "card") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-end">
-          <PropField label="Variant">
-            <DesignSelectorDropdown
-              value={cardVariant}
-              onValueChange={(v) => {
-                if (v === "header" || v === "compact" || v === "bodyOnly") {
-                  setCardVariant(v);
-                  return;
-                }
-                throw new Error(`Unknown card variant "${v}"`);
-              }}
-              options={[
-                { value: "header", label: "Header" },
-                { value: "compact", label: "Compact" },
-                { value: "bodyOnly", label: "Body Only" },
-              ]}
-              size="sm"
-            />
-          </PropField>
           <PropField label="Title">
-            <DesignInput size="sm" value={cardTitle} onChange={(e) => setCardTitle(e.target.value)} />
+            <DesignInput size="sm" value={cardTitle} onChange={(e) => setCardTitle(e.target.value)} placeholder="(empty = body only)" />
           </PropField>
           <PropField label="Subtitle">
-            <DesignInput size="sm" value={cardSubtitle} onChange={(e) => setCardSubtitle(e.target.value)} />
+            <DesignInput size="sm" value={cardSubtitle} onChange={(e) => setCardSubtitle(e.target.value)} placeholder="(empty = compact header)" />
           </PropField>
           <PropField label="Gradient">
             <DesignSelectorDropdown
@@ -893,10 +912,7 @@ export default function PageClient() {
             />
           </PropField>
           <PropField label="Glassmorphic">
-            <BoolToggle value={cardGlass} onChange={setCardGlass} />
-          </PropField>
-          <PropField label="Header Icon">
-            <BoolToggle value={cardShowIcon} onChange={setCardShowIcon} on="Show" off="Hide" />
+            <GlassmorphicToggle value={cardGlass} onChange={setCardGlass} />
           </PropField>
         </div>
       );
@@ -930,7 +946,7 @@ export default function PageClient() {
             />
           </PropField>
           <PropField label="Glassmorphic">
-            <BoolToggle value={tabGlass} onChange={setTabGlass} />
+            <GlassmorphicToggle value={tabGlass} onChange={setTabGlass} />
           </PropField>
           <PropField label="Show Badge">
             <BoolToggle value={tabShowBadge} onChange={setTabShowBadge} on="Yes" off="No" />
@@ -1005,18 +1021,6 @@ export default function PageClient() {
     if (selected === "data-table") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
-          <PropField label="Title">
-            <DesignInput size="sm" value={tableTitle} onChange={(e) => setTableTitle(e.target.value)} />
-          </PropField>
-          <PropField label="Subtitle">
-            <DesignInput size="sm" value={tableSubtitle} onChange={(e) => setTableSubtitle(e.target.value)} />
-          </PropField>
-          <PropField label="Show Header">
-            <BoolToggle value={tableShowHeader} onChange={setTableShowHeader} on="Show" off="Hide" />
-          </PropField>
-          <PropField label="Show Icon">
-            <BoolToggle value={tableShowIcon} onChange={setTableShowIcon} />
-          </PropField>
           <PropField label="Row Click">
             <BoolToggle value={tableClickableRows} onChange={setTableClickableRows} on="Enabled" off="Disabled" />
           </PropField>
@@ -1129,17 +1133,37 @@ export default function PageClient() {
     if (selected === "list-item-row") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
+          <PropField label="Size">
+            <DesignSelectorDropdown
+              value={listSize}
+              onValueChange={(v) => {
+                if (v === "sm" || v === "lg") {
+                  setListSize(v);
+                  return;
+                }
+                throw new Error(`Unknown list size "${v}"`);
+              }}
+              options={[
+                { value: "sm", label: "Small" },
+                { value: "lg", label: "Large" },
+              ]}
+              size="sm"
+            />
+          </PropField>
           <PropField label="Title">
             <DesignInput size="sm" value={listTitle} onChange={(e) => setListTitle(e.target.value)} />
           </PropField>
-          <PropField label="Show Icon">
-            <BoolToggle value={listShowIcon} onChange={setListShowIcon} on="Show" off="Hide" />
+          <PropField label="Subtitle">
+            <DesignInput size="sm" value={listSubtitle} onChange={(e) => setListSubtitle(e.target.value)} placeholder="(empty = none)" />
           </PropField>
-          <PropField label="Edit Action">
-            <BoolToggle value={listEdit} onChange={setListEdit} on="Show" off="Hide" />
+          <PropField label="With Icon">
+            <BoolToggle value={listWithIcon} onChange={setListWithIcon} on="Yes" off="No" />
           </PropField>
-          <PropField label="Delete Action">
-            <BoolToggle value={listDelete} onChange={setListDelete} on="Show" off="Hide" />
+          <PropField label="Text Button">
+            <BoolToggle value={listShowEditBtn} onChange={setListShowEditBtn} on="Show" off="Hide" />
+          </PropField>
+          <PropField label="Menu Button">
+            <BoolToggle value={listShowMenuBtn} onChange={setListShowMenuBtn} on="Show" off="Hide" />
           </PropField>
         </div>
       );
@@ -1251,10 +1275,10 @@ export default function PageClient() {
             />
           </PropField>
           <PropField label="Glassmorphic">
-            <BoolToggle value={pillGlass} onChange={setPillGlass} />
+            <GlassmorphicToggle value={pillGlass} onChange={setPillGlass} />
           </PropField>
-          <PropField label="Show Icons">
-            <BoolToggle value={pillShowIcons} onChange={setPillShowIcons} on="Show" off="Hide" />
+          <PropField label="With Icons">
+            <BoolToggle value={pillWithIcons} onChange={setPillWithIcons} on="Yes" off="No" />
           </PropField>
           <PropField label="Show Labels">
             <BoolToggle value={pillShowLabels} onChange={setPillShowLabels} on="Show" off="Hide" />
@@ -1319,6 +1343,217 @@ export default function PageClient() {
     );
   }
 
+  // ─── Code generation ─────────────────────────────────────────────────────
+
+  function escapeAttr(s: string): string {
+    return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function getComponentCode(): string {
+    if (selected === "alert") {
+      return `<DesignAlert
+  variant="${alertVariant}"
+  title="${escapeAttr(alertTitle)}"
+  description="${escapeAttr(alertDesc)}"
+/>`;
+    }
+    if (selected === "badge") {
+      const iconProp = badgeContentMode === "icon"
+        ? 'icon={CheckCircle}'
+        : (badgeIcon ? "icon={CheckCircle}" : "icon={undefined}");
+      return `<DesignBadge
+  label="${escapeAttr(badgeLabel || "Badge")}"
+  color="${badgeColor}"
+  size="${badgeSize}"
+  contentMode="${badgeContentMode}"
+  ${iconProp}
+/>`;
+    }
+    if (selected === "button") {
+      const child = btnSize === "icon"
+        ? "<Sparkle className=\"h-4 w-4\" />"
+        : `"${escapeAttr(btnLabel || "Button")}"`;
+      return `<DesignButton
+  variant="${btnVariant}"
+  size="${btnSize}"
+  loading={${btnLoading}}
+>
+  ${child}
+</DesignButton>`;
+    }
+    if (selected === "card") {
+      const glassProp = cardGlass === undefined ? "" : `\n  glassmorphic={${cardGlass}}`;
+      const titleProps = cardTitle
+        ? `\n  icon={Package}\n  title="${escapeAttr(cardTitle)}"` + (cardSubtitle ? `\n  subtitle="${escapeAttr(cardSubtitle)}"` : "")
+        : "";
+      return `<DesignCard${titleProps}
+  gradient="${cardGradient}"${glassProp}
+>
+  <Typography variant="secondary" className="text-sm">
+    Highlight pricing, benefits, or key product details here.
+  </Typography>
+</DesignCard>`;
+    }
+    if (selected === "category-tabs") {
+      return `<DesignCategoryTabs
+  categories={[
+    { id: "all", label: "All Items", count: 24 },
+    { id: "active", label: "Active", count: 12 },
+    { id: "draft", label: "Drafts", count: 8 },
+    { id: "archived", label: "Archived", count: 4 },
+  ]}
+  selectedCategory="${escapeAttr(tabSelected)}"
+  onSelect={setSelectedCategory}
+  showBadge={${tabShowBadge}}
+  size="${tabSize}"${tabGlass === undefined ? "" : `\n  glassmorphic={${tabGlass}}`}
+  gradient="${tabGradient}"
+/>`;
+    }
+    if (selected === "cursor-blast") {
+      return `<CursorBlastEffect
+  containerRef={containerRef}
+  blastLifetimeMs={${blastLifetime}}
+  maxActiveBlasts={${blastMaxActive}}
+  rageClickThreshold={${blastRageThreshold}}
+  rageClickWindowMs={${blastRageWindow}}
+  rageClickRadiusPx={${blastRageRadius}}
+/>`;
+    }
+    if (selected === "data-table") {
+      return `<DesignDataTable
+  data={products}
+  columns={columns}
+  defaultSorting={[{ id: "name", desc: false }]}
+  onRowClick={${tableClickableRows ? "(row) => setLastClickedRow(row.name)" : "undefined"}}
+/>`;
+    }
+    if (selected === "editable-grid") {
+      return `<DesignEditableGrid
+  items={editableItems}
+  columns={${gridCols}}
+  className="gap-x-6 gap-y-3"
+  deferredSave={${gridDeferredSave}}
+  hasChanges={${gridHasChanges}}
+  onSave={${gridDeferredSave ? "handleSave" : "undefined"}}
+  onDiscard={${gridDeferredSave ? "handleDiscard" : "undefined"}}
+  externalModifiedKeys={${gridShowModified ? 'new Set(["display-name", "category"])' : "undefined"}}
+/>`;
+    }
+    if (selected === "input") {
+      const leading = inputPrefix
+        ? "prefixItem=\"$\""
+        : (inputIcon ? "leadingIcon={<MagnifyingGlassIcon className=\"h-3 w-3\" />}" : "leadingIcon={undefined}");
+      return `<DesignInput
+  type="${inputType}"
+  size="${inputSize}"
+  disabled={${inputDisabled}}
+  placeholder="${escapeAttr(inputPlaceholder)}"
+  ${leading}
+/>`;
+    }
+    if (selected === "list-item-row") {
+      const btnEntries: string[] = [];
+      if (listShowEditBtn) {
+        btnEntries.push(`    { id: "edit", label: "Edit", onClick: () => handleEdit() }`);
+      }
+      if (listShowMenuBtn) {
+        btnEntries.push(`    {\n      id: "more",\n      label: "Options",\n      display: "icon",\n      onClick: [\n        { id: "duplicate", label: "Duplicate", onClick: () => handleDuplicate() },\n        { id: "delete", label: "Delete", itemVariant: "destructive", onClick: () => handleDelete() },\n      ],\n    }`);
+      }
+      const buttonsProp = btnEntries.length > 0
+        ? `\n  buttons={[\n${btnEntries.join(",\n")},\n  ]}`
+        : "";
+      const iconProp = listWithIcon ? "\n  icon={Cube}" : "";
+      const subtitleProp = listSubtitle ? `\n  subtitle="${escapeAttr(listSubtitle)}"` : "";
+      return `<DesignListItemRow${iconProp}
+  title="${escapeAttr(listTitle)}"${subtitleProp}
+  size="${listSize}"${buttonsProp}
+/>`;
+    }
+    if (selected === "menu") {
+      if (menuVariant === "selector") {
+        return `<DesignMenu
+  variant="selector"
+  trigger="${menuTrigger}"
+  align="${menuAlign}"
+  triggerLabel={selectedOption?.label ?? "Select"}
+  label="${escapeAttr(menuLabel)}"
+  options={[
+    { id: "all", label: "All" },
+    { id: "active", label: "Active" },
+    { id: "drafts", label: "Drafts" },
+  ]}
+  value="${escapeAttr(menuSelectorValue)}"
+  onValueChange={setSelectedOption}
+/>`;
+      }
+      if (menuVariant === "toggles") {
+        return `<DesignMenu
+  variant="toggles"
+  trigger="${menuTrigger}"
+  triggerLabel="${escapeAttr(menuTriggerLabel)}"
+  align="${menuAlign}"
+  label="${escapeAttr(menuLabel)}"
+  options={[
+    { id: "opt1", label: "Name", checked: ${menuToggles.opt1} },
+    { id: "opt2", label: "Status", checked: ${menuToggles.opt2} },
+    { id: "opt3", label: "Price", checked: ${menuToggles.opt3} },
+  ]}
+  onToggleChange={(id, checked) => setToggles((prev) => ({ ...prev, [id]: checked }))}
+/>`;
+      }
+      return `<DesignMenu
+  variant="actions"
+  trigger="${menuTrigger}"
+  triggerLabel="${escapeAttr(menuTriggerLabel)}"
+  align="${menuAlign}"
+  label="${escapeAttr(menuLabel)}"
+  withIcons={${menuWithIcons}}
+  items={[
+    { id: "edit", label: "Edit", icon: <PencilSimple className="h-4 w-4" />, onClick: () => {} },
+    { id: "email", label: "Send email", icon: <Envelope className="h-4 w-4" />, onClick: () => {} },
+    { id: "delete", label: "Delete", icon: <Trash className="h-4 w-4" />, itemVariant: "${menuActionStyle}", onClick: () => {} },
+  ]}
+/>`;
+    }
+    if (selected === "pill-toggle") {
+      const iconSuffix = pillWithIcons ? ", icon: Envelope" : "";
+      const iconSuffix2 = pillWithIcons ? ", icon: HardDrive" : "";
+      const iconSuffix3 = pillWithIcons ? ", icon: Sparkle" : "";
+      return `<DesignPillToggle
+  options={[
+    { id: "a", label: "Phone"${iconSuffix} },
+    { id: "b", label: "Tablet"${iconSuffix2} },
+    { id: "c", label: "Desktop"${iconSuffix3} },
+  ]}
+  selected="${pillSelected}"
+  onSelect={setPillSelected}
+  size="${pillSize}"${pillGlass === undefined ? "" : `\n  glassmorphic={${pillGlass}}`}
+  showLabels={${pillShowLabels}}
+/>`;
+    }
+    if (selected === "selector-dropdown") {
+      return `<DesignSelectorDropdown
+  value="${escapeAttr(selValue)}"
+  onValueChange={setSelValue}
+  options={[
+    { value: "option-a", label: "Option A" },
+    { value: "option-b", label: "Option B", disabled: ${selDisableOptionB} },
+    { value: "option-c", label: "Option C" },
+  ]}
+  placeholder="${escapeAttr(selPlaceholder)}"
+  size="${selSize}"
+  disabled={${selDisabled}}
+/>`;
+    }
+    // user-list
+    return `<DesignUserList
+  users={users}
+  showAvatar={${userShowAvatar}}
+  gradient="${userGradient}"
+  onUserClick={${userClickable ? "(user) => handleUserClick(user)" : "undefined"}}
+/>`;
+  }
+
   // ─── Layout ──────────────────────────────────────────────────────────────
 
   return (
@@ -1373,6 +1608,21 @@ export default function PageClient() {
           <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.09] bg-background/85 backdrop-blur-sm p-4 sm:p-5">
             {renderControls()}
           </div>
+        </div>
+
+        {/* Code */}
+        <div className="space-y-2">
+          <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/70">
+            Code
+          </span>
+          <CodeBlock
+            language="tsx"
+            content={getComponentCode()}
+            title="Component with current props"
+            icon="code"
+            compact
+            neutralBackground
+          />
         </div>
       </div>
     </div>

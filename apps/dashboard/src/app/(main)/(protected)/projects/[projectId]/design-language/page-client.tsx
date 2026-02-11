@@ -647,7 +647,6 @@ export default function PageClient() {
             description="Header with supporting copy and a simple content area"
           >
             <DesignCard
-              variant="header"
               icon={Envelope}
               title="Email Drafts"
               subtitle="Create, edit, and send email drafts"
@@ -665,7 +664,6 @@ export default function PageClient() {
             description="Small header row with an optional icon"
           >
             <DesignCard
-              variant="compact"
               icon={HardDrive}
               title="Preview"
               gradient="default"
@@ -681,7 +679,7 @@ export default function PageClient() {
             title="Body Only"
             description="Use for simple content blocks without a header"
           >
-            <DesignCard variant="bodyOnly" gradient="default" glassmorphic>
+            <DesignCard gradient="default" glassmorphic>
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
               </Typography>
@@ -815,8 +813,13 @@ export default function PageClient() {
               <DesignListItemRow
                 icon={FileText}
                 title="Transactional Templates"
-                onEdit={() => setListAction("edit")}
-                onDelete={() => setListAction("delete")}
+                subtitle="3 templates configured"
+                buttons={[
+                  { id: "edit", label: "Edit", onClick: () => setListAction("edit") },
+                  { id: "more", label: "Options", display: "icon", onClick: [
+                    { id: "delete", label: "Delete", icon: <Trash className="h-4 w-4" />, itemVariant: "destructive", onClick: () => setListAction("delete") },
+                  ] },
+                ]}
               />
               <Typography variant="secondary" className="text-xs">
                 {listAction ? `Last action: ${listAction}` : "Click edit or delete to preview actions."}
@@ -1040,18 +1043,18 @@ export default function PageClient() {
             title="Data Table"
             description="Matches the email log table styling and layout."
           >
-            <DesignDataTable
+            <DesignCard
+              icon={Envelope}
               title="Email Log"
               subtitle="Recent delivery activity with quick filters"
-              icon={Envelope}
-              data={demoEmailRows}
-              columns={demoTableColumns}
-              defaultColumnFilters={[]}
-              defaultSorting={[{ id: "sentAt", desc: true }]}
-              showDefaultToolbar={false}
-              showResetFilters={false}
-              viewOptions
-            />
+            >
+              <DesignDataTable
+                data={demoEmailRows}
+                columns={demoTableColumns}
+                defaultColumnFilters={[]}
+                defaultSorting={[{ id: "sentAt", desc: true }]}
+              />
+            </DesignCard>
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
