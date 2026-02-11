@@ -96,6 +96,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
           <VibeCodeLayout
             viewport={viewport}
             onViewportChange={setViewport}
+            useOffWhiteLightChrome
             onSave={handleSaveTheme}
             saveLabel="Save theme"
             onUndo={handleUndo}
@@ -126,6 +127,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
                 chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
                 toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
+                useOffWhiteLightMode
               />
             }
           />

@@ -123,6 +123,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
             <VibeCodeLayout
               viewport={viewport}
               onViewportChange={setViewport}
+              useOffWhiteLightChrome
               onSave={handleSave}
               saveLabel="Save draft"
               onUndo={handleUndo}
@@ -163,6 +164,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
                   historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
                   chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
                   toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
+                  useOffWhiteLightMode
                 />
               }
             />
