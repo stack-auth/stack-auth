@@ -31,3 +31,6 @@ A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/playground/
 
 Q: Why do editable-grid dropdown/boolean values sometimes not fill the full value column width?
 A: In `apps/dashboard/src/components/design-language/editable-grid.tsx`, the value wrappers must be explicitly full-width (`w-full`) for boolean and dropdown fields, and the grid value cell container should also include `w-full`; otherwise controls shrink to content width.
+
+Q: How should dashboard inline editable text fields match the new design-language style?
+A: Use `DesignInput` and `DesignButton` in `apps/dashboard/src/components/editable-input.tsx` (instead of legacy `Input`/`Button`) and style accept/reject actions as subtle glassy icon buttons with muted ring/border plus semantic hover tints.

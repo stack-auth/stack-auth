@@ -517,7 +517,7 @@ function GridItemValue({ item }: { item: DesignEditableGridItem }) {
       );
     }
     case "custom": {
-      return <>{item.children}</>;
+      return <div className="w-full pl-3">{item.children}</div>;
     }
   }
 }
@@ -559,7 +559,7 @@ function DesignInlineSaveDiscard({
         className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg transition-colors duration-150 hover:transition-none gap-1.5"
       >
         <ArrowCounterClockwise className="h-3 w-3" />
-        Discard
+        <span>Discard</span>
       </DesignButton>
       <DesignButton
         size="sm"
@@ -568,7 +568,7 @@ function DesignInlineSaveDiscard({
         className="h-8 px-4 text-xs font-medium rounded-lg gap-1.5"
       >
         <FloppyDisk className="h-3 w-3" />
-        Save
+        <span>Save</span>
       </DesignButton>
     </div>
   );

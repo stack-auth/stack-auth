@@ -1,6 +1,6 @@
 "use client";
 
-import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
+import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-language";
 import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
@@ -559,7 +559,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   };
 
   // Build grid items for EditableGrid
-  const gridItems: EditableGridItem[] = [
+  const gridItems: DesignEditableGridItem[] = [
     {
       type: 'text',
       itemKey: 'displayName',
@@ -730,7 +730,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   return (
     <>
-      <EditableGrid
+      <DesignEditableGrid
         items={gridItems}
         columns={2}
         deferredSave

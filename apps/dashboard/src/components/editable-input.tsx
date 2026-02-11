@@ -1,9 +1,9 @@
-import { Button, Input } from "@/components/ui";
+import { DesignButton, DesignInput } from "@/components/design-language";
 import { cn } from "@/lib/utils";
 import { Check, X } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useRef, useState } from "react";
 
 
@@ -75,7 +75,7 @@ export function EditableInput({
       }
     }}
   >
-    <Input
+    <DesignInput
       type={mode === 'password' ? 'password' : 'text'}
       ref={inputRef}
       readOnly={readOnly}
@@ -84,7 +84,7 @@ export function EditableInput({
       tabIndex={readOnly ? -1 : undefined}
       size="sm"
       className={cn(
-        "w-full px-3 h-8",
+        "w-full px-3 h-8 text-sm",
         /* Hover */ !readOnly && "hover:cursor-pointer",
         /* Focus */ !readOnly && "focus:cursor-[unset]",
         readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
@@ -118,18 +118,22 @@ export function EditableInput({
       transition: "width 0.2s ease-in-out, margin-left 0.2s ease-in-out, opacity 0.2s ease-in-out",
     }}>
       {["accept", "reject"].map((action) => (
-        <Button
+        <DesignButton
           ref={action === "accept" ? acceptRef : undefined}
           key={action}
           disabled={isLoading}
           type="button"
           variant="plain"
-          size="plain"
+          size="icon"
           className={cn(
-            "h-7 w-7 rounded-lg flex items-center justify-center transition-all duration-150 hover:transition-none backdrop-blur-sm",
+            "h-7 w-7 rounded-lg flex items-center justify-center backdrop-blur-sm",
+            "border border-black/[0.08] dark:border-white/[0.08]",
+            "bg-white/75 dark:bg-foreground/[0.04]",
+            "shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]",
+            "transition-colors duration-150 hover:transition-none",
             action === "accept"
-              ? "bg-emerald-500/[0.08] text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 hover:bg-emerald-500/[0.15] hover:ring-emerald-500/30"
-              : "bg-red-500/[0.08] text-red-600 dark:text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/[0.15] hover:ring-red-500/30"
+              ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.12] hover:ring-emerald-500/30"
+              : "text-red-600 dark:text-red-400 hover:bg-red-500/[0.12] hover:ring-red-500/30"
           )}
           onClick={() => runAsynchronouslyWithAlert(async () => {
             try {
@@ -148,7 +152,7 @@ export function EditableInput({
           {action === "accept" ?
             <Check weight="bold" className="h-3.5 w-3.5" /> :
             <X weight="bold" className="h-3.5 w-3.5" />}
-        </Button>
+        </DesignButton>
       ))}
     </div>
   </div>;
