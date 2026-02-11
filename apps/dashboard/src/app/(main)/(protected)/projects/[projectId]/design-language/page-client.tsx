@@ -1,34 +1,31 @@
 "use client";
 
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
+  CursorBlastEffect,
+  DesignAlert,
+  DesignBadge,
+  type DesignBadgeColor,
+  DesignButton,
+  DesignCard,
+  DesignCardTint,
+  DesignCategoryTabs,
+  DesignDataTable,
+  DesignEditableGrid,
+  type DesignEditableGridItem,
+  DesignInput,
+  DesignListItemRow,
+  DesignMenu,
+  DesignPillToggle,
+  DesignSelectorDropdown,
+  DesignUserList
+} from "@/components/design-language";
+import { Link } from "@/components/link";
+import {
   Button,
-  DataTable,
   DataTableColumnHeader,
-  DataTableViewOptions,
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Input,
   Typography,
   cn,
 } from "@/components/ui";
-import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
-import { Link } from "@/components/link";
-import { DesignCard, DesignCardTint } from "@/components/design-language";
 import {
   CheckCircle,
   Cube,
@@ -40,42 +37,16 @@ import {
   MagnifyingGlassIcon,
   Palette,
   PencilSimple,
-  StackSimple,
   Sliders,
   SquaresFourIcon,
+  StackSimple,
   Tag,
   Trash,
   WarningCircle,
   XCircle
 } from "@phosphor-icons/react";
-import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
-
-// Bridge component to capture table instance without violating React rules
-// (setState during render is not allowed, so we use useEffect instead)
-function TableInstanceBridge<T>({
-  tableInstance,
-  onTableInstance,
-  onVisibilityChange,
-}: {
-  tableInstance: TableType<T>,
-  onTableInstance: (table: TableType<T>) => void,
-  onVisibilityChange: (visibility: Record<string, boolean>) => void,
-}) {
-  useEffect(() => {
-    onTableInstance(tableInstance);
-  }, [tableInstance, onTableInstance]);
-
-  const currentVisibility = tableInstance.getState().columnVisibility;
-  // Serialize visibility to avoid unnecessary re-renders from object reference changes
-  const visibilityKey = JSON.stringify(currentVisibility);
-  useEffect(() => {
-    onVisibilityChange(currentVisibility as Record<string, boolean>);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally using serialized key for comparison
-  }, [visibilityKey, onVisibilityChange]);
-
-  return null;
-}
+import { ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 import {
   TimeRange,
   TimeRangeToggle
@@ -204,8 +175,6 @@ function DesignSection({
 // STATUS BADGE COMPONENT
 // Gradient-based status pills with optional icons and size variants
 // =============================================================================
-type StatusBadgeColor = "blue" | "cyan" | "purple" | "green" | "orange" | "red";
-type StatusBadgeSize = "sm" | "md";
 type ColumnKey = "recipient" | "subject" | "sentAt" | "status";
 type DemoEmailRow = {
   id: string,
@@ -215,97 +184,11 @@ type DemoEmailRow = {
   status: "sent" | "failed" | "scheduled",
 };
 
-const STATUS_BADGE_STYLES: Record<StatusBadgeColor, string> = {
-  blue: "text-blue-700 dark:text-blue-400 bg-blue-500/20 dark:bg-blue-500/10 ring-1 ring-blue-500/30 dark:ring-blue-500/20",
-  cyan: "text-cyan-700 dark:text-cyan-400 bg-cyan-500/20 dark:bg-cyan-500/10 ring-1 ring-cyan-500/30 dark:ring-cyan-500/20",
-  purple: "text-purple-700 dark:text-purple-400 bg-purple-500/20 dark:bg-purple-500/10 ring-1 ring-purple-500/30 dark:ring-purple-500/20",
-  green: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/20 dark:bg-emerald-500/10 ring-1 ring-emerald-500/30 dark:ring-emerald-500/20",
-  orange: "text-amber-700 dark:text-amber-300 bg-amber-500/20 dark:bg-amber-500/10 ring-1 ring-amber-500/30 dark:ring-amber-500/20",
-  red: "text-red-700 dark:text-red-400 bg-red-500/20 dark:bg-red-500/10 ring-1 ring-red-500/30 dark:ring-red-500/20",
-};
-
-const DEMO_STATUS_MAP: Record<DemoEmailRow["status"], { label: string, color: StatusBadgeColor }> = {
+const DEMO_STATUS_MAP: Record<DemoEmailRow["status"], { label: string, color: DesignBadgeColor }> = {
   sent: { label: "Sent", color: "green" },
   failed: { label: "Failed", color: "red" },
   scheduled: { label: "Scheduled", color: "orange" },
 };
-
-function StatusBadge({
-  label,
-  color,
-  icon,
-  size = "md",
-}: {
-  label: string,
-  color: StatusBadgeColor,
-  icon?: React.ElementType,
-  size?: StatusBadgeSize,
-}) {
-  const Icon = icon;
-  const sizeClasses = size === "sm"
-    ? "px-2 py-0.5 text-[10px]"
-    : "px-2.5 py-1 text-[11px]";
-
-  return (
-    <div className={cn(
-      "inline-flex items-center gap-1.5 rounded-full font-medium",
-      STATUS_BADGE_STYLES[color],
-      sizeClasses
-    )}>
-      {Icon && <Icon className="h-3 w-3" />}
-      {label}
-    </div>
-  );
-}
-
-// =============================================================================
-// CATEGORY TABS (UNDERLINE STYLE)
-// From: apps/page-client.tsx - Category tabs with counts and underline indicator
-// Used for: Filtering lists, category navigation
-// =============================================================================
-function CategoryTabs({
-  categories,
-  selectedCategory,
-  onSelect,
-}: {
-  categories: Array<{ id: string, label: string, count: number }>,
-  selectedCategory: string,
-  onSelect: (id: string) => void,
-}) {
-  return (
-    <div className="flex items-center gap-1 border-b border-gray-300 dark:border-gray-800 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden">
-      {categories.map((category) => {
-        const isActive = selectedCategory === category.id;
-        return (
-          <button
-            key={category.id}
-            onClick={() => onSelect(category.id)}
-            className={cn(
-              "px-4 py-3 text-sm font-medium transition-all relative flex-shrink-0 whitespace-nowrap",
-              "hover:text-gray-900 dark:hover:text-gray-100",
-              isActive ? "text-blue-700 dark:text-blue-400" : "text-gray-700 dark:text-gray-400"
-            )}
-          >
-            <span className="flex items-center gap-2">
-              {category.label}
-              <span className={cn(
-                "text-xs px-1.5 py-0.5 rounded-full",
-                isActive
-                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                  : "bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-              )}>
-                {category.count}
-              </span>
-            </span>
-            {isActive && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-700 dark:bg-blue-400" />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 // =============================================================================
 // UNDERLINE TABS
@@ -337,134 +220,6 @@ function UnderlineTabsDemo() {
   );
 }
 
-// =============================================================================
-// PILL TOGGLE / VIEWPORT SELECTOR
-// From: DESIGN-GUIDE.md - "Time Range Toggle (Pill Buttons)"
-// Used in: metrics-page.tsx, email-themes/page-client.tsx (ViewportSelector)
-// Container: rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm
-// Active: bg-background shadow-sm ring-1 ring-foreground/[0.06]
-// =============================================================================
-function ViewportSelector({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: Array<{ id: string, label: string, icon: React.ElementType }>,
-  selected: string,
-  onSelect: (id: string) => void,
-}) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] p-1 backdrop-blur-sm">
-      {options.map((option) => {
-        const isActive = selected === option.id;
-        const Icon = option.icon;
-        return (
-          <button
-            key={option.id}
-            onClick={() => onSelect(option.id)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-150 hover:transition-none",
-              isActive
-                ? "bg-background text-foreground shadow-sm ring-1 ring-black/[0.12] dark:ring-white/[0.06]"
-                : "text-muted-foreground hover:text-foreground hover:bg-black/[0.06] dark:hover:bg-white/[0.04]"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            <span>{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// =============================================================================
-// LIST ITEM ROW (EMAIL TEMPLATES STYLE)
-// From: email-templates/page-client.tsx - Template list item pattern
-// Used for: Lists of templates, themes, configurations
-// Features: Icon container with hover, edit button, dropdown menu
-// =============================================================================
-function ListItemRow({
-  icon: Icon,
-  title,
-  onEdit,
-  onDelete,
-}: {
-  icon: React.ElementType,
-  title: string,
-  onEdit?: () => void,
-  onDelete?: () => void,
-}) {
-  return (
-    <div className={cn(
-      "group relative flex items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none",
-      "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-      "shadow-sm hover:shadow-md"
-    )}>
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      <div className="relative flex items-center gap-4">
-        <div className="p-2.5 rounded-xl bg-black/[0.08] dark:bg-white/[0.04] ring-1 ring-black/[0.1] dark:ring-white/[0.06] transition-colors duration-150 group-hover:bg-black/[0.12] dark:group-hover:bg-white/[0.08] group-hover:transition-none">
-          <Icon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
-        </div>
-        <Typography className="font-semibold text-foreground">{title}</Typography>
-      </div>
-      <div className="relative flex items-center gap-2">
-        {onEdit && (
-          <Button variant="ghost" size="sm" className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg" onClick={onEdit}>
-            Edit
-          </Button>
-        )}
-        {onDelete && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg">
-                <DotsThree size={20} weight="bold" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[180px]">
-              <DropdownMenuItem onClick={onDelete} className="py-2.5 text-red-600 dark:text-red-400 focus:bg-red-500/10 cursor-pointer justify-center">
-                <span className="font-medium">Delete</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// DEMO COMPONENTS (for showcasing overview page patterns)
-// =============================================================================
-
-function UserListItemDemo() {
-  const users = [
-    { name: "John Doe", email: "john@example.com", time: "Active 2h ago", color: "cyan" },
-    { name: "Jane Smith", email: "jane@example.com", time: "Active 5h ago", color: "blue" },
-  ];
-  return (
-    <div className="space-y-0.5 max-w-md">
-      {users.map((user) => (
-        <button
-          key={user.email}
-          className={cn(
-            "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
-            user.color === "cyan" ? "hover:bg-cyan-500/[0.1]" : "hover:bg-blue-500/[0.1]"
-          )}
-        >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-xs font-medium shrink-0">
-            {user.name.charAt(0)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate text-foreground">{user.name}</div>
-            <div className="text-[11px] text-muted-foreground truncate">{user.time}</div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export default function PageClient() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedViewport, setSelectedViewport] = useState("phone");
@@ -472,8 +227,6 @@ export default function PageClient() {
   const [listAction, setListAction] = useState<"edit" | "delete" | null>(null);
   const [selectedMenuFilter, setSelectedMenuFilter] = useState("all");
   const [selectedSelectorValue, setSelectedSelectorValue] = useState("no");
-  const [tableDemo, setTableDemo] = useState<TableType<DemoEmailRow> | null>(null);
-  const [tableDemoVisibility, setTableDemoVisibility] = useState({});
   const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
     recipient: true,
     subject: true,
@@ -562,12 +315,12 @@ export default function PageClient() {
       cell: ({ row }) => {
         const status = row.getValue("status") as DemoEmailRow["status"];
         const config = DEMO_STATUS_MAP[status];
-        return <StatusBadge label={config.label} color={config.color} size="sm" />;
+        return <DesignBadge label={config.label} color={config.color} size="sm" />;
       },
     },
   ], [demoDateFormatter]);
 
-  const editableGridItems = useMemo<EditableGridItem[]>(() => [
+  const editableGridItems = useMemo<DesignEditableGridItem[]>(() => [
     {
       type: "text",
       icon: <FileText className="h-4 w-4" />,
@@ -660,6 +413,7 @@ export default function PageClient() {
 
   return (
     <PageLayout>
+      <CursorBlastEffect />
       <div className="flex flex-col gap-12">
         <div className="rounded-2xl border border-blue-500/30 bg-blue-500/[0.06] p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -670,6 +424,215 @@ export default function PageClient() {
             <Link href="./design-language/realistic-demo">Open demo page</Link>
           </Button>
         </div>
+
+        {/* ============================================================ */}
+        {/* ALERT COMPONENT */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="alert"
+          icon={WarningCircle}
+          title="Alert"
+          description="Use for high-signal feedback that needs attention."
+        >
+          <ComponentDemo
+            title="Success Alert"
+            description="Use for successful operations"
+          >
+            <DesignAlert
+              variant="success"
+              title="Success"
+              description="Your changes have been saved successfully."
+            />
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Error Alert"
+            description="Use for errors and failures"
+          >
+            <DesignAlert
+              variant="error"
+              title="Error"
+              description="An error occurred while processing your request."
+            />
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Warning Alert"
+            description="Use for warnings that need attention"
+          >
+            <DesignAlert
+              variant="warning"
+              title="Warning"
+              description="You are using a shared email server. Configure a custom SMTP server to customize email templates."
+            />
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Info Alert"
+            description="Use for informational messages without a title"
+          >
+            <DesignAlert
+              variant="info"
+              title="Info"
+              description="Configure a custom SMTP server to send manual emails. You can still create and edit drafts."
+            />
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
+              { name: "title", type: "ReactNode", description: "Optional. Use AlertTitle when needed." },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Only enable if used on glass surfaces." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* BADGE COMPONENT */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="badge"
+          icon={CheckCircle}
+          title="Badge"
+          description="Use for statuses, tags, and lightweight labels."
+        >
+          <ComponentDemo
+            title="Status Badges"
+            description="Gradient status colors with optional icons"
+          >
+            <div className="flex flex-wrap gap-2">
+              <DesignBadge label="Success" color="green" icon={CheckCircle} />
+              <DesignBadge label="Warning" color="orange" />
+              <DesignBadge label="Error" color="red" icon={XCircle} />
+              <DesignBadge label="Info" color="blue" />
+              <DesignBadge label="New" color="purple" size="sm" />
+              <DesignBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Content modes"
+            description="Text only, icon only, or both. At least one must be shown."
+          >
+            <div className="flex flex-wrap gap-2 items-center">
+              <DesignBadge label="Text only" color="blue" contentMode="text" />
+              <DesignBadge label="Icon only" color="green" icon={CheckCircle} contentMode="icon" />
+              <DesignBadge label="Both" color="cyan" icon={DotsThree} contentMode="both" size="sm" />
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "label", type: "string", description: "Text for the badge (used as aria-label when contentMode is 'icon')" },
+              { name: "color", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'red'", description: "Gradient color theme" },
+              { name: "icon", type: "ReactElement", description: "Optional icon. Required when contentMode is 'icon'." },
+              { name: "contentMode", type: "'both' | 'text' | 'icon'", default: "'both'", description: "What to display. At least one of text or icon must be shown." },
+              { name: "size", type: "'sm' | 'md'", default: "'md'", description: "Badge size" },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Enable only when badges sit on glass." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* BUTTONS */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="buttons"
+          icon={CheckCircle}
+          title="Buttons"
+          description="Use for primary actions, secondary controls, and lightweight links."
+        >
+          <ComponentDemo
+            title="Variants"
+            description="Pair variants with action importance and context."
+          >
+            <div className="flex flex-wrap gap-2">
+              <DesignButton variant="default" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Primary
+              </DesignButton>
+              <DesignButton variant="ghost" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Ghost
+              </DesignButton>
+              <DesignButton variant="secondary" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Secondary
+              </DesignButton>
+              <DesignButton variant="outline" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Outline
+              </DesignButton>
+              <DesignButton variant="destructive" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Delete
+              </DesignButton>
+              <DesignButton variant="link" className="rounded-lg transition-colors duration-150 hover:transition-none">
+                Learn more
+              </DesignButton>
+              <DesignButton
+                variant="plain"
+                className="rounded-lg bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
+              >
+                Active
+              </DesignButton>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Sizes"
+            description="Use size for density, not prominence."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignButton size="sm" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Small
+              </DesignButton>
+              <DesignButton className="rounded-lg transition-all duration-150 hover:transition-none">
+                Default
+              </DesignButton>
+              <DesignButton size="lg" className="rounded-lg transition-all duration-150 hover:transition-none">
+                Large
+              </DesignButton>
+              <DesignButton
+                size="icon"
+                variant="plain"
+                className="rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all duration-150 hover:transition-none"
+                aria-label="Send email"
+              >
+                <Envelope className="h-4 w-4" />
+              </DesignButton>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Loading States"
+            description="Buttons show a spinner while async actions run."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignButton loading className="rounded-lg transition-all duration-150 hover:transition-none">
+                Saving
+              </DesignButton>
+              <DesignButton
+                variant="secondary"
+                className="rounded-lg transition-all duration-150 hover:transition-none"
+                onClick={() => new Promise<void>((resolve) => {
+                  setTimeout(() => resolve(), 1500);
+                })}
+              >
+                Async Action
+              </DesignButton>
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "variant", type: "'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'plain'", default: "'default'", description: "Visual style for the button." },
+              { name: "size", type: "'default' | 'sm' | 'lg' | 'icon'", default: "'default'", description: "Controls padding and button height." },
+              { name: "loading", type: "boolean", default: "false", description: "Shows a spinner and disables the button." },
+              { name: "loadingStyle", type: "'spinner' | 'disabled'", default: "'spinner'", description: "Spinner overlay or disabled-only state." },
+              { name: "asChild", type: "boolean", default: "false", description: "Renders a child component instead of a native button." },
+              { name: "onClick", type: "(event) => void | Promise<void>", description: "Async handlers show loading automatically." },
+            ]} />
+          </div>
+        </DesignSection>
 
         {/* ============================================================ */}
         {/* CARDS */}
@@ -690,6 +653,7 @@ export default function PageClient() {
               title="Email Drafts"
               subtitle="Create, edit, and send email drafts"
               gradient="default"
+              glassmorphic
             >
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
@@ -706,6 +670,7 @@ export default function PageClient() {
               icon={HardDrive}
               title="Preview"
               gradient="default"
+              glassmorphic
             >
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
@@ -717,7 +682,7 @@ export default function PageClient() {
             title="Body Only"
             description="Use for simple content blocks without a header"
           >
-            <DesignCard variant="bodyOnly" gradient="default">
+            <DesignCard variant="bodyOnly" gradient="default" glassmorphic>
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
               </Typography>
@@ -757,254 +722,34 @@ export default function PageClient() {
         </DesignSection>
 
         {/* ============================================================ */}
-        {/* TABS COMPONENT */}
+        {/* EDITABLE GRID */}
         {/* ============================================================ */}
         <DesignSection
-          id="tabs"
+          id="editable-grid"
           icon={Sliders}
-          title="Tabs"
-          description="Use to switch between related sections without leaving the page."
+          title="Editable Grid"
+          description="Use for compact, editable settings in two-column layouts."
         >
           <ComponentDemo
-            title="Category Tabs"
-            description="Use for segmented lists with counts."
+            title="Product Attribute Grid"
+            description="Editable rows with inline select and dropdown fields."
           >
-            <CategoryTabs
-              categories={categories}
-              selectedCategory={selectedCategory}
-              onSelect={setSelectedCategory}
-            />
-          </ComponentDemo>
-
-          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
-            <Typography type="label" className="font-semibold mb-3">Props</Typography>
-            <PropsTable props={[
-              { name: "categories", type: "Array<{ id: string, label: string, count: number }>", description: "Tab items with counts for category tabs." },
-              { name: "selectedCategory", type: "string", description: "Currently selected category id." },
-              { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
-              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
-              { name: "glassmorphic", type: "boolean", default: "true", description: "Enable when tabs are outside a card." },
-              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
-            ]} />
-          </div>
-        </DesignSection>
-
-        {/* ============================================================ */}
-        {/* DROPDOWNS */}
-        {/* ============================================================ */}
-        <DesignSection
-          id="dropdowns"
-          icon={DotsThree}
-          title="Menus"
-        >
-          <ComponentDemo
-            title="Action Menu"
-            description="Standard action list with icons and a destructive row."
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
-                  Open Menu
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[200px]">
-                <DropdownMenuItem icon={<PencilSimple className="h-4 w-4" />}>
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem icon={<Envelope className="h-4 w-4" />}>
-                  Send email
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-red-600 dark:text-red-400 focus:bg-red-500/10"
-                  icon={<Trash className="h-4 w-4" />}
-                  onClick={() => new Promise<void>((resolve) => {
-                    setTimeout(() => resolve(), 5000);
-                  })}
-                >
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </ComponentDemo>
-
-          <ComponentDemo
-            title="Selector Menu"
-            description="Use radio items to switch between a small set of options."
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
-                  {menuFilterOptions.find((option) => option.id === selectedMenuFilter)?.label ?? "Select"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[200px]">
-                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Filter
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={selectedMenuFilter}
-                  onValueChange={setSelectedMenuFilter}
-                >
-                  {menuFilterOptions.map((option) => (
-                    <DropdownMenuRadioItem key={option.id} value={option.id}>
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </ComponentDemo>
-
-          <ComponentDemo
-            title="Column Toggles"
-            description="Use checkbox items for on/off configuration."
-          >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-3 rounded-lg">
-                  Toggle columns
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[200px]">
-                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Toggle columns
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {columnOptions.map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={visibleColumns[column.id]}
-                    onCheckedChange={(checked) => {
-                      setVisibleColumns((prev) => ({
-                        ...prev,
-                        [column.id]: !!checked,
-                      }));
-                    }}
-                  >
-                    {column.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </ComponentDemo>
-
-          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
-            <Typography type="label" className="font-semibold mb-3">Props</Typography>
-            <PropsTable props={[
-              { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, radio selector menu, or checkbox settings menu." },
-              { name: "trigger", type: "'button' | 'icon'", default: "'button'", description: "Trigger presentation for the menu." },
-              { name: "label", type: "string", description: "Optional section label for grouped items." },
-              { name: "itemVariant", type: "'default' | 'destructive' | 'checkbox'", default: "'default'", description: "Item style for actions or toggles." },
-              { name: "withIcons", type: "boolean", default: "false", description: "Adds leading icons for action menus." },
-              { name: "onClick", type: "(event) => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
-            ]} />
-          </div>
-        </DesignSection>
-
-        {/* ============================================================ */}
-        {/* SELECTS */}
-        {/* ============================================================ */}
-        <DesignSection
-          id="selects"
-          icon={Tag}
-          title="Selects"
-          description="Use for compact, single-choice selection."
-        >
-          <ComponentDemo
-            title="Selector Dropdown"
-            description="Use select triggers for compact yes/no or single-choice menus."
-          >
-            <div className="max-w-xs">
-              <Select value={selectedSelectorValue} onValueChange={setSelectedSelectorValue}>
-                <SelectTrigger className="h-8 px-3 text-xs rounded-lg">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectorOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="relative rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
+              <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
+              <div className="relative p-5">
+                <DesignEditableGrid items={editableGridItems} columns={2} className="gap-x-6 gap-y-3" />
+              </div>
             </div>
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "value", type: "string", description: "Currently selected value." },
-              { name: "onValueChange", type: "(value: string) => void", description: "Selection handler for the dropdown." },
-              { name: "trigger", type: "ReactElement", description: "Select trigger element (e.g., SelectTrigger)." },
-              { name: "options", type: "Array<{ value: string, label: string }>", description: "Selectable options rendered inside SelectContent." },
-              { name: "disabled", type: "boolean", default: "false", description: "Disables the select and its trigger." },
-            ]} />
-          </div>
-        </DesignSection>
-
-        {/* ============================================================ */}
-        {/* TABLES */}
-        {/* ============================================================ */}
-        <DesignSection
-          id="tables"
-          icon={FileText}
-          title="Tables"
-          description="Use for dense datasets with sorting and column visibility controls."
-        >
-          <ComponentDemo
-            title="Data Table"
-            description="Matches the email log table styling and layout."
-          >
-            <DesignCard variant="bodyOnly" gradient="default" className="overflow-hidden p-0" contentClassName="p-0">
-              <div className="p-5">
-                <div className="flex w-full items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <SectionHeader icon={Envelope} title="Email Log" />
-                    <Typography variant="secondary" className="text-sm mt-1">
-                      Recent delivery activity with quick filters
-                    </Typography>
-                  </div>
-                  {tableDemo && (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <DataTableViewOptions
-                        key={JSON.stringify(tableDemoVisibility)}
-                        table={tableDemo}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-                <DataTable
-                  data={demoEmailRows}
-                  columns={demoTableColumns}
-                  defaultColumnFilters={[]}
-                  defaultSorting={[{ id: "sentAt", desc: true }]}
-                  showDefaultToolbar={false}
-                  showResetFilters={false}
-                  toolbarRender={(tableInstance) => (
-                    <TableInstanceBridge
-                      tableInstance={tableInstance}
-                      onTableInstance={setTableDemo}
-                      onVisibilityChange={setTableDemoVisibility}
-                    />
-                  )}
-                />
-              </div>
-            </DesignCard>
-          </ComponentDemo>
-
-          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
-            <Typography type="label" className="font-semibold mb-3">Props</Typography>
-            <PropsTable props={[
-              { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
-              { name: "data", type: "Array<Record<string, unknown>>", description: "Row data to render in the table." },
-              { name: "defaultSorting", type: "SortingState", description: "Initial sort order for the table." },
-              { name: "showDefaultToolbar", type: "boolean", default: "true", description: "Toggle the built-in toolbar." },
-              { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
-              { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
+              { name: "items", type: "DesignEditableGridItem[]", description: "Defines editable rows and their input types." },
+              { name: "columns", type: "1 | 2", default: "2", description: "Number of columns in the grid." },
+              { name: "type", type: "'text' | 'boolean' | 'dropdown' | 'custom-dropdown' | 'custom-button' | 'custom'", description: "Row type that controls the editor." },
+              { name: "readOnly", type: "boolean", default: "false", description: "Disables editing for the row." },
+              { name: "onUpdate", type: "(value) => Promise<void>", description: "Async handler for updates." },
             ]} />
           </div>
         </DesignSection>
@@ -1023,7 +768,7 @@ export default function PageClient() {
             description="Default input for forms and settings."
           >
             <div className="max-w-sm">
-              <Input placeholder="Enter a value" />
+              <DesignInput placeholder="Enter a value" />
             </div>
           </ComponentDemo>
 
@@ -1032,7 +777,7 @@ export default function PageClient() {
             description="Use size sm with a leading icon for compact search."
           >
             <div className="max-w-xs">
-              <Input
+              <DesignInput
                 size="sm"
                 leadingIcon={<MagnifyingGlassIcon className="h-3 w-3" />}
                 placeholder="Search products..."
@@ -1046,140 +791,160 @@ export default function PageClient() {
               { name: "size", type: "'sm' | 'md' | 'lg'", default: "'md'", description: "Controls input height and text size." },
               { name: "leadingIcon", type: "ReactElement", description: "Optional icon rendered inside the input." },
               { name: "prefixItem", type: "ReactElement", description: "Optional leading segment for grouped inputs." },
+              { name: "value", type: "string", description: "Controlled input value." },
               { name: "placeholder", type: "string", description: "Placeholder text for empty states." },
+              { name: "disabled", type: "boolean", default: "false", description: "Disables input interactions." },
               { name: "onChange", type: "(event) => void", description: "Change handler for input updates." },
             ]} />
           </div>
         </DesignSection>
 
         {/* ============================================================ */}
-        {/* EDITABLE GRID */}
+        {/* LIST COMPONENTS */}
         {/* ============================================================ */}
         <DesignSection
-          id="editable-grid"
-          icon={Sliders}
-          title="Editable Grid"
-          description="Use for compact, editable settings in two-column layouts."
+          id="list-components"
+          icon={HardDrive}
+          title="List Components"
+          description="Use for repeated rows. Variants differ by icon, avatar, and density."
         >
           <ComponentDemo
-            title="Product Attribute Grid"
-            description="Editable rows with inline select and dropdown fields."
+            title="List Item Row"
+            description="Icon row with inline actions and overflow menu"
           >
-            <div className="relative rounded-2xl overflow-hidden bg-white/90 dark:bg-[hsl(240,10%,5.5%)] border border-black/[0.12] dark:border-foreground/[0.12] shadow-sm">
-              <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.03] to-transparent pointer-events-none" />
-              <div className="relative p-5">
-                <EditableGrid items={editableGridItems} columns={2} className="gap-x-6 gap-y-3" />
-              </div>
+            <div className="space-y-3">
+              <DesignListItemRow
+                icon={FileText}
+                title="Transactional Templates"
+                onEdit={() => setListAction("edit")}
+                onDelete={() => setListAction("delete")}
+              />
+              <Typography variant="secondary" className="text-xs">
+                {listAction ? `Last action: ${listAction}` : "Click edit or delete to preview actions."}
+              </Typography>
             </div>
           </ComponentDemo>
 
-          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+          <ComponentDemo
+            title="User List Item"
+            description="Clickable user row with avatar and accent hover"
+          >
+            <DesignUserList users={[
+              { name: "John Doe", email: "john@example.com", time: "Active 2h ago", color: "cyan" },
+              { name: "Jane Smith", email: "jane@example.com", time: "Active 5h ago", color: "blue" },
+            ]} />
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "items", type: "EditableGridItem[]", description: "Defines editable rows and their input types." },
-              { name: "columns", type: "1 | 2", default: "2", description: "Number of columns in the grid." },
-              { name: "type", type: "'text' | 'boolean' | 'dropdown' | 'custom'", description: "Row type that controls the editor." },
-              { name: "readOnly", type: "boolean", default: "false", description: "Disables editing for the row." },
-              { name: "onUpdate", type: "(value) => Promise<void>", description: "Async handler for updates." },
+              { name: "icon", type: "ReactElement", description: "Optional leading icon for list rows." },
+              { name: "title", type: "string", description: "Primary row label." },
+              { name: "subtitle", type: "string", description: "Optional supporting text." },
+              { name: "onClick", type: "() => void", description: "Row click handler." },
+              { name: "onEdit", type: "() => void", description: "Optional edit action for row variants." },
+              { name: "onDelete", type: "() => void", description: "Optional delete action for row variants." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls row padding and density." },
+              { name: "glassmorphic", type: "boolean", default: "true", description: "Use when list is outside a parent card." },
+              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent on hover." },
             ]} />
           </div>
         </DesignSection>
 
         {/* ============================================================ */}
-        {/* BUTTONS */}
+        {/* DROPDOWNS */}
         {/* ============================================================ */}
         <DesignSection
-          id="buttons"
-          icon={CheckCircle}
-          title="Buttons"
-          description="Use for primary actions, secondary controls, and lightweight links."
+          id="dropdowns"
+          icon={DotsThree}
+          title="Menus"
         >
           <ComponentDemo
-            title="Variants"
-            description="Pair variants with action importance and context."
+            title="Action Menu"
+            description="Standard action list with icons and a destructive row."
           >
-            <div className="flex flex-wrap gap-2">
-              <Button variant="default" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Primary
-              </Button>
-              <Button variant="ghost" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Ghost
-              </Button>
-              <Button variant="secondary" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Secondary
-              </Button>
-              <Button variant="outline" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Outline
-              </Button>
-              <Button variant="destructive" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Delete
-              </Button>
-              <Button variant="link" className="rounded-lg transition-colors duration-150 hover:transition-none">
-                Learn more
-              </Button>
-              <Button
-                variant="plain"
-                className="rounded-lg bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5 transition-all duration-150 hover:transition-none"
-              >
-                Active
-              </Button>
-            </div>
+            <DesignMenu
+              variant="actions"
+              triggerLabel="Open Menu"
+              withIcons
+              items={[
+                {
+                  id: "edit",
+                  label: "Edit",
+                  icon: <PencilSimple className="h-4 w-4" />,
+                },
+                {
+                  id: "send-email",
+                  label: "Send email",
+                  icon: <Envelope className="h-4 w-4" />,
+                },
+                {
+                  id: "delete",
+                  label: "Delete",
+                  icon: <Trash className="h-4 w-4" />,
+                  itemVariant: "destructive",
+                  onClick: () => new Promise<void>((resolve) => {
+                    setTimeout(() => resolve(), 5000);
+                  }),
+                },
+              ]}
+            />
           </ComponentDemo>
 
           <ComponentDemo
-            title="Sizes"
-            description="Use size for density, not prominence."
+            title="Selector Menu"
+            description="Use radio items to switch between a small set of options."
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Small
-              </Button>
-              <Button className="rounded-lg transition-all duration-150 hover:transition-none">
-                Default
-              </Button>
-              <Button size="lg" className="rounded-lg transition-all duration-150 hover:transition-none">
-                Large
-              </Button>
-              <Button
-                size="plain"
-                variant="plain"
-                className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all duration-150 hover:transition-none"
-                aria-label="Send email"
-              >
-                <Envelope className="h-4 w-4" />
-              </Button>
-            </div>
+            <DesignMenu
+              variant="selector"
+              triggerLabel={menuFilterOptions.find((option) => option.id === selectedMenuFilter)?.label ?? "Select"}
+              label="Filter"
+              options={menuFilterOptions}
+              value={selectedMenuFilter}
+              onValueChange={setSelectedMenuFilter}
+            />
           </ComponentDemo>
 
           <ComponentDemo
-            title="Loading States"
-            description="Buttons show a spinner while async actions run."
+            title="Column Toggles"
+            description="Use checkbox items for on/off configuration."
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <Button loading className="rounded-lg transition-all duration-150 hover:transition-none">
-                Saving
-              </Button>
-              <Button
-                variant="secondary"
-                className="rounded-lg transition-all duration-150 hover:transition-none"
-                onClick={() => new Promise<void>((resolve) => {
-                  setTimeout(() => resolve(), 1500);
-                })}
-              >
-                Async Action
-              </Button>
-            </div>
+            <DesignMenu
+              variant="toggles"
+              triggerLabel="Toggle columns"
+              label="Toggle columns"
+              align="end"
+              options={columnOptions.map((column) => ({
+                id: column.id,
+                label: column.label,
+                checked: visibleColumns[column.id],
+              }))}
+              onToggleChange={(id, checked) => {
+                if (id !== "recipient" && id !== "subject" && id !== "sentAt" && id !== "status") {
+                  throw new Error(`Unknown column id "${id}" in column toggle menu`);
+                }
+                setVisibleColumns((prev) => ({
+                  ...prev,
+                  [id]: checked,
+                }));
+              }}
+            />
           </ComponentDemo>
 
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "variant", type: "'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link' | 'plain'", default: "'default'", description: "Visual style for the button." },
-              { name: "size", type: "'default' | 'sm' | 'lg' | 'icon' | 'plain'", default: "'default'", description: "Controls padding and button height." },
-              { name: "loading", type: "boolean", default: "false", description: "Shows a spinner and disables the button." },
-              { name: "loadingStyle", type: "'spinner' | 'disabled'", default: "'spinner'", description: "Spinner overlay or disabled-only state." },
-              { name: "asChild", type: "boolean", default: "false", description: "Renders a child component instead of a native button." },
-              { name: "onClick", type: "(event) => void | Promise<void>", description: "Async handlers show loading automatically." },
+              { name: "variant", type: "'actions' | 'selector' | 'toggles'", default: "'actions'", description: "Selects action list, radio selector menu, or checkbox settings menu." },
+              { name: "trigger", type: "'button' | 'icon'", default: "'button'", description: "Trigger presentation for the menu." },
+              { name: "triggerLabel", type: "string", default: "'Open Menu'", description: "Label for button trigger or aria-label for icon trigger." },
+              { name: "label", type: "string", description: "Optional section label for grouped items." },
+              { name: "items", type: "Array<{ id: string, label: string, icon?: ReactNode, itemVariant?: 'default' | 'destructive', onClick?: () => void | Promise<void> }>", description: "Action menu items for variant='actions'." },
+              { name: "options", type: "Array<{ id: string, label: string }> | Array<{ id: string, label: string, checked: boolean }>", description: "Selector options or toggle options depending on variant." },
+              { name: "value", type: "string", description: "Selected option id when variant='selector'." },
+              { name: "onValueChange", type: "(value: string) => void", description: "Selection handler when variant='selector'." },
+              { name: "onToggleChange", type: "(id: string, checked: boolean) => void", description: "Checkbox toggle handler when variant='toggles'." },
+              { name: "withIcons", type: "boolean", default: "false", description: "Adds leading icons for action menus." },
+              { name: "item.onClick", type: "() => void | Promise<void>", description: "Return a Promise to keep the menu open with a spinner until complete." },
             ]} />
           </div>
         </DesignSection>
@@ -1197,7 +962,14 @@ export default function PageClient() {
             title="Standard Pill Toggle"
             description="Default segmented control"
           >
-            <ViewportSelector options={viewportOptions} selected={selectedViewport} onSelect={setSelectedViewport} />
+            <DesignPillToggle
+              options={viewportOptions}
+              selected={selectedViewport}
+              onSelect={setSelectedViewport}
+              size="md"
+              glassmorphic={false}
+              gradient="default"
+            />
           </ComponentDemo>
 
           <ComponentDemo
@@ -1221,151 +993,117 @@ export default function PageClient() {
         </DesignSection>
 
         {/* ============================================================ */}
-        {/* ALERT COMPONENT */}
+        {/* SELECTS */}
         {/* ============================================================ */}
         <DesignSection
-          id="alert"
-          icon={WarningCircle}
-          title="Alert"
-          description="Use for high-signal feedback that needs attention."
+          id="selects"
+          icon={Tag}
+          title="Selects"
+          description="Use for compact, single-choice selection."
         >
           <ComponentDemo
-            title="Success Alert"
-            description="Use for successful operations"
+            title="Selector Dropdown"
+            description="Use select triggers for compact yes/no or single-choice menus."
           >
-            <Alert className="bg-green-500/[0.06] border-green-500/30">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <AlertTitle className="text-green-600 dark:text-green-400">Success</AlertTitle>
-              <AlertDescription>Your changes have been saved successfully.</AlertDescription>
-            </Alert>
-          </ComponentDemo>
-
-          <ComponentDemo
-            title="Error Alert"
-            description="Use for errors and failures"
-          >
-            <Alert className="bg-red-500/[0.06] border-red-500/30">
-              <XCircle className="h-4 w-4 text-red-500" />
-              <AlertTitle className="text-red-600 dark:text-red-400">Error</AlertTitle>
-              <AlertDescription>An error occurred while processing your request.</AlertDescription>
-            </Alert>
-          </ComponentDemo>
-
-          <ComponentDemo
-            title="Warning Alert"
-            description="Use for warnings that need attention"
-          >
-            <Alert className="bg-amber-500/[0.08] border-amber-500/40">
-              <WarningCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              <AlertTitle className="text-amber-700 dark:text-amber-300">Warning</AlertTitle>
-              <AlertDescription>You are using a shared email server. Configure a custom SMTP server to customize email templates.</AlertDescription>
-            </Alert>
-          </ComponentDemo>
-
-          <ComponentDemo
-            title="Info Alert"
-            description="Use for informational messages without a title"
-          >
-            <Alert className="bg-blue-500/[0.06] border-blue-500/30">
-              <Info className="h-4 w-4 text-blue-500" />
-              <AlertTitle className="text-blue-600 dark:text-blue-400">Info</AlertTitle>
-              <AlertDescription>
-                Configure a custom SMTP server to send manual emails. You can still create and edit drafts.
-              </AlertDescription>
-            </Alert>
-          </ComponentDemo>
-
-          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
-            <Typography type="label" className="font-semibold mb-3">Props</Typography>
-            <PropsTable props={[
-              { name: "variant", type: "'success' | 'error' | 'warning' | 'info'", description: "Visual style. Use className for color overrides." },
-              { name: "title", type: "ReactNode", description: "Optional. Use AlertTitle when needed." },
-              { name: "icon", type: "ReactElement", description: "Optional icon displayed before content." },
-              { name: "glassmorphic", type: "boolean", default: "false", description: "Only enable if used on glass surfaces." },
-            ]} />
-          </div>
-        </DesignSection>
-
-        {/* ============================================================ */}
-        {/* BADGE COMPONENT */}
-        {/* ============================================================ */}
-        <DesignSection
-          id="badge"
-          icon={CheckCircle}
-          title="Badge"
-          description="Use for statuses, tags, and lightweight labels."
-        >
-          <ComponentDemo
-            title="Status Badges"
-            description="Gradient status colors with optional icons"
-          >
-            <div className="flex flex-wrap gap-2">
-              <StatusBadge label="Success" color="green" icon={CheckCircle} />
-              <StatusBadge label="Warning" color="orange" />
-              <StatusBadge label="Error" color="red" icon={XCircle} />
-              <StatusBadge label="Info" color="blue" />
-              <StatusBadge label="New" color="purple" size="sm" />
-              <StatusBadge label="Syncing" color="cyan" icon={DotsThree} size="sm" />
-            </div>
-          </ComponentDemo>
-
-          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
-            <Typography type="label" className="font-semibold mb-3">Props</Typography>
-            <PropsTable props={[
-              { name: "label", type: "string", description: "Text for the badge" },
-              { name: "color", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'red'", description: "Gradient color theme" },
-              { name: "icon", type: "ReactElement", description: "Optional icon displayed before text" },
-              { name: "size", type: "'sm' | 'md'", default: "'md'", description: "Badge size" },
-              { name: "glassmorphic", type: "boolean", default: "false", description: "Enable only when badges sit on glass." },
-            ]} />
-          </div>
-        </DesignSection>
-
-        {/* ============================================================ */}
-        {/* LIST COMPONENTS */}
-        {/* ============================================================ */}
-        <DesignSection
-          id="list-components"
-          icon={HardDrive}
-          title="List Components"
-          description="Use for repeated rows. Variants differ by icon, avatar, and density."
-        >
-          <ComponentDemo
-            title="List Item Row"
-            description="Icon row with inline actions and overflow menu"
-          >
-            <div className="space-y-3">
-              <ListItemRow
-                icon={FileText}
-                title="Transactional Templates"
-                onEdit={() => setListAction("edit")}
-                onDelete={() => setListAction("delete")}
+            <div className="max-w-xs">
+              <DesignSelectorDropdown
+                value={selectedSelectorValue}
+                onValueChange={setSelectedSelectorValue}
+                options={selectorOptions}
+                size="sm"
               />
-              <Typography variant="secondary" className="text-xs">
-                {listAction ? `Last action: ${listAction}` : "Click edit or delete to preview actions."}
-              </Typography>
             </div>
           </ComponentDemo>
 
-          <ComponentDemo
-            title="User List Item"
-            description="Clickable user row with avatar and accent hover"
-          >
-            <UserListItemDemo />
-          </ComponentDemo>
-
-          <div className="pt-4 border-t border-black/[0.08] dark:border-white/[0.06]">
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "icon", type: "ReactElement", description: "Optional leading icon for list rows." },
-              { name: "title", type: "string", description: "Primary row label." },
-              { name: "subtitle", type: "string", description: "Optional supporting text." },
-              { name: "onClick", type: "() => void", description: "Row click handler." },
-              { name: "onEdit", type: "() => void", description: "Optional edit action for row variants." },
-              { name: "onDelete", type: "() => void", description: "Optional delete action for row variants." },
-              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls row padding and density." },
-              { name: "glassmorphic", type: "boolean", default: "true", description: "Use when list is outside a parent card." },
-              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent on hover." },
+              { name: "value", type: "string", description: "Currently selected value." },
+              { name: "onValueChange", type: "(value: string) => void", description: "Selection handler for the dropdown." },
+              { name: "options", type: "Array<{ value: string, label: string, disabled?: boolean }>", description: "Selectable options rendered in the dropdown." },
+              { name: "placeholder", type: "string", default: "'Select'", description: "Placeholder label when no option is selected." },
+              { name: "size", type: "'sm' | 'md' | 'lg'", default: "'sm'", description: "Controls trigger height and text size." },
+              { name: "disabled", type: "boolean", default: "false", description: "Disables the select and its trigger." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* TABLES */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="tables"
+          icon={FileText}
+          title="Tables"
+          description="Use for dense datasets with sorting and column visibility controls."
+        >
+          <ComponentDemo
+            title="Data Table"
+            description="Matches the email log table styling and layout."
+          >
+            <DesignDataTable
+              title="Email Log"
+              subtitle="Recent delivery activity with quick filters"
+              icon={Envelope}
+              data={demoEmailRows}
+              columns={demoTableColumns}
+              defaultColumnFilters={[]}
+              defaultSorting={[{ id: "sentAt", desc: true }]}
+              showDefaultToolbar={false}
+              showResetFilters={false}
+              viewOptions
+            />
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "title", type: "string", description: "Optional table card header title." },
+              { name: "subtitle", type: "string", description: "Optional supporting text below the header title." },
+              { name: "icon", type: "ReactElement", description: "Optional header icon shown before the title." },
+              { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
+              { name: "data", type: "Array<Record<string, unknown>>", description: "Row data to render in the table." },
+              { name: "defaultColumnFilters", type: "ColumnFiltersState", default: "[]", description: "Initial filter state for table columns." },
+              { name: "defaultSorting", type: "SortingState", description: "Initial sort order for the table." },
+              { name: "showDefaultToolbar", type: "boolean", default: "false", description: "Toggle the built-in toolbar controls." },
+              { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
+              { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* TABS COMPONENT */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="tabs"
+          icon={Sliders}
+          title="Tabs"
+          description="Use to switch between related sections without leaving the page."
+        >
+          <ComponentDemo
+            title="Category Tabs"
+            description="Use for segmented lists with counts."
+          >
+            <DesignCategoryTabs
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+              glassmorphic={false}
+              gradient="blue"
+            />
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "categories", type: "Array<{ id: string, label: string, count?: number, badgeCount?: number }>", description: "Tab items. Set count/badgeCount to provide badge values." },
+              { name: "selectedCategory", type: "string", description: "Currently selected category id." },
+              { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
+              { name: "showBadge", type: "boolean", default: "true", description: "Enable/disable the number badge next to each tab label." },
+              { name: "size", type: "'sm' | 'md'", default: "'sm'", description: "Controls padding and density." },
+              { name: "glassmorphic", type: "boolean", default: "false", description: "Enable when tabs are on glass surfaces." },
+              { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
             ]} />
           </div>
         </DesignSection>

@@ -167,6 +167,20 @@
   mix-blend-mode: normal;
 }
 
+::view-transition-old(root),
+::view-transition-new(root) {
+  transform-origin: center center;
+}
+
+/* Applied during theme view-transitions so component-level CSS transitions
+   (transition-colors, transition-all, etc.) don't lag behind the swipe. */
+.vt-disable-transitions,
+.vt-disable-transitions *,
+.vt-disable-transitions *::before,
+.vt-disable-transitions *::after {
+  transition-duration: 0s !important;
+}
+
 .bg-card {
   box-shadow: 0 0 3px 3px rgba(0, 0, 0, 0.02);
   backdrop-filter: blur(12px);
