@@ -3,8 +3,7 @@
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
-import { StyledLink } from "@/components/link";
-import { SettingCard } from "@/components/settings";
+import { MetadataSection } from "@/components/metadata-editor";
 import {
   Accordion,
   AccordionContent,
@@ -32,7 +31,6 @@ import {
   DropdownMenuTrigger,
   Input,
   Separator,
-  SimpleTooltip,
   Table,
   TableBody,
   TableCell,
@@ -44,22 +42,19 @@ import {
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { useThemeWatcher } from '@/lib/theme';
-import MonacoEditor from '@monaco-editor/react';
 import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
-const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
+const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
 type UserInfoProps = {
   icon: React.ReactNode,
@@ -77,95 +72,6 @@ function UserInfo({ icon, name, children }: UserInfoProps) {
       {children}
     </>
   );
-}
-
-type MetadataEditorProps = {
-  title: string,
-  initialValue: string,
-  hint: string,
-  onUpdate?: (value: any) => Promise<void>,
-}
-function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorProps) {
-  const formatJson = (json: string) => JSON.stringify(JSON.parse(json), null, 2);
-  const [hasChanged, setHasChanged] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  const { mounted, theme } = useThemeWatcher();
-
-  const [value, setValue] = useState(formatJson(initialValue));
-  const isJson = useMemo(() => {
-    return isJsonSerializable(value);
-  }, [value]);
-
-  // Ensure proper mounting lifecycle
-  useEffect(() => {
-    setIsMounted(true);
-    return () => {
-      setIsMounted(false);
-    };
-  }, []);
-
-  const handleSave = async () => {
-    if (isJson) {
-      const formatted = formatJson(value);
-      setValue(formatted);
-      await onUpdate?.(JSON.parse(formatted));
-      setHasChanged(false);
-    }
-  };
-
-  // Only render Monaco when both mounted states are true
-  const shouldRenderMonaco = mounted && isMounted;
-
-  return <div className="flex flex-col">
-    <h3 className='text-sm mb-4 font-semibold'>
-      {title}
-      <SimpleTooltip tooltip={hint} type="info" inline className="ml-2 mb-[2px]" />
-    </h3>
-    {shouldRenderMonaco ? (
-      <div className={cn("rounded-md overflow-hidden", theme !== 'dark' && "border")}>
-        <MonacoEditor
-          key={`monaco-${theme}`} // Force recreation on theme change
-          height="240px"
-          defaultLanguage="json"
-          value={value}
-          onChange={(x) => {
-            setValue(x ?? '');
-            setHasChanged(true);
-          }}
-          theme={theme === 'dark' ? 'vs-dark' : 'vs'}
-          options={{
-            tabSize: 2,
-            minimap: {
-              enabled: false,
-            },
-            scrollBeyondLastLine: false,
-            overviewRulerLanes: 0,
-            lineNumbersMinChars: 3,
-            showFoldingControls: 'never',
-          }}
-        />
-      </div>
-    ) : (
-      <div className={cn("rounded-md overflow-hidden h-[240px] flex items-center justify-center", theme !== 'dark' && "border")}>
-        <div className="text-sm text-muted-foreground">Loading editor...</div>
-      </div>
-    )}
-    <div className={cn('self-end flex items-end gap-2 transition-all h-0 opacity-0 overflow-hidden', hasChanged && 'h-[48px] opacity-100')}>
-      <Button
-        variant="ghost"
-        onClick={() => {
-          setValue(formatJson(initialValue));
-          setHasChanged(false);
-        }}>
-        Revert
-      </Button>
-      <Button
-        variant={isJson ? "default" : "secondary"}
-        disabled={!isJson}
-        onClick={handleSave}>Save</Button>
-    </div>
-  </div>;
 }
 
 export default function PageClient({ userId }: { userId: string }) {
@@ -1356,51 +1262,6 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   );
 }
 
-type MetadataSectionProps = {
-  user: ServerUser,
-};
-
-function MetadataSection({ user }: MetadataSectionProps) {
-  return (
-    <SettingCard
-      title="Metadata"
-      description={
-        <>
-          Use metadata to store a custom JSON object on the user.{" "}
-          <StyledLink href={metadataDocsUrl} target="_blank">Learn more in the docs</StyledLink>.
-        </>
-      }
-    >
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
-        <MetadataEditor
-          title="Client"
-          hint="Custom JSON clients can read and update; avoid sensitive data."
-          initialValue={JSON.stringify(user.clientMetadata)}
-          onUpdate={async (value) => {
-            await user.setClientMetadata(value);
-          }}
-        />
-        <MetadataEditor
-          title="Client Read-Only"
-          hint="Custom JSON clients can read but only your backend can change."
-          initialValue={JSON.stringify(user.clientReadOnlyMetadata)}
-          onUpdate={async (value) => {
-            await user.setClientReadOnlyMetadata(value);
-          }}
-        />
-        <MetadataEditor
-          title="Server"
-          hint="Custom JSON reserved for server-side logic and never exposed to clients."
-          initialValue={JSON.stringify(user.serverMetadata)}
-          onUpdate={async (value) => {
-            await user.setServerMetadata(value);
-          }}
-        />
-      </div>
-    </SettingCard>
-  );
-}
-
 function UserPage({ user }: { user: ServerUser }) {
   return (
     <PageLayout>
@@ -1413,7 +1274,22 @@ function UserPage({ user }: { user: ServerUser }) {
         <ContactChannelsSection user={user} />
         <UserTeamsSection user={user} />
         <OAuthProvidersSection user={user} />
-        <MetadataSection user={user} />
+        <MetadataSection
+          entityName="user"
+          docsUrl={userMetadataDocsUrl}
+          clientMetadata={user.clientMetadata}
+          clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+          serverMetadata={user.serverMetadata}
+          onUpdateClientMetadata={async (value) => {
+            await user.setClientMetadata(value);
+          }}
+          onUpdateClientReadOnlyMetadata={async (value) => {
+            await user.setClientReadOnlyMetadata(value);
+          }}
+          onUpdateServerMetadata={async (value) => {
+            await user.setServerMetadata(value);
+          }}
+        />
       </div>
     </PageLayout>
   );

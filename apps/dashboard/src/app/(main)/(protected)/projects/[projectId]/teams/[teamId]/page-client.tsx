@@ -2,6 +2,7 @@
 import { TeamMemberSearchTable } from '@/components/data-table/team-member-search-table';
 import { TeamMemberTable } from '@/components/data-table/team-member-table';
 import { InputField } from '@/components/form-fields';
+import { MetadataSection } from '@/components/metadata-editor';
 import { ActionDialog, Button, Form, Separator } from '@/components/ui';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { ServerTeam } from '@stackframe/stack';
@@ -118,6 +119,22 @@ export default function PageClient(props: { teamId: string }) {
         }
       >
         <TeamMemberTable users={users || []} team={team} />
+        <MetadataSection
+          entityName="team"
+          docsUrl="https://docs.stack-auth.com/docs/concepts/teams"
+          clientMetadata={team.clientMetadata}
+          clientReadOnlyMetadata={team.clientReadOnlyMetadata}
+          serverMetadata={team.serverMetadata}
+          onUpdateClientMetadata={async (value) => {
+            await team.update({ clientMetadata: value });
+          }}
+          onUpdateClientReadOnlyMetadata={async (value) => {
+            await team.update({ clientReadOnlyMetadata: value });
+          }}
+          onUpdateServerMetadata={async (value) => {
+            await team.update({ serverMetadata: value });
+          }}
+        />
       </PageLayout>
     </AppEnabledGuard>
   );

@@ -226,6 +226,8 @@ export default function PageClient() {
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [savingFusebox, setSavingFusebox] = useState(false);
+  const [forceSyncRunning, setForceSyncRunning] = useState(false);
+  const forceSyncAbortRef = useRef<AbortController | null>(null);
   const inFlightRef = useRef(false);
   const summarySamplesRef = useRef<Array<{
     timestampMillis: number,
@@ -340,6 +342,41 @@ export default function PageClient() {
   const refreshWithAlert = useCallback(() => {
     runAsynchronouslyWithAlert(loadStatus);
   }, [loadStatus]);
+
+  const forceTriggerSync = useCallback(async () => {
+    const abortController = new AbortController();
+    forceSyncAbortRef.current = abortController;
+    setForceSyncRunning(true);
+    try {
+      const endpoints = [
+        "/internal/external-db-sync/sequencer",
+        "/internal/external-db-sync/poller",
+      ];
+      await Promise.all(endpoints.map(async (endpoint) => {
+        const response = await adminApp[stackAppInternalsSymbol].sendRequest(
+          endpoint,
+          { method: "GET", signal: abortController.signal },
+          "admin",
+        );
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          const message = typeof body?.error === "string" ? body.error : `Failed to trigger ${endpoint}: ${response.status}`;
+          throw new Error(message);
+        }
+      }));
+      await loadStatus();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      throw err;
+    } finally {
+      forceSyncAbortRef.current = null;
+      setForceSyncRunning(false);
+    }
+  }, [adminApp, loadStatus]);
+
+  const cancelForceSync = useCallback(() => {
+    forceSyncAbortRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     runAsynchronously(loadStatus);
@@ -682,50 +719,75 @@ export default function PageClient() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Fusebox</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!fusebox ? (
-            <div className="space-y-3">
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-9 w-24" />
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between gap-6">
-                <div>
-                  <Typography type="p" className="text-sm font-medium">Sequencer</Typography>
-                  <Typography type="p" className="text-xs text-muted-foreground">Assigns sequence IDs and queues sync work.</Typography>
-                </div>
-                <Switch
-                  checked={fusebox.sequencerEnabled}
-                  onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, sequencerEnabled: checked } : current)}
-                />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Fusebox</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!fusebox ? (
+              <div className="space-y-3">
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-9 w-24" />
               </div>
-              <div className="flex items-center justify-between gap-6">
-                <div>
-                  <Typography type="p" className="text-sm font-medium">Poller</Typography>
-                  <Typography type="p" className="text-xs text-muted-foreground">Dispatches queued sync jobs to QStash.</Typography>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-6">
+                  <div>
+                    <Typography type="p" className="text-sm font-medium">Sequencer</Typography>
+                    <Typography type="p" className="text-xs text-muted-foreground">Assigns sequence IDs and queues sync work.</Typography>
+                  </div>
+                  <Switch
+                    checked={fusebox.sequencerEnabled}
+                    onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, sequencerEnabled: checked } : current)}
+                  />
                 </div>
-                <Switch
-                  checked={fusebox.pollerEnabled}
-                  onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, pollerEnabled: checked } : current)}
-                />
-              </div>
+                <div className="flex items-center justify-between gap-6">
+                  <div>
+                    <Typography type="p" className="text-sm font-medium">Poller</Typography>
+                    <Typography type="p" className="text-xs text-muted-foreground">Dispatches queued sync jobs to QStash.</Typography>
+                  </div>
+                  <Switch
+                    checked={fusebox.pollerEnabled}
+                    onCheckedChange={(checked) => setFusebox((current) => current ? { ...current, pollerEnabled: checked } : current)}
+                  />
+                </div>
 
-              <div className="flex justify-end">
-                <Button onClick={saveFusebox} disabled={!fuseboxDirty || savingFusebox} loading={savingFusebox}>
-                  Save
+                <div className="flex justify-end">
+                  <Button onClick={saveFusebox} disabled={!fuseboxDirty || savingFusebox} loading={savingFusebox}>
+                    Save
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Force Sync</CardTitle>
+            <CardDescription>Manually trigger sequencer and poller.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className={`h-2.5 w-2.5 rounded-full ${forceSyncRunning ? "bg-yellow-500 animate-pulse" : "bg-green-500"}`} />
+              <Typography type="p" className="text-sm">{forceSyncRunning ? "Running" : "Idle"}</Typography>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => runAsynchronouslyWithAlert(forceTriggerSync)} disabled={forceSyncRunning} loading={forceSyncRunning}>
+                Run Now
+              </Button>
+              {forceSyncRunning && (
+                <Button onClick={cancelForceSync} variant="destructive" size="sm">
+                  Cancel
                 </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
     </PageLayout>
   );
