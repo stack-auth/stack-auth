@@ -3,6 +3,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
+import { useUpdateConfig } from "@/lib/config-update";
 import { ALL_APPS_FRONTEND, getAppPath, type AppId } from "@/lib/apps-frontend";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -14,6 +15,7 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   const adminApp = useAdminApp()!;
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
 
   const isEnabled = config.apps.installed[appId]?.enabled ?? false;
 
@@ -24,8 +26,10 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   const appPath = getAppPath(project.id, appFrontend);
 
   const handleEnable = async () => {
-    await project.updateConfig({
-      [`apps.installed.${appId}.enabled`]: true,
+    await updateConfig({
+      adminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      pushable: true,
     });
     router.push(appPath);
   };
@@ -35,8 +39,10 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   };
 
   const handleDisable = async () => {
-    await project.updateConfig({
-      [`apps.installed.${appId}.enabled`]: false,
+    await updateConfig({
+      adminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: false },
+      pushable: true,
     });
   };
 

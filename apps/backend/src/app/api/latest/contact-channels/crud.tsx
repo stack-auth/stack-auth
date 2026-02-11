@@ -1,5 +1,6 @@
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryById } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
+import { markProjectUserForExternalDbSync, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -121,6 +122,11 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         });
       }
 
+      await markProjectUserForExternalDbSync(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: data.user_id,
+      });
+
       return await tx.contactChannel.findUnique({
         where: {
           tenancyId_projectUserId_id: {
@@ -188,7 +194,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         });
       }
 
-      return await tx.contactChannel.update({
+      const updated = await tx.contactChannel.update({
         where: {
           tenancyId_projectUserId_id: {
             tenancyId: auth.tenancy.id,
@@ -196,13 +202,20 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
             id: params.contact_channel_id || throwErr("Missing contact channel id"),
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           value: value,
           isVerified: data.is_verified ?? (value ? false : undefined), // if value is updated and is_verified is not provided, set to false
           usedForAuth: data.used_for_auth !== undefined ? (data.used_for_auth ? 'TRUE' : null) : undefined,
           isPrimary: data.is_primary !== undefined ? (data.is_primary ? 'TRUE' : null) : undefined,
-        },
+        }),
       });
+
+      await markProjectUserForExternalDbSync(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      return updated;
     });
 
     return contactChannelToCrud(updatedContactChannel);
@@ -224,6 +237,13 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
         contactChannelId: params.contact_channel_id || throwErr("Missing contact channel id"),
       });
 
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "ContactChannel",
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+        contactChannelId: params.contact_channel_id || throwErr("Missing contact channel id"),
+      });
+
       await tx.contactChannel.delete({
         where: {
           tenancyId_projectUserId_id: {
@@ -232,6 +252,11 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
             id: params.contact_channel_id || throwErr("Missing contact channel id"),
           },
         },
+      });
+
+      await markProjectUserForExternalDbSync(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
       });
     });
   },

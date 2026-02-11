@@ -94,7 +94,7 @@ function expectSnakeCase(obj: unknown, path: string): void {
     }
   } else {
     for (const [key, value] of Object.entries(obj)) {
-      if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
+      if (key.match(/^[a-z0-9][A-Z][a-z0-9]+$/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
       if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata", "variables", "skipped_details"].includes(key)) continue;
@@ -184,6 +184,53 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
   const mailbox = createMailbox(emailAddress);
   backendContext.set({ mailbox });
   return mailbox;
+}
+
+// Type for outbox email items (simplified - full type is EmailOutboxCrud["Server"]["Read"])
+type OutboxEmail = {
+  id: string,
+  subject?: string,
+  status: string,
+  simple_status: string,
+  to?: {
+    type: string,
+    user_id?: string,
+    [key: string]: unknown,
+  },
+  [key: string]: unknown,
+};
+
+// Helper to get emails from the outbox, filtered by subject if provided
+export async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
+  const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+    method: "GET",
+    accessType: "server",
+  });
+  const items = listResponse.body.items as OutboxEmail[];
+  if (options?.subject) {
+    return items.filter((e) => e.subject === options.subject);
+  }
+  return items;
+}
+
+// Helper to poll the outbox until the most recent email with the expected subject has the expected status.
+// Note: emails are returned ordered by createdAt desc (newest first), so we check emails[0] specifically
+// to ensure we're waiting for the MOST RECENT email, not an older one with the same subject.
+export async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
+  const maxRetries = 24;
+  let emails: OutboxEmail[] = [];
+  for (let i = 0; i < maxRetries; i++) {
+    emails = await getOutboxEmails({ subject });
+    // Check the most recent email (first in the list due to createdAt desc ordering)
+    if (emails.length > 0 && emails[0].status === status) {
+      return emails;
+    }
+    await wait(500);
+  }
+  throw new StackAssertionError(
+    `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
+    { foundEmails: emails }
+  );
 }
 
 export namespace Auth {
@@ -405,7 +452,11 @@ export namespace Auth {
         }
         await wait(100 + i * 20);
         if (i >= 30) {
-          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, { response, messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })) });
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, {
+            response,
+            messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
+            outboxEmails: await getOutboxEmails(),
+          });
         }
       }
       return {
@@ -1215,10 +1266,68 @@ export namespace Project {
   }
 
   export async function updateConfig(config: any) {
-    const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
       accessType: "admin",
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  export type BranchConfigSource =
+    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+    | { type: "pushed-from-unknown" }
+    | { type: "unlinked" };
+
+  /**
+   * Push config to branch level. Source defaults to 'unlinked' if not specified.
+   */
+  export async function pushConfig(config: any, source: BranchConfigSource = { type: "unlinked" }) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PUT",
+      body: {
+        config_string: JSON.stringify(config),
+        source,
+      },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Update the pushed config (PATCH - preserves source)
+   */
+  export async function updatePushedConfig(config: any) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Get the current branch config source
+   */
+  export async function getConfigSource(): Promise<BranchConfigSource> {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "GET",
+    });
+    expect(response.status).toBe(200);
+    return response.body.source;
+  }
+
+  /**
+   * Unlink the branch config source (set to 'unlinked')
+   */
+  export async function unlinkConfigSource() {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "DELETE",
     });
     expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
@@ -1503,7 +1612,7 @@ export namespace Payments {
     const { userId } = await User.create();
     const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
       method: "POST",
-      accessType: "client",
+      accessType: "server",
       body: {
         customer_type: "user",
         customer_id: userId,

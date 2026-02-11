@@ -4,6 +4,8 @@ import path from "path";
 export default function globalSetup() {
   dotenv.config({
     path: [
+      ".env.test.local",
+      ".env.test",
       ".env.development.local",
       ".env.local",
       ".env.development",

@@ -403,7 +403,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 
     const result = await renderEmailsForTenancyBatched(requests);
     if (result.status === "error") {
-      captureError("email-rendering-failed", result.error);
       for (const row of rowsWithKnownCategory) {
         await markRenderError(row, result.error);
       }
@@ -423,7 +422,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
     const firstPassResult = await renderEmailsForTenancyBatched(firstPassRequests);
 
     if (firstPassResult.status === "error") {
-      captureError("email-rendering-failed", firstPassResult.error);
       for (const row of rowsWithUnknownCategory) {
         await markRenderError(row, firstPassResult.error);
       }
@@ -462,7 +460,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 
       const secondPassResult = await renderEmailsForTenancyBatched(secondPassRequests);
       if (secondPassResult.status === "error") {
-        captureError("email-rendering-failed-second-pass", secondPassResult.error);
         for (const { row } of needsSecondPass) {
           await markRenderError(row, secondPassResult.error);
         }
@@ -619,6 +616,26 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           email,
         });
         return;
+      }
+    }
+
+    const BLOCKED_PROJECT_ID = "2397ef60-a33e-4efb-ad9b-300da67ee29e";
+    const BLOCKED_DOMAINS = ["gsmoal.com", "virgilian.com"];
+    if (context.tenancy.project.id === BLOCKED_PROJECT_ID) {
+      for (const email of resolution.emails) {
+        const emailDomain = email.split("@")[1]?.toLowerCase();
+        const blockedDomain = emailDomain
+          ? BLOCKED_DOMAINS.find((domain) => emailDomain === domain || emailDomain.endsWith(`.${domain}`))
+          : undefined;
+        if (blockedDomain) {
+          console.warn(`[email-queue] Blocked email to ${email} from project ${BLOCKED_PROJECT_ID} — domain @${blockedDomain} (or subdomain) is blocked for this project`);
+          await markSkipped(row, EmailOutboxSkippedReason.LIKELY_NOT_DELIVERABLE, {
+            reason: "domain_blocked_for_project",
+            blockedDomain,
+            email,
+          });
+          return;
+        }
       }
     }
 

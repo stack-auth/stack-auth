@@ -1,6 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -8,20 +9,60 @@ import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
 import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
-import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
+import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import * as yup from "yup";
+import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
+
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
+
+/**
+ * Converts a PushedConfigSource (SDK camelCase) to BranchConfigSourceApi (API snake_case).
+ */
+function pushedConfigSourceToApi(source: PushedConfigSource): BranchConfigSourceApi {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commit_hash: source.commitHash,
+      config_file_path: source.configFilePath,
+    };
+  }
+  return source;
+}
+
+/**
+ * Converts a BranchConfigSourceApi (API snake_case) to PushedConfigSource (SDK camelCase).
+ */
+function apiToPushedConfigSource(source: BranchConfigSourceApi): PushedConfigSource {
+  if (source.type === "pushed-from-github") {
+    return {
+      type: "pushed-from-github",
+      owner: source.owner,
+      repo: source.repo,
+      branch: source.branch,
+      commitHash: source.commit_hash,
+      configFilePath: source.config_file_path,
+    };
+  }
+  return source;
+}
 
 export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string> extends _StackServerAppImplIncomplete<HasTokenStore, ProjectId> implements StackAdminApp<HasTokenStore, ProjectId> {
   declare protected _interface: StackAdminInterface;
@@ -150,6 +191,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           clientSecret: p.client_secret ?? throwErr("Client secret is missing"),
           facebookConfigId: p.facebook_config_id,
           microsoftTenantId: p.microsoft_tenant_id,
+          appleBundleIds: p.apple_bundle_ids,
         } as const))),
         emailConfig: data.config.email_config.type === 'shared' ? {
           type: 'shared'
@@ -182,8 +224,24 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       // END_PLATFORM
       async updateConfig(configOverride: EnvironmentConfigOverrideOverride) {
-        await app._interface.updateConfig({ configOverride });
-        await app._configOverridesCache.refresh([]);
+        await app._interface.updateConfigOverride("environment", configOverride);
+        await app._refreshProjectConfig();
+      },
+      async pushConfig(config: EnvironmentConfigOverrideOverride, options: PushConfigOptions) {
+        await app._interface.setConfigOverride("branch", config, pushedConfigSourceToApi(options.source));
+        await app._refreshProjectConfig();
+      },
+      async updatePushedConfig(config: EnvironmentConfigOverrideOverride) {
+        await app._interface.updateConfigOverride("branch", config);
+        await app._refreshProjectConfig();
+      },
+      async getPushedConfigSource(): Promise<PushedConfigSource> {
+        const apiSource = await app._interface.getPushedConfigSource();
+        return apiToPushedConfigSource(apiSource);
+      },
+      async unlinkPushedConfigSource(): Promise<void> {
+        await app._interface.unlinkPushedConfigSource();
+        await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
@@ -430,6 +488,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     ]);
   }
 
+  protected async _refreshProjectConfig() {
+    await Promise.all([
+      this._configOverridesCache.refresh([]),
+      this._adminProjectCache.refresh([]),
+    ]);
+  }
+
   protected async _refreshInternalApiKeys() {
     await this._internalApiKeysCache.refresh([]);
   }
@@ -584,6 +649,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.createStripeWidgetAccountSession();
   }
 
+  async getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null> {
+    return await this._interface.getPaymentMethodConfigs();
+  }
+
+  async updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void> {
+    await this._interface.updatePaymentMethodConfigs(configId, updates);
+  }
+
   async createItemQuantityChange(options: (
     { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
     { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
@@ -600,8 +673,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     );
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<void> {
-    await this._interface.refundTransaction({ type: options.type, id: options.id });
+  async refundTransaction(options: {
+    type: "subscription" | "one-time-purchase",
+    id: string,
+    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
+  }): Promise<void> {
+    await this._interface.refundTransaction({
+      type: options.type,
+      id: options.id,
+      refundEntries: options.refundEntries,
+    });
     await this._transactionsCache.invalidateWhere(() => true);
   }
 
@@ -869,6 +950,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
   // END_PLATFORM
 
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    return await this._interface.queryAnalytics(options);
+  }
+
   async previewAffectedUsersByOnboardingChange(
     onboarding: { requireEmailVerification?: boolean },
     limit?: number,
@@ -877,7 +962,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: string,
       displayName: string | null,
       primaryEmail: string | null,
-      restrictedReason: { type: "anonymous" | "email_not_verified" },
+      restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
     }>,
     totalAffectedCount: number,
   }> {
@@ -890,7 +975,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         id: u.id,
         displayName: u.display_name,
         primaryEmail: u.primary_email,
-        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" },
+        restrictedReason: u.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" },
       })),
       totalAffectedCount: result.total_affected_count,
     };

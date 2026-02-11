@@ -42,6 +42,10 @@ if [ -z "$(ls -A ${PGDATA} 2>/dev/null)" ]; then
 primary_conninfo = 'host=${PRIMARY_HOST} port=${PRIMARY_PORT} user=${REPLICATOR_USER} password=${REPLICATOR_PASSWORD}'
 recovery_min_apply_delay = ${RECOVERY_MIN_APPLY_DELAY}
 hot_standby = on
+
+# pg_stat_statements for query stats
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all
 EOF
     
     # Create standby.signal to indicate this is a standby

@@ -18,6 +18,7 @@ import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
 import { OAuthProviderCrud } from './crud/oauth-providers';
@@ -153,22 +154,28 @@ export class StackClientInterface {
       throw new Error("Admin session token is currently not supported for fetching new access token. Did you try to log in on a StackApp initiated with the admin session?");
     }
 
+    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
-      token_endpoint: this.getApiUrl() + '/auth/oauth/token',
+      token_endpoint: tokenEndpoint,
     };
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
+
+    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const allowInsecure = tokenEndpoint.startsWith('http://');
 
     const response = await this._networkRetryException(async () => {
       const rawResponse = await oauth.refreshTokenGrantRequest(
         as,
         client,
+        clientAuthentication,
         refreshToken.token,
+        allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
       );
 
       const response = await this._processResponse(rawResponse);
@@ -190,10 +197,18 @@ export class StackClientInterface {
     });
     if (!response) return null;
 
-    const result = await oauth.processRefreshTokenResponse(as, client, response);
-    if (oauth.isOAuth2Error(result)) {
-      // TODO Handle OAuth 2.0 response body error
-      throw new StackAssertionError("OAuth error", { result });
+    let result: oauth.TokenEndpointResponse;
+    try {
+      result = await oauth.processRefreshTokenResponse(as, client, response);
+    } catch (e){
+      if (e instanceof oauth.ResponseBodyError) {
+        throw new StackAssertionError("ResponseBodyError when processing refresh token response", {
+          cause: e.cause,
+          code: e.code,
+          error: e.error,
+        });
+      }
+      throw new StackAssertionError("Unexpected error when processing refresh token response", { cause: e });
     }
 
     if (!result.access_token) {
@@ -201,6 +216,7 @@ export class StackClientInterface {
     }
 
     return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
+
   }
 
   public async sendClientRequest(
@@ -212,7 +228,6 @@ export class StackClientInterface {
     session ??= this.createSession({
       refreshToken: null,
     });
-
 
     return await this._networkRetry(
       () => this.sendClientRequestInner(path, requestOptions, session!, requestType),
@@ -1015,37 +1030,61 @@ export class StackClientInterface {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
-      token_endpoint: this.getApiUrl() + '/auth/oauth/token',
+      token_endpoint: tokenEndpoint,
     };
     const client: oauth.Client = {
       client_id: this.projectId,
       client_secret: this.options.publishableClientKey,
-      token_endpoint_auth_method: 'client_secret_post',
     };
-    const params = await this._networkRetryException(
-      async () => oauth.validateAuthResponse(as, client, options.oauthParams, options.state),
-    );
-    if (oauth.isOAuth2Error(params)) {
-      throw new StackAssertionError("Error validating outer OAuth response", { params }); // Handle OAuth 2.0 redirect error
+    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    // Allow insecure HTTP requests only in test environment (for localhost testing)
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const allowInsecure = tokenEndpoint.startsWith('http://');
+
+    let params: URLSearchParams;
+    try {
+      params = oauth.validateAuthResponse(as, client, options.oauthParams, options.state);
+    } catch (e) {
+      if (e instanceof oauth.AuthorizationResponseError) {
+        throw new StackAssertionError("Authorization response error when validating outer OAuth response", {
+          //cause is a URLSearchParams object for this error, so we need to serialize it better
+          cause: Object.fromEntries(e.cause),
+          code: e.code,
+          error: e.error,
+        });
+      }
+      throw new StackAssertionError("Unexpected error when validating outer OAuth response", { cause: e });
     }
     const response = await oauth.authorizationCodeGrantRequest(
       as,
       client,
+      clientAuthentication,
       params,
       options.redirectUri,
       options.codeVerifier,
+      allowInsecure ? { [oauth.allowInsecureRequests]: true } : undefined,
     );
 
-    const result = await oauth.processAuthorizationCodeOAuth2Response(as, client, response);
-    if (oauth.isOAuth2Error(result)) {
-      if ("code" in result && result.code === "MULTI_FACTOR_AUTHENTICATION_REQUIRED") {
-        throw new KnownErrors.MultiFactorAuthenticationRequired((result as any).details.attempt_code);
+    let result;
+    try {
+      result = await oauth.processAuthorizationCodeResponse(as, client, response);
+    } catch (e) {
+      if (e instanceof oauth.ResponseBodyError) {
+        if ((e.cause as any).code === "MULTI_FACTOR_AUTHENTICATION_REQUIRED") {
+          throw new KnownErrors.MultiFactorAuthenticationRequired((e.cause as any).details.attempt_code);
+        }
+        // TODO Handle OAuth 2.0 response body error
+        throw new StackAssertionError("Outer OAuth error during authorization code response", {
+          cause: e.cause,
+          code: e.code,
+          error: e.error,
+        });
       }
-      // TODO Handle OAuth 2.0 response body error
-      throw new StackAssertionError("Outer OAuth error during authorization code response", { result });
+      throw new StackAssertionError("Unexpected error when processing authorization code response", { cause: e });
     }
     return {
       newUser: result.is_new_user as boolean,
@@ -1765,6 +1804,7 @@ export class StackClientInterface {
       { itemId: string, customCustomerId: string }
     ),
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<ItemCrud['Client']['Read']> {
     let customerType: "user" | "team" | "custom";
     let customerId: string;
@@ -1781,10 +1821,12 @@ export class StackClientInterface {
       throw new StackAssertionError("getItem requires one of userId, teamId, or customCustomerId");
     }
 
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       urlString`/payments/items/${customerType}/${customerId}/${options.itemId}`,
       {},
       session,
+      requestType,
     );
     return await response.json();
   }
@@ -1792,12 +1834,32 @@ export class StackClientInterface {
   async listProducts(
     options: ListCustomerProductsOptions,
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<CustomerProductsListResponse> {
     const queryParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
       limit: options.limit !== undefined ? options.limit.toString() : undefined,
     }));
     const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}`;
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      {},
+      session,
+      requestType,
+    );
+    return await response.json();
+  }
+
+  async listInvoices(
+    options: ListCustomerInvoicesOptions,
+    session: InternalSession | null,
+  ): Promise<CustomerInvoicesListResponse> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      cursor: options.cursor,
+      limit: options.limit !== undefined ? options.limit.toString() : undefined,
+    }));
+    const path = urlString`/payments/invoices/${options.customer_type}/${options.customer_id}`;
     const response = await this.sendClientRequest(
       `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {},
@@ -1858,11 +1920,13 @@ export class StackClientInterface {
     productIdOrInline: string | yup.InferType<typeof inlineProductSchema>,
     session: InternalSession | null,
     returnUrl?: string,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<string> {
     const productBody = typeof productIdOrInline === "string" ?
       { product_id: productIdOrInline } :
       { inline_product: productIdOrInline };
-    const response = await this.sendClientRequest(
+    const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
+    const response = await sendRequest(
       "/payments/purchases/create-purchase-url",
       {
         method: "POST",
@@ -1871,7 +1935,8 @@ export class StackClientInterface {
         },
         body: JSON.stringify({ customer_type, customer_id, ...productBody, return_url: returnUrl }),
       },
-      session
+      session,
+      requestType,
     );
     const { url } = await response.json() as { url: string };
     return url;

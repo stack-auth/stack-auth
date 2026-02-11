@@ -241,7 +241,7 @@ export class Mailbox {
     };
 
     this.waitForMessagesWithSubjectCount = async (subject: string, minCount: number, options?: { noBody?: boolean }) => {
-      const maxRetries = 20;
+      const maxRetries = 25;
       let messages: MailboxMessage[] = [];
       for (let i = 0; i < maxRetries; i++) {
         messages = await this.fetchMessages(options);

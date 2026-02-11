@@ -1,9 +1,8 @@
-import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { LightEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { adaptSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { internalEmailThemesCudHandlers } from "./cud";
 
 
 export const POST = createSmartRouteHandler({
@@ -28,14 +27,12 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ body, auth: { tenancy } }) {
     const id = generateUuid();
-    await overrideEnvironmentConfigOverride({
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      environmentConfigOverrideOverride: {
-        [`emails.themes.${id}`]: {
-          displayName: body.display_name,
-          tsxSource: LightEmailTheme,
-        },
+    await internalEmailThemesCudHandlers.adminCreate({
+      tenancy,
+      allowedErrorTypes: [StatusError],
+      data: {
+        id,
+        display_name: body.display_name,
       },
     });
     return {
@@ -67,12 +64,13 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy } }) {
-    const themeList = tenancy.config.emails.themes;
-    const currentActiveTheme = tenancy.config.emails.selectedThemeId;
-
-    const themes = typedEntries(themeList).map(([id, theme]) => filterUndefined({
+    const result = await internalEmailThemesCudHandlers.adminList({
+      tenancy,
+      allowedErrorTypes: [StatusError],
+    });
+    const themes = result.items.map(({ id, display_name }) => ({
       id,
-      display_name: theme.displayName,
+      display_name,
     }));
     return {
       statusCode: 200,
