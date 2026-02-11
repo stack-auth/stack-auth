@@ -196,16 +196,15 @@ export default function PageClient() {
   const [btnLoading, setBtnLoading] = useState(false);
 
   // Card
-  const [cardVariant, setCardVariant] = useState<"header" | "compact" | "bodyOnly">("header");
+  const [cardVariant, setCardVariant] = useState<"header" | "compact" | "bodyOnly">("compact");
   const [cardTitle, setCardTitle] = useState("Featured Bundle");
   const [cardSubtitle, setCardSubtitle] = useState("Save 20% this week.");
-  const [cardSize, setCardSize] = useState<Size3>("md");
   const [cardGradient, setCardGradient] = useState<Gradient>("default");
   const [cardGlass, setCardGlass] = useState(true);
   const [cardShowIcon, setCardShowIcon] = useState(true);
 
   // Category Tabs
-  const [tabSize, setTabSize] = useState<Size3>("md");
+  const [tabSize, setTabSize] = useState<"sm" | "md">("sm");
   const [tabGlass, setTabGlass] = useState(false);
   const [tabGradient, setTabGradient] = useState<Gradient>("blue");
   const [tabSelected, setTabSelected] = useState("all");
@@ -450,7 +449,6 @@ export default function PageClient() {
             title={cardTitle}
             subtitle={cardSubtitle}
             icon={cardShowIcon ? Package : undefined}
-            size={cardSize}
             gradient={cardGradient}
             glassmorphic={cardGlass}
           >
@@ -492,7 +490,7 @@ export default function PageClient() {
               rageClickRadiusPx={blastRageRadius}
             />
           )}
-          <Typography variant="secondary" className="text-sm text-center max-w-xs">
+          <Typography variant="secondary" className="text-sm text-center max-w-xs select-none">
             {blastEnabled
               ? "Rage-click inside the preview area to trigger the blast effect."
               : "Enable the effect to see cursor blasts."}
@@ -883,17 +881,6 @@ export default function PageClient() {
           <PropField label="Subtitle">
             <DesignInput size="sm" value={cardSubtitle} onChange={(e) => setCardSubtitle(e.target.value)} />
           </PropField>
-          <PropField label="Size">
-            <DesignSelectorDropdown
-              value={cardSize}
-              onValueChange={(v) => {
-                if (!isSize3(v)) throw new Error(`Unknown card size "${v}"`);
-                setCardSize(v);
-              }}
-              options={SIZE3_OPTIONS}
-              size="sm"
-            />
-          </PropField>
           <PropField label="Gradient">
             <DesignSelectorDropdown
               value={cardGradient}
@@ -921,10 +908,13 @@ export default function PageClient() {
             <DesignSelectorDropdown
               value={tabSize}
               onValueChange={(v) => {
-                if (!isSize3(v)) throw new Error(`Unknown size "${v}"`);
+                if (v !== "sm" && v !== "md") throw new Error(`Unknown tab size "${v}"`);
                 setTabSize(v);
               }}
-              options={SIZE3_OPTIONS}
+              options={[
+                { value: "sm", label: "Small" },
+                { value: "md", label: "Medium" },
+              ]}
               size="sm"
             />
           </PropField>

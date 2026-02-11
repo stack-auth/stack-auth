@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Spinner } from "@/components/ui/spinner";
+import { useGlassmorphicDefault } from "./card";
 
 type DesignPillToggleSize = "sm" | "md" | "lg";
 type DesignPillToggleGradient = "blue" | "cyan" | "purple" | "green" | "orange" | "default";
@@ -14,7 +18,7 @@ export type DesignPillToggleOption = {
 export type DesignPillToggleProps = {
   options: DesignPillToggleOption[],
   selected: string,
-  onSelect: (id: string) => void,
+  onSelect: (id: string) => void | Promise<void>,
   size?: DesignPillToggleSize,
   glassmorphic?: boolean,
   gradient?: DesignPillToggleGradient,
@@ -58,18 +62,31 @@ export function DesignPillToggle({
   selected,
   onSelect,
   size = "md",
-  glassmorphic = false,
+  glassmorphic: glassmorphicProp,
   gradient = "default",
   showIcons = true,
   showLabels = true,
   className,
 }: DesignPillToggleProps) {
+  const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
   const sizeClass = getMapValueOrThrow(sizeClasses, size, "sizeClasses");
   const activeRingClass = getMapValueOrThrow(gradientClasses, gradient, "gradientClasses");
 
   // At least one of showIcons/showLabels must be true
   const effectiveShowLabels = !showIcons ? true : showLabels;
   const effectiveShowIcons = !showLabels ? true : showIcons;
+
+  const [loadingOptionId, setLoadingOptionId] = useState<string | null>(null);
+
+  const handleClick = (optionId: string) => {
+    const result = onSelect(optionId);
+    if (result && typeof (result as Promise<void>).then === "function") {
+      setLoadingOptionId(optionId);
+      runAsynchronouslyWithAlert(
+        Promise.resolve(result).finally(() => setLoadingOptionId(null))
+      );
+    }
+  };
 
   return (
     <div
@@ -87,9 +104,10 @@ export function DesignPillToggle({
         return (
           <button
             key={option.id}
-            onClick={() => onSelect(option.id)}
+            onClick={() => handleClick(option.id)}
+            disabled={loadingOptionId !== null}
             className={cn(
-              "flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
+              "relative flex items-center gap-2 font-medium rounded-lg transition-all duration-150 hover:transition-none",
               sizeClass.button,
               isActive
                 ? cn(
@@ -106,8 +124,19 @@ export function DesignPillToggle({
                 )
             )}
           >
-            {effectiveShowIcons && Icon && <Icon className={sizeClass.icon} />}
-            {effectiveShowLabels && <span>{option.label}</span>}
+            {loadingOptionId === option.id && (
+              <Spinner
+                size={12}
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              />
+            )}
+            <span className={cn(
+              "flex items-center gap-2",
+              loadingOptionId === option.id && "invisible"
+            )}>
+              {effectiveShowIcons && Icon && <Icon className={sizeClass.icon} />}
+              {effectiveShowLabels && option.label}
+            </span>
           </button>
         );
       })}

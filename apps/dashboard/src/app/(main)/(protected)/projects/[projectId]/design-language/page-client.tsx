@@ -653,6 +653,7 @@ export default function PageClient() {
               title="Email Drafts"
               subtitle="Create, edit, and send email drafts"
               gradient="default"
+              glassmorphic
             >
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
@@ -669,6 +670,7 @@ export default function PageClient() {
               icon={HardDrive}
               title="Preview"
               gradient="default"
+              glassmorphic
             >
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
@@ -680,7 +682,7 @@ export default function PageClient() {
             title="Body Only"
             description="Use for simple content blocks without a header"
           >
-            <DesignCard variant="bodyOnly" gradient="default">
+            <DesignCard variant="bodyOnly" gradient="default" glassmorphic>
               <Typography variant="secondary" className="text-sm">
                 Placeholder content for the card body.
               </Typography>
@@ -1087,7 +1089,6 @@ export default function PageClient() {
               categories={categories}
               selectedCategory={selectedCategory}
               onSelect={setSelectedCategory}
-              size="md"
               glassmorphic={false}
               gradient="blue"
             />
@@ -1100,7 +1101,7 @@ export default function PageClient() {
               { name: "selectedCategory", type: "string", description: "Currently selected category id." },
               { name: "onSelect", type: "(id: string) => void", description: "Selection handler for category tabs." },
               { name: "showBadge", type: "boolean", default: "true", description: "Enable/disable the number badge next to each tab label." },
-              { name: "size", type: "'sm' | 'md' | 'lg' | ...", default: "'md'", description: "Controls padding and density." },
+              { name: "size", type: "'sm' | 'md'", default: "'sm'", description: "Controls padding and density." },
               { name: "glassmorphic", type: "boolean", default: "false", description: "Enable when tabs are on glass surfaces." },
               { name: "gradient", type: "'blue' | 'cyan' | 'purple' | 'green' | 'orange' | 'default'", description: "Optional accent when glassmorphic is true." },
             ]} />

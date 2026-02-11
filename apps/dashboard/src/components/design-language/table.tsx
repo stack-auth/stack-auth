@@ -46,6 +46,7 @@ export function DesignDataTable<TData, TValue>({
     <DesignCard
       variant="bodyOnly"
       gradient="default"
+      glassmorphic
       className={cn("overflow-hidden p-0", className)}
       contentClassName="p-0"
     >

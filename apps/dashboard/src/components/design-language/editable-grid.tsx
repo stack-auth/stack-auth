@@ -7,11 +7,14 @@ import {
   SelectTrigger,
   SelectValue,
   SimpleTooltip,
+  Spinner,
 } from "@/components/ui";
-import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { cn } from "@/lib/utils";
+import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { ArrowCounterClockwise, FloppyDisk } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { DesignButton } from "./button";
 import { DesignInput } from "./input";
 
 type BaseItemProps = {
@@ -270,28 +273,37 @@ function EditableBooleanField({
   }
 
   return (
-    <Select
-      value={value ? "true" : "false"}
-      onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
-      disabled={isUpdating}
-    >
-      <SelectTrigger
-        className={cn(
-          "h-8 w-full rounded-xl px-3 text-sm text-foreground",
-          "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
-          "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-          "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
-          "transition-colors duration-150 hover:transition-none",
-          "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50"
-        )}
+    <div className="relative">
+      <Select
+        value={value ? "true" : "false"}
+        onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
+        disabled={isUpdating}
       >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="true">{trueLabel}</SelectItem>
-        <SelectItem value="false">{falseLabel}</SelectItem>
-      </SelectContent>
-    </Select>
+        <SelectTrigger
+          className={cn(
+            "h-8 w-full rounded-xl px-3 text-sm text-foreground",
+            "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
+            "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+            "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
+            "transition-colors duration-150 hover:transition-none",
+            "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50",
+            isUpdating && "[&_span]:invisible"
+          )}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="true">{trueLabel}</SelectItem>
+          <SelectItem value="false">{falseLabel}</SelectItem>
+        </SelectContent>
+      </Select>
+      {isUpdating && (
+        <Spinner
+          size={14}
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        />
+      )}
+    </div>
   );
 }
 
@@ -331,61 +343,70 @@ function EditableDropdownField({
   }
 
   return (
-    <Select
-      value={value}
-      onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
-      disabled={isUpdating}
-    >
-      <SelectTrigger
-        className={cn(
-          "h-8 w-full rounded-xl px-3 text-sm text-foreground",
-          "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
-          "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
-          "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
-          "transition-colors duration-150 hover:transition-none",
-          "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50"
-        )}
+    <div className="relative">
+      <Select
+        value={value}
+        onValueChange={(nextValue) => runAsynchronouslyWithAlert(handleChange(nextValue))}
+        disabled={isUpdating}
       >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => {
-          const optionItem = (
-            <SelectItem
-              key={option.value}
-              value={option.value}
-              disabled={option.disabled}
-              className={option.disabled ? "opacity-50" : undefined}
-            >
-              {option.label}
-            </SelectItem>
-          );
-          if (option.disabled && option.disabledReason) {
-            return (
-              <SimpleTooltip key={option.value} tooltip={option.disabledReason}>
-                <div>{optionItem}</div>
-              </SimpleTooltip>
+        <SelectTrigger
+          className={cn(
+            "h-8 w-full rounded-xl px-3 text-sm text-foreground",
+            "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
+            "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+            "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06]",
+            "transition-colors duration-150 hover:transition-none",
+            "[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:opacity-50",
+            isUpdating && "[&_span]:invisible"
+          )}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => {
+            const optionItem = (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                disabled={option.disabled}
+                className={option.disabled ? "opacity-50" : undefined}
+              >
+                {option.label}
+              </SelectItem>
             );
-          }
-          return optionItem;
-        })}
-        {extraAction && (
-          <>
-            <div className="h-px bg-border my-1" />
-            <button
-              type="button"
-              className="w-full px-2 py-1.5 text-left text-sm text-primary hover:bg-accent rounded-sm cursor-pointer"
-              onClick={(e) => {
+            if (option.disabled && option.disabledReason) {
+              return (
+                <SimpleTooltip key={option.value} tooltip={option.disabledReason}>
+                  <div>{optionItem}</div>
+                </SimpleTooltip>
+              );
+            }
+            return optionItem;
+          })}
+          {extraAction && (
+            <>
+              <div className="h-px bg-border my-1" />
+              <button
+                type="button"
+                className="w-full px-2 py-1.5 text-left text-sm text-primary hover:bg-accent rounded-sm cursor-pointer"
+                onClick={(e) => {
                 e.preventDefault();
                 extraAction.onClick();
-              }}
-            >
-              {extraAction.label}
-            </button>
-          </>
-        )}
-      </SelectContent>
-    </Select>
+                }}
+              >
+                {extraAction.label}
+              </button>
+            </>
+          )}
+        </SelectContent>
+      </Select>
+      {isUpdating && (
+        <Spinner
+          size={14}
+          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        />
+      )}
+    </div>
   );
 }
 
@@ -395,25 +416,26 @@ function CustomButtonField({
   disabled,
 }: {
   children: React.ReactNode,
-  onClick: () => void,
+  onClick: () => void | Promise<void>,
   disabled?: boolean,
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
+    <DesignButton
+      variant="outline"
+      size="sm"
       className={cn(
-        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground truncate",
+        "h-8 w-full rounded-xl px-3 text-left text-sm text-foreground truncate justify-start",
         "bg-white/80 dark:bg-foreground/[0.03] border border-black/[0.08] dark:border-white/[0.06]",
         "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
         !disabled && "hover:text-foreground hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
-        "focus:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
         "transition-colors duration-150 hover:transition-none",
         disabled && "opacity-50 cursor-not-allowed"
       )}
+      onClick={onClick}
+      disabled={disabled}
     >
       {children}
-    </button>
+    </DesignButton>
   );
 }
 
@@ -511,6 +533,47 @@ function GridItemContent({ item, isModified }: { item: DesignEditableGridItem, i
   );
 }
 
+function DesignInlineSaveDiscard({
+  hasChanges,
+  onSave,
+  onDiscard,
+}: {
+  hasChanges: boolean,
+  onSave: () => Promise<void>,
+  onDiscard: () => void,
+}) {
+  const [handleSave, isSaving] = useAsyncCallback(onSave, [onSave]);
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-end gap-2 transition-all duration-200 ease-out",
+        hasChanges ? "opacity-100 max-h-12 pt-3" : "opacity-0 max-h-0 overflow-hidden pt-0"
+      )}
+    >
+      <DesignButton
+        variant="ghost"
+        size="sm"
+        onClick={onDiscard}
+        disabled={isSaving}
+        className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] rounded-lg transition-colors duration-150 hover:transition-none gap-1.5"
+      >
+        <ArrowCounterClockwise className="h-3 w-3" />
+        Discard
+      </DesignButton>
+      <DesignButton
+        size="sm"
+        onClick={handleSave}
+        disabled={isSaving}
+        className="h-8 px-4 text-xs font-medium rounded-lg gap-1.5"
+      >
+        <FloppyDisk className="h-3 w-3" />
+        Save
+      </DesignButton>
+    </div>
+  );
+}
+
 export function DesignEditableGrid({
   items,
   columns = 2,
@@ -541,7 +604,7 @@ export function DesignEditableGrid({
         ))}
       </div>
       {deferredSave && onSave && onDiscard && (
-        <InlineSaveDiscard
+        <DesignInlineSaveDiscard
           hasChanges={!!hasChanges}
           onSave={onSave}
           onDiscard={onDiscard}
