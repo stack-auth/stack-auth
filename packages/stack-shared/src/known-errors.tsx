@@ -1127,6 +1127,16 @@ const OAuthConnectionDoesNotHaveRequiredScope = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const OAuthAccessTokenNotAvailable = createKnownErrorConstructor(
+  KnownError,
+  "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+  (provider: string, details: string) => [
+    400,
+    `Failed to retrieve an OAuth access token for the connected account (provider: ${provider}). ${details}`,
+  ] as const,
+  (json: any) => [json.provider, json.details] as [string, string],
+);
+
 const OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(
   KnownError,
   "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
@@ -1842,6 +1852,7 @@ export const KnownErrors = {
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
   OAuthConnectionDoesNotHaveRequiredScope,
+  OAuthAccessTokenNotAvailable,
   OAuthExtraScopeNotAvailableWithSharedOAuthKeys,
   OAuthAccessTokenNotAvailableWithSharedOAuthKeys,
   InvalidOAuthClientIdOrSecret,

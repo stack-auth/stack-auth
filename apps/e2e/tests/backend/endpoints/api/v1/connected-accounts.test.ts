@@ -874,7 +874,7 @@ it("should differentiate between accounts with same provider but different accou
   expect(bobAccount.provider).toBe("spotify");
 });
 
-it("should return 403 when unauthenticated user tries to list connected accounts", async ({ expect }) => {
+it("should return 400 when unauthenticated user tries to list connected accounts", async ({ expect }) => {
   // Don't sign in - just try to access
   const response = await niceBackendFetch("/api/v1/connected-accounts/me", {
     accessType: "client",
@@ -895,13 +895,33 @@ it("should return 403 when unauthenticated user tries to list connected accounts
   `);
 });
 
-it("should return 404 when trying to list connected accounts for non-existent user via server access", async ({ expect }) => {
+it("should return 400 when trying to list connected accounts for non-existent user via server access", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/connected-accounts/non-existent-user-id", {
     accessType: "server",
     method: "GET",
   });
-  expect(response.status).toBe(400);
-  expect(response.body.code).toBe("SCHEMA_ERROR");
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on GET /api/v1/connected-accounts/non-existent-user-id:
+              - params.user_id must be a valid UUID
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on GET /api/v1/connected-accounts/non-existent-user-id:
+            - params.user_id must be a valid UUID
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
 });
 
 it("should allow server access to list any user's connected accounts", async ({ expect }) => {

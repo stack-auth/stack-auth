@@ -12,14 +12,13 @@ function ConnectedAccountCard({ account }: { account: OAuthConnection }) {
   const fetchAccessToken = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const { accessToken } = await account.getAccessToken();
-      setAccessToken(accessToken);
-    } catch (e: any) {
-      setError(e.message || "Failed to get access token");
-    } finally {
-      setLoading(false);
+    const result = await account.getAccessToken();
+    if (result.status === "ok") {
+      setAccessToken(result.data.accessToken);
+    } else {
+      setError(result.error.humanReadableMessage);
     }
+    setLoading(false);
   };
 
   return (
@@ -353,8 +352,8 @@ export default function ConnectedAccountsPage() {
             <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">getOrLinkConnectedAccount(provider, options?)</code> - Get existing or redirect to link</li>
             <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">useOrLinkConnectedAccount(provider, options?)</code> - React hook for get-or-link</li>
             <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{"getConnectedAccount({ provider, providerAccountId })"}</code> - Get specific account (existence check)</li>
-            <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">connection.getAccessToken()</code> - Get OAuth access token</li>
-            <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">connection.useAccessToken()</code> - React hook for access token</li>
+            <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{"connection.getAccessToken({ scopes? })"}</code> - Get OAuth access token (returns Result)</li>
+            <li><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{"connection.useAccessToken({ scopes? })"}</code> - React hook for access token (returns Result)</li>
           </ul>
         </section>
       </div>
