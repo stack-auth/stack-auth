@@ -2,6 +2,7 @@ export * from "./alert";
 export * from "./badge";
 export * from "./button";
 export * from "./card";
+export * from "./cursor-blast-effect";
 export * from "./editable-grid";
 export * from "./input";
 export * from "./list";

@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Spinner } from "@/components/ui/spinner";
+import { useGlassmorphicDefault } from "./card";
 
-type DesignTabsSize = "sm" | "md" | "lg";
+type DesignTabsSize = "sm" | "md";
 type DesignTabsGradient = "blue" | "cyan" | "purple" | "green" | "orange" | "default";
 
 export type DesignCategoryTabItem = {
@@ -15,7 +19,7 @@ export type DesignCategoryTabItem = {
 export type DesignCategoryTabsProps = Omit<React.ComponentProps<"div">, "onSelect"> & {
   categories: DesignCategoryTabItem[],
   selectedCategory: string,
-  onSelect: (id: string) => void,
+  onSelect: (id: string) => void | Promise<void>,
   showBadge?: boolean,
   size?: DesignTabsSize,
   glassmorphic?: boolean,
@@ -36,7 +40,6 @@ type GradientClass = {
 const tabSizeClasses = new Map<DesignTabsSize, TabSizeClass>([
   ["sm", { button: "px-3 py-2 text-xs", badge: "text-[10px] px-1.5 py-0.5" }],
   ["md", { button: "px-4 py-3 text-sm", badge: "text-xs px-1.5 py-0.5" }],
-  ["lg", { button: "px-5 py-3.5 text-sm", badge: "text-xs px-2 py-0.5" }],
 ]);
 
 const gradientClasses = new Map<DesignTabsGradient, GradientClass>([
@@ -103,14 +106,26 @@ export function DesignCategoryTabs({
   selectedCategory,
   onSelect,
   showBadge = true,
-  size = "md",
-  glassmorphic = false,
+  size = "sm",
+  glassmorphic: glassmorphicProp,
   gradient = "blue",
   className,
   ...props
 }: DesignCategoryTabsProps) {
+  const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
   const sizeClass = getMapValueOrThrow(tabSizeClasses, size, "tabSizeClasses");
   const gradientClass = getMapValueOrThrow(gradientClasses, gradient, "gradientClasses");
+  const [loadingCategoryId, setLoadingCategoryId] = useState<string | null>(null);
+
+  const handleSelect = (categoryId: string) => {
+    const result = onSelect(categoryId);
+    if (result && typeof (result as Promise<void>).then === "function") {
+      setLoadingCategoryId(categoryId);
+      runAsynchronouslyWithAlert(
+        Promise.resolve(result).finally(() => setLoadingCategoryId(null))
+      );
+    }
+  };
 
   return (
     <div
@@ -131,9 +146,10 @@ export function DesignCategoryTabs({
         return (
           <button
             key={category.id}
-            onClick={() => onSelect(category.id)}
+            onClick={() => handleSelect(category.id)}
+            disabled={loadingCategoryId !== null}
             className={cn(
-              "font-medium transition-all duration-150 hover:transition-none relative flex-shrink-0 whitespace-nowrap",
+              "font-medium transition-all duration-150 hover:transition-none relative flex flex-shrink-0 items-center justify-center gap-2 whitespace-nowrap",
               "hover:text-gray-900 dark:hover:text-gray-100",
               sizeClass.button,
               glassmorphic ? "rounded-lg" : "",
@@ -145,7 +161,16 @@ export function DesignCategoryTabs({
                 : "text-gray-700 dark:text-gray-400"
             )}
           >
-            <span className="flex items-center gap-2">
+            {loadingCategoryId === category.id && (
+              <Spinner
+                size={12}
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              />
+            )}
+            <span className={cn(
+              "flex items-center gap-2",
+              loadingCategoryId === category.id && "invisible"
+            )}>
               {category.label}
               {shouldShowBadge && (
                 <span
