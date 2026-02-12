@@ -4,11 +4,13 @@
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
-    "clean": "rimraf .next && rimraf node_modules",
+    "clean": "rimraf .next && rimraf node_modules && rimraf src/generated",
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
+    "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
+    "prebuild": "pnpm run bundle-type-definitions",
     "build": "next build",
     "docker-build": "next build --experimental-build-mode compile",
     "analyze-bundle": "next experimental-analyze",
@@ -17,6 +19,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.41",
     "@ai-sdk/openai": "^3.0.25",
     "@ai-sdk/react": "^3.0.72",
     "@assistant-ui/react": "^0.10.24",
