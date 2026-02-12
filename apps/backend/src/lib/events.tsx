@@ -116,7 +116,7 @@ const UserActivityEventType = {
     userId: yupString().uuid().defined(),
     // old events of this type may not have an isAnonymous field, so we default to false
     isAnonymous: yupBoolean().defined().default(false),
-    teamId: yupString().optional().default(""),
+    teamId: yupString().optional(),
   }),
   inherits: [ProjectActivityEventType],
 } as const satisfies SystemEventTypeBase;
