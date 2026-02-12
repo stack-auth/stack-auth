@@ -24,7 +24,7 @@ export function StackProviderClient(props: {
 
   return (
     <StackContext.Provider value={{ app }}>
-      {props.analytics?.replays?.enabled === true ? <Suspense fallback={null}><StackAnalyticsInternal replayOptions={props.analytics?.replays} /></Suspense> : null}
+      {props.analytics?.replays?.enabled === true ? <Suspense fallback={null}><StackAnalyticsInternal replayOptions={props.analytics.replays} /></Suspense> : null}
       {props.children}
     </StackContext.Provider>
   );
