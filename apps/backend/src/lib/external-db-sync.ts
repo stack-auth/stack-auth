@@ -326,9 +326,6 @@ async function pushRowsToExternalDb(
 }
 
 function getInternalDbFetchQuery(mapping: DbSyncMapping, dbType: ExternalDbType) {
-  if (dbType === "clickhouse") {
-    return mapping.internalDbFetchQueries.clickhouse;
-  }
   return mapping.internalDbFetchQuery;
 }
 
@@ -424,19 +421,19 @@ async function pushRowsToClickhouse(
       );
     }
 
-    const sequenceId = parseSequenceId(rest.sequence_id, mappingId);
+    const sequenceId = parseSequenceId(rest.sync_sequence_id, mappingId);
     if (sequenceId === null) {
       throw new StackAssertionError(
-        `sequence_id must be defined for ClickHouse sync. Mapping: ${mappingId}`
+        `sync_sequence_id must be defined for ClickHouse sync. Mapping: ${mappingId}`
       );
     }
     return {
       ...rest,
-      sequence_id: sequenceId,
+      sync_sequence_id: sequenceId,
       primary_email_verified: normalizeClickhouseBoolean(rest.primary_email_verified, "primary_email_verified"),
       is_anonymous: normalizeClickhouseBoolean(rest.is_anonymous, "is_anonymous"),
       restricted_by_admin: normalizeClickhouseBoolean(rest.restricted_by_admin, "restricted_by_admin"),
-      is_deleted: normalizeClickhouseBoolean(rest.is_deleted, "is_deleted"),
+      sync_is_deleted: normalizeClickhouseBoolean(rest.sync_is_deleted, "sync_is_deleted"),
     };
   });
 
@@ -653,7 +650,7 @@ async function syncClickhouseMapping(
 
     let maxSeqInBatch = lastSequenceId;
     for (const row of rows) {
-      const seqNum = parseSequenceId(row.sequence_id, mappingId);
+      const seqNum = parseSequenceId(row.sync_sequence_id, mappingId);
       if (seqNum !== null && seqNum > maxSeqInBatch) {
         maxSeqInBatch = seqNum;
       }
@@ -731,37 +728,6 @@ async function syncDatabase(
     return needsResync;
   }
 
-  if (dbType === "clickhouse") {
-    const clickhouseClient = getClickhouseAdminClient();
-    let needsResync = false;
-    const syncResult = await Result.fromPromise((async () => {
-      for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
-        const mappingThrottled = await syncClickhouseMapping(
-          clickhouseClient,
-          mappingId,
-          mapping,
-          internalPrisma,
-          tenancyId,
-        );
-        if (mappingThrottled) {
-          needsResync = true;
-        }
-      }
-    })());
-
-    const closeResult = await Result.fromPromise(clickhouseClient.close());
-    if (closeResult.status === "error") {
-      captureError(`external-db-sync-${dbId}-close`, closeResult.error);
-    }
-
-    if (syncResult.status === "error") {
-      captureError(`external-db-sync-${dbId}`, syncResult.error);
-      return false;
-    }
-
-    return needsResync;
-  }
-
   throw new StackAssertionError(
     `Unsupported database type '${String(dbType)}' for external DB ${dbId}.`
   );
@@ -773,6 +739,35 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
   const externalDatabases = tenancy.config.dbSync.externalDatabases;
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
   let needsResync = false;
+
+  // Always sync to ClickHouse if STACK_CLICKHOUSE_URL is set (not driven by config)
+  const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
+  if (clickhouseUrl) {
+    const clickhouseClient = getClickhouseAdminClient();
+    const syncResult = await Result.fromPromise((async () => {
+      for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
+        const mappingThrottled = await syncClickhouseMapping(
+          clickhouseClient,
+          mappingId,
+          mapping,
+          internalPrisma,
+          tenancy.id,
+        );
+        if (mappingThrottled) {
+          needsResync = true;
+        }
+      }
+    })());
+
+    const closeResult = await Result.fromPromise(clickhouseClient.close());
+    if (closeResult.status === "error") {
+      captureError("external-db-sync-clickhouse-close", closeResult.error);
+    }
+
+    if (syncResult.status === "error") {
+      captureError("external-db-sync-clickhouse", syncResult.error);
+    }
+  }
 
   for (const [dbId, dbConfig] of Object.entries(externalDatabases)) {
     try {
