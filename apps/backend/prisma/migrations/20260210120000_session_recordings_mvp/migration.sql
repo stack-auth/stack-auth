@@ -43,6 +43,9 @@ ALTER TABLE "SessionRecordingChunk"
   ADD CONSTRAINT "SessionRecordingChunk_sessionRecordingId_fkey"
   FOREIGN KEY ("tenancyId","sessionRecordingId") REFERENCES "SessionRecording"("tenancyId","id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+CREATE UNIQUE INDEX "SessionRecording_tenancyId_refreshTokenId_key"
+  ON "SessionRecording"("tenancyId", "refreshTokenId");
+
 CREATE INDEX "SessionRecording_tenancyId_projectUserId_startedAt_idx"
   ON "SessionRecording"("tenancyId", "projectUserId", "startedAt");
 

@@ -300,6 +300,7 @@ model SessionRecording {
   chunks SessionRecordingChunk[]
 
   @@id([tenancyId, id])
+  @@unique([tenancyId, refreshTokenId])
   @@index([tenancyId, projectUserId, startedAt])
   @@index([tenancyId, lastEventAt])
 }
