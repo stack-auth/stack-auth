@@ -592,7 +592,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
 
     await waitForClickhouseUserDeletion("clickhouse-delete@example.com");
-  });
+  }, TEST_TIMEOUT);
 
   test("Syncs users to ClickHouse by default", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -610,7 +610,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       display_name: "ClickHouse Sync User",
       primary_email: "clickhouse-sync@example.com",
     });
-  });
+  }, TEST_TIMEOUT);
 });
 
 
