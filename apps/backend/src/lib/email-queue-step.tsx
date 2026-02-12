@@ -502,15 +502,30 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 }
 
 async function queueReadyEmails(): Promise<{ queuedCount: number }> {
+  // Queue emails that are ready to send:
+  // - Fresh emails: scheduledAt has passed and no retry pending
+  // - Retry emails: both scheduledAt AND nextSendRetryAt have passed
+  //
+  // We always require scheduledAt <= NOW() to respect the original scheduling intent.
+  // nextSendRetryAt should not bypass scheduledAt (e.g., if data is corrupted or manually edited).
+  //
+  // Clear nextSendRetryAt when queuing so the email is in a clean "queued" state.
   const res = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE
+    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
+      AND "skippedReason" IS NULL
       AND "finishedRenderingAt" IS NOT NULL
       AND "renderedHtml" IS NOT NULL
       AND "scheduledAt" <= NOW()
-      AND "nextSendRetryAt" IS NULL
+      AND (
+        -- Fresh emails: no retry pending
+        "nextSendRetryAt" IS NULL
+        OR
+        -- Retry emails: retry time has passed
+        "nextSendRetryAt" <= NOW()
+      )
     RETURNING "id";
   `;
   return {
@@ -519,18 +534,14 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
 }
 
 async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]> {
-  // Find tenancies with emails ready to send (either new emails or emails ready for retry)
+  // Find tenancies with queued emails ready to send
   const tenancyIds = await globalPrismaClient.emailOutbox.findMany({
     where: {
       isPaused: false,
-      skippedReason: null, // Don't process skipped/cancelled emails
-      finishedSendingAt: null, // Don't process already-finished emails (defense in depth)
-      OR: [
-        // Normal case: queued, not started, and no pending retry
-        { startedSendingAt: null, isQueued: true, nextSendRetryAt: null },
-        // Retry case: past retry time
-        { nextSendRetryAt: { lte: new Date() } },
-      ],
+      skippedReason: null,
+      finishedSendingAt: null,
+      startedSendingAt: null,
+      isQueued: true,
     },
     distinct: ["tenancyId"],
     select: { tenancyId: true },
@@ -556,30 +567,25 @@ function stochasticQuota(value: number): number {
 }
 
 async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: string, limit: number): Promise<EmailOutbox[]> {
+  // Claim queued emails for sending
+  // Note: queueReadyEmails() handles the time-based logic, so we just look for isQueued = TRUE
   return await tx.$queryRaw<EmailOutbox[]>(Prisma.sql`
     WITH selected AS (
       SELECT "tenancyId", "id"
       FROM "EmailOutbox"
       WHERE "tenancyId" = ${tenancyId}::uuid
         AND "isPaused" = FALSE
-        AND "skippedReason" IS NULL  -- Don't process skipped/cancelled emails
-        AND "finishedSendingAt" IS NULL  -- Don't process already-finished emails (defense in depth)
+        AND "skippedReason" IS NULL
+        AND "finishedSendingAt" IS NULL
         AND "finishedRenderingAt" IS NOT NULL
-        AND (
-          -- Normal case: queued, not started, and no pending retry
-          ("startedSendingAt" IS NULL AND "isQueued" = TRUE AND "nextSendRetryAt" IS NULL)
-          OR
-          -- Retry case: past retry time
-          ("nextSendRetryAt" IS NOT NULL AND "nextSendRetryAt" <= NOW())
-        )
+        AND "startedSendingAt" IS NULL
+        AND "isQueued" = TRUE
       ORDER BY "priority" DESC, "scheduledAt" ASC, "createdAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET 
-      "startedSendingAt" = NOW(),
-      "nextSendRetryAt" = NULL
+    SET "startedSendingAt" = NOW()
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -724,8 +730,8 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             finishedSendingAt: null,
           },
           data: {
-            startedSendingAt: null, // Unclaim the email
-            isQueued: false, // Prevent normal queue path from picking it up
+            startedSendingAt: null,
+            isQueued: false,
             sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,

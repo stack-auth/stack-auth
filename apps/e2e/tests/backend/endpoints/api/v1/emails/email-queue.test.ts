@@ -1,4 +1,4 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
@@ -1871,7 +1871,7 @@ let tempFailPort: number | null = null;
 
 async function startTempFailSmtpServer(): Promise<number> {
   if (tempFailServer) {
-    return tempFailPort!;
+    return tempFailPort ?? throwErr("tempFailServer not initialized");
   }
 
   return await new Promise((resolve, reject) => {
@@ -1903,7 +1903,7 @@ async function startTempFailSmtpServer(): Promise<number> {
     });
 
     tempFailServer.listen(0, '127.0.0.1', () => {
-      const address = tempFailServer!.address();
+      const address = (tempFailServer ?? throwErr("tempFailServer unexpectedly null in listen callback")).address();
       if (typeof address === 'object' && address !== null) {
         tempFailPort = address.port;
         resolve(tempFailPort);
@@ -1968,8 +1968,8 @@ async function getOutboxEmailById(emailId: string): Promise<OutboxEmailWithRetry
 
 // Helper to poll until an email with the given subject appears in the outbox
 async function waitForOutboxEmail(subject: string, timeoutMs = 30000): Promise<OutboxEmailWithRetryFields> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
     const emails = await getOutboxEmails({ subject });
     if (emails.length > 0) {
       return await getOutboxEmailById(emails[0].id);
@@ -1985,8 +1985,8 @@ async function waitForOutboxEmail(subject: string, timeoutMs = 30000): Promise<O
 // Helper to poll until the email has reached a specific send_retries
 // Note: Status may be "queued" or "sending" due to race conditions - that's expected
 async function waitForAttemptCount(emailId: string, attemptCount: number, timeoutMs = 60000): Promise<OutboxEmailWithRetryFields> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
     const email = await getOutboxEmailById(emailId);
     if (email.send_retries >= attemptCount) {
       return email;
@@ -2043,9 +2043,9 @@ describe("email queue deferred retry logic", () => {
 
     // Wait for the email to reach server-error status
     const maxWaitMs = 30000;
-    const startTime = Date.now();
+    const startTime = performance.now();
     let email = initialEmail;
-    while (Date.now() - startTime < maxWaitMs && email.status !== "server-error") {
+    while (performance.now() - startTime < maxWaitMs && email.status !== "server-error") {
       await wait(500);
       email = await getOutboxEmailById(emailId);
     }
@@ -2124,8 +2124,11 @@ describe("email queue deferred retry logic", () => {
       expect(emailAfterFirstAttempt.send_attempt_errors?.[0].external_message).toContain("450");
       expect(emailAfterFirstAttempt.status).not.toBe("server-error");
 
-      // Status should be "scheduled" (isQueued=false, waiting for nextSendRetryAt) or "sending" (next iteration already picked it up)
-      expect(["scheduled", "sending"]).toContain(emailAfterFirstAttempt.status);
+      // Status could be:
+      // - "scheduled": isQueued=false, waiting for nextSendRetryAt to pass
+      // - "queued": queueReadyEmails() ran, isQueued=true, waiting to be claimed
+      // - "sending": next iteration already picked it up
+      expect(["scheduled", "queued", "sending"]).toContain(emailAfterFirstAttempt.status);
 
       logIfTestFails("Email after first retry attempt", emailAfterFirstAttempt);
     });
@@ -2170,9 +2173,9 @@ describe("email queue deferred retry logic", () => {
       // Wait for all retries to exhaust (MAX_SEND_ATTEMPTS = 5)
       // With 450 errors (immediate) + exponential backoff (2s base * 2^attempt), worst case ~90s
       const maxWaitMs = 120000;
-      const startTime = Date.now();
+      const startTime = performance.now();
       let email = await getOutboxEmailById(emailId);
-      while (Date.now() - startTime < maxWaitMs && email.status !== "server-error") {
+      while (performance.now() - startTime < maxWaitMs && email.status !== "server-error") {
         await wait(1000);
         email = await getOutboxEmailById(emailId);
       }
