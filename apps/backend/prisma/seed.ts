@@ -1017,6 +1017,48 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     projectId: DUMMY_PROJECT_ID,
     branchId: DEFAULT_BRANCH_ID,
     branchConfigOverrideOverride: {
+      auth: {
+        signUpRulesDefaultAction: "allow",
+        signUpRules: {
+          "allow-dummy-domain": {
+            enabled: true,
+            displayName: "Allow @dummy.dev",
+            priority: 4,
+            condition: 'emailDomain == "dummy.dev"',
+            action: {
+              type: "allow",
+            },
+          },
+          "block-disposable-emails": {
+            enabled: true,
+            displayName: "Block disposable emails",
+            priority: 3,
+            condition: 'emailDomain.matches("(?i)mailinator\\\\.com|tempmail\\\\.com")',
+            action: {
+              type: "reject",
+              message: "Disposable emails are not allowed",
+            },
+          },
+          "restrict-free-domains": {
+            enabled: true,
+            displayName: "Restrict free email domains",
+            priority: 2,
+            condition: 'emailDomain in ["gmail.com", "yahoo.com", "outlook.com"]',
+            action: {
+              type: "restrict",
+            },
+          },
+          "log-test-prefix": {
+            enabled: true,
+            displayName: "Log test+ emails",
+            priority: 1,
+            condition: 'email.startsWith("test+")',
+            action: {
+              type: "log",
+            },
+          },
+        },
+      },
       payments: paymentsBranchOverride as any,
       apps: {
         installed: typedFromEntries(typedEntries(ALL_APPS).map(([key]) => [key, { enabled: true }])),

@@ -62,6 +62,17 @@ const branchSchemaFuzzerConfig = [{
     }],
     signUpRulesDefaultAction: ["allow", "reject"],
   }],
+  dbSync: [{
+    externalDatabases: [{
+      "some-external-db-id": [{
+        type: ["postgres"] as const,
+        connectionString: [
+          "postgres://user:password@host:port/database",
+          "some-connection-string",
+        ],
+      }],
+    }],
+  }],
   dataVault: [{
     stores: [{
       "some-store-id": [{

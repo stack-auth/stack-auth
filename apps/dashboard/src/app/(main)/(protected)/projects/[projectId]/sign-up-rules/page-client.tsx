@@ -6,6 +6,13 @@ import {
   Alert,
   Button,
   cn,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
   Input,
   Select,
   SelectContent,
@@ -32,6 +39,7 @@ import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -52,6 +60,44 @@ type SignUpRuleEntry = {
   id: string,
   rule: SignUpRule,
 };
+
+type SignUpRulesTestEvaluationStatus =
+  | 'matched'
+  | 'not_matched'
+  | 'disabled'
+  | 'missing_condition'
+  | 'error';
+
+type SignUpRulesTestEvaluation = {
+  rule_id: string,
+  display_name: string,
+  enabled: boolean,
+  condition: string,
+  status: SignUpRulesTestEvaluationStatus,
+  action: {
+    type: 'allow' | 'reject' | 'restrict' | 'log',
+    message?: string,
+  },
+  error?: string,
+};
+
+type SignUpRulesTestResult = {
+  context: {
+    email: string,
+    email_domain: string,
+    auth_method: 'password' | 'otp' | 'oauth' | 'passkey',
+    oauth_provider: string,
+  },
+  evaluations: SignUpRulesTestEvaluation[],
+  outcome: {
+    should_allow: boolean,
+    decision: 'allow' | 'reject' | 'default-allow' | 'default-reject',
+    decision_rule_id: string | null,
+    restricted_because_of_rule_id: string | null,
+  },
+};
+
+const OAUTH_PROVIDER_OPTIONS = Array.from(standardProviders);
 
 // Get sorted rules from config
 // Type assertion needed because schema changes take effect at build time
@@ -467,6 +513,332 @@ function DefaultActionCard({
   );
 }
 
+function TestRulesCard({
+  stackAdminApp,
+}: {
+  stackAdminApp: ReturnType<typeof useAdminApp>,
+}) {
+  const [email, setEmail] = useState('');
+  const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
+  const [oauthProvider, setOauthProvider] = useState('');
+  const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
+
+  const [runTest, isRunning] = useAsyncCallback(async () => {
+    const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
+      '/internal/sign-up-rules-test',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          email: email || undefined,
+          auth_method: authMethod,
+          oauth_provider: authMethod === 'oauth' ? (oauthProvider || undefined) : undefined,
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+      'admin'
+    );
+
+    if (!response.ok) {
+      throw new StackAssertionError(`Failed to test sign-up rules: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    setResult(data);
+  }, [authMethod, email, oauthProvider, stackAdminApp]);
+
+  const handleAuthMethodChange = (value: string) => {
+    if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
+      setAuthMethod(value);
+      if (value !== 'oauth') {
+        setOauthProvider('');
+      }
+    }
+  };
+
+  const evaluations = result?.evaluations ?? [];
+  const matchedEvaluations = evaluations.filter((evaluation) => evaluation.status === 'matched');
+  const decisionRule = result?.outcome.decision_rule_id
+    ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.decision_rule_id)
+    : undefined;
+  const restrictedRule = result?.outcome.restricted_because_of_rule_id
+    ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.restricted_because_of_rule_id)
+    : undefined;
+
+  const outcomeLabel = result?.outcome.should_allow ? 'Allow' : 'Reject';
+  const outcomeTone = result?.outcome.should_allow
+    ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
+    : "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20";
+
+  const actionBadgeClassName = (type: SignUpRulesTestEvaluation['action']['type']) => cn(
+    "text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded",
+    type === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
+    type === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
+    type === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+    type === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  );
+
+  const statusBadgeClassName = (status: SignUpRulesTestEvaluationStatus) => cn(
+    "text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded",
+    status === 'matched' && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    status === 'not_matched' && "bg-muted/60 text-muted-foreground",
+    status === 'disabled' && "bg-muted/60 text-muted-foreground",
+    status === 'missing_condition' && "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    status === 'error' && "bg-red-500/10 text-red-600 dark:text-red-400",
+  );
+
+  const statusLabel: Record<SignUpRulesTestEvaluationStatus, string> = {
+    matched: 'Matched',
+    not_matched: 'No match',
+    disabled: 'Disabled',
+    missing_condition: 'No condition',
+    error: 'Error',
+  };
+
+  const decisionLabel: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
+    allow: 'Allowed by rule',
+    reject: 'Rejected by rule',
+    'default-allow': 'Allowed by default',
+    'default-reject': 'Rejected by default',
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Email
+            </Typography>
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="user@company.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Auth method
+            </Typography>
+            <Select value={authMethod} onValueChange={handleAuthMethodChange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="password">Password</SelectItem>
+                <SelectItem value="otp">OTP</SelectItem>
+                <SelectItem value="oauth">OAuth</SelectItem>
+                <SelectItem value="passkey">Passkey</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+            OAuth provider
+          </Typography>
+          <Input
+            value={oauthProvider}
+            onChange={(e) => setOauthProvider(e.target.value)}
+            placeholder={authMethod === 'oauth' ? "google" : "Only used for OAuth"}
+            disabled={authMethod !== 'oauth'}
+            list="sign-up-rule-test-oauth-providers"
+          />
+          <datalist id="sign-up-rule-test-oauth-providers">
+            {OAUTH_PROVIDER_OPTIONS.map((provider) => (
+              <option key={provider} value={provider} />
+            ))}
+          </datalist>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={() => runAsynchronouslyWithAlert(runTest)}
+            loading={isRunning}
+          >
+            Run test
+          </Button>
+          <Typography variant="secondary" className="text-xs">
+            Simulate a sign-up request to preview which rules trigger.
+          </Typography>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {!result ? (
+          <Alert>
+            Run a test to preview which rules trigger and what the sign-up outcome would be.
+          </Alert>
+        ) : (
+          <>
+            <div className={cn("rounded-lg border p-3 space-y-1", outcomeTone)}>
+              <div className="flex items-center justify-between">
+                <Typography className="text-sm font-semibold">Outcome</Typography>
+                <span className="text-xs font-semibold uppercase tracking-wide">{outcomeLabel}</span>
+              </div>
+              <Typography variant="secondary" className="text-xs">
+                {decisionLabel[result.outcome.decision]}
+              </Typography>
+              {decisionRule && (
+                <Typography variant="secondary" className="text-xs">
+                  Decision rule: {decisionRule.display_name || decisionRule.rule_id}
+                </Typography>
+              )}
+              {decisionRule?.action.message && (
+                <Typography variant="secondary" className="text-xs">
+                  Rejection reason: {decisionRule.action.message}
+                </Typography>
+              )}
+              {restrictedRule && (
+                <Typography variant="secondary" className="text-xs">
+                  Restricted by: {restrictedRule.display_name || restrictedRule.rule_id}
+                </Typography>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Triggered rules
+                </Typography>
+                <Typography variant="secondary" className="text-[11px]">
+                  {matchedEvaluations.length} matched
+                </Typography>
+              </div>
+              {matchedEvaluations.length === 0 ? (
+                <Typography variant="secondary" className="text-xs">
+                  No rules matched. Default action applies.
+                </Typography>
+              ) : (
+                <div className="space-y-2">
+                  {matchedEvaluations.map((evaluation) => (
+                    <div
+                      key={evaluation.rule_id}
+                      className="flex items-center justify-between gap-2 rounded-md bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
+                    >
+                      <div className="min-w-0">
+                        <Typography className="text-xs font-medium truncate">
+                          {evaluation.display_name || evaluation.rule_id}
+                        </Typography>
+                        <Typography variant="secondary" className="text-[10px] truncate">
+                          {evaluation.condition || "No condition"}
+                        </Typography>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className={actionBadgeClassName(evaluation.action.type)}>
+                          {evaluation.action.type}
+                        </span>
+                        {evaluation.rule_id === result.outcome.decision_rule_id && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-foreground/5 text-foreground">
+                            Decision
+                          </span>
+                        )}
+                        {evaluation.rule_id === result.outcome.restricted_because_of_rule_id && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+                            Restrict
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Evaluation trace
+                </Typography>
+                <Typography variant="secondary" className="text-[11px]">
+                  {evaluations.length} evaluated
+                </Typography>
+              </div>
+              {evaluations.length === 0 ? (
+                <Typography variant="secondary" className="text-xs">
+                  No rules configured yet.
+                </Typography>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-auto pr-1">
+                  {evaluations.map((evaluation) => (
+                    <div
+                      key={evaluation.rule_id}
+                      className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 transition-colors hover:transition-none"
+                      title={evaluation.error ?? undefined}
+                    >
+                      <div className="min-w-0">
+                        <Typography className="text-xs font-medium truncate">
+                          {evaluation.display_name || evaluation.rule_id}
+                        </Typography>
+                        <Typography variant="secondary" className="text-[10px] truncate">
+                          {evaluation.condition || "No condition"}
+                        </Typography>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className={actionBadgeClassName(evaluation.action.type)}>
+                          {evaluation.action.type}
+                        </span>
+                        <span className={statusBadgeClassName(evaluation.status)}>
+                          {statusLabel[evaluation.status]}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-1">
+              <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Normalized context
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Email: {result.context.email || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Email domain: {result.context.email_domain || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                OAuth provider: {result.context.oauth_provider || "(empty)"}
+              </Typography>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TestRulesDialog({
+  stackAdminApp,
+}: {
+  stackAdminApp: ReturnType<typeof useAdminApp>,
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="secondary">
+          Open tester
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Test sign-up rules</DialogTitle>
+          <DialogDescription>
+            Simulate a sign-up request to see which rules trigger and how the final decision is made.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <TestRulesCard stackAdminApp={stackAdminApp} />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Delete confirmation dialog
 function DeleteRuleDialog({
   open,
@@ -848,6 +1220,19 @@ export default function PageClient() {
             value={defaultAction}
             onChange={(v) => runAsynchronouslyWithAlert(handleDefaultActionChange(v))}
           />
+          <div className="pt-10">
+            <div className="relative rounded-xl border border-dashed border-border/70 bg-muted/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <Typography className="text-sm font-semibold">Test rules</Typography>
+                  <Typography variant="secondary" className="text-xs">
+                    Try sample sign-ups without touching the live flow.
+                  </Typography>
+                </div>
+                <TestRulesDialog stackAdminApp={stackAdminApp} />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Delete confirmation dialog */}

@@ -33,7 +33,7 @@ export type ServerAuthApplicationOptions = (
       readonly secretServerKey: string,
     }
     | {
-      readonly projectOwnerSession: InternalSession,
+      readonly projectOwnerSession: InternalSession | (() => Promise<string | null>),
     }
   )
 );

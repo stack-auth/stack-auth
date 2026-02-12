@@ -103,16 +103,24 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           }
 
           // request duration warning
-          const allowedLongRequestPaths = ["/api/latest/internal/email-queue-step", "/api/latest/internal/analytics/query", "/health/email", "/api/latest/internal/metrics"];
-          if (!allowedLongRequestPaths.includes(req.nextUrl.pathname)) {
-            const warnAfterSeconds = 12;
-            runAsynchronously(async () => {
-              await wait(warnAfterSeconds * 1000);
-              if (!hasRequestFinished) {
-                captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
-              }
-            });
-          }
+          const allowedLongRequestPaths = [
+            "/api/latest/internal/email-queue-step",
+            "/api/v1/internal/analytics/query",
+            "/api/latest/internal/analytics/query",
+            "/health/email",
+            "/api/v1/internal/metrics",
+            "/api/latest/internal/metrics",
+            "/api/latest/internal/external-db-sync/poller",
+            "/api/latest/internal/external-db-sync/sequencer",
+            "/api/latest/internal/external-db-sync/sync-engine",
+          ];
+          const warnAfterSeconds = allowedLongRequestPaths.includes(req.nextUrl.pathname) ? 240 : 12;
+          runAsynchronously(async () => {
+            await wait(warnAfterSeconds * 1000);
+            if (!hasRequestFinished) {
+              captureError("request-timeout-watcher", new Error(`Request with ID ${requestId} to ${req.method} ${req.nextUrl.pathname} has been running for ${warnAfterSeconds} seconds. Try to keep requests short. The request may be cancelled by the serverless provider if it takes too long.`));
+            }
+          });
 
           if (!disableExtendedLogging) console.log(`[API REQ] [${requestId}] ${req.method} ${censoredUrl}`);
           const timeStart = performance.now();

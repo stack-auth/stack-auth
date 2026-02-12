@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/example-supabase",
-  "version": "2.8.64",
+  "version": "2.8.67",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
