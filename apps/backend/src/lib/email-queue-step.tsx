@@ -523,6 +523,8 @@ async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]
   const tenancyIds = await globalPrismaClient.emailOutbox.findMany({
     where: {
       isPaused: false,
+      skippedReason: null, // Don't process skipped/cancelled emails
+      finishedSendingAt: null, // Don't process already-finished emails (defense in depth)
       OR: [
         // Normal case: queued, not started, and no pending retry
         { startedSendingAt: null, isQueued: true, nextSendRetryAt: null },
@@ -560,6 +562,8 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       FROM "EmailOutbox"
       WHERE "tenancyId" = ${tenancyId}::uuid
         AND "isPaused" = FALSE
+        AND "skippedReason" IS NULL  -- Don't process skipped/cancelled emails
+        AND "finishedSendingAt" IS NULL  -- Don't process already-finished emails (defense in depth)
         AND "finishedRenderingAt" IS NOT NULL
         AND (
           -- Normal case: queued, not started, and no pending retry

@@ -381,6 +381,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       // Cancel action - mark as skipped
       set("isPaused", Prisma.sql`false`);
       set("isQueued", Prisma.sql`false`);
+      setNull("nextSendRetryAt"); // Clear any pending retry so it won't be picked up
       set("skippedReason", Prisma.sql`'MANUALLY_CANCELLED'::"EmailOutboxSkippedReason"`);
       set("skippedDetails", Prisma.sql`'{}'::jsonb`);
     } else {
