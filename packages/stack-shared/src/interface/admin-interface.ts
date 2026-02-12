@@ -29,7 +29,7 @@ export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
     superSecretAdminKey: string,
   }
   | {
-    projectOwnerSession: InternalSession,
+    projectOwnerSession: InternalSession | (() => Promise<string | null>),
   }
 );
 

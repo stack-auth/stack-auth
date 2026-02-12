@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "2.8.66",
+  "version": "2.8.67",
   "repository": "https://github.com/stack-auth/stack-auth",
   "type": "module",
   "scripts": {
