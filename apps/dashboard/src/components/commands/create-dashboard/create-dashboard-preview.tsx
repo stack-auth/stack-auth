@@ -1,17 +1,17 @@
 "use client";
 
+import { useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import {
-  CreateDashboardResponseSchema,
   CreateDashboardResponse,
+  CreateDashboardResponseSchema,
 } from "@/lib/ai-dashboard/contracts";
 import { cn } from "@/lib/utils";
-import { usePathname } from "next/navigation";
-import { memo, useCallback, useMemo, useState } from "react";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { memo, useCallback, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
-import { useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 
 type GenerationState = "idle" | "generating" | "ready" | "error";
 
