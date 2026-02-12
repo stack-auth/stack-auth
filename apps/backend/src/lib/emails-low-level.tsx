@@ -74,17 +74,25 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
           host: options.emailConfig.host,
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
+          connectionTimeout: 15000,
+          greetingTimeout: 10000,
+          socketTimeout: 20000,
+          dnsTimeout: 7000,
           auth: {
             user: options.emailConfig.username,
             pass: options.emailConfig.password,
           },
         });
 
-        await transporter.sendMail({
-          from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
-          ...options,
-          to: toArray,
-        });
+        try {
+          await transporter.sendMail({
+            from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
+            ...options,
+            to: toArray,
+          });
+        } finally {
+          transporter.close();
+        }
 
         return Result.ok(undefined);
       } catch (error) {
@@ -292,7 +300,7 @@ export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEm
       }
 
       return result;
-    }, 3, { exponentialDelayBase: 2000 });
+    }, 5, { exponentialDelayBase: 1000 });
   } catch (error) {
     if (error instanceof DoNotRetryError) {
       return Result.error(error.errorObj);
