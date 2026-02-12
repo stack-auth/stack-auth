@@ -14,7 +14,7 @@ export type DesignInputProps = {
 export const DesignInput = forwardRefIfNeeded<HTMLInputElement, DesignInputProps>(
   ({ className, type, prefixItem, leadingIcon, size = "md", ...props }, ref) => {
     const sizeClasses = size === "sm"
-      ? "h-8 px-3 text-xs"
+      ? "h-7 px-2 text-xs"
       : size === "lg"
         ? "h-10 px-4 text-sm"
         : "h-9 px-3 text-sm";

@@ -13,6 +13,7 @@ import {
   DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
+  type DesignEditableGridSize,
   DesignInput,
   DesignListItemRow,
   DesignMenu,
@@ -249,6 +250,8 @@ export default function PageClient() {
   // Editable Grid
   const [gridCols, setGridCols] = useState<1 | 2>(2);
   const [gridMode, setGridMode] = useState<"basic" | "full">("basic");
+  const [gridSize, setGridSize] = useState<DesignEditableGridSize>("sm");
+  const [gridEditMode, setGridEditMode] = useState(false);
   const [gridDeferredSave, setGridDeferredSave] = useState(false);
   const [gridHasChanges, setGridHasChanges] = useState(false);
   const [gridShowModified, setGridShowModified] = useState(false);
@@ -561,7 +564,8 @@ export default function PageClient() {
               <DesignEditableGrid
                 items={editableItems}
                 columns={gridCols}
-                className="gap-x-6 gap-y-3"
+                size={gridSize}
+                editMode={gridEditMode}
                 deferredSave={gridDeferredSave}
                 hasChanges={gridHasChanges}
                 onSave={gridDeferredSave ? async () => {
@@ -1088,6 +1092,26 @@ export default function PageClient() {
               size="sm"
             />
           </PropField>
+          <PropField label="Size">
+            <DesignSelectorDropdown
+              value={gridSize}
+              onValueChange={(v) => {
+                if (v === "sm" || v === "md") {
+                  setGridSize(v);
+                  return;
+                }
+                throw new Error(`Unknown grid size "${v}"`);
+              }}
+              options={[
+                { value: "sm", label: "Small" },
+                { value: "md", label: "Medium" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Edit Mode">
+            <BoolToggle value={gridEditMode} onChange={setGridEditMode} />
+          </PropField>
           <PropField label="Deferred Save">
             <BoolToggle value={gridDeferredSave} onChange={setGridDeferredSave} />
           </PropField>
@@ -1459,10 +1483,26 @@ export default function PageClient() {
 />`;
     }
     if (selected === "editable-grid") {
+      const itemsSnippet = gridMode === "full"
+        ? `[
+    { itemKey: "display-name", type: "text", icon: <FileText />, name: "Display Name", value: "Widget Pro", onUpdate: handleUpdate },
+    { itemKey: "active", type: "boolean", icon: <StackSimple />, name: "Active", value: true, trueLabel: "Yes", falseLabel: "No", onUpdate: handleUpdate },
+    { itemKey: "category", type: "dropdown", icon: <Sliders />, name: "Category", value: "hardware", options: [...], onUpdate: handleUpdate },
+    { itemKey: "price", type: "custom", icon: <Tag />, name: "Price", children: <span>$29.99</span> },
+    { itemKey: "custom-dropdown", type: "custom-dropdown", icon: <Sparkle />, name: "Custom Dropdown", triggerContent: <span>Open custom panel</span>, popoverContent: <div>...</div> },
+    { itemKey: "custom-button", type: "custom-button", icon: <Cube />, name: "Custom Button", onClick: handleClick, children: <span>Run action</span> },
+  ]`
+        : `[
+    { itemKey: "display-name", type: "text", icon: <FileText />, name: "Display Name", value: "Widget Pro", onUpdate: handleUpdate },
+    { itemKey: "active", type: "boolean", icon: <StackSimple />, name: "Active", value: true, trueLabel: "Yes", falseLabel: "No", onUpdate: handleUpdate },
+    { itemKey: "category", type: "dropdown", icon: <Sliders />, name: "Category", value: "hardware", options: [...], onUpdate: handleUpdate },
+    { itemKey: "price", type: "custom", icon: <Tag />, name: "Price", children: <span>$29.99</span> },
+  ]`;
       return `<DesignEditableGrid
-  items={editableItems}
+  items={${itemsSnippet}}
   columns={${gridCols}}
-  className="gap-x-6 gap-y-3"
+  size="${gridSize}"
+  editMode={${gridEditMode}}
   deferredSave={${gridDeferredSave}}
   hasChanges={${gridHasChanges}}
   onSave={${gridDeferredSave ? "handleSave" : "undefined"}}
