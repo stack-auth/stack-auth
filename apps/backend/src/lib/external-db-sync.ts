@@ -768,6 +768,7 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
 
     if (syncResult.status === "error") {
       captureError("external-db-sync-clickhouse", syncResult.error);
+      needsResync = true;
     }
   }
 
