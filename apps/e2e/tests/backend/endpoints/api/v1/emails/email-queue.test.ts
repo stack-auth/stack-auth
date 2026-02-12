@@ -1,3 +1,4 @@
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
@@ -5,7 +6,7 @@ import * as net from "net";
 import { afterAll, beforeAll, describe } from "vitest";
 import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Auth, Project, User, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, OutboxEmail, Project, User, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
@@ -1959,6 +1960,9 @@ async function getOutboxEmailById(emailId: string): Promise<OutboxEmailWithRetry
     method: "GET",
     accessType: "server",
   });
+  if (response.status !== 200) {
+    throw new StackAssertionError(`Failed to get email ${emailId}: status ${response.status}`, { response });
+  }
   return response.body;
 }
 
@@ -2078,6 +2082,8 @@ describe("email queue deferred retry logic", () => {
           email_config: tempFailSmtpConfig,
         },
       });
+      // Create API keys that don't expire (JWT admin tokens expire in 60s which is too short for retry tests)
+      await InternalApiKey.createAndSetProjectKeys();
 
       const mailbox = backendContext.value.mailbox;
       const createUserResponse = await niceBackendFetch("/api/v1/users", {
@@ -2124,13 +2130,15 @@ describe("email queue deferred retry logic", () => {
       logIfTestFails("Email after first retry attempt", emailAfterFirstAttempt);
     });
 
-    it("should retry emails until max attempts exhausted, then mark as server-error", { timeout: 90000 }, async ({ expect }) => {
+    it("should retry emails until max attempts exhausted, then mark as server-error", { timeout: 150000 }, async ({ expect }) => {
       await Project.createAndSwitch({
         display_name: "Test Retry Exhaustion Project",
         config: {
           email_config: tempFailSmtpConfig,
         },
       });
+      // Create API keys that don't expire (JWT admin tokens expire in 60s which is too short for retry tests)
+      await InternalApiKey.createAndSetProjectKeys();
 
       const mailbox = backendContext.value.mailbox;
       const createUserResponse = await niceBackendFetch("/api/v1/users", {
@@ -2160,8 +2168,8 @@ describe("email queue deferred retry logic", () => {
       const emailId = initialEmail.id;
 
       // Wait for all retries to exhaust (MAX_SEND_ATTEMPTS = 5)
-      // With 450 errors (immediate) + exponential backoff, this should complete in ~30s
-      const maxWaitMs = 60000;
+      // With 450 errors (immediate) + exponential backoff (2s base * 2^attempt), worst case ~90s
+      const maxWaitMs = 120000;
       const startTime = Date.now();
       let email = await getOutboxEmailById(emailId);
       while (Date.now() - startTime < maxWaitMs && email.status !== "server-error") {
@@ -2169,13 +2177,14 @@ describe("email queue deferred retry logic", () => {
         email = await getOutboxEmailById(emailId);
       }
 
+      // Log the email object to help debug undefined status issues
+      logIfTestFails("Email after retry exhaustion loop", email);
+
       expect(email.status).toBe("server-error");
       expect(email.send_retries).toBe(5); // MAX_SEND_ATTEMPTS
       expect(email.send_attempt_errors?.length).toBe(5);
       // No more retries scheduled
       expect(email.next_send_retry_at_millis).toBeNull();
-
-      logIfTestFails("Email after all retries exhausted", email);
     });
   });
 });

@@ -19,7 +19,7 @@ import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
 
-const MAX_SEND_ATTEMPTS = 3;
+const MAX_SEND_ATTEMPTS = 5;
 
 const SEND_RETRY_BACKOFF_BASE_MS = 2000;
 
