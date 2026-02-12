@@ -293,7 +293,7 @@ export class StackClientInterface {
       const projectOwnerSession: InternalSession | (() => Promise<string | null>) = this.options.projectOwnerSession;
 
       if (typeof projectOwnerSession === 'function') {
-        const accessTokenString = await (projectOwnerSession as (() => Promise<string | null>))();
+        const accessTokenString = await projectOwnerSession();
         if (accessTokenString) {
           const accessToken = AccessToken.createIfValid(accessTokenString);
           if (accessToken) {
