@@ -91,11 +91,11 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   beforeAll(async () => {
     dbManager = new TestDbManager();
     await dbManager.init();
-  });
+  }, 30000); // 30 second timeout for init
 
   afterAll(async () => {
     await dbManager.cleanup();
-  });
+  }, 60000); // 60 second timeout for cleanup
 
   /**
    * What it does:

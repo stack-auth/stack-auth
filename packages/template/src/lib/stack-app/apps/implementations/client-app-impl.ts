@@ -16,6 +16,7 @@ import { TeamMemberProfilesCrud } from "@stackframe/stack-shared/dist/interface/
 import { TeamPermissionsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-permissions";
 import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
@@ -1864,7 +1865,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _isTrusted(url: string): Promise<boolean> {
-    return isRelative(url);
+    // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
+    // (note that when we do this, that should be on-top of the relativity check, not replacing it)
+    return isRelative(url) || (typeof window !== "undefined" && window.location.origin === new URL(url).origin);
   }
 
   get urls(): Readonly<HandlerUrls> {
@@ -2167,7 +2170,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
       isRestricted: auth.is_restricted as boolean,
-      restrictedReason: (auth.restricted_reason as { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null) ?? null,
+      restrictedReason: (auth.restricted_reason as RestrictedReason | null) ?? null,
     };
   }
 
