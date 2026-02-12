@@ -25,7 +25,7 @@ async function runQueryForCurrentProject(body: { query: string, params?: Record<
 
 async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
   const timeoutMs = 180_000;
-  const intervalMs = 500;
+  const intervalMs = 2_000;
   const start = performance.now();
 
   while (performance.now() - start < timeoutMs) {
@@ -51,7 +51,7 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
 
 async function waitForClickhouseUserDeletion(email: string) {
   const timeoutMs = 180_000;
-  const intervalMs = 500;
+  const intervalMs = 2_000;
   const start = performance.now();
 
   while (performance.now() - start < timeoutMs) {
