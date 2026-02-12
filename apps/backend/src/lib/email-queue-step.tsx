@@ -15,9 +15,39 @@ import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { randomUUID } from "node:crypto";
-import { lowLevelSendEmailDirectViaProvider } from "./emails-low-level";
+import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
+
+const MAX_SEND_ATTEMPTS = 3;
+
+const RETRY_BACKOFF_BASE_MS = 2000;
+
+const calculateRetryBackoffMs = (attemptCount: number): number => {
+  return (Math.random() + 0.5) * RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
+};
+
+/**
+ * Structure for tracking errors from each send attempt.
+ * Mirrors the pattern used for sendServerError* fields.
+ * Uses Prisma.InputJsonValue-compatible types for DB storage.
+ */
+type SendAttemptError = {
+  attemptNumber: number,
+  timestamp: string,
+  externalMessage: string,
+  externalDetails: Prisma.InputJsonObject,
+  internalMessage: string,
+  internalDetails: Prisma.InputJsonObject,
+};
+
+const appendSendAttemptError =(
+  existingErrors: SendAttemptError[] | null | undefined,
+  newError: SendAttemptError
+): SendAttemptError[] => {
+  const errors = existingErrors ?? [];
+  return [...errors, newError];
+};
 
 // Track if email queue has run at least once since server start (used to suppress first-run delta warnings in dev)
 const emailQueueFirstRunKey = Symbol.for("__stack_email_queue_first_run_completed");
@@ -480,6 +510,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
       AND "finishedRenderingAt" IS NOT NULL
       AND "renderedHtml" IS NOT NULL
       AND "scheduledAt" <= NOW()
+      AND "nextSendRetryAt" IS NULL
     RETURNING "id";
   `;
   return {
@@ -488,11 +519,16 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
 }
 
 async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]> {
+  // Find tenancies with emails ready to send (either new emails or emails ready for retry)
   const tenancyIds = await globalPrismaClient.emailOutbox.findMany({
     where: {
-      isQueued: true,
       isPaused: false,
-      startedSendingAt: null,
+      OR: [
+        // Normal case: queued, not started, and no pending retry
+        { startedSendingAt: null, isQueued: true, nextSendRetryAt: null },
+        // Retry case: past retry time
+        { nextSendRetryAt: { lte: new Date() } },
+      ],
     },
     distinct: ["tenancyId"],
     select: { tenancyId: true },
@@ -523,16 +559,23 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       SELECT "tenancyId", "id"
       FROM "EmailOutbox"
       WHERE "tenancyId" = ${tenancyId}::uuid
-        AND "isQueued" = TRUE
         AND "isPaused" = FALSE
         AND "finishedRenderingAt" IS NOT NULL
-        AND "startedSendingAt" IS NULL
+        AND (
+          -- Normal case: queued, not started, and no pending retry
+          ("startedSendingAt" IS NULL AND "isQueued" = TRUE AND "nextSendRetryAt" IS NULL)
+          OR
+          -- Retry case: past retry time
+          ("nextSendRetryAt" IS NOT NULL AND "nextSendRetryAt" <= NOW())
+        )
       ORDER BY "priority" DESC, "scheduledAt" ASC, "createdAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET "startedSendingAt" = NOW()
+    SET 
+      "startedSendingAt" = NOW(),
+      "nextSendRetryAt" = NULL
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -640,7 +683,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
 
     const result = getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_SENDING")
       ? Result.error({ errorType: "email-sending-disabled", canRetry: false, message: "Email sending is disabled", rawError: new Error("Email sending is disabled") })
-      : await lowLevelSendEmailDirectViaProvider({
+      : await lowLevelSendEmailDirectWithoutRetries({
         tenancyId: context.tenancy.id,
         emailConfig: context.emailConfig,
         to: resolution.emails,
@@ -650,24 +693,86 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       });
 
     if (result.status === "error") {
-      await globalPrismaClient.emailOutbox.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: row.tenancyId,
-            id: row.id,
+      const newAttemptCount = row.failedSendAttemptCount + 1;
+      const canRetry = result.error.canRetry && newAttemptCount < MAX_SEND_ATTEMPTS;
+
+      // Build error entry for this attempt
+      const errorEntry: SendAttemptError = {
+        attemptNumber: newAttemptCount,
+        timestamp: new Date().toISOString(),
+        externalMessage: result.error.message ?? result.error.errorType,
+        externalDetails: { errorType: result.error.errorType },
+        internalMessage: result.error.message ?? result.error.errorType,
+        internalDetails: { rawError: errorToNiceString(result.error.rawError), errorType: result.error.errorType },
+      };
+      const updatedErrors = appendSendAttemptError(row.sendAttemptErrors as SendAttemptError[] | null, errorEntry);
+
+      if (canRetry) {
+        // Schedule retry: unclaim the email and set nextSendRetryAt
+        const backoffMs = calculateRetryBackoffMs(newAttemptCount);
+        await globalPrismaClient.emailOutbox.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: row.tenancyId,
+              id: row.id,
+            },
+            finishedSendingAt: null,
           },
-          finishedSendingAt: null,
-        },
-        data: {
-          finishedSendingAt: new Date(),
-          canHaveDeliveryInfo: false,
-          sendServerErrorExternalMessage: result.error.message,
-          sendServerErrorExternalDetails: { errorType: result.error.errorType },
-          sendServerErrorInternalMessage: result.error.message,
-          sendServerErrorInternalDetails: { rawError: errorToNiceString(result.error.rawError), errorType: result.error.errorType },
-        },
-      });
+          data: {
+            startedSendingAt: null, // Unclaim the email
+            isQueued: false, // Prevent normal queue path from picking it up
+            failedSendAttemptCount: newAttemptCount,
+            nextSendRetryAt: new Date(Date.now() + backoffMs),
+            sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+          },
+        });
+      } else {
+        // Mark as permanent failure - distinguish between "attempts exhausted" and "permanent error from provider"
+        const isAttemptsExhausted = result.error.canRetry && newAttemptCount >= MAX_SEND_ATTEMPTS;
+        const failureReason = isAttemptsExhausted ? "attempts_exhausted" : "permanent_error";
+
+        if (isAttemptsExhausted) {
+          captureError("email-queue-step-retries-exhausted", new StackAssertionError(`Email failed after ${newAttemptCount} attempts`, {
+            emailId: row.id,
+            tenancyId: row.tenancyId,
+            errorType: result.error.errorType,
+            errorMessage: result.error.message,
+            allAttemptErrors: updatedErrors,
+          }));
+        }
+
+        const externalMessage = isAttemptsExhausted
+          ? "Email could not be delivered after multiple attempts. Please verify your email configuration and try again."
+          : result.error.message;
+
+        await globalPrismaClient.emailOutbox.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: row.tenancyId,
+              id: row.id,
+            },
+            finishedSendingAt: null,
+          },
+          data: {
+            finishedSendingAt: new Date(),
+            canHaveDeliveryInfo: false,
+            failedSendAttemptCount: newAttemptCount,
+            sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+            sendServerErrorExternalMessage: externalMessage,
+            sendServerErrorExternalDetails: { errorType: result.error.errorType },
+            sendServerErrorInternalMessage: result.error.message,
+            sendServerErrorInternalDetails: {
+              rawError: errorToNiceString(result.error.rawError),
+              errorType: result.error.errorType,
+              attemptCount: newAttemptCount,
+              failureReason,
+              allAttemptErrors: updatedErrors as Json[],
+            },
+          },
+        });
+      }
     } else {
+      // Success - mark as sent (don't increment failedSendAttemptCount since this wasn't a failure)
       await globalPrismaClient.emailOutbox.update({
         where: {
           tenancyId_id: {
