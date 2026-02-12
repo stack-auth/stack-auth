@@ -80,7 +80,7 @@ export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, Proje
   & StackServerAppConstructorOptions<HasTokenStore, ProjectId>
   & {
     superSecretAdminKey?: string,
-    projectOwnerSession?: InternalSession,
+    projectOwnerSession?: InternalSession | (() => Promise<string | null>),
   }
 );
 

@@ -7,6 +7,7 @@ const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
 const S3_PUBLIC_ENDPOINT = getEnvVariable("STACK_S3_PUBLIC_ENDPOINT", "");
 const S3_BUCKET = getEnvVariable("STACK_S3_BUCKET", "");
+const S3_PRIVATE_BUCKET = getEnvVariable("STACK_S3_PRIVATE_BUCKET", "");
 const S3_ACCESS_KEY_ID = getEnvVariable("STACK_S3_ACCESS_KEY_ID", "");
 const S3_SECRET_ACCESS_KEY = getEnvVariable("STACK_S3_SECRET_ACCESS_KEY", "");
 
@@ -14,6 +15,10 @@ const HAS_S3 = !!S3_REGION && !!S3_ENDPOINT && !!S3_BUCKET && !!S3_ACCESS_KEY_ID
 
 if (!HAS_S3) {
   console.warn("S3 bucket is not configured. File upload features will not be available.");
+}
+
+if (HAS_S3 && !S3_PRIVATE_BUCKET) {
+  console.warn("S3 private bucket is not configured (STACK_S3_PRIVATE_BUCKET). Session recordings will not be available.");
 }
 
 const s3Client = HAS_S3 ? new S3Client({
@@ -39,13 +44,19 @@ export async function uploadBytes(options: {
   body: Uint8Array,
   contentType?: string,
   contentEncoding?: string,
+  private?: boolean,
 }) {
   if (!s3Client) {
     throw new StackAssertionError("S3 is not configured");
   }
 
+  const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
+  if (!bucket) {
+    throw new StackAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+  }
+
   const command = new PutObjectCommand({
-    Bucket: S3_BUCKET,
+    Bucket: bucket,
     Key: options.key,
     Body: options.body,
     ...(options.contentType ? { ContentType: options.contentType } : {}),
@@ -56,7 +67,6 @@ export async function uploadBytes(options: {
 
   return {
     key: options.key,
-    url: getS3PublicUrl(options.key),
   };
 }
 
@@ -87,13 +97,18 @@ async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
   throw new StackAssertionError("Unexpected S3 body type");
 }
 
-export async function downloadBytes(options: { key: string }): Promise<Uint8Array> {
+export async function downloadBytes(options: { key: string, private?: boolean }): Promise<Uint8Array> {
   if (!s3Client) {
     throw new StackAssertionError("S3 is not configured");
   }
 
+  const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
+  if (!bucket) {
+    throw new StackAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+  }
+
   const command = new GetObjectCommand({
-    Bucket: S3_BUCKET,
+    Bucket: bucket,
     Key: options.key,
   });
 

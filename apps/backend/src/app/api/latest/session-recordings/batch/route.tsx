@@ -102,13 +102,13 @@ export const POST = createSmartRouteHandler({
 
     // Ensure the session row exists and is up-to-date.
     const existingSession = await prisma.sessionRecording.findUnique({
-      where: { tenancyId_id: { tenancyId, id: sessionId } },
+      where: { tenancyId_refreshTokenId: { tenancyId, refreshTokenId } },
       select: { startedAt: true, lastEventAt: true },
     });
     const newStartedAtMs = Math.min(existingSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
     const newLastEventAtMs = Math.max(existingSession?.lastEventAt.getTime() ?? 0, lastMs);
     await prisma.sessionRecording.upsert({
-      where: { tenancyId_id: { tenancyId, id: sessionId } },
+      where: { tenancyId_refreshTokenId: { tenancyId, refreshTokenId } },
       create: {
         id: sessionId,
         tenancyId,
@@ -120,7 +120,6 @@ export const POST = createSmartRouteHandler({
         lastEventAt: new Date(newLastEventAtMs),
       },
       update: {
-        refreshTokenId,
         startedAt: new Date(newStartedAtMs),
         lastEventAt: new Date(newLastEventAtMs),
       },
@@ -161,6 +160,7 @@ export const POST = createSmartRouteHandler({
       body: gzipped,
       contentType: "application/json",
       contentEncoding: "gzip",
+      private: true,
     });
 
     try {

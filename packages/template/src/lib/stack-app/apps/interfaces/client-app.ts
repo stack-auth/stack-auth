@@ -93,6 +93,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
+      sendSessionRecordingBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>
