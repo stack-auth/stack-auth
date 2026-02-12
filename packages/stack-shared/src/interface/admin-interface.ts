@@ -11,6 +11,7 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
+  AdminGetSessionRecordingAllEventsResponse,
   AdminGetSessionRecordingChunkEventsResponse,
   AdminListSessionRecordingChunksOptions,
   AdminListSessionRecordingChunksResponse,
@@ -741,6 +742,18 @@ export class StackAdminInterface extends StackServerInterface {
   async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
     const response = await this.sendAdminRequest(
       `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionRecordingAllEventsResponse> {
+    const qs = new URLSearchParams();
+    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
+    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );

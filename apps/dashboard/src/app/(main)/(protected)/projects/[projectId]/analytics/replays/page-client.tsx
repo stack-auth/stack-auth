@@ -35,8 +35,8 @@ import {
 } from "./session-replay-machine";
 
 const PAGE_SIZE = 50;
-const CHUNK_PAGE_SIZE = 250;
-const CHUNK_EVENTS_CONCURRENCY = 8;
+const INITIAL_CHUNK_BATCH = 20;
+const BACKGROUND_CHUNK_BATCH = 50;
 const EXTRA_TABS_TO_SHOW = 2;
 const REPLAY_SETTINGS_STORAGE_KEY = "stack.session-replay.settings";
 const LEGACY_PLAYER_SPEED_STORAGE_KEY = "stack.session-replay.speed";
@@ -73,11 +73,10 @@ type AdminAppWithSessionRecordings = ReturnType<typeof useAdminApp> & {
     items: RecordingRow[],
     nextCursor: string | null,
   }>,
-  listSessionRecordingChunks: (sessionRecordingId: string, options?: { limit?: number, cursor?: string }) => Promise<{
-    items: ChunkRow[],
-    nextCursor: string | null,
+  getSessionRecordingEvents: (sessionRecordingId: string, options?: { offset?: number, limit?: number }) => Promise<{
+    chunks: ChunkRow[],
+    chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
   }>,
-  getSessionRecordingChunkEvents: (sessionRecordingId: string, chunkId: string) => Promise<{ events: unknown[] }>,
 };
 
 function coerceRrwebEvents(raw: unknown[]): RrwebEventWithTime[] {
@@ -166,63 +165,6 @@ function getInitialReplaySettings(): ReplaySettings {
     // ignore
   }
   return { playerSpeed: 1, skipInactivity: true, followActiveTab: false };
-}
-
-async function fetchChunkEventsForStreamsParallel(
-  adminApp: AdminAppWithSessionRecordings,
-  recordingId: string,
-  streams: Array<{ tabKey: TabKey, chunks: ChunkRow[] }>,
-  isStale: () => boolean,
-  onChunkLoaded: (tabKey: TabKey, chunkIndex: number, events: RrwebEventWithTime[]) => void,
-) {
-  const tasks: Array<{ tabKey: TabKey, chunkIndex: number, chunkId: string, firstEventAtMs: number }> = [];
-  const resultsByTab = new Map<TabKey, Array<RrwebEventWithTime[] | null>>();
-  const reportedIndexByTab = new Map<TabKey, number>();
-
-  for (const s of streams) {
-    resultsByTab.set(s.tabKey, new Array(s.chunks.length).fill(null));
-    reportedIndexByTab.set(s.tabKey, 0);
-    for (let chunkIndex = 0; chunkIndex < s.chunks.length; chunkIndex++) {
-      tasks.push({
-        tabKey: s.tabKey,
-        chunkIndex,
-        chunkId: s.chunks[chunkIndex].id,
-        firstEventAtMs: s.chunks[chunkIndex].firstEventAt.getTime(),
-      });
-    }
-  }
-
-  tasks.sort((a, b) => {
-    const a0 = a.chunkIndex === 0 ? 0 : 1;
-    const b0 = b.chunkIndex === 0 ? 0 : 1;
-    if (a0 !== b0) return a0 - b0;
-    if (a.firstEventAtMs !== b.firstEventAtMs) return a.firstEventAtMs - b.firstEventAtMs;
-    return a.chunkIndex - b.chunkIndex;
-  });
-
-  let nextTaskIndex = 0;
-
-  async function worker() {
-    while (nextTaskIndex < tasks.length) {
-      if (isStale()) return;
-      const task = tasks[nextTaskIndex++];
-      const ev = await adminApp.getSessionRecordingChunkEvents(recordingId, task.chunkId);
-      if (isStale()) return;
-
-      const results = resultsByTab.get(task.tabKey) ?? [];
-      results[task.chunkIndex] = coerceRrwebEvents(ev.events);
-
-      let reported = reportedIndexByTab.get(task.tabKey) ?? 0;
-      while (reported < results.length && results[reported] !== null) {
-        onChunkLoaded(task.tabKey, reported, results[reported]!);
-        reported++;
-      }
-      reportedIndexByTab.set(task.tabKey, reported);
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(CHUNK_EVENTS_CONCURRENCY, tasks.length) }, () => worker());
-  await Promise.all(workers);
 }
 
 function Timeline({
@@ -836,19 +778,72 @@ export default function PageClient() {
     setFullStreams([]);
     fullStreamsRef.current = [];
 
-    try {
-      const allChunkRows: ChunkRow[] = [];
-      let cursor: string | null = null;
-      while (true) {
-        const res: { items: ChunkRow[], nextCursor: string | null } = await adminApp.listSessionRecordingChunks(
-          recordingId,
-          { limit: CHUNK_PAGE_SIZE, cursor: cursor ?? undefined },
-        );
+    // Helper: process a batch of chunk_events into the replayer state machine.
+    function processChunkEvents(
+      chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
+      allStreams: TabStream<ChunkRow>[],
+      chunkIdToTabKey: Map<string, TabKey>,
+    ) {
+      for (const ce of chunkEvents) {
         if (msRef.current.generation !== gen) return;
-        allChunkRows.push(...res.items);
-        if (!res.nextCursor) break;
-        cursor = res.nextCursor;
+
+        const tabKey = chunkIdToTabKey.get(ce.chunkId);
+        if (!tabKey) continue;
+
+        const events = coerceRrwebEvents(ce.events);
+        const prev = eventsByTabRef.current.get(tabKey) ?? [];
+        const wasEmpty = prev.length === 0;
+        prev.push(...events);
+        eventsByTabRef.current.set(tabKey, prev);
+
+        const hasFullSnapshot = !msRef.current.hasFullSnapshotByTab.has(tabKey)
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          && events.some(e => (e as any).type === 2);
+
+        let loadedDurationMs = 0;
+        if (prev.length >= 2) {
+          loadedDurationMs = prev[prev.length - 1].timestamp - prev[0].timestamp;
+        }
+
+        if (!wasEmpty) {
+          const r = replayerByTabRef.current.get(tabKey);
+          if (r) {
+            for (const event of events) {
+              r.addEvent(event);
+            }
+          }
+        }
+
+        actRef.current({
+          type: "CHUNK_LOADED",
+          generation: gen,
+          tabKey,
+          hasFullSnapshot,
+          loadedDurationMs,
+          hadEventsBeforeThisChunk: !wasEmpty,
+        });
+
+        if (hasFullSnapshot || wasEmpty) {
+          setUiVersion(v => v + 1);
+        }
       }
+    }
+
+    try {
+      // Phase 1: Fetch initial batch (fast start).
+      const initialResponse = await adminApp.getSessionRecordingEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
+      if (msRef.current.generation !== gen) return;
+
+      const allChunkRows: ChunkRow[] = initialResponse.chunks.map((c) => ({
+        id: c.id,
+        batchId: c.batchId,
+        tabId: c.tabId,
+        eventCount: c.eventCount,
+        byteLength: c.byteLength,
+        firstEventAt: c.firstEventAt,
+        lastEventAt: c.lastEventAt,
+        createdAt: c.createdAt,
+      }));
 
       const allStreams = groupChunksIntoTabStreams(allChunkRows);
       setFullStreams(allStreams);
@@ -856,7 +851,7 @@ export default function PageClient() {
 
       const { globalStartTs, globalTotalMs } = computeGlobalTimeline(allStreams);
 
-      // Build chunk ranges
+      // Build chunk ranges from full metadata.
       const rangesByTab = new Map<TabKey, ChunkRange[]>();
       for (const s of allStreams) {
         const ranges = s.chunks
@@ -880,7 +875,7 @@ export default function PageClient() {
         rangesByTab.set(s.tabKey, merged);
       }
 
-      // Stable tab labels
+      // Stable tab labels.
       const labelOrder = allStreams
         .slice()
         .sort((a, b) => {
@@ -890,7 +885,6 @@ export default function PageClient() {
         });
       const tabLabelIndex = new Map(labelOrder.map((s, i) => [s.tabKey, i + 1]));
 
-      // StreamInfo for machine
       const streamInfos: StreamInfo[] = allStreams.map(s => ({
         tabKey: s.tabKey,
         firstEventAtMs: s.firstEventAt.getTime(),
@@ -907,52 +901,31 @@ export default function PageClient() {
         tabLabelIndex,
       });
 
-      await fetchChunkEventsForStreamsParallel(
-        adminApp,
-        recordingId,
-        allStreams.map(s => ({ tabKey: s.tabKey, chunks: s.chunks })),
-        () => msRef.current.generation !== gen,
-        (tabKey, _chunkIndex, events) => {
-          const prev = eventsByTabRef.current.get(tabKey) ?? [];
-          const wasEmpty = prev.length === 0;
-          prev.push(...events);
-          eventsByTabRef.current.set(tabKey, prev);
+      // Build chunk_id → tabKey lookup from full metadata.
+      const chunkIdToTabKey = new Map<string, TabKey>();
+      for (const s of allStreams) {
+        for (const chunk of s.chunks) {
+          chunkIdToTabKey.set(chunk.id, s.tabKey);
+        }
+      }
 
-          // Detect FullSnapshot (rrweb type 2).
-          const hasFullSnapshot = !msRef.current.hasFullSnapshotByTab.has(tabKey)
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            && events.some(e => (e as any).type === 2);
+      // Process the initial batch of events.
+      processChunkEvents(initialResponse.chunkEvents, allStreams, chunkIdToTabKey);
 
-          let loadedDurationMs = 0;
-          if (prev.length >= 2) {
-            loadedDurationMs = prev[prev.length - 1].timestamp - prev[0].timestamp;
-          }
+      // Phase 2: Background loading of remaining chunks.
+      const totalChunks = allChunkRows.length;
+      let offset = INITIAL_CHUNK_BATCH;
 
-          // Add events to existing rrweb replayer instance.
-          if (!wasEmpty) {
-            const r = replayerByTabRef.current.get(tabKey);
-            if (r) {
-              for (const event of events) {
-                r.addEvent(event);
-              }
-            }
-          }
+      while (offset < totalChunks) {
+        if (msRef.current.generation !== gen) return;
 
-          // Dispatch to machine — handles ensure_replayer, buffer resume, etc.
-          actRef.current({
-            type: "CHUNK_LOADED",
-            generation: gen,
-            tabKey,
-            hasFullSnapshot,
-            loadedDurationMs,
-            hadEventsBeforeThisChunk: !wasEmpty,
-          });
+        const batchResponse = await adminApp.getSessionRecordingEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
+        if (msRef.current.generation !== gen) return;
 
-          if (hasFullSnapshot || wasEmpty) {
-            setUiVersion(v => v + 1);
-          }
-        },
-      );
+        processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);
+
+        offset += BACKGROUND_CHUNK_BATCH;
+      }
     } catch (e: any) {
       if (msRef.current.generation === gen) {
         actRef.current({ type: "DOWNLOAD_ERROR", generation: gen, message: e?.message ?? "Failed to load replay data." });

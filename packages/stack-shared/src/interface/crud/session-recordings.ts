@@ -47,3 +47,20 @@ export type AdminGetSessionRecordingChunkEventsResponse = {
   events: unknown[],
 };
 
+export type AdminGetSessionRecordingAllEventsResponse = {
+  chunks: Array<{
+    id: string,
+    batch_id: string,
+    tab_id: string | null,
+    event_count: number,
+    byte_length: number,
+    first_event_at_millis: number,
+    last_event_at_millis: number,
+    created_at_millis: number,
+  }>,
+  chunk_events: Array<{
+    chunk_id: string,
+    events: unknown[],
+  }>,
+};
+
