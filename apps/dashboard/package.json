@@ -9,6 +9,7 @@
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
     "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
+    "predev": "pnpm run bundle-type-definitions",
     "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
     "prebuild": "pnpm run bundle-type-definitions",
     "build": "next build",

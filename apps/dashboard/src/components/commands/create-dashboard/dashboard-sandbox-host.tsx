@@ -430,7 +430,9 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       if (iframeRef.current?.contentWindow && event.source !== iframeRef.current.contentWindow) {
         return;
       }
-
+      if (event.origin !== "null") {
+        return;
+      }
       const type = event.data.type;
 
       if (type === "stack-access-token-request") {
@@ -443,7 +445,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
                 type: 'stack-access-token-response',
                 requestId,
                 accessToken: null,
-            }, { targetOrigin: event.origin } as any);
+              }, { targetOrigin: '*' });
               return;
             }
 
@@ -451,13 +453,13 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
               type: 'stack-access-token-response',
               requestId,
               accessToken,
-            }, { targetOrigin: event.origin } as any);
+            }, { targetOrigin: '*' });
           } catch (error) {
             event.source?.postMessage({
               type: 'stack-access-token-response',
               requestId,
               accessToken: null,
-            }, { targetOrigin: event.origin } as any);
+            }, { targetOrigin: '*' });
           }
         });
         return;
