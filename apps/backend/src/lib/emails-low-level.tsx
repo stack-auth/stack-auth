@@ -300,7 +300,7 @@ export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEm
       }
 
       return result;
-    }, 3, { exponentialDelayBase: 2000 });
+    }, 5, { exponentialDelayBase: 1000 });
   } catch (error) {
     if (error instanceof DoNotRetryError) {
       return Result.error(error.errorObj);
