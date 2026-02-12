@@ -147,22 +147,12 @@ it("stores $token-refresh data in snake_case without row identity fields", async
   }
   const data = JSON.parse(dataJson) as Record<string, unknown>;
 
-  expect(data).toMatchObject({
-    refresh_token_id: expect.any(String),
-    is_anonymous: expect.any(Boolean),
-  });
-  expect(data).not.toHaveProperty("projectId");
-  expect(data).not.toHaveProperty("branchId");
-  expect(data).not.toHaveProperty("userId");
-  expect(data).not.toHaveProperty("refreshTokenId");
-  expect(data).not.toHaveProperty("isAnonymous");
-  expect(data).not.toHaveProperty("ipInfo");
-
-  if (data.ip_info !== null && typeof data.ip_info === "object") {
-    expect(data.ip_info).not.toHaveProperty("countryCode");
-    expect(data.ip_info).not.toHaveProperty("isTrusted");
-    expect(data.ip_info).not.toHaveProperty("tzIdentifier");
-  }
+  expect(data).toMatchInlineSnapshot(`
+    {
+      "is_anonymous": false,
+      "refresh_token_id": <stripped field 'refresh_token_id'>,
+    }
+  `);
 });
 
 it("cannot read events from other projects", async ({ expect }) => {

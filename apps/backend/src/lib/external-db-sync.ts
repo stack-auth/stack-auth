@@ -506,6 +506,9 @@ async function updateClickhouseSyncMetadata(
       updated_at: new Date(),
     }],
     format: "JSONEachRow",
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+    },
   });
 }
 

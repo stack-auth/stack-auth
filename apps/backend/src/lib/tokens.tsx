@@ -272,7 +272,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
-      teamId: "",
+      teamId: undefined,
     }
   );
 
@@ -285,7 +285,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       userId: options.refreshTokenObj.projectUserId,
       refreshTokenId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
-      teamId: "",
+      teamId: undefined,
       ipInfo,
     }
   );
