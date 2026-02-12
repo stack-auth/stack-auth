@@ -2830,6 +2830,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         });
       },
       getConstructorOptions: () => this._options,
+      sendSessionRecordingBatch: async (body: string, options: { keepalive: boolean }) => {
+        return await this._interface.sendSessionRecordingBatch(body, await this._getSession(), options);
+      },
       sendRequest: async (
         path: string,
         requestOptions: RequestInit,

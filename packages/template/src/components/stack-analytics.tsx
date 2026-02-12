@@ -1,11 +1,10 @@
 "use client";
 
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import React, { useEffect, useMemo, useRef } from "react";
 import { useStackApp } from "../lib/hooks";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import { clientVersion, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultPublishableClientKey } from "../lib/stack-app/apps/implementations/common";
 
 export type AnalyticsReplayOptions = {
   enabled?: boolean,
@@ -85,14 +84,11 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
   // calls getUser() -> /users/me on every invocation (bypassing the cache).
   // These hooks subscribe to the cache and only trigger network requests when needed.
   const accessToken = app.useAccessToken();
-  const refreshToken = app.useRefreshToken();
 
-  // Refs so the effect closure always has the latest token values
-  // without needing tokens in the dependency array (which would restart recording).
+  // Ref so the effect closure always has the latest token value
+  // without needing it in the dependency array (which would restart recording).
   const accessTokenRef = useRef(accessToken);
-  const refreshTokenRef = useRef(refreshToken);
   accessTokenRef.current = accessToken;
-  refreshTokenRef.current = refreshToken;
 
   useEffect(() => {
     let cancelled = false;
@@ -116,9 +112,7 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
     };
 
     const flush = async (options: { keepalive: boolean }) => {
-      const currentAccessToken = accessTokenRef.current;
-      const currentRefreshToken = refreshTokenRef.current;
-      if (!currentAccessToken) return;
+      if (!accessTokenRef.current) return;
       if (events.length === 0) return;
 
       const nowMs = Date.now();
@@ -137,30 +131,10 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
       events = [];
       approxBytes = 0;
 
-      const constructorOptions = app[stackAppInternalsSymbol].getConstructorOptions();
-      const baseUrl = getBaseUrl(constructorOptions.baseUrl);
-      const publishableClientKey = constructorOptions.publishableClientKey ?? getDefaultPublishableClientKey();
-      const extraRequestHeaders = constructorOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders();
-
-      const res = await Result.fromThrowingAsync(async () => {
-        return await fetch(new URL("/api/v1/session-recordings/batch", baseUrl), {
-          method: "POST",
-          credentials: "omit",
-          keepalive: options.keepalive,
-          headers: {
-            "content-type": "application/json",
-            "x-stack-project-id": app.projectId,
-            "x-stack-access-type": "client",
-            "x-stack-client-version": clientVersion,
-            "x-stack-access-token": currentAccessToken,
-            ...(currentRefreshToken ? { "x-stack-refresh-token": currentRefreshToken } : {}),
-            "x-stack-publishable-client-key": publishableClientKey,
-            "x-stack-allow-anonymous-user": "true",
-            ...extraRequestHeaders,
-          },
-          body: JSON.stringify(payload),
-        });
-      });
+      const res = await app[stackAppInternalsSymbol].sendSessionRecordingBatch(
+        JSON.stringify(payload),
+        { keepalive: options.keepalive },
+      );
 
       if (res.status === "error") {
         // This is best-effort telemetry. Don't throw and break the app.
