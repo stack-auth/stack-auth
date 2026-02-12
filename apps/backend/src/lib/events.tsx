@@ -26,6 +26,34 @@ export const endUserIpInfoSchema = yupObject({
 
 export type EndUserIpInfo = yup.InferType<typeof endUserIpInfoSchema>;
 
+type ClickhouseEndUserIpInfo = {
+  ip: string,
+  is_trusted: boolean,
+  country_code?: string,
+  region_code?: string,
+  city_name?: string,
+  latitude?: number,
+  longitude?: number,
+  tz_identifier?: string,
+};
+
+function toClickhouseEndUserIpInfo(ipInfo: EndUserIpInfo | null): ClickhouseEndUserIpInfo | null {
+  if (!ipInfo) {
+    return null;
+  }
+
+  return {
+    ip: ipInfo.ip,
+    is_trusted: ipInfo.isTrusted,
+    country_code: ipInfo.countryCode ?? undefined,
+    region_code: ipInfo.regionCode ?? undefined,
+    city_name: ipInfo.cityName ?? undefined,
+    latitude: ipInfo.latitude ?? undefined,
+    longitude: ipInfo.longitude ?? undefined,
+    tz_identifier: ipInfo.tzIdentifier ?? undefined,
+  };
+}
+
 /**
  * Extracts the end user IP info from the current request.
  * Must be called before any async operations as it uses dynamic APIs.
@@ -104,15 +132,10 @@ const SessionActivityEventType = {
 const TokenRefreshEventType = {
   id: "$token-refresh",
   dataSchema: yupObject({
-    projectId: yupString().defined(),
-    branchId: yupString().defined(),
-    organizationId: yupString().nullable().test("must-be-null", "Organization ID has not been implemented yet and must be null", (value) => value === null).defined(),
-    userId: yupString().uuid().defined(),
     refreshTokenId: yupString().defined(),
-    isAnonymous: yupBoolean().defined(),
     ipInfo: endUserIpInfoSchema.nullable().defined(),
   }),
-  inherits: [],
+  inherits: [UserActivityEventType],
 } as const satisfies SystemEventTypeBase;
 
 
@@ -221,13 +244,19 @@ export async function logEvent<T extends EventType[]>(
   const endUserInfo = await getEndUserInfo();  // this is a dynamic API, can't run it asynchronously
   const endUserInfoInner = endUserInfo?.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo?.exactInfo;
   const eventTypesArray = [...allEventTypes];
-  const clickhouseEventData = {
-    ...data as Record<string, unknown>,
-  };
   const dataRecord = data as Record<string, unknown> | null | undefined;
-  const projectId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.projectId === "string" ? dataRecord.projectId : "";
-  const branchId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.branchId === "string" ? dataRecord.branchId : DEFAULT_BRANCH_ID;
-  const userId = typeof dataRecord === "object" && dataRecord && typeof dataRecord.userId === "string" ? dataRecord.userId : "";
+  const projectId =
+    typeof dataRecord === "object" && dataRecord && typeof dataRecord.projectId === "string"
+      ? dataRecord.projectId
+      : "";
+  const branchId =
+    typeof dataRecord === "object" && dataRecord && typeof dataRecord.branchId === "string"
+      ? dataRecord.branchId
+      : DEFAULT_BRANCH_ID;
+  const userId =
+    typeof dataRecord === "object" && dataRecord && typeof dataRecord.userId === "string"
+      ? dataRecord.userId
+      : "";
 
 
   // rest is no more dynamic APIs so we can run it asynchronously
@@ -259,6 +288,37 @@ export async function logEvent<T extends EventType[]>(
     const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
     const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
     if (matchingEventType) {
+      let clickhouseEventData: Record<string, unknown>;
+      if (matchingEventType.id === "$token-refresh") {
+        const refreshTokenId =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.refreshTokenId === "string"
+            ? dataRecord.refreshTokenId
+            : throwErr(new StackAssertionError("refreshTokenId is required for $token-refresh ClickHouse event", { dataRecord }));
+        const isAnonymous =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.isAnonymous === "boolean"
+            ? dataRecord.isAnonymous
+            : throwErr(new StackAssertionError("isAnonymous is required for $token-refresh ClickHouse event", { dataRecord }));
+        const ipInfo =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
+            : undefined;
+        clickhouseEventData = {
+          refresh_token_id: refreshTokenId,
+          is_anonymous: isAnonymous,
+          ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
+        };
+      } else {
+        clickhouseEventData = {
+          ...(data as Record<string, unknown>),
+        };
+      }
+
+      if (!projectId) {
+        throw new StackAssertionError(
+          `projectId is required for ClickHouse event insertion (${matchingEventType.id})`,
+          { matchingEventType, dataRecord }
+        );
+      }
       const clickhouseClient = getClickhouseAdminClient();
       await clickhouseClient.insert({
         table: "analytics_internal.events",

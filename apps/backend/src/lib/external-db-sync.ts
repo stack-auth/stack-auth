@@ -500,9 +500,11 @@ async function updateClickhouseSyncMetadata(
       tenancy_id: tenancyId,
       mapping_name: mappingId,
       last_synced_sequence_id: lastSequenceId,
-      updated_at: new Date(),
     }],
     format: "JSONEachRow",
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+    },
   });
 }
 

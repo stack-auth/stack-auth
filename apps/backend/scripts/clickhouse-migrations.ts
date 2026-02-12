@@ -16,6 +16,7 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: EVENTS_VIEW_SQL });
   await client.exec({ query: USERS_TABLE_BASE_SQL });
   await client.exec({ query: USERS_VIEW_SQL });
+  await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",
@@ -57,6 +58,39 @@ SQL SECURITY DEFINER
 AS
 SELECT *
 FROM analytics_internal.events;
+`;
+
+// Normalizes legacy $token-refresh rows (camelCase JSON) to the new format:
+// - Row identity stays in columns (project_id/branch_id/user_id)
+// - data JSON becomes { refresh_token_id, is_anonymous, ip_info } (snake_case)
+// Assumption: all legacy rows have the camelCase format.
+const TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL = `
+ALTER TABLE analytics_internal.events
+UPDATE
+  data = CAST(concat(
+    '{',
+      '\"refresh_token_id\":', toJSONString(JSONExtractString(toJSONString(data), 'refreshTokenId')), ',',
+      '\"is_anonymous\":', toJSONString(JSONExtract(toJSONString(data), 'isAnonymous', 'Bool')), ',',
+      '\"ip_info\":', if(
+        JSONExtractString(toJSONString(data), 'ipInfo.ip') = '',
+        'null',
+        concat(
+          '{',
+            '\"ip\":', toJSONString(JSONExtractString(toJSONString(data), 'ipInfo.ip')), ',',
+            '\"is_trusted\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.isTrusted', 'Bool')), ',',
+            '\"country_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.countryCode', 'Nullable(String)')), ',',
+            '\"region_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.regionCode', 'Nullable(String)')), ',',
+            '\"city_name\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.cityName', 'Nullable(String)')), ',',
+            '\"latitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.latitude', 'Nullable(Float64)')), ',',
+            '\"longitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.longitude', 'Nullable(Float64)')), ',',
+            '\"tz_identifier\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.tzIdentifier', 'Nullable(String)')),
+          '}'
+        )
+      ),
+    '}'
+  ) AS JSON)
+WHERE event_type = '$token-refresh'
+  AND JSONHas(toJSONString(data), 'refreshTokenId');
 `;
 
 const USERS_TABLE_BASE_SQL = `
