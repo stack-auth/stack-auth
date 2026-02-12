@@ -443,7 +443,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
                 type: 'stack-access-token-response',
                 requestId,
                 accessToken: null,
-              }, { targetOrigin: '*' } as any);
+            }, { targetOrigin: event.origin } as any);
               return;
             }
 
