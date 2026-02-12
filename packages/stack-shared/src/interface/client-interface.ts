@@ -42,7 +42,7 @@ export type ClientInterfaceOptions = {
 } & ({
   publishableClientKey: string,
 } | {
-  projectOwnerSession: InternalSession,
+  projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
 export class StackClientInterface {
@@ -289,8 +289,8 @@ export class StackClientInterface {
     let adminSession: InternalSession | null = null;
     let adminTokenObj: { accessToken: AccessToken, refreshToken: RefreshToken | null } | null = null;
 
-    if ("projectOwnerSession" in this.options && this.options.projectOwnerSession) {
-      const projectOwnerSession: InternalSession | (() => Promise<string | null>) = this.options.projectOwnerSession;
+    if ("projectOwnerSession" in this.options) {
+      const projectOwnerSession = this.options.projectOwnerSession;
 
       if (typeof projectOwnerSession === 'function') {
         const accessTokenString = await projectOwnerSession();
