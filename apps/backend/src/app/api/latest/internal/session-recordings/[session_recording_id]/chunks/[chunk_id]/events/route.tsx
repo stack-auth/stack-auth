@@ -50,7 +50,7 @@ export const GET = createSmartRouteHandler({
 
     let bytes: Uint8Array;
     try {
-      bytes = await downloadBytes({ key: chunk.s3Key });
+      bytes = await downloadBytes({ key: chunk.s3Key, private: true });
     } catch (e: any) {
       const status = e?.$metadata?.httpStatusCode;
       if (status === 404) {
@@ -70,10 +70,10 @@ export const GET = createSmartRouteHandler({
     if (typeof parsed !== "object" || parsed === null) {
       throw new StackAssertionError("Decoded session recording chunk is not an object");
     }
-    if (parsed.session_id !== sessionRecordingId) {
-      throw new StackAssertionError("Decoded session recording chunk session_id mismatch", {
+    if (parsed.session_recording_id !== sessionRecordingId) {
+      throw new StackAssertionError("Decoded session recording chunk session_recording_id mismatch", {
         expected: sessionRecordingId,
-        actual: parsed.session_id,
+        actual: parsed.session_recording_id,
       });
     }
     if (!Array.isArray(parsed.events)) {

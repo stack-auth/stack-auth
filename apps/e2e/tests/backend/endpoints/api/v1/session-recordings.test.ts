@@ -3,7 +3,7 @@ import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 async function uploadBatch(options: {
-  sessionId: string,
+  browserSessionId: string,
   batchId: string,
   startedAtMs: number,
   sentAtMs: number,
@@ -14,8 +14,8 @@ async function uploadBatch(options: {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: options.sessionId,
-      ...(options.tabId ? { tab_id: options.tabId } : {}),
+      browser_session_id: options.browserSessionId,
+      tab_id: options.tabId ?? randomUUID(),
       batch_id: options.batchId,
       started_at_ms: options.startedAtMs,
       sent_at_ms: options.sentAtMs,
@@ -32,7 +32,8 @@ it("requires a user token", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -44,19 +45,20 @@ it("requires a user token", async ({ expect }) => {
   expect(res.status).toBeLessThan(500);
 });
 
-it("stores session recording batch metadata and dedupes by (session_id, batch_id)", async ({ expect }) => {
+it("stores session recording batch metadata and dedupes by (session_recording_id, batch_id)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const sessionId = randomUUID();
+  const browserSessionId = randomUUID();
   const batchId = randomUUID();
+  const tabId = randomUUID();
 
   const first = await niceBackendFetch("/api/v1/session-recordings/batch", {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: sessionId,
-      tab_id: randomUUID(),
+      browser_session_id: browserSessionId,
+      tab_id: tabId,
       batch_id: batchId,
       started_at_ms: 1_700_000_000_000,
       sent_at_ms: 1_700_000_000_500,
@@ -68,19 +70,21 @@ it("stores session recording batch metadata and dedupes by (session_id, batch_id
   });
 
   expect(first.status).toBe(200);
+  expect(typeof first.body?.session_recording_id).toBe("string");
   expect(first.body).toMatchObject({
-    session_id: sessionId,
     batch_id: batchId,
     deduped: false,
   });
   expect(typeof first.body?.s3_key).toBe("string");
-  expect((first.body as any).s3_key).toContain(`/${sessionId}/${batchId}.json.gz`);
+
+  const recordingId = first.body?.session_recording_id;
 
   const second = await niceBackendFetch("/api/v1/session-recordings/batch", {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: sessionId,
+      browser_session_id: browserSessionId,
+      tab_id: tabId,
       batch_id: batchId,
       started_at_ms: 1_700_000_000_000,
       sent_at_ms: 1_700_000_000_500,
@@ -90,11 +94,10 @@ it("stores session recording batch metadata and dedupes by (session_id, batch_id
 
   expect(second.status).toBe(200);
   expect(second.body).toMatchObject({
-    session_id: sessionId,
+    session_recording_id: recordingId,
     batch_id: batchId,
     deduped: true,
   });
-  expect((second.body as any).s3_key).toContain(`/${sessionId}/${batchId}.json.gz`);
 });
 
 it("rejects empty events", async ({ expect }) => {
@@ -105,7 +108,8 @@ it("rejects empty events", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -127,7 +131,8 @@ it("rejects too many events", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: 1_700_000_000_000,
       sent_at_ms: 1_700_000_000_100,
@@ -139,7 +144,7 @@ it("rejects too many events", async ({ expect }) => {
   expect(res.status).toBeLessThan(500);
 });
 
-it("rejects invalid session_id", async ({ expect }) => {
+it("rejects invalid browser_session_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
@@ -147,7 +152,8 @@ it("rejects invalid session_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: "not-a-uuid",
+      browser_session_id: "not-a-uuid",
+      tab_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -167,7 +173,8 @@ it("rejects invalid batch_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
       batch_id: "not-a-uuid",
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -187,7 +194,7 @@ it("rejects invalid tab_id", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
       tab_id: "not-a-uuid",
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
@@ -204,14 +211,15 @@ it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expe
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const sessionId = randomUUID();
+  const browserSessionId = randomUUID();
   const batchId = randomUUID();
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: sessionId,
+      browser_session_id: browserSessionId,
+      tab_id: randomUUID(),
       batch_id: batchId,
       started_at_ms: 1_700_000_000_000,
       sent_at_ms: 1_700_000_000_500,
@@ -220,8 +228,8 @@ it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expe
   });
 
   expect(res.status).toBe(200);
+  expect(typeof res.body?.session_recording_id).toBe("string");
   expect(res.body).toMatchObject({
-    session_id: sessionId,
     batch_id: batchId,
     deduped: false,
   });
@@ -235,7 +243,8 @@ it("rejects non-integer started_at_ms", async ({ expect }) => {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: 123.4,
       sent_at_ms: Date.now(),
@@ -251,14 +260,15 @@ it("rejects oversized payloads", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  // Backend limit is 2_000_000 bytes; a single large string is sufficient to exceed it.
-  const hugeString = "a".repeat(2_100_000);
+  // Backend limit is 5_000_000 bytes; a single large string is sufficient to exceed it.
+  const hugeString = "a".repeat(5_100_000);
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
     method: "POST",
     accessType: "client",
     body: {
-      session_id: randomUUID(),
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -273,7 +283,7 @@ it("admin can list session recordings, list chunks, and fetch events", async ({ 
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
-  const sessionId = randomUUID();
+  const browserSessionId = randomUUID();
   const batchId = randomUUID();
   const events = [
     { type: 1, timestamp: 1_700_000_000_100, data: { a: 1 } },
@@ -281,13 +291,15 @@ it("admin can list session recordings, list chunks, and fetch events", async ({ 
   ];
 
   const uploadRes = await uploadBatch({
-    sessionId,
+    browserSessionId,
     batchId,
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_500,
     events,
   });
   expect(uploadRes.status).toBe(200);
+  const recordingId = uploadRes.body?.session_recording_id;
+  expect(typeof recordingId).toBe("string");
 
   const listRes = await niceBackendFetch("/api/v1/internal/session-recordings", {
     method: "GET",
@@ -296,7 +308,7 @@ it("admin can list session recordings, list chunks, and fetch events", async ({ 
   expect(listRes.status).toBe(200);
   expect(listRes.body?.items?.length).toBeGreaterThanOrEqual(1);
 
-  const chunksRes = await niceBackendFetch(`/api/v1/internal/session-recordings/${sessionId}/chunks`, {
+  const chunksRes = await niceBackendFetch(`/api/v1/internal/session-recordings/${recordingId}/chunks`, {
     method: "GET",
     accessType: "admin",
   });
@@ -307,7 +319,7 @@ it("admin can list session recordings, list chunks, and fetch events", async ({ 
     throw new Error("Expected session recording chunks response to include an item id.");
   }
 
-  const eventsRes = await niceBackendFetch(`/api/v1/internal/session-recordings/${sessionId}/chunks/${chunkId}/events`, {
+  const eventsRes = await niceBackendFetch(`/api/v1/internal/session-recordings/${recordingId}/chunks/${chunkId}/events`, {
     method: "GET",
     accessType: "admin",
   });
@@ -317,25 +329,29 @@ it("admin can list session recordings, list chunks, and fetch events", async ({ 
 
 it("admin list session recordings paginates without skipping items", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  // Use separate sign-ins to get different refresh tokens → different session recordings.
   await Auth.Otp.signIn();
-
-  const sessionA = randomUUID();
-  const sessionB = randomUUID();
-
-  await uploadBatch({
-    sessionId: sessionA,
+  const uploadA = await uploadBatch({
+    browserSessionId: randomUUID(),
     batchId: randomUUID(),
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_300,
     events: [{ type: 1, timestamp: 1_700_000_000_100 }],
   });
-  await uploadBatch({
-    sessionId: sessionB,
+  expect(uploadA.status).toBe(200);
+  const recordingA = uploadA.body?.session_recording_id;
+
+  await Auth.Otp.signIn();
+  const uploadB = await uploadBatch({
+    browserSessionId: randomUUID(),
     batchId: randomUUID(),
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_400,
     events: [{ type: 1, timestamp: 1_700_000_000_200 }],
   });
+  expect(uploadB.status).toBe(200);
+  const recordingB = uploadB.body?.session_recording_id;
 
   const first = await niceBackendFetch("/api/v1/internal/session-recordings?limit=1", {
     method: "GET",
@@ -344,7 +360,7 @@ it("admin list session recordings paginates without skipping items", async ({ ex
   expect(first.status).toBe(200);
   expect(first.body?.items?.length).toBe(1);
   const firstId = first.body?.items?.[0]?.id;
-  expect([sessionA, sessionB]).toContain(firstId);
+  expect([recordingA, recordingB]).toContain(firstId);
 
   const nextCursor = first.body?.pagination?.next_cursor;
   expect(typeof nextCursor).toBe("string");
@@ -359,7 +375,7 @@ it("admin list session recordings paginates without skipping items", async ({ ex
   expect(second.status).toBe(200);
   expect(second.body?.items?.length).toBe(1);
   const secondId = second.body?.items?.[0]?.id;
-  expect([sessionA, sessionB]).toContain(secondId);
+  expect([recordingA, recordingB]).toContain(secondId);
   expect(secondId).not.toBe(firstId);
 });
 
@@ -379,35 +395,40 @@ it("admin list session recordings rejects unknown cursor", async ({ expect }) =>
 
 it("admin list chunks paginates and rejects a cursor from another session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  // session1: two batches under first refresh token
   await Auth.Otp.signIn();
-
-  const session1 = randomUUID();
-  const session2 = randomUUID();
-
-  await uploadBatch({
-    sessionId: session1,
+  const upload1a = await uploadBatch({
+    browserSessionId: randomUUID(),
     batchId: randomUUID(),
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_500,
     events: [{ type: 1, timestamp: 1_700_000_000_010 }],
   });
+  expect(upload1a.status).toBe(200);
+  const recording1 = upload1a.body?.session_recording_id;
+
   await uploadBatch({
-    sessionId: session1,
+    browserSessionId: randomUUID(),
     batchId: randomUUID(),
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_600,
     events: [{ type: 1, timestamp: 1_700_000_000_020 }],
   });
 
-  await uploadBatch({
-    sessionId: session2,
+  // session2: one batch under a different refresh token
+  await Auth.Otp.signIn();
+  const upload2 = await uploadBatch({
+    browserSessionId: randomUUID(),
     batchId: randomUUID(),
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_700,
     events: [{ type: 1, timestamp: 1_700_000_000_030 }],
   });
+  expect(upload2.status).toBe(200);
+  const recording2 = upload2.body?.session_recording_id;
 
-  const first = await niceBackendFetch(`/api/v1/internal/session-recordings/${session1}/chunks?limit=1`, {
+  const first = await niceBackendFetch(`/api/v1/internal/session-recordings/${recording1}/chunks?limit=1`, {
     method: "GET",
     accessType: "admin",
   });
@@ -420,7 +441,7 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
     throw new Error("Expected next_cursor to be a string.");
   }
 
-  const second = await niceBackendFetch(`/api/v1/internal/session-recordings/${session1}/chunks?limit=1&cursor=${encodeURIComponent(nextCursor)}`, {
+  const second = await niceBackendFetch(`/api/v1/internal/session-recordings/${recording1}/chunks?limit=1&cursor=${encodeURIComponent(nextCursor)}`, {
     method: "GET",
     accessType: "admin",
   });
@@ -429,7 +450,7 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   expect(second.body?.items?.[0]?.id).not.toBe(first.body?.items?.[0]?.id);
 
   // Cursor from another session should be rejected.
-  const otherChunks = await niceBackendFetch(`/api/v1/internal/session-recordings/${session2}/chunks?limit=1`, {
+  const otherChunks = await niceBackendFetch(`/api/v1/internal/session-recordings/${recording2}/chunks?limit=1`, {
     method: "GET",
     accessType: "admin",
   });
@@ -440,7 +461,7 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
     throw new Error("Expected otherCursor to be a string.");
   }
 
-  const bad = await niceBackendFetch(`/api/v1/internal/session-recordings/${session1}/chunks?cursor=${encodeURIComponent(otherCursor)}`, {
+  const bad = await niceBackendFetch(`/api/v1/internal/session-recordings/${recording1}/chunks?cursor=${encodeURIComponent(otherCursor)}`, {
     method: "GET",
     accessType: "admin",
   });
@@ -450,28 +471,33 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
 
 it("admin events endpoint does not allow fetching a chunk via the wrong session id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  // session1: upload under first refresh token
   await Auth.Otp.signIn();
-
-  const session1 = randomUUID();
-  const session2 = randomUUID();
   const batchId = randomUUID();
-
-  await uploadBatch({
-    sessionId: session1,
+  const upload1 = await uploadBatch({
+    browserSessionId: randomUUID(),
     batchId,
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_500,
     events: [{ type: 1, timestamp: 1_700_000_000_010 }],
   });
-  await uploadBatch({
-    sessionId: session2,
+  expect(upload1.status).toBe(200);
+  const recording1 = upload1.body?.session_recording_id;
+
+  // session2: upload under a different refresh token
+  await Auth.Otp.signIn();
+  const upload2 = await uploadBatch({
+    browserSessionId: randomUUID(),
     batchId: randomUUID(),
     startedAtMs: 1_700_000_000_000,
     sentAtMs: 1_700_000_000_600,
     events: [{ type: 1, timestamp: 1_700_000_000_020 }],
   });
+  expect(upload2.status).toBe(200);
+  const recording2 = upload2.body?.session_recording_id;
 
-  const chunks = await niceBackendFetch(`/api/v1/internal/session-recordings/${session1}/chunks`, {
+  const chunks = await niceBackendFetch(`/api/v1/internal/session-recordings/${recording1}/chunks`, {
     method: "GET",
     accessType: "admin",
   });
@@ -482,7 +508,7 @@ it("admin events endpoint does not allow fetching a chunk via the wrong session 
     throw new Error("Expected chunk id.");
   }
 
-  const wrong = await niceBackendFetch(`/api/v1/internal/session-recordings/${session2}/chunks/${chunkId}/events`, {
+  const wrong = await niceBackendFetch(`/api/v1/internal/session-recordings/${recording2}/chunks/${chunkId}/events`, {
     method: "GET",
     accessType: "admin",
   });
@@ -507,4 +533,31 @@ it("non-admin access cannot call internal session recordings endpoints", async (
   });
   expect(serverRes.status).toBeGreaterThanOrEqual(400);
   expect(serverRes.status).toBeLessThan(500);
+});
+
+it("groups batches from same refresh token into one session recording", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  // Two batches with different browser_session_ids but same refresh token
+  const upload1 = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_300,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload1.status).toBe(200);
+
+  const upload2 = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_200 }],
+  });
+  expect(upload2.status).toBe(200);
+
+  // Same refresh token within idle timeout → same session recording
+  expect(upload1.body?.session_recording_id).toBe(upload2.body?.session_recording_id);
 });

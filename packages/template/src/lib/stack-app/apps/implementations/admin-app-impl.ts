@@ -992,6 +992,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: c.id,
       batchId: c.batch_id,
       tabId: c.tab_id,
+      browserSessionId: c.browser_session_id,
       eventCount: c.event_count,
       byteLength: c.byte_length,
       firstEventAt: new Date(c.first_event_at_millis),

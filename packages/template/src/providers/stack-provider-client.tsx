@@ -2,7 +2,7 @@
 
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
 import { useStackApp } from "..";
 import { AnalyticsOptions, StackAnalyticsInternal } from "../components/stack-analytics";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
@@ -24,7 +24,7 @@ export function StackProviderClient(props: {
 
   return (
     <StackContext.Provider value={{ app }}>
-      {props.analytics?.replays?.enabled !== false ? <StackAnalyticsInternal replayOptions={props.analytics?.replays} /> : null}
+      {props.analytics?.replays?.enabled === true ? <Suspense fallback={null}><StackAnalyticsInternal replayOptions={props.analytics?.replays} /></Suspense> : null}
       {props.children}
     </StackContext.Provider>
   );

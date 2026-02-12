@@ -31,6 +31,7 @@ export type AdminListSessionRecordingChunksResponse = {
     id: string,
     batch_id: string,
     tab_id: string | null,
+    browser_session_id: string | null,
     event_count: number,
     byte_length: number,
     first_event_at_millis: number,

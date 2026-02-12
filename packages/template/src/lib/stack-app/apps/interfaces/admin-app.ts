@@ -48,6 +48,7 @@ export type AdminSessionRecordingChunk = {
   id: string,
   batchId: string,
   tabId: string | null,
+  browserSessionId: string | null,
   eventCount: number,
   byteLength: number,
   firstEventAt: Date,

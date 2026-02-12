@@ -24,7 +24,7 @@ function NextStackProvider({
   // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
   app: StackClientApp<true> | StackServerApp<true> | StackAdminApp<true>,
   /**
-   * Options for analytics and session recording. When omitted, replays are enabled with all inputs masked.
+   * Options for analytics and session recording. Replays are disabled by default.
    */
   analytics?: AnalyticsOptions,
 }) {
@@ -57,7 +57,7 @@ function ReactStackProvider({
   // list all three types of apps even though server and admin are subclasses of client so it's clear that you can pass any
   app: StackClientApp<true>,
   /**
-   * Options for analytics and session recording. When omitted, replays are enabled with all inputs masked.
+   * Options for analytics and session recording. Replays are disabled by default.
    */
   analytics?: AnalyticsOptions,
 }) {

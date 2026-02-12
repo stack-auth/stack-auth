@@ -7,13 +7,39 @@ import { useStackApp } from "../lib/hooks";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 
 export type AnalyticsReplayOptions = {
+  /**
+   * Whether session replays are enabled.
+   *
+   * @default false
+   */
   enabled?: boolean,
+  /**
+   * Whether to mask the content of all `<input>` elements.
+   *
+   * @default true
+   */
   maskAllInputs?: boolean,
+  /**
+   * A CSS class name or RegExp. Elements with a matching class will be blocked
+   * (replaced with a placeholder in the recording).
+   *
+   * @default undefined
+   */
   blockClass?: string | RegExp,
+  /**
+   * A CSS selector string. Elements matching this selector will be blocked
+   * (replaced with a placeholder in the recording).
+   *
+   * @default undefined
+   */
   blockSelector?: string,
 }
 
 export type AnalyticsOptions = {
+  /**
+   * Options for session replay recording. Replays are disabled by default;
+   * set `enabled: true` to opt in.
+   */
   replays?: AnalyticsReplayOptions,
 }
 
@@ -78,7 +104,7 @@ function getOrRotateSession(options: { key: string, nowMs: number }): StoredSess
 
 export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayOptions }) {
   const app = useStackApp();
-  const tabId = useMemo(() => generateUuid(), []);
+  const tabId = useMemo(() => isBrowser() ? crypto.randomUUID() : "", []);
 
   // Use reactive hooks for tokens instead of app.getAccessToken() which
   // calls getUser() -> /users/me on every invocation (bypassing the cache).
@@ -120,7 +146,7 @@ export function StackAnalyticsInternal(props: { replayOptions?: AnalyticsReplayO
 
       const batchId = generateUuid();
       const payload = {
-        session_id: stored.session_id,
+        browser_session_id: stored.session_id,
         tab_id: tabId,
         batch_id: batchId,
         started_at_ms: stored.created_at_ms,

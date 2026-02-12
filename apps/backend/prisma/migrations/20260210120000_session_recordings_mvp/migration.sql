@@ -13,11 +13,12 @@ CREATE TABLE "SessionRecording" (
 );
 
 CREATE TABLE "SessionRecordingChunk" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "id" UUID NOT NULL,
   "tenancyId" UUID NOT NULL,
   "sessionRecordingId" UUID NOT NULL,
   "batchId" UUID NOT NULL,
   "tabId" TEXT NOT NULL,
+  "browserSessionId" TEXT NOT NULL,
   "s3Key" TEXT NOT NULL,
   "eventCount" INTEGER NOT NULL,
   "byteLength" INTEGER NOT NULL,
@@ -40,11 +41,8 @@ ALTER TABLE "SessionRecordingChunk"
   FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "SessionRecordingChunk"
-  ADD CONSTRAINT "SessionRecordingChunk_sessionRecordingId_fkey"
+  ADD CONSTRAINT "SessionRecordingChunk_tenancyId_sessionRecordingId_fkey"
   FOREIGN KEY ("tenancyId","sessionRecordingId") REFERENCES "SessionRecording"("tenancyId","id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-CREATE UNIQUE INDEX "SessionRecording_tenancyId_refreshTokenId_key"
-  ON "SessionRecording"("tenancyId", "refreshTokenId");
 
 CREATE INDEX "SessionRecording_tenancyId_projectUserId_startedAt_idx"
   ON "SessionRecording"("tenancyId", "projectUserId", "startedAt");
@@ -52,8 +50,11 @@ CREATE INDEX "SessionRecording_tenancyId_projectUserId_startedAt_idx"
 CREATE INDEX "SessionRecording_tenancyId_lastEventAt_idx"
   ON "SessionRecording"("tenancyId", "lastEventAt");
 
-CREATE UNIQUE INDEX "SessionRecordingChunk_sessionRecordingId_batchId_key"
+CREATE INDEX "SessionRecording_tenancyId_refreshTokenId_updatedAt_idx"
+  ON "SessionRecording"("tenancyId", "refreshTokenId", "updatedAt");
+
+CREATE UNIQUE INDEX "SessionRecordingChunk_tenancyId_sessionRecordingId_batchId_key"
   ON "SessionRecordingChunk"("tenancyId", "sessionRecordingId", "batchId");
 
-CREATE INDEX "SessionRecordingChunk_tenancyId_sessionRecordingId_createdAt_idx"
+CREATE INDEX "SessionRecordingChunk_tenancyId_sessionRecordingId_createdA_idx"
   ON "SessionRecordingChunk"("tenancyId", "sessionRecordingId", "createdAt");

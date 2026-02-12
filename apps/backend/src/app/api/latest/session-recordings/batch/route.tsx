@@ -5,6 +5,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { gzip as gzipCb } from "node:zlib";
 
@@ -14,6 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0
 
 const MAX_BODY_BYTES = 5_000_000;
 const MAX_EVENTS = 5_000;
+const SESSION_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
 function extractEventTimesMs(events: unknown[], fallbackMs: number) {
   let minTs = Infinity;
@@ -48,7 +50,7 @@ export const POST = createSmartRouteHandler({
       refreshTokenId: adaptSchema
     }).defined(),
     body: yupObject({
-      session_id: yupString().defined().matches(UUID_RE, "Invalid session_id"),
+      browser_session_id: yupString().defined().matches(UUID_RE, "Invalid browser_session_id"),
       tab_id: yupString().defined().matches(UUID_RE, "Invalid tab_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
       started_at_ms: yupNumber().defined().integer().min(0),
@@ -60,7 +62,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      session_id: yupString().defined(),
+      session_recording_id: yupString().defined(),
       batch_id: yupString().defined(),
       s3_key: yupString().defined(),
       deduped: yupMixed().defined(),
@@ -87,35 +89,43 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Too many events (max ${MAX_EVENTS})`);
     }
 
-    const sessionId = body.session_id;
+    const browserSessionId = body.browser_session_id;
     const batchId = body.batch_id;
     const tabId = body.tab_id;
     const tenancyId = auth.tenancy.id;
 
     const projectId = auth.tenancy.project.id;
     const branchId = auth.tenancy.branchId;
-    const s3Key = `session-recordings/${projectId}/${branchId}/${sessionId}/${batchId}.json.gz`;
 
     const { firstMs, lastMs } = extractEventTimesMs(body.events, body.sent_at_ms);
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    // Ensure the session row exists and is up-to-date.
-    const existingSession = await prisma.sessionRecording.findUnique({
-      where: { tenancyId_refreshTokenId: { tenancyId, refreshTokenId } },
-      select: { startedAt: true, lastEventAt: true },
-    });
-    const newStartedAtMs = Math.min(existingSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
-    const newLastEventAtMs = Math.max(existingSession?.lastEventAt.getTime() ?? 0, lastMs);
-    await prisma.sessionRecording.upsert({
-      where: { tenancyId_refreshTokenId: { tenancyId, refreshTokenId } },
-      create: {
-        id: sessionId,
+    // Find a recent session recording for this refresh token (temporal grouping).
+    // If the last batch arrived within SESSION_IDLE_TIMEOUT_MS, reuse that recording.
+    const cutoff = new Date(Date.now() - SESSION_IDLE_TIMEOUT_MS);
+    const recentSession = await prisma.sessionRecording.findFirst({
+      where: {
         tenancyId,
-        projectUserId: projectUserId,
         refreshTokenId,
-        // Use the first event timestamp instead of "session started" timestamps,
-        // since session_id can be reused across tabs/idle windows.
+        updatedAt: { gte: cutoff },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, startedAt: true, lastEventAt: true },
+    });
+
+    const recordingId = recentSession?.id ?? randomUUID();
+    const s3Key = `session-recordings/${projectId}/${branchId}/${recordingId}/${batchId}.json.gz`;
+
+    const newStartedAtMs = Math.min(recentSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
+    const newLastEventAtMs = Math.max(recentSession?.lastEventAt.getTime() ?? 0, lastMs);
+    await prisma.sessionRecording.upsert({
+      where: { tenancyId_id: { tenancyId, id: recordingId } },
+      create: {
+        id: recordingId,
+        tenancyId,
+        projectUserId,
+        refreshTokenId,
         startedAt: new Date(firstMs),
         lastEventAt: new Date(newLastEventAtMs),
       },
@@ -127,7 +137,7 @@ export const POST = createSmartRouteHandler({
 
     // If we already have this batch for this session, return deduped without touching S3.
     const existingChunk = await prisma.sessionRecordingChunk.findUnique({
-      where: { tenancyId_sessionRecordingId_batchId: { tenancyId, sessionRecordingId: sessionId, batchId } },
+      where: { tenancyId_sessionRecordingId_batchId: { tenancyId, sessionRecordingId: recordingId, batchId } },
       select: { s3Key: true },
     });
     if (existingChunk) {
@@ -135,7 +145,7 @@ export const POST = createSmartRouteHandler({
         statusCode: 200,
         bodyType: "json",
         body: {
-          session_id: sessionId,
+          session_recording_id: recordingId,
           batch_id: batchId,
           s3_key: existingChunk.s3Key,
           deduped: true,
@@ -145,7 +155,8 @@ export const POST = createSmartRouteHandler({
 
     const payload = {
       v: 1,
-      session_id: sessionId,
+      session_recording_id: recordingId,
+      browser_session_id: browserSessionId,
       tab_id: tabId,
       batch_id: batchId,
       started_at_ms: body.started_at_ms,
@@ -167,9 +178,10 @@ export const POST = createSmartRouteHandler({
       await prisma.sessionRecordingChunk.create({
         data: {
           tenancyId,
-          sessionRecordingId: sessionId,
+          sessionRecordingId: recordingId,
           batchId,
           tabId,
+          browserSessionId,
           s3Key,
           eventCount: body.events.length,
           byteLength: gzipped.byteLength,
@@ -183,7 +195,7 @@ export const POST = createSmartRouteHandler({
           statusCode: 200,
           bodyType: "json",
           body: {
-            session_id: sessionId,
+            session_recording_id: recordingId,
             batch_id: batchId,
             s3_key: s3Key,
             deduped: true,
@@ -197,7 +209,7 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        session_id: sessionId,
+        session_recording_id: recordingId,
         batch_id: batchId,
         s3_key: s3Key,
         deduped: false,
