@@ -698,7 +698,8 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
 
     if (result.status === "error") {
       const newAttemptCount = row.sendRetries + 1;
-      const canRetry = result.error.canRetry && newAttemptCount < MAX_SEND_ATTEMPTS;
+      const isAttemptsExhausted = result.error.canRetry && newAttemptCount >= MAX_SEND_ATTEMPTS;
+      const canRetry = result.error.canRetry && !isAttemptsExhausted;
 
       // Build error entry for this attempt
       const errorEntry: SendAttemptError = {
@@ -731,12 +732,12 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           },
         });
       } else {
-        // Mark as permanent failure - distinguish between "attempts exhausted" and "permanent error from provider"
-        const isAttemptsExhausted = result.error.canRetry && newAttemptCount >= MAX_SEND_ATTEMPTS;
+        // Mark as permanent failure - either "attempts_exhausted" (retryable but hit limit) or "permanent_error" (non-retryable)
         const failureReason = isAttemptsExhausted ? "attempts_exhausted" : "permanent_error";
 
         if (isAttemptsExhausted) {
           captureError("email-queue-step-retries-exhausted", new StackAssertionError(`Email failed after ${newAttemptCount} attempts`, {
+            cause: result.error.rawError,
             emailId: row.id,
             tenancyId: row.tenancyId,
             errorType: result.error.errorType,
@@ -744,10 +745,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             allAttemptErrors: updatedErrors,
           }));
         }
-
-        const externalMessage = isAttemptsExhausted
-          ? "Email could not be delivered after multiple attempts. Please verify your email configuration and try again."
-          : result.error.message;
 
         await globalPrismaClient.emailOutbox.update({
           where: {
@@ -762,7 +759,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             canHaveDeliveryInfo: false,
             sendRetries: newAttemptCount,
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
-            sendServerErrorExternalMessage: externalMessage,
+            sendServerErrorExternalMessage: result.error.message,
             sendServerErrorExternalDetails: { errorType: result.error.errorType },
             sendServerErrorInternalMessage: result.error.message,
             sendServerErrorInternalDetails: {
