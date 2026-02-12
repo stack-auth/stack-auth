@@ -42,11 +42,11 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           restricted_by_admin UInt8,
           restricted_by_admin_reason Nullable(String),
           restricted_by_admin_private_details Nullable(String),
-          sequence_id Int64,
-          is_deleted UInt8,
-          created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
         )
-        ENGINE ReplacingMergeTree(sequence_id)
+        ENGINE ReplacingMergeTree(sync_sequence_id)
         PARTITION BY toYYYYMM(signed_up_at)
         ORDER BY (project_id, branch_id, id);
 
@@ -99,9 +99,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "ProjectUser"."restrictedByAdmin" AS "restricted_by_admin",
             "ProjectUser"."restrictedByAdminReason" AS "restricted_by_admin_reason",
             "ProjectUser"."restrictedByAdminPrivateDetails" AS "restricted_by_admin_private_details",
-            "ProjectUser"."sequenceId" AS "sequence_id",
+            "ProjectUser"."sequenceId" AS "sync_sequence_id",
             "ProjectUser"."tenancyId" AS "tenancyId",
-            false AS "is_deleted"
+            false AS "sync_is_deleted"
           FROM "ProjectUser"
           JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
           WHERE "ProjectUser"."tenancyId" = $1::uuid
@@ -124,18 +124,18 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             false AS "restricted_by_admin",
             NULL::text AS "restricted_by_admin_reason",
             NULL::text AS "restricted_by_admin_private_details",
-            "DeletedRow"."sequenceId" AS "sequence_id",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
-            true AS "is_deleted"
+            true AS "sync_is_deleted"
           FROM "DeletedRow"
           JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
           WHERE
             "DeletedRow"."tenancyId" = $1::uuid
             AND "DeletedRow"."tableName" = 'ProjectUser'
         ) AS "_src"
-        WHERE "sequence_id" IS NOT NULL
-          AND "sequence_id" > $2::bigint
-        ORDER BY "sequence_id" ASC
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
         LIMIT 1000
       `.trim(),
     },

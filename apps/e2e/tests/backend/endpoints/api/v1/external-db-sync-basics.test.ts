@@ -1,4 +1,5 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
 import { Project, User, niceBackendFetch } from '../../../backend-helpers';
@@ -45,7 +46,32 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
     await wait(intervalMs);
   }
 
-  throw new Error(`Timed out waiting for ClickHouse user ${email} to sync.`);
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`);
+}
+
+async function waitForClickhouseUserDeletion(email: string) {
+  const timeoutMs = 120_000;
+  const intervalMs = 500;
+  const start = performance.now();
+
+  while (performance.now() - start < timeoutMs) {
+    const response = await runQueryForCurrentProject({
+      query: "SELECT primary_email FROM users WHERE primary_email = {email:String}",
+      params: {
+        email,
+      },
+    });
+    if (
+      response.status === 200
+      && Array.isArray(response.body?.result)
+      && response.body.result.length === 0
+    ) {
+      return;
+    }
+    await wait(intervalMs);
+  }
+
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`);
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
@@ -65,11 +91,11 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   beforeAll(async () => {
     dbManager = new TestDbManager();
     await dbManager.init();
-  });
+  }, 30000); // 30 second timeout for init
 
   afterAll(async () => {
     await dbManager.cleanup();
-  });
+  }, 60000); // 60 second timeout for cleanup
 
   /**
    * What it does:
@@ -522,6 +548,52 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
   }, TEST_TIMEOUT);
 
+  test("Updates to user are synced to ClickHouse", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: "clickhouse-update@example.com" });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "Before CH Update" },
+    });
+
+    await waitForClickhouseUser("clickhouse-update@example.com", "Before CH Update");
+
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "After CH Update" },
+    });
+
+    const response = await waitForClickhouseUser("clickhouse-update@example.com", "After CH Update");
+    expect(response.status).toBe(200);
+    expect(response.body?.result?.[0]).toMatchObject({
+      display_name: "After CH Update",
+      primary_email: "clickhouse-update@example.com",
+    });
+  });
+
+  test("Deleted user is removed from ClickHouse view", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: "clickhouse-delete@example.com" });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "CH Delete User" },
+    });
+
+    await waitForClickhouseUser("clickhouse-delete@example.com", "CH Delete User");
+
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "DELETE",
+    });
+
+    await waitForClickhouseUserDeletion("clickhouse-delete@example.com");
+  }, TEST_TIMEOUT);
+
   test("Syncs users to ClickHouse by default", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
@@ -538,7 +610,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       display_name: "ClickHouse Sync User",
       primary_email: "clickhouse-sync@example.com",
     });
-  });
+  }, TEST_TIMEOUT);
 });
 
 

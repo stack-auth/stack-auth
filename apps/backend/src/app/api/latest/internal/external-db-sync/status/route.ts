@@ -533,7 +533,7 @@ async function fetchClickhouseDatabaseStatus(
         FROM analytics_internal.users FINAL
         WHERE project_id = {project_id:String}
           AND branch_id = {branch_id:String}
-          AND is_deleted = 0
+          AND sync_is_deleted = 0
       `,
       query_params: {
         project_id: tenancy.projectId,
@@ -638,9 +638,6 @@ async function fetchExternalDatabaseStatus(
     branchId: string,
   },
 ) {
-  if (dbConfig.type === "clickhouse") {
-    return await fetchClickhouseDatabaseStatus(dbId, mappingStatuses, tenancy);
-  }
   const connection = parseConnectionString(dbConfig.connectionString ?? null);
 
   if (dbConfig.type !== "postgres") {
@@ -965,7 +962,7 @@ export const GET = createSmartRouteHandler({
       const externalDbStatuses = shouldIncludeGlobal
         ? []
         : await traceSpan("external-db-sync.status.fetchExternalDatabaseStatuses", async (externalSpan) => {
-          const statuses = await Promise.all(
+          const configStatuses = await Promise.all(
             Object.entries(
               auth.tenancy.config.dbSync.externalDatabases as CompleteConfig["dbSync"]["externalDatabases"],
             ).map(([dbId, dbConfig]) => fetchExternalDatabaseStatus(dbId, dbConfig, currentStats.mappingStatuses, {
@@ -974,6 +971,20 @@ export const GET = createSmartRouteHandler({
               branchId: auth.tenancy.branchId,
             })),
           );
+
+          const statuses: Array<Awaited<ReturnType<typeof fetchClickhouseDatabaseStatus>> | Awaited<ReturnType<typeof fetchExternalDatabaseStatus>>> = [...configStatuses];
+
+          // Always include ClickHouse status if STACK_CLICKHOUSE_URL is set
+          const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
+          if (clickhouseUrl) {
+            const clickhouseStatus = await fetchClickhouseDatabaseStatus("clickhouse", currentStats.mappingStatuses, {
+              id: auth.tenancy.id,
+              projectId: auth.tenancy.project.id,
+              branchId: auth.tenancy.branchId,
+            });
+            statuses.push(clickhouseStatus);
+          }
+
           externalSpan.setAttribute("stack.external-db-sync.external-db-count", statuses.length);
           return statuses;
         });

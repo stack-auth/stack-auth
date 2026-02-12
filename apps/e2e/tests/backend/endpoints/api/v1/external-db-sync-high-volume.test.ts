@@ -30,7 +30,7 @@ describe.sequential('External DB Sync - High Volume Tests', () => {
   beforeAll(async () => {
     dbManager = new TestDbManager();
     await dbManager.init();
-  });
+  }, 30000); // 30 second timeout for init
 
   afterAll(async () => {
     await dbManager.cleanup();

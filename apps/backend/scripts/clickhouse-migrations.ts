@@ -110,11 +110,11 @@ CREATE TABLE IF NOT EXISTS analytics_internal.users (
     restricted_by_admin UInt8,
     restricted_by_admin_reason Nullable(String),
     restricted_by_admin_private_details Nullable(String),
-    sequence_id Int64,
-    is_deleted UInt8,
-    created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
 )
-ENGINE ReplacingMergeTree(sequence_id)
+ENGINE ReplacingMergeTree(sync_sequence_id)
 PARTITION BY toYYYYMM(signed_up_at)
 ORDER BY (project_id, branch_id, id);
 `;
@@ -141,7 +141,7 @@ SELECT
   restricted_by_admin_private_details
 FROM analytics_internal.users
 FINAL
-WHERE is_deleted = 0;
+WHERE sync_is_deleted = 0;
 `;
 
 const SYNC_METADATA_TABLE_SQL = `

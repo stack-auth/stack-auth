@@ -82,7 +82,6 @@ async function verifyEmailDeliverability(
         }
 
         const json = await emailableResponse.json() as Record<string, unknown>;
-        console.log("emailableResponse", json);
 
         if (json.state === "undeliverable" || json.disposable) {
           console.log("email not deliverable", email, json);

@@ -1,6 +1,6 @@
 import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
-import { branchConfigSourceSchema } from "../schema-fields";
+import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import { Result } from "../utils/results";
@@ -28,7 +28,7 @@ export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
     superSecretAdminKey: string,
   }
   | {
-    projectOwnerSession: InternalSession,
+    projectOwnerSession: InternalSession | (() => Promise<string | null>),
   }
 );
 
@@ -725,7 +725,7 @@ export class StackAdminInterface extends StackServerInterface {
       id: string,
       display_name: string | null,
       primary_email: string | null,
-      restricted_reason: { type: "anonymous" | "email_not_verified" },
+      restricted_reason: RestrictedReason,
     }>,
     total_affected_count: number,
   }> {
