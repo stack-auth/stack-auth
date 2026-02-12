@@ -193,7 +193,7 @@ services:
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21:9090"
     environment:
-      - initialBuckets=stack-storage
+      - initialBuckets=stack-storage,stack-storage-private
       - root=s3mockroot
       - debug=false
     volumes:

@@ -161,6 +161,7 @@ export const POST = createSmartRouteHandler({
       body: gzipped,
       contentType: "application/json",
       contentEncoding: "gzip",
+      private: true,
     });
 
     try {
