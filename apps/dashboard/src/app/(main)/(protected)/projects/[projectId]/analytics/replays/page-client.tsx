@@ -176,26 +176,43 @@ async function fetchChunkEventsForStreamsParallel(
   genRef: React.MutableRefObject<number>,
   onChunkLoaded: (tabKey: TabKey, chunkIndex: number, events: RrwebEventWithTime[]) => void,
 ) {
-  // Important: prioritize each stream's earliest chunks so every tab can
-  // initialize quickly (FullSnapshot is typically in chunk 0).
-  const tasks: Array<{ tabKey: TabKey, chunkIndex: number, chunkId: string }> = [];
+  // Chunk 0 of every tab is loaded first — it contains the FullSnapshot that
+  // rrweb needs before it can render anything. Loading them upfront also
+  // prevents the active tab's later chunks from accumulating in memory before
+  // the rrweb module has been imported: if all of the active tab's events are
+  // present when the Replayer is constructed, rrweb's skipInactive option can
+  // fast-forward through inactivity gaps instead of letting the custom gap
+  // handler manage them gradually.
+  // After all chunk-0s, remaining chunks are sorted by firstEventAt so the
+  // data needed soonest during playback arrives first.
+  const tasks: Array<{ tabKey: TabKey, chunkIndex: number, chunkId: string, firstEventAtMs: number }> = [];
   const resultsByTab = new Map<TabKey, Array<RrwebEventWithTime[] | null>>();
   const reportedIndexByTab = new Map<TabKey, number>();
 
-  let maxChunks = 0;
   for (const s of streams) {
     resultsByTab.set(s.tabKey, new Array(s.chunks.length).fill(null));
     reportedIndexByTab.set(s.tabKey, 0);
-    maxChunks = Math.max(maxChunks, s.chunks.length);
-  }
-
-  for (let chunkIndex = 0; chunkIndex < maxChunks; chunkIndex++) {
-    for (const s of streams) {
-      const c = s.chunks[chunkIndex] as ChunkRow | undefined;
-      if (!c) continue;
-      tasks.push({ tabKey: s.tabKey, chunkIndex, chunkId: c.id });
+    for (let chunkIndex = 0; chunkIndex < s.chunks.length; chunkIndex++) {
+      tasks.push({
+        tabKey: s.tabKey,
+        chunkIndex,
+        chunkId: s.chunks[chunkIndex].id,
+        firstEventAtMs: s.chunks[chunkIndex].firstEventAt.getTime(),
+      });
     }
   }
+
+  tasks.sort((a, b) => {
+    // Chunk 0 of each tab always comes first (FullSnapshot + prevents
+    // skipInactive from seeing the full timeline at Replayer init time).
+    const a0 = a.chunkIndex === 0 ? 0 : 1;
+    const b0 = b.chunkIndex === 0 ? 0 : 1;
+    if (a0 !== b0) return a0 - b0;
+    // Within each priority tier, sort by temporal order (earliest first).
+    if (a.firstEventAtMs !== b.firstEventAtMs) return a.firstEventAtMs - b.firstEventAtMs;
+    // Tiebreaker: lower chunk index first.
+    return a.chunkIndex - b.chunkIndex;
+  });
 
   let nextTaskIndex = 0;
 
@@ -741,6 +758,9 @@ export default function PageClient() {
     try {
       const { Replayer } = await import("rrweb");
       if (selectionGenRef.current !== gen) return;
+      // Re-check after the async import: another call may have created the
+      // replayer while the module was loading.
+      if (replayerByTabRef.current.has(tabKey)) return;
 
       const eventsSnapshot2 = eventsByTabRef.current.get(tabKey)?.slice() ?? [];
       if (eventsSnapshot2.length === 0) return;
