@@ -451,7 +451,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
               type: 'stack-access-token-response',
               requestId,
               accessToken,
-            }, { targetOrigin: '*' } as any);
+            }, { targetOrigin: event.origin } as any);
           } catch (error) {
             event.source?.postMessage({
               type: 'stack-access-token-response',
