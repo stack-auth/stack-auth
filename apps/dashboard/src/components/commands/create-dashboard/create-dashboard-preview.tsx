@@ -92,9 +92,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
             size="sm"
             variant="secondary"
             disabled={state === "generating"}
-            onClick={async () => {
-              await generateDashboard();
-            }}
+            onClick={() => runAsynchronouslyWithAlert(generateDashboard())}
           >
             {state === "generating" ? "Generating..." : "Regenerate"}
           </Button>
