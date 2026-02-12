@@ -2,6 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
+import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -16,6 +17,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -103,7 +105,7 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   primaryEmailVerified: boolean,
   config: T,
   restrictedByAdmin?: boolean,
-): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } } {
+): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: RestrictedReason } {
   // note: when you implement this function, make sure to also update the filter in the list users endpoint
 
   // Anonymous users are always restricted (they need to sign up first)
@@ -934,9 +936,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               isPrimary: "TRUE",
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             isVerified: data.primary_email_verified,
-          },
+          }),
         });
       }
 
@@ -952,9 +954,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
               isPrimary: "TRUE",
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             usedForAuth: primaryEmailAuthEnabled ? BooleanTrue.TRUE : null,
-          },
+          }),
         });
       }
 
@@ -1130,7 +1132,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             projectUserId: params.user_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name === undefined ? undefined : (data.display_name || null),
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
@@ -1142,7 +1144,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
-        },
+        }),
         include: userFullInclude,
       });
 
@@ -1187,6 +1189,17 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         orderBy: {
           createdAt: 'asc',
         },
+      });
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "ProjectUser",
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncContactChannelDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
       });
 
       await tx.projectUser.delete({

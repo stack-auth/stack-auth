@@ -103,7 +103,7 @@ const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boo
 
 const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean) => {
   await traceSpan("waiting for verification email", async () => {
-    const MAX_POLL_ATTEMPTS = 24;
+    const MAX_POLL_ATTEMPTS = 36;
     const POLL_INTERVAL_MS = 5000;
 
     for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
