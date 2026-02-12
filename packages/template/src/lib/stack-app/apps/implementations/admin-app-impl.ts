@@ -734,7 +734,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       hasRendered: false as const,
       hasDelivered: false as const,
       // Retry tracking fields
-      failedSendAttemptCount: crud.failed_send_attempt_count as number,
+      sendRetries: crud.send_retries as number,
       nextSendRetryAt: crud.next_send_retry_at_millis ? new Date(crud.next_send_retry_at_millis) : null,
       sendAttemptErrors: crud.send_attempt_errors ? (crud.send_attempt_errors as Array<{
         attempt_number: number,

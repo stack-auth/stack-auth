@@ -88,7 +88,7 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
     variables: (prismaModel.extraRenderVariables ?? {}) as Record<string, any>,
     skip_deliverability_check: prismaModel.shouldSkipDeliverabilityCheck,
     scheduled_at_millis: prismaModel.scheduledAt.getTime(),
-    failed_send_attempt_count: prismaModel.failedSendAttemptCount,
+    send_retries: prismaModel.sendRetries,
     next_send_retry_at_millis: prismaModel.nextSendRetryAt?.getTime() ?? null,
     send_attempt_errors: sendAttemptErrors,
     // Default flags (overridden in specific statuses)
@@ -419,8 +419,8 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       // If content changed, reset rendering and sending state
       if (needsRerenderReset) {
         set("isQueued", Prisma.sql`false`);
-        // Reset retry fields (failedSendAttemptCount to 0, others to null)
-        set("failedSendAttemptCount", Prisma.sql`0`);
+        // Reset retry fields (sendRetries to 0, others to null)
+        set("sendRetries", Prisma.sql`0`);
         setNull(
           "renderedByWorkerId", "startedRenderingAt", "finishedRenderingAt",
           "renderErrorExternalMessage", "renderErrorExternalDetails",
@@ -521,7 +521,7 @@ function parseEmailOutboxFromJson(j: Record<string, unknown>): EmailOutbox {
     scheduledAtIfNotYetQueued: dateOrNull("scheduledAtIfNotYetQueued"),
     startedSendingAt: dateOrNull("startedSendingAt"),
     finishedSendingAt: dateOrNull("finishedSendingAt"),
-    failedSendAttemptCount: j.failedSendAttemptCount as number,
+    sendRetries: j.sendRetries as number,
     nextSendRetryAt: dateOrNull("nextSendRetryAt"),
     sendAttemptErrors: j.sendAttemptErrors as Prisma.JsonValue,
     sentAt: dateOrNull("sentAt"),

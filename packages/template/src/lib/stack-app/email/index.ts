@@ -59,7 +59,7 @@ type AdminEmailOutboxBase = {
   hasRendered: false,
   hasDelivered: false,
   // Retry tracking fields
-  failedSendAttemptCount: number,
+  sendRetries: number,
   nextSendRetryAt: Date | null,
   sendAttemptErrors: AdminSendAttemptError[] | null,
 };

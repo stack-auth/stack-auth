@@ -845,12 +845,12 @@ model EmailOutbox {
   finishedSendingAt DateTime?
 
   // Deferred retry fields for email sending
-  // Number of failed send attempts (starts at 0, incremented on each failure). Reset when email content is edited.
-  failedSendAttemptCount Int       @default(0)
-  // When to retry sending (null = not waiting for retry). Set when a retryable error occurs. Reset when email content is edited. Must be null if failedSendAttemptCount is 0 (enforced by EmailOutbox_nextSendRetryAt_requires_failure). Must be null when finishedSendingAt is set (enforced by EmailOutbox_no_retry_after_finished).
-  nextSendRetryAt        DateTime?
-  // JSON array of errors from each failed send attempt. Each entry has: { attemptNumber, timestamp, externalMessage, externalDetails, internalMessage, internalDetails }. Reset when email content is edited. Must be null if failedSendAttemptCount is 0 (enforced by EmailOutbox_sendAttemptErrors_requires_failure).
-  sendAttemptErrors      Json?
+  // Number of send retries attempted (starts at 0, incremented on each failure). Reset when email content is edited.
+  sendRetries       Int       @default(0)
+  // When to retry sending (null = not waiting for retry). Set when a retryable error occurs. Reset when email content is edited. Must be null if sendRetries is 0 (enforced by EmailOutbox_nextSendRetryAt_requires_failure). Must be null when finishedSendingAt is set (enforced by EmailOutbox_no_retry_after_finished).
+  nextSendRetryAt   DateTime?
+  // JSON array of errors from each failed send attempt. Each entry has: { attemptNumber, timestamp, externalMessage, externalDetails, internalMessage, internalDetails }. Reset when email content is edited. Must be null if sendRetries is 0 (enforced by EmailOutbox_sendAttemptErrors_requires_failure).
+  sendAttemptErrors Json?
 
   // A generated column that is equal to finishedSendingAt if canHaveDeliveryInfo is false, otherwise deliveredAt.
   sentAt DateTime? @default(dbgenerated("\nCASE\n    WHEN (\"canHaveDeliveryInfo\" IS TRUE) THEN \"deliveredAt\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN \"finishedSendingAt\"\n    ELSE NULL::timestamp without time zone\nEND"))

@@ -21,10 +21,10 @@ const MAX_RENDER_BATCH = 50;
 
 const MAX_SEND_ATTEMPTS = 3;
 
-const RETRY_BACKOFF_BASE_MS = 2000;
+const SEND_RETRY_BACKOFF_BASE_MS = 2000;
 
 const calculateRetryBackoffMs = (attemptCount: number): number => {
-  return (Math.random() + 0.5) * RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
+  return (Math.random() + 0.5) * SEND_RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
 };
 
 /**
@@ -697,7 +697,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       });
 
     if (result.status === "error") {
-      const newAttemptCount = row.failedSendAttemptCount + 1;
+      const newAttemptCount = row.sendRetries + 1;
       const canRetry = result.error.canRetry && newAttemptCount < MAX_SEND_ATTEMPTS;
 
       // Build error entry for this attempt
@@ -725,7 +725,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           data: {
             startedSendingAt: null, // Unclaim the email
             isQueued: false, // Prevent normal queue path from picking it up
-            failedSendAttemptCount: newAttemptCount,
+            sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
           },
@@ -760,7 +760,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           data: {
             finishedSendingAt: new Date(),
             canHaveDeliveryInfo: false,
-            failedSendAttemptCount: newAttemptCount,
+            sendRetries: newAttemptCount,
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
             sendServerErrorExternalMessage: externalMessage,
             sendServerErrorExternalDetails: { errorType: result.error.errorType },
@@ -776,7 +776,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         });
       }
     } else {
-      // Success - mark as sent (don't increment failedSendAttemptCount since this wasn't a failure)
+      // Success - mark as sent (don't increment sendRetries since this wasn't a failure)
       await globalPrismaClient.emailOutbox.update({
         where: {
           tenancyId_id: {

@@ -413,7 +413,6 @@ describe("send email to all users", () => {
           "can_have_delivery_info": false,
           "created_at_millis": <stripped field 'created_at_millis'>,
           "delivered_at_millis": <stripped field 'delivered_at_millis'>,
-          "failed_send_attempt_count": 0,
           "has_delivered": true,
           "has_rendered": true,
           "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></td></tr></tbody></table><!--7--><!--/$--></body></html>",
@@ -426,6 +425,7 @@ describe("send email to all users", () => {
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
           "send_attempt_errors": null,
+          "send_retries": 0,
           "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
@@ -453,7 +453,6 @@ describe("send email to all users", () => {
           "can_have_delivery_info": false,
           "created_at_millis": <stripped field 'created_at_millis'>,
           "delivered_at_millis": <stripped field 'delivered_at_millis'>,
-          "failed_send_attempt_count": 0,
           "has_delivered": true,
           "has_rendered": true,
           "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></td></tr></tbody></table><!--7--><!--/$--></body></html>",
@@ -466,6 +465,7 @@ describe("send email to all users", () => {
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
           "send_attempt_errors": null,
+          "send_retries": 0,
           "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
@@ -1948,7 +1948,7 @@ type SendAttemptErrorEntry = {
 
 // Helper type for email outbox items with retry fields
 type OutboxEmailWithRetryFields = OutboxEmail & {
-  failed_send_attempt_count: number,
+  send_retries: number,
   next_send_retry_at_millis: number | null,
   send_attempt_errors: SendAttemptErrorEntry[] | null,
 };
@@ -1978,13 +1978,13 @@ async function waitForOutboxEmail(subject: string, timeoutMs = 30000): Promise<O
   );
 }
 
-// Helper to poll until the email has reached a specific failed_send_attempt_count
+// Helper to poll until the email has reached a specific send_retries
 // Note: Status may be "queued" or "sending" due to race conditions - that's expected
 async function waitForAttemptCount(emailId: string, attemptCount: number, timeoutMs = 60000): Promise<OutboxEmailWithRetryFields> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
     const email = await getOutboxEmailById(emailId);
-    if (email.failed_send_attempt_count >= attemptCount) {
+    if (email.send_retries >= attemptCount) {
       return email;
     }
     // Terminal state - no more retries will happen
@@ -1995,8 +1995,8 @@ async function waitForAttemptCount(emailId: string, attemptCount: number, timeou
   }
   const finalEmail = await getOutboxEmailById(emailId);
   throw new StackAssertionError(
-    `Timeout waiting for email ${emailId} to reach failed_send_attempt_count >= ${attemptCount}`,
-    { emailId, attemptCount, finalState: { count: finalEmail.failed_send_attempt_count, status: finalEmail.status } }
+    `Timeout waiting for email ${emailId} to reach send_retries >= ${attemptCount}`,
+    { emailId, attemptCount, finalState: { count: finalEmail.send_retries, status: finalEmail.status } }
   );
 }
 
@@ -2047,7 +2047,7 @@ describe("email queue deferred retry logic", () => {
     }
 
     // Non-retryable errors should go directly to server-error
-    expect(email.failed_send_attempt_count).toBe(1);
+    expect(email.send_retries).toBe(1);
     expect(email.next_send_retry_at_millis).toBeNull();
     expect(email.send_attempt_errors).not.toBeNull();
     expect(email.send_attempt_errors?.length).toBe(1);
@@ -2111,7 +2111,7 @@ describe("email queue deferred retry logic", () => {
 
       // Verify the email was released for a DIFFERENT queue iteration to pick up
       // - status should NOT be server-error (retries remaining)
-      expect(emailAfterFirstAttempt.failed_send_attempt_count).toBe(1);
+      expect(emailAfterFirstAttempt.send_retries).toBe(1);
       expect(emailAfterFirstAttempt.send_attempt_errors).not.toBeNull();
       expect(emailAfterFirstAttempt.send_attempt_errors?.length).toBe(1);
       expect(emailAfterFirstAttempt.send_attempt_errors?.[0].attempt_number).toBe(1);
@@ -2159,7 +2159,7 @@ describe("email queue deferred retry logic", () => {
       const initialEmail = await waitForOutboxEmail("Retry Exhaustion Test");
       const emailId = initialEmail.id;
 
-      // Wait for all retries to exhaust (MAX_SEND_ATTEMPTS = 3)
+      // Wait for all retries to exhaust (MAX_SEND_ATTEMPTS = 5)
       // With 450 errors (immediate) + exponential backoff, this should complete in ~30s
       const maxWaitMs = 60000;
       const startTime = Date.now();
@@ -2170,8 +2170,8 @@ describe("email queue deferred retry logic", () => {
       }
 
       expect(email.status).toBe("server-error");
-      expect(email.failed_send_attempt_count).toBe(3); // MAX_SEND_ATTEMPTS
-      expect(email.send_attempt_errors?.length).toBe(3);
+      expect(email.send_retries).toBe(5); // MAX_SEND_ATTEMPTS
+      expect(email.send_attempt_errors?.length).toBe(5);
       // No more retries scheduled
       expect(email.next_send_retry_at_millis).toBeNull();
 
