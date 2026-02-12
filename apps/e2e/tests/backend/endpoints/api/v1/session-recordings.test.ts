@@ -49,6 +49,7 @@ it("stores session recording batch metadata and dedupes by (session_recording_id
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
+  const now = Date.now();
   const browserSessionId = randomUUID();
   const batchId = randomUUID();
   const tabId = randomUUID();
@@ -60,11 +61,11 @@ it("stores session recording batch metadata and dedupes by (session_recording_id
       browser_session_id: browserSessionId,
       tab_id: tabId,
       batch_id: batchId,
-      started_at_ms: 1_700_000_000_000,
-      sent_at_ms: 1_700_000_000_500,
+      started_at_ms: now,
+      sent_at_ms: now + 500,
       events: [
-        { timestamp: 1_700_000_000_100, type: 2 },
-        { timestamp: 1_700_000_000_200, type: 3 },
+        { timestamp: now + 100, type: 2 },
+        { timestamp: now + 200, type: 3 },
       ],
     },
   });
@@ -86,9 +87,9 @@ it("stores session recording batch metadata and dedupes by (session_recording_id
       browser_session_id: browserSessionId,
       tab_id: tabId,
       batch_id: batchId,
-      started_at_ms: 1_700_000_000_000,
-      sent_at_ms: 1_700_000_000_500,
-      events: [{ timestamp: 1_700_000_000_150, type: 2 }],
+      started_at_ms: now,
+      sent_at_ms: now + 500,
+      events: [{ timestamp: now + 150, type: 2 }],
     },
   });
 
@@ -396,14 +397,16 @@ it("admin list session recordings rejects unknown cursor", async ({ expect }) =>
 it("admin list chunks paginates and rejects a cursor from another session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
 
+  const now = Date.now();
+
   // session1: two batches under first refresh token
   await Auth.Otp.signIn();
   const upload1a = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
-    startedAtMs: 1_700_000_000_000,
-    sentAtMs: 1_700_000_000_500,
-    events: [{ type: 1, timestamp: 1_700_000_000_010 }],
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 1, timestamp: now + 10 }],
   });
   expect(upload1a.status).toBe(200);
   const recording1 = upload1a.body?.session_recording_id;
@@ -411,9 +414,9 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
-    startedAtMs: 1_700_000_000_000,
-    sentAtMs: 1_700_000_000_600,
-    events: [{ type: 1, timestamp: 1_700_000_000_020 }],
+    startedAtMs: now,
+    sentAtMs: now + 600,
+    events: [{ type: 1, timestamp: now + 20 }],
   });
 
   // session2: one batch under a different refresh token
@@ -421,9 +424,9 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
   const upload2 = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
-    startedAtMs: 1_700_000_000_000,
-    sentAtMs: 1_700_000_000_700,
-    events: [{ type: 1, timestamp: 1_700_000_000_030 }],
+    startedAtMs: now,
+    sentAtMs: now + 700,
+    events: [{ type: 1, timestamp: now + 30 }],
   });
   expect(upload2.status).toBe(200);
   const recording2 = upload2.body?.session_recording_id;
@@ -539,22 +542,24 @@ it("groups batches from same refresh token into one session recording", async ({
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
 
+  const now = Date.now();
+
   // Two batches with different browser_session_ids but same refresh token
   const upload1 = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
-    startedAtMs: 1_700_000_000_000,
-    sentAtMs: 1_700_000_000_300,
-    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+    startedAtMs: now,
+    sentAtMs: now + 300,
+    events: [{ type: 1, timestamp: now + 100 }],
   });
   expect(upload1.status).toBe(200);
 
   const upload2 = await uploadBatch({
     browserSessionId: randomUUID(),
     batchId: randomUUID(),
-    startedAtMs: 1_700_000_000_000,
-    sentAtMs: 1_700_000_000_400,
-    events: [{ type: 1, timestamp: 1_700_000_000_200 }],
+    startedAtMs: now,
+    sentAtMs: now + 400,
+    events: [{ type: 1, timestamp: now + 200 }],
   });
   expect(upload2.status).toBe(200);
 
