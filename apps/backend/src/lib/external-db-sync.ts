@@ -742,6 +742,20 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
   let needsResync = false;
 
+  // TEMPORARY: Swapped order to test replica lag hypothesis — Postgres sync first, then ClickHouse
+  for (const [dbId, dbConfig] of Object.entries(externalDatabases)) {
+    try {
+      const databaseThrottled = await syncDatabase(dbId, dbConfig, internalPrisma, tenancy.id);
+      if (databaseThrottled) {
+        needsResync = true;
+      }
+    } catch (error) {
+      // Log the error but continue syncing other databases
+      // This ensures one bad database config doesn't block successful syncs to other databases
+      captureError(`external-db-sync-${dbId}`, error);
+    }
+  }
+
   // Always sync to ClickHouse if STACK_CLICKHOUSE_URL is set (not driven by config)
   const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
   if (clickhouseUrl) {
@@ -769,19 +783,6 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
     if (syncResult.status === "error") {
       captureError("external-db-sync-clickhouse", syncResult.error);
       needsResync = true;
-    }
-  }
-
-  for (const [dbId, dbConfig] of Object.entries(externalDatabases)) {
-    try {
-      const databaseThrottled = await syncDatabase(dbId, dbConfig, internalPrisma, tenancy.id);
-      if (databaseThrottled) {
-        needsResync = true;
-      }
-    } catch (error) {
-      // Log the error but continue syncing other databases
-      // This ensures one bad database config doesn't block successful syncs to other databases
-      captureError(`external-db-sync-${dbId}`, error);
     }
   }
 
