@@ -483,7 +483,25 @@ export default function PageClient() {
       return;
     }
 
-    if (!msRef.current.hasFullSnapshotByTab.has(tabKey)) return;
+    if (!msRef.current.hasFullSnapshotByTab.has(tabKey)) {
+      // Last-resort: scan accumulated events for a FullSnapshot that the
+      // chunk-level detection may have missed (eg. due to race conditions or
+      // type coercion).  rrweb FullSnapshot is event type 2.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const hasSnapshot = eventsSnapshot.some(e => (e as any).type === 2 || (e as any).type === "2");
+      if (!hasSnapshot) return;
+      // Patch the machine state so subsequent checks pass.
+      actRef.current({
+        type: "CHUNK_LOADED",
+        generation: gen,
+        tabKey,
+        hasFullSnapshot: true,
+        loadedDurationMs: eventsSnapshot.length >= 2
+          ? eventsSnapshot[eventsSnapshot.length - 1].timestamp - eventsSnapshot[0].timestamp
+          : 0,
+        hadEventsBeforeThisChunk: true,
+      });
+    }
 
     try {
       const { Replayer } = await import("rrweb");
@@ -617,6 +635,11 @@ export default function PageClient() {
             } catch {
               // ignore
             }
+          } else {
+            // Replayer doesn't exist — try to create it so REPLAYER_READY
+            // can resume playback.  This covers race conditions where the
+            // replayer hasn't been initialised yet when play is requested.
+            runAsynchronously(() => ensureReplayerForTab(effect.tabKey, msRef.current.generation), { noErrorLogging: true });
           }
           break;
         }
@@ -798,7 +821,7 @@ export default function PageClient() {
 
         const hasFullSnapshot = !msRef.current.hasFullSnapshotByTab.has(tabKey)
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          && events.some(e => (e as any).type === 2);
+          && events.some(e => Number((e as any).type) === 2);
 
         let loadedDurationMs = 0;
         if (prev.length >= 2) {

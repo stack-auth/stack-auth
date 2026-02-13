@@ -17,6 +17,10 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const ALLOWED_PLAYER_SPEEDS = new Set([0.5, 1, 2, 4]);
 
+/** How long (wall-clock ms) the player can be in "playing" mode without the
+ *  replayer reporting progress before we attempt automatic recovery. */
+export const STALL_THRESHOLD_MS = 3000;
+
 export const DEFAULT_REPLAY_SETTINGS: ReplaySettings = {
   playerSpeed: 1,
   skipInactivity: true,
@@ -92,6 +96,10 @@ export type ReplayState = {
    *  detect an infinite loop where rrweb keeps firing "finish" at the same
    *  position because `addEvent` didn't extend the playable range. */
   prematureFinishRetryLocalMs: number | null,
+
+  /** Wall-clock time when we first noticed "playing" mode but the replayer
+   *  hadn't reported any progress.  Used for stall detection. */
+  playingWithoutProgressSinceMs: number | null,
 
   downloadError: string | null,
   playerError: string | null,
@@ -194,6 +202,7 @@ export function createInitialState(settings?: ReplaySettings): ReplayState {
     bufferingAtGlobalMs: null,
     gapFastForward: null,
     prematureFinishRetryLocalMs: null,
+    playingWithoutProgressSinceMs: null,
     downloadError: null,
     playerError: null,
   };
@@ -378,22 +387,36 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
       if (isStaleGeneration(state, action.generation)) return { state, effects: [] };
 
       const effects: ReplayEffect[] = [];
-      let newPlaybackMode = state.playbackMode;
+      let newPlaybackMode: PlaybackMode = state.playbackMode === "buffering" ? "paused" : state.playbackMode;
+      let newActiveTabKey = state.activeTabKey;
 
-      // Safety net: if buffering when download finishes, resume
+      // Safety net: if buffering when download finishes, try to resume
       if (state.bufferingAtGlobalMs !== null && state.autoResumeAfterBuffering) {
         const seekTo = state.bufferingAtGlobalMs;
-        newPlaybackMode = "playing";
-        effects.push(...playEffectsForAllTabs({ ...state, playbackMode: "playing", activeTabKey: state.activeTabKey }, seekTo));
+        let resumeTabKey = state.activeTabKey;
+
+        // Verify the active tab can actually play
+        if (resumeTabKey && !state.replayerReady.has(resumeTabKey) && !state.hasFullSnapshotByTab.has(resumeTabKey)) {
+          resumeTabKey = findBestTabAtGlobalOffset(state, seekTo);
+        }
+
+        if (resumeTabKey && (state.replayerReady.has(resumeTabKey) || state.hasFullSnapshotByTab.has(resumeTabKey))) {
+          newPlaybackMode = "playing";
+          newActiveTabKey = resumeTabKey;
+          if (resumeTabKey !== state.activeTabKey) {
+            effects.push({ type: "ensure_replayer", tabKey: resumeTabKey, generation: state.generation });
+          }
+          effects.push(...playEffectsForAllTabs({ ...state, playbackMode: "playing", activeTabKey: resumeTabKey }, seekTo));
+        }
+        // else: newPlaybackMode stays "paused" — no tab can play
       }
 
       return {
         state: {
           ...state,
           phase: "ready",
-          playbackMode: state.bufferingAtGlobalMs !== null && state.autoResumeAfterBuffering
-            ? "playing"
-            : (state.playbackMode === "buffering" ? "paused" : state.playbackMode),
+          activeTabKey: newActiveTabKey,
+          playbackMode: newPlaybackMode,
           bufferingAtGlobalMs: null,
           autoResumeAfterBuffering: false,
         },
@@ -436,6 +459,19 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
         effects.push({ type: "ensure_replayer", tabKey: action.tabKey, generation: action.generation });
       }
 
+      // If the active tab has no FullSnapshot but this tab just got one, switch.
+      // This ensures the component renders a container for the playable tab.
+      let newActiveTabKey = state.activeTabKey;
+      if (
+        action.hasFullSnapshot
+        && !state.hasFullSnapshotByTab.has(action.tabKey)
+        && state.activeTabKey !== null
+        && state.activeTabKey !== action.tabKey
+        && !newHasFullSnapshot.has(state.activeTabKey)
+      ) {
+        newActiveTabKey = action.tabKey;
+      }
+
       // Check if buffering can be resolved by new data
       let newPlaybackMode = state.playbackMode;
       let newBufferingAtGlobalMs = state.bufferingAtGlobalMs;
@@ -443,7 +479,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
       let newPausedAtGlobalMs = state.pausedAtGlobalMs;
 
       if (
-        state.activeTabKey === action.tabKey
+        newActiveTabKey === action.tabKey
         && state.bufferingAtGlobalMs !== null
       ) {
         const stream = getStreamInfo(state, action.tabKey);
@@ -463,7 +499,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
               newPlaybackMode = "playing";
               newPausedAtGlobalMs = seekTo;
               effects.push(...playEffectsForAllTabs(
-                { ...state, playbackMode: "playing", activeTabKey: state.activeTabKey },
+                { ...state, playbackMode: "playing", activeTabKey: newActiveTabKey },
                 seekTo,
               ));
             } else {
@@ -473,9 +509,13 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
         }
       }
 
+      // Clear playerError when the active tab receives a FullSnapshot
+      const clearPlayerError = action.hasFullSnapshot && action.tabKey === newActiveTabKey;
+
       return {
         state: {
           ...state,
+          activeTabKey: newActiveTabKey,
           hasFullSnapshotByTab: newHasFullSnapshot,
           loadedDurationByTabMs: newLoadedDuration,
           tabsWithEvents: newTabsWithEvents,
@@ -483,6 +523,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           bufferingAtGlobalMs: newBufferingAtGlobalMs,
           autoResumeAfterBuffering: newAutoResumeAfterBuffering,
           pausedAtGlobalMs: newPausedAtGlobalMs,
+          ...(clearPlayerError ? { playerError: null } : {}),
         },
         effects,
       };
@@ -495,13 +536,28 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
       newReplayerReady.add(action.tabKey);
 
       const isActiveTab = state.activeTabKey === action.tabKey;
-      const shouldAutoPlay = !state.autoPlayTriggered && isActiveTab;
-      const shouldPlay = isActiveTab && (shouldAutoPlay || (state.playbackMode === "playing"));
+
+      // Auto-play fallback: if auto-play hasn't triggered yet and the active
+      // tab is stuck (no full snapshot → replayer can never be created), switch
+      // the active tab to this newly-ready tab so auto-play can proceed.
+      const activeTabStuck = !isActiveTab
+        && !state.autoPlayTriggered
+        && state.activeTabKey !== null
+        && !state.hasFullSnapshotByTab.has(state.activeTabKey);
+      const effectiveIsActiveTab = isActiveTab || activeTabStuck;
+
+      const shouldAutoPlay = !state.autoPlayTriggered && effectiveIsActiveTab;
+      const shouldPlay = effectiveIsActiveTab && (shouldAutoPlay || (state.playbackMode === "playing"));
+
+      const newActiveTabKey = activeTabStuck ? action.tabKey : state.activeTabKey;
 
       const effects: ReplayEffect[] = [];
       const stream = getStreamInfo(state, action.tabKey);
       const streamStartTs = stream?.firstEventAtMs ?? state.globalStartTs;
-      const desiredLocal = globalOffsetToLocalOffset(state.globalStartTs, streamStartTs, state.pausedAtGlobalMs);
+      const targetGlobalMs = activeTabStuck
+        ? localOffsetToGlobalOffset(state.globalStartTs, streamStartTs, 0)
+        : state.pausedAtGlobalMs;
+      const desiredLocal = globalOffsetToLocalOffset(state.globalStartTs, streamStartTs, targetGlobalMs);
 
       if (shouldPlay) {
         effects.push({ type: "play_replayer", tabKey: action.tabKey, localOffsetMs: desiredLocal });
@@ -512,11 +568,14 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
       return {
         state: {
           ...state,
+          activeTabKey: newActiveTabKey,
           replayerReady: newReplayerReady,
           autoPlayTriggered: state.autoPlayTriggered || shouldAutoPlay,
           playbackMode: shouldAutoPlay && state.playbackMode !== "buffering"
             ? "playing"
             : state.playbackMode,
+          pausedAtGlobalMs: activeTabStuck ? targetGlobalMs : state.pausedAtGlobalMs,
+          playingWithoutProgressSinceMs: null,
         },
         effects,
       };
@@ -555,13 +614,14 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
               ...state,
               replayerReady: newReplayerReady,
               prematureFinishRetryLocalMs: null,
+              playingWithoutProgressSinceMs: null,
             },
             effects: [{ type: "recreate_replayer", tabKey: action.tabKey, generation: action.generation }],
           };
         }
 
         return {
-          state: { ...state, prematureFinishRetryLocalMs: localTime },
+          state: { ...state, prematureFinishRetryLocalMs: localTime, playingWithoutProgressSinceMs: null },
           effects: [{ type: "play_replayer", tabKey: action.tabKey, localOffsetMs: localTime }],
         };
       }
@@ -586,6 +646,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
             pausedAtGlobalMs: globalOffset,
             bufferingAtGlobalMs: globalOffset,
             autoResumeAfterBuffering: true,
+            playingWithoutProgressSinceMs: null,
           },
           effects: [
             { type: "schedule_buffer_poll", generation: action.generation, tabKey: action.tabKey, localTimeMs: localTime, delayMs: 500 },
@@ -622,6 +683,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
             bufferingAtGlobalMs: null,
             autoResumeAfterBuffering: false,
             suppressAutoFollowUntilWallMs: action.nowMs + 400,
+            playingWithoutProgressSinceMs: null,
           },
           effects,
         };
@@ -654,6 +716,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
             playbackMode: "gap_fast_forward",
             gapFastForward: gff,
             pausedAtGlobalMs: globalOffset,
+            playingWithoutProgressSinceMs: null,
           },
           effects: [],
         };
@@ -667,6 +730,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
             pausedAtGlobalMs: globalOffset,
             bufferingAtGlobalMs: globalOffset,
             autoResumeAfterBuffering: true,
+            playingWithoutProgressSinceMs: null,
           },
           effects: [],
         };
@@ -681,6 +745,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           currentGlobalTimeMsForUi: state.globalTotalMs,
           gapFastForward: null,
           bufferingAtGlobalMs: null,
+          playingWithoutProgressSinceMs: null,
         },
         effects: [{ type: "pause_all" }],
       };
@@ -699,43 +764,109 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
             gapFastForward: null,
             bufferingAtGlobalMs: null,
             autoResumeAfterBuffering: false,
+            playingWithoutProgressSinceMs: null,
+            playerError: null,
           },
           effects: [{ type: "pause_all" }],
         };
       }
 
       // Play
-      const target = state.pausedAtGlobalMs;
+      let target = state.pausedAtGlobalMs;
+      let playActiveTabKey = state.activeTabKey;
+
+      // If active tab has no replayer and can't get one, switch to a tab that can play
+      if (playActiveTabKey && !state.replayerReady.has(playActiveTabKey) && !state.hasFullSnapshotByTab.has(playActiveTabKey)) {
+        const altTab = findBestTabAtGlobalOffset(state, target);
+        if (altTab) {
+          playActiveTabKey = altTab;
+        } else {
+          // Find any ready tab at its start time
+          for (const s of state.streams) {
+            if (state.replayerReady.has(s.tabKey)) {
+              playActiveTabKey = s.tabKey;
+              target = localOffsetToGlobalOffset(state.globalStartTs, s.firstEventAtMs, 0);
+              break;
+            }
+          }
+        }
+      }
+
+      // Guard: if no tab can play, either buffer (still downloading) or error
+      if (
+        !playActiveTabKey
+        || (!state.replayerReady.has(playActiveTabKey) && !state.hasFullSnapshotByTab.has(playActiveTabKey))
+      ) {
+        if (state.phase === "downloading" && playActiveTabKey) {
+          // Data may still arrive — enter buffering mode
+          const bufferStream = getStreamInfo(state, playActiveTabKey);
+          const bufferLocalMs = bufferStream ? globalOffsetToLocalOffset(state.globalStartTs, bufferStream.firstEventAtMs, target) : 0;
+          return {
+            state: {
+              ...state,
+              activeTabKey: playActiveTabKey,
+              pausedAtGlobalMs: target,
+              playbackMode: "buffering",
+              bufferingAtGlobalMs: target,
+              autoResumeAfterBuffering: true,
+              playingWithoutProgressSinceMs: null,
+              playerError: null,
+            },
+            effects: [
+              { type: "schedule_buffer_poll", generation: state.generation, tabKey: playActiveTabKey, localTimeMs: bufferLocalMs, delayMs: 500 },
+            ],
+          };
+        }
+        return {
+          state: {
+            ...state,
+            playbackMode: "paused",
+            playerError: "Unable to play: recording data may be incomplete. Try reloading.",
+            playingWithoutProgressSinceMs: null,
+          },
+          effects: [],
+        };
+      }
 
       // Check if active tab needs buffering
-      if (state.phase === "downloading" && state.activeTabKey) {
-        const stream = getStreamInfo(state, state.activeTabKey);
+      if (state.phase === "downloading" && playActiveTabKey) {
+        const stream = getStreamInfo(state, playActiveTabKey);
         if (stream) {
           const localTarget = globalOffsetToLocalOffset(state.globalStartTs, stream.firstEventAtMs, target);
-          const loaded = state.loadedDurationByTabMs.get(state.activeTabKey) ?? 0;
+          const loaded = state.loadedDurationByTabMs.get(playActiveTabKey) ?? 0;
           if (localTarget > loaded) {
             return {
               state: {
                 ...state,
+                activeTabKey: playActiveTabKey,
+                pausedAtGlobalMs: target,
                 playbackMode: "buffering",
                 bufferingAtGlobalMs: target,
                 autoResumeAfterBuffering: true,
+                playingWithoutProgressSinceMs: null,
+                playerError: null,
               },
-              effects: [],
+              effects: [
+                { type: "schedule_buffer_poll", generation: state.generation, tabKey: playActiveTabKey, localTimeMs: localTarget, delayMs: 500 },
+              ],
             };
           }
         }
       }
 
+      const stateForPlay = { ...state, activeTabKey: playActiveTabKey };
       return {
         state: {
-          ...state,
+          ...stateForPlay,
           playbackMode: "playing",
+          pausedAtGlobalMs: target,
           bufferingAtGlobalMs: null,
           gapFastForward: null,
           suppressAutoFollowUntilWallMs: action.nowMs + 400,
+          playingWithoutProgressSinceMs: null,
+          playerError: null,
         },
-        effects: playEffectsForAllTabs(state, target),
+        effects: playEffectsForAllTabs(stateForPlay, target),
       };
     }
 
@@ -770,6 +901,8 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
                 bufferingAtGlobalMs: action.globalOffsetMs,
                 autoResumeAfterBuffering: true,
                 prematureFinishRetryLocalMs: null,
+                playingWithoutProgressSinceMs: null,
+                playerError: null,
               },
               effects,
             };
@@ -790,6 +923,8 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           currentGlobalTimeMsForUi: action.globalOffsetMs,
           suppressAutoFollowUntilWallMs: action.nowMs + 400,
           prematureFinishRetryLocalMs: null,
+          playingWithoutProgressSinceMs: null,
+          playerError: null,
         },
         effects,
       };
@@ -817,6 +952,8 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
                 autoResumeAfterBuffering: true,
                 suppressAutoFollowUntilWallMs: action.nowMs + 5000,
                 prematureFinishRetryLocalMs: null,
+                playingWithoutProgressSinceMs: null,
+                playerError: null,
               },
               effects,
             };
@@ -840,6 +977,8 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           autoResumeAfterBuffering: false,
           suppressAutoFollowUntilWallMs: action.nowMs + 5000,
           prematureFinishRetryLocalMs: null,
+          playingWithoutProgressSinceMs: null,
+          playerError: null,
         },
         effects,
       };
@@ -944,6 +1083,101 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
         }
       }
 
+      // ----- Stall detection -----
+      // Track when the player is in "playing" mode but the replayer hasn't
+      // reported any progress (activeReplayerLocalTimeMs is null).
+      if (newState.playbackMode === "playing" && action.activeReplayerLocalTimeMs !== null) {
+        // Replayer is responding — clear tracker
+        newState = { ...newState, playingWithoutProgressSinceMs: null };
+      } else if (newState.playbackMode !== "playing") {
+        // Not playing — clear tracker
+        newState = { ...newState, playingWithoutProgressSinceMs: null };
+      } else if (action.activeReplayerLocalTimeMs === null) {
+        if (newState.playingWithoutProgressSinceMs === null) {
+          // Start timing the stall
+          newState = { ...newState, playingWithoutProgressSinceMs: action.nowMs };
+        } else if (action.nowMs - newState.playingWithoutProgressSinceMs >= STALL_THRESHOLD_MS) {
+          // Stall detected — attempt recovery
+          const stallGlobalOffset = newState.pausedAtGlobalMs;
+
+          // Strategy A: Switch to another tab that IS ready
+          const altTab = findBestTabAtGlobalOffset(newState, stallGlobalOffset, newState.activeTabKey ?? undefined);
+          if (altTab && newState.replayerReady.has(altTab)) {
+            newState = {
+              ...newState,
+              activeTabKey: altTab,
+              playingWithoutProgressSinceMs: null,
+              suppressAutoFollowUntilWallMs: action.nowMs + 400,
+            };
+            effects.push(
+              ...playEffectsForAllTabs(newState, stallGlobalOffset),
+            );
+            return { state: newState, effects };
+          }
+
+          // Strategy B: Active tab IS in replayerReady (but broken) — recreate
+          const activeKeyB = newState.activeTabKey;
+          if (activeKeyB && newState.replayerReady.has(activeKeyB)) {
+            const newReplayerReady = new Set(newState.replayerReady);
+            newReplayerReady.delete(activeKeyB);
+            newState = {
+              ...newState,
+              replayerReady: newReplayerReady,
+              playingWithoutProgressSinceMs: null,
+            };
+            effects.push({ type: "recreate_replayer", tabKey: activeKeyB, generation: newState.generation });
+            return { state: newState, effects };
+          }
+
+          // Strategy C: Tab has full snapshot but no replayer — ensure it
+          const activeKeyC = newState.activeTabKey;
+          if (activeKeyC && newState.hasFullSnapshotByTab.has(activeKeyC)) {
+            newState = { ...newState, playingWithoutProgressSinceMs: null };
+            effects.push({ type: "ensure_replayer", tabKey: activeKeyC, generation: newState.generation });
+            return { state: newState, effects };
+          }
+
+          // Strategy D: Switch to ANY ready tab (even at a different offset)
+          for (const s of newState.streams) {
+            if (s.tabKey === newState.activeTabKey) continue;
+            if (!newState.replayerReady.has(s.tabKey)) continue;
+            const altGlobalMs = localOffsetToGlobalOffset(newState.globalStartTs, s.firstEventAtMs, 0);
+            newState = {
+              ...newState,
+              activeTabKey: s.tabKey,
+              pausedAtGlobalMs: altGlobalMs,
+              currentGlobalTimeMsForUi: altGlobalMs,
+              playingWithoutProgressSinceMs: null,
+              suppressAutoFollowUntilWallMs: action.nowMs + 400,
+            };
+            effects.push(...playEffectsForAllTabs(newState, altGlobalMs));
+            return { state: newState, effects };
+          }
+
+          // Strategy E: Nothing works
+          if (state.phase === "downloading") {
+            // Still downloading — enter buffering, FullSnapshot may arrive
+            newState = {
+              ...newState,
+              playbackMode: "buffering",
+              bufferingAtGlobalMs: stallGlobalOffset,
+              autoResumeAfterBuffering: true,
+              playingWithoutProgressSinceMs: null,
+            };
+            effects.push({ type: "pause_all" });
+            return { state: newState, effects };
+          }
+          newState = {
+            ...newState,
+            playbackMode: "paused",
+            playingWithoutProgressSinceMs: null,
+            playerError: "Playback stalled: unable to recover. Try seeking or switching tabs.",
+          };
+          effects.push({ type: "pause_all" });
+          return { state: newState, effects };
+        }
+      }
+
       return { state: newState, effects };
     }
 
@@ -961,6 +1195,37 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
 
       if (loaded > localTarget + 2000 || state.phase !== "downloading") {
         const seekTo = state.bufferingAtGlobalMs;
+
+        // Verify the active tab can actually play before resuming
+        if (!state.replayerReady.has(action.tabKey) && !state.hasFullSnapshotByTab.has(action.tabKey)) {
+          const altTab = findBestTabAtGlobalOffset(state, seekTo);
+          if (altTab) {
+            return {
+              state: {
+                ...state,
+                activeTabKey: altTab,
+                playbackMode: "playing",
+                bufferingAtGlobalMs: null,
+                autoResumeAfterBuffering: false,
+              },
+              effects: [
+                { type: "ensure_replayer", tabKey: altTab, generation: action.generation },
+                ...playEffectsForAllTabs({ ...state, activeTabKey: altTab }, seekTo),
+              ],
+            };
+          }
+          // No tab can play — fall back to paused
+          return {
+            state: {
+              ...state,
+              playbackMode: "paused",
+              bufferingAtGlobalMs: null,
+              autoResumeAfterBuffering: false,
+            },
+            effects: [{ type: "pause_all" }],
+          };
+        }
+
         return {
           state: {
             ...state,

@@ -7,6 +7,7 @@ import {
   findNextTabStartAfterGlobalOffset,
   ALLOWED_PLAYER_SPEEDS,
   DEFAULT_REPLAY_SETTINGS,
+  STALL_THRESHOLD_MS,
   type ReplayState,
   type ReplayAction,
   type StreamInfo,
@@ -253,6 +254,64 @@ describe("session-replay-machine", () => {
       expect(hasEffect(effects, "play_replayer")).toBe(true);
     });
 
+    it("switches active tab when current active has no snapshot", () => {
+      const state = twoTabReadyState({
+        activeTabKey: "a",
+      });
+      // Active tab "a" has no full snapshot
+      state.hasFullSnapshotByTab.delete("a");
+      state.replayerReady.delete("a");
+      state.replayerReady.delete("b");
+      state.hasFullSnapshotByTab.delete("b");
+      const { state: s } = dispatch(state, {
+        type: "CHUNK_LOADED",
+        generation: 1,
+        tabKey: "b",
+        hasFullSnapshot: true,
+        loadedDurationMs: 500,
+        hadEventsBeforeThisChunk: false,
+      });
+      expect(s.activeTabKey).toBe("b");
+    });
+
+    it("does NOT switch active tab when active already has a snapshot", () => {
+      const state = twoTabReadyState({
+        activeTabKey: "a",
+      });
+      // Active tab "a" already has full snapshot
+      state.replayerReady.delete("b");
+      state.hasFullSnapshotByTab.delete("b");
+      const { state: s } = dispatch(state, {
+        type: "CHUNK_LOADED",
+        generation: 1,
+        tabKey: "b",
+        hasFullSnapshot: true,
+        loadedDurationMs: 500,
+        hadEventsBeforeThisChunk: false,
+      });
+      expect(s.activeTabKey).toBe("a");
+    });
+
+    it("does NOT switch on subsequent snapshots for same tab", () => {
+      const state = twoTabReadyState({
+        activeTabKey: "a",
+      });
+      // Tab "b" already has a full snapshot
+      // Active tab "a" has no full snapshot
+      state.hasFullSnapshotByTab.delete("a");
+      state.replayerReady.delete("a");
+      const { state: s } = dispatch(state, {
+        type: "CHUNK_LOADED",
+        generation: 1,
+        tabKey: "b",
+        hasFullSnapshot: true,
+        loadedDurationMs: 2000,
+        hadEventsBeforeThisChunk: true,
+      });
+      // Tab b already had a snapshot, so no switch needed
+      expect(s.activeTabKey).toBe("a");
+    });
+
     it("stays buffering when not enough data", () => {
       const state = twoTabReadyState({
         playbackMode: "buffering",
@@ -304,6 +363,27 @@ describe("session-replay-machine", () => {
       // Should pause at correct offset, not play
       expect(hasEffect(effects, "pause_replayer_at")).toBe(true);
       expect(hasEffect(effects, "play_replayer")).toBe(false);
+    });
+
+    it("auto-plays non-active tab when active tab is stuck (no full snapshot)", () => {
+      const state = twoTabReadyState({
+        autoPlayTriggered: false,
+        activeTabKey: "a",
+      });
+      // Active tab "a" has no full snapshot — it's stuck
+      state.hasFullSnapshotByTab.delete("a");
+      state.replayerReady.delete("a");
+      state.replayerReady.delete("b");
+      const { state: s, effects } = dispatch(state, {
+        type: "REPLAYER_READY",
+        generation: 1,
+        tabKey: "b",
+      });
+      // Should switch to "b" and auto-play
+      expect(s.activeTabKey).toBe("b");
+      expect(s.autoPlayTriggered).toBe(true);
+      expect(s.playbackMode).toBe("playing");
+      expect(hasEffect(effects, "play_replayer")).toBe(true);
     });
 
     it("does not auto-play when already triggered", () => {
@@ -509,6 +589,21 @@ describe("session-replay-machine", () => {
       expect(hasEffect(effects, "play_replayer")).toBe(true);
     });
 
+    it("switches to a ready tab when active tab has no replayer", () => {
+      const state = twoTabReadyState({
+        playbackMode: "paused",
+        activeTabKey: "a",
+        pausedAtGlobalMs: 0,
+      });
+      // Active tab "a" has no full snapshot — can't play
+      state.hasFullSnapshotByTab.delete("a");
+      state.replayerReady.delete("a");
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      expect(s.activeTabKey).toBe("b");
+      expect(s.playbackMode).toBe("playing");
+      expect(hasEffect(effects, "play_replayer")).toBe(true);
+    });
+
     it("buffers when trying to play beyond loaded data", () => {
       const state = twoTabReadyState({
         playbackMode: "paused",
@@ -522,6 +617,32 @@ describe("session-replay-machine", () => {
       const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
       expect(s.playbackMode).toBe("buffering");
       expect(s.autoResumeAfterBuffering).toBe(true);
+    });
+
+    it("emits schedule_buffer_poll when entering buffering (no snapshot)", () => {
+      const state = twoTabReadyState({
+        playbackMode: "paused",
+        activeTabKey: "a",
+        phase: "downloading",
+      });
+      state.hasFullSnapshotByTab.clear();
+      state.replayerReady.clear();
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      expect(s.playbackMode).toBe("buffering");
+      expect(hasEffect(effects, "schedule_buffer_poll")).toBe(true);
+    });
+
+    it("emits schedule_buffer_poll when entering buffering (data not loaded)", () => {
+      const state = twoTabReadyState({
+        playbackMode: "paused",
+        activeTabKey: "a",
+        pausedAtGlobalMs: 3500,
+        phase: "downloading",
+      });
+      state.loadedDurationByTabMs.set("a", 2000);
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      expect(s.playbackMode).toBe("buffering");
+      expect(hasEffect(effects, "schedule_buffer_poll")).toBe(true);
     });
   });
 
@@ -779,6 +900,26 @@ describe("session-replay-machine", () => {
       expect(hasEffect(effects, "schedule_buffer_poll")).toBe(true);
     });
 
+    it("does not resume to playing when active tab has no snapshot", () => {
+      const state = twoTabReadyState({
+        playbackMode: "buffering",
+        activeTabKey: "a",
+        bufferingAtGlobalMs: 1000,
+        phase: "ready",
+      });
+      // Tab a has no full snapshot — can't play
+      state.hasFullSnapshotByTab.delete("a");
+      state.replayerReady.delete("a");
+      state.loadedDurationByTabMs.set("a", 5000);
+      const { state: s, effects } = dispatch(state, {
+        type: "BUFFER_CHECK",
+        generation: 1,
+        tabKey: "a",
+      });
+      expect(s.playbackMode).toBe("paused");
+      expect(hasEffect(effects, "pause_all")).toBe(true);
+    });
+
     it("ignores stale generation", () => {
       const state = twoTabReadyState({ playbackMode: "buffering" });
       const { effects } = dispatch(state, {
@@ -808,6 +949,51 @@ describe("session-replay-machine", () => {
       expect(s.playbackMode).toBe("playing");
       expect(s.bufferingAtGlobalMs).toBeNull();
       expect(hasEffect(effects, "play_replayer")).toBe(true);
+    });
+
+    it("switches to alt tab when active tab cannot play", () => {
+      const state: ReplayState = {
+        ...twoTabReadyState({
+          phase: "downloading",
+          playbackMode: "buffering",
+          bufferingAtGlobalMs: 2000,
+          autoResumeAfterBuffering: true,
+          activeTabKey: "a",
+        }),
+        streams: makeStreams(
+          { tabKey: "a", firstMs: 1000, lastMs: 5000 },
+          { tabKey: "b", firstMs: 1000, lastMs: 5000 },
+        ),
+        chunkRangesByTab: makeChunkRanges({
+          a: [[1000, 5000]],
+          b: [[1000, 5000]],
+        }),
+      };
+      // Tab a has no snapshot or replayer, but tab b does
+      state.hasFullSnapshotByTab.delete("a");
+      state.replayerReady.delete("a");
+      const { state: s, effects } = dispatch(state, { type: "DOWNLOAD_COMPLETE", generation: 1 });
+      expect(s.phase).toBe("ready");
+      expect(s.activeTabKey).toBe("b");
+      expect(s.playbackMode).toBe("playing");
+      expect(hasEffect(effects, "ensure_replayer")).toBe(true);
+      expect(hasEffect(effects, "play_replayer")).toBe(true);
+    });
+
+    it("pauses when no tab can play on download complete", () => {
+      const state = twoTabReadyState({
+        phase: "downloading",
+        playbackMode: "buffering",
+        bufferingAtGlobalMs: 2000,
+        autoResumeAfterBuffering: true,
+        activeTabKey: "a",
+      });
+      // No tab has snapshot or replayer
+      state.hasFullSnapshotByTab.clear();
+      state.replayerReady.clear();
+      const { state: s } = dispatch(state, { type: "DOWNLOAD_COMPLETE", generation: 1 });
+      expect(s.phase).toBe("ready");
+      expect(s.playbackMode).toBe("paused");
     });
   });
 
@@ -1271,6 +1457,393 @@ describe("scenarios", () => {
     expect(state.replayerReady.has("t1")).toBe(true);
     // Already auto-played, but playbackMode was "playing" so it should play
     expect(hasEffect(r.effects, "play_replayer")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stall detection tests
+// ---------------------------------------------------------------------------
+
+describe("stall detection", () => {
+  it("starts tracking when playing with null activeReplayerLocalTimeMs", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+    });
+    const { state: s } = dispatch(state, {
+      type: "TICK",
+      nowMs: 5000,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.playingWithoutProgressSinceMs).toBe(5000);
+  });
+
+  it("resets tracker when replayer starts responding", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    const { state: s } = dispatch(state, {
+      type: "TICK",
+      nowMs: 2000,
+      activeReplayerLocalTimeMs: 500,
+    });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("resets tracker when playback mode is not playing", () => {
+    const state = twoTabReadyState({
+      playbackMode: "paused",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    const { state: s } = dispatch(state, {
+      type: "TICK",
+      nowMs: 5000,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("does not trigger recovery before threshold", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playingWithoutProgressSinceMs: 5000,
+    });
+    // 2999ms stall — just under threshold
+    const { state: s } = dispatch(state, {
+      type: "TICK",
+      nowMs: 5000 + STALL_THRESHOLD_MS - 1,
+      activeReplayerLocalTimeMs: null,
+    });
+    // Should still be tracking, no recovery
+    expect(s.playingWithoutProgressSinceMs).toBe(5000);
+    expect(s.playbackMode).toBe("playing");
+  });
+
+  it("Strategy A: switches to another ready tab on stall", () => {
+    // Tab a is active but stalled, tab b is ready and in range
+    const state: ReplayState = {
+      ...twoTabReadyState(),
+      streams: makeStreams(
+        { tabKey: "a", firstMs: 1000, lastMs: 5000 },
+        { tabKey: "b", firstMs: 1000, lastMs: 5000 },
+      ),
+      chunkRangesByTab: makeChunkRanges({
+        a: [[1000, 5000]],
+        b: [[1000, 5000]],
+      }),
+      playbackMode: "playing",
+      activeTabKey: "a",
+      pausedAtGlobalMs: 2000,
+      playingWithoutProgressSinceMs: 1000,
+    };
+    const { state: s, effects } = dispatch(state, {
+      type: "TICK",
+      nowMs: 1000 + STALL_THRESHOLD_MS,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.activeTabKey).toBe("b");
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+    expect(hasEffect(effects, "play_replayer")).toBe(true);
+  });
+
+  it("Strategy B: recreates replayer when active tab is ready but broken", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      pausedAtGlobalMs: 2000,
+      playingWithoutProgressSinceMs: 1000,
+    });
+    // Only tab a is in range at offset 2000, and it's in replayerReady
+    const { state: s, effects } = dispatch(state, {
+      type: "TICK",
+      nowMs: 1000 + STALL_THRESHOLD_MS,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+    expect(s.replayerReady.has("a")).toBe(false);
+    expect(hasEffect(effects, "recreate_replayer")).toBe(true);
+    const recreateEffects = getEffects(effects, "recreate_replayer");
+    expect((recreateEffects[0] as any).tabKey).toBe("a");
+  });
+
+  it("Strategy C: ensures replayer when tab has snapshot but no replayer", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      pausedAtGlobalMs: 2000,
+      playingWithoutProgressSinceMs: 1000,
+    });
+    // Tab a has full snapshot but is NOT in replayerReady
+    state.replayerReady.delete("a");
+    const { state: s, effects } = dispatch(state, {
+      type: "TICK",
+      nowMs: 1000 + STALL_THRESHOLD_MS,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+    expect(hasEffect(effects, "ensure_replayer")).toBe(true);
+    const ensureEffects = getEffects(effects, "ensure_replayer");
+    expect((ensureEffects[0] as any).tabKey).toBe("a");
+  });
+
+  it("Strategy D: switches to any ready tab at a different offset", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      pausedAtGlobalMs: 2000,
+      playingWithoutProgressSinceMs: 1000,
+    });
+    // Tab a has no snapshot and is not ready, but tab b IS ready
+    state.hasFullSnapshotByTab.delete("a");
+    state.replayerReady.delete("a");
+    const { state: s, effects } = dispatch(state, {
+      type: "TICK",
+      nowMs: 1000 + STALL_THRESHOLD_MS,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.activeTabKey).toBe("b");
+    expect(s.playbackMode).toBe("playing");
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+    expect(hasEffect(effects, "play_replayer")).toBe(true);
+  });
+
+  it("Strategy E: pauses with error when nothing works (download complete)", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      pausedAtGlobalMs: 2000,
+      playingWithoutProgressSinceMs: 1000,
+      phase: "ready",
+    });
+    // No tab has snapshot or replayer — nothing can recover
+    state.hasFullSnapshotByTab.clear();
+    state.replayerReady.clear();
+    const { state: s, effects } = dispatch(state, {
+      type: "TICK",
+      nowMs: 1000 + STALL_THRESHOLD_MS,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.playbackMode).toBe("paused");
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+    expect(s.playerError).toContain("stalled");
+    expect(hasEffect(effects, "pause_all")).toBe(true);
+  });
+
+  it("Strategy E: buffers instead of error when still downloading", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      pausedAtGlobalMs: 2000,
+      playingWithoutProgressSinceMs: 1000,
+      phase: "downloading",
+    });
+    // No tab has snapshot or replayer — but still downloading
+    state.hasFullSnapshotByTab.clear();
+    state.replayerReady.clear();
+    const { state: s, effects } = dispatch(state, {
+      type: "TICK",
+      nowMs: 1000 + STALL_THRESHOLD_MS,
+      activeReplayerLocalTimeMs: null,
+    });
+    expect(s.playbackMode).toBe("buffering");
+    expect(s.bufferingAtGlobalMs).toBe(2000);
+    expect(s.autoResumeAfterBuffering).toBe(true);
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+    expect(s.playerError).toBeNull();
+    expect(hasEffect(effects, "pause_all")).toBe(true);
+  });
+
+  it("TOGGLE_PLAY_PAUSE stays paused with error when no tab can play (download complete)", () => {
+    const state = twoTabReadyState({
+      playbackMode: "paused",
+      activeTabKey: "a",
+      phase: "ready",
+    });
+    // No tab has snapshot or replayer — nothing can play
+    state.hasFullSnapshotByTab.clear();
+    state.replayerReady.clear();
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    expect(s.playbackMode).toBe("paused");
+    expect(s.playerError).toContain("Unable to play");
+  });
+
+  it("TOGGLE_PLAY_PAUSE stays paused with error when activeTabKey is null", () => {
+    const state = twoTabReadyState({
+      playbackMode: "paused",
+      activeTabKey: null,
+      phase: "ready",
+    });
+    state.hasFullSnapshotByTab.clear();
+    state.replayerReady.clear();
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    expect(s.playbackMode).toBe("paused");
+    expect(s.playerError).toContain("Unable to play");
+  });
+
+  it("TOGGLE_PLAY_PAUSE buffers when no tab can play but still downloading", () => {
+    const state = twoTabReadyState({
+      playbackMode: "paused",
+      activeTabKey: "a",
+      phase: "downloading",
+    });
+    // No tab has snapshot or replayer yet — data still arriving
+    state.hasFullSnapshotByTab.clear();
+    state.replayerReady.clear();
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    expect(s.playbackMode).toBe("buffering");
+    expect(s.autoResumeAfterBuffering).toBe(true);
+    expect(s.playerError).toBeNull();
+  });
+
+  it("resets tracker on TOGGLE_PLAY_PAUSE (pause)", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 2000 });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("resets tracker on TOGGLE_PLAY_PAUSE (play)", () => {
+    const state = twoTabReadyState({
+      playbackMode: "paused",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 2000 });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("resets tracker on SEEK", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    const { state: s } = dispatch(state, { type: "SEEK", globalOffsetMs: 2000, nowMs: 2000 });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("resets tracker on SELECT_TAB", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    const { state: s } = dispatch(state, { type: "SELECT_TAB", tabKey: "b", nowMs: 2000 });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("resets tracker on REPLAYER_READY", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playingWithoutProgressSinceMs: 1000,
+    });
+    state.replayerReady.delete("a");
+    const { state: s } = dispatch(state, { type: "REPLAYER_READY", generation: 1, tabKey: "a" });
+    expect(s.playingWithoutProgressSinceMs).toBeNull();
+  });
+
+  it("initializes tracker as null", () => {
+    const state = createInitialState();
+    expect(state.playingWithoutProgressSinceMs).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// playerError clearing tests
+// ---------------------------------------------------------------------------
+
+describe("playerError clearing", () => {
+  it("TOGGLE_PLAY_PAUSE (play) clears playerError", () => {
+    const state = twoTabReadyState({
+      playbackMode: "paused",
+      playerError: "Playback stalled: unable to recover.",
+    });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    expect(s.playbackMode).toBe("playing");
+    expect(s.playerError).toBeNull();
+  });
+
+  it("TOGGLE_PLAY_PAUSE (pause) clears playerError", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      playerError: "Some error",
+    });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    expect(s.playbackMode).toBe("paused");
+    expect(s.playerError).toBeNull();
+  });
+
+  it("SEEK clears playerError", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playerError: "Playback stalled: unable to recover.",
+    });
+    const { state: s } = dispatch(state, { type: "SEEK", globalOffsetMs: 2000, nowMs: 1000 });
+    expect(s.playerError).toBeNull();
+  });
+
+  it("SELECT_TAB clears playerError", () => {
+    const state = twoTabReadyState({
+      playbackMode: "playing",
+      activeTabKey: "a",
+      playerError: "Playback stalled: unable to recover.",
+    });
+    const { state: s } = dispatch(state, { type: "SELECT_TAB", tabKey: "b", nowMs: 1000 });
+    expect(s.playerError).toBeNull();
+  });
+
+  it("CHUNK_LOADED with hasFullSnapshot on active tab clears playerError", () => {
+    const state = twoTabReadyState({
+      activeTabKey: "a",
+      playerError: "Unable to play: recording data may be incomplete.",
+    });
+    const { state: s } = dispatch(state, {
+      type: "CHUNK_LOADED",
+      generation: 1,
+      tabKey: "a",
+      hasFullSnapshot: true,
+      loadedDurationMs: 3500,
+      hadEventsBeforeThisChunk: true,
+    });
+    expect(s.playerError).toBeNull();
+  });
+
+  it("CHUNK_LOADED on non-active tab does NOT clear playerError", () => {
+    const state = twoTabReadyState({
+      activeTabKey: "a",
+      playerError: "Unable to play: recording data may be incomplete.",
+    });
+    const { state: s } = dispatch(state, {
+      type: "CHUNK_LOADED",
+      generation: 1,
+      tabKey: "b",
+      hasFullSnapshot: true,
+      loadedDurationMs: 3500,
+      hadEventsBeforeThisChunk: true,
+    });
+    expect(s.playerError).toBe("Unable to play: recording data may be incomplete.");
+  });
+
+  it("CHUNK_LOADED without hasFullSnapshot on active tab does NOT clear playerError", () => {
+    const state = twoTabReadyState({
+      activeTabKey: "a",
+      playerError: "Unable to play: recording data may be incomplete.",
+    });
+    const { state: s } = dispatch(state, {
+      type: "CHUNK_LOADED",
+      generation: 1,
+      tabKey: "a",
+      hasFullSnapshot: false,
+      loadedDurationMs: 3500,
+      hadEventsBeforeThisChunk: true,
+    });
+    expect(s.playerError).toBe("Unable to play: recording data may be incomplete.");
   });
 });
 
