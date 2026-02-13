@@ -137,6 +137,9 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
     }
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
+    if (didUpdate) {
+      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, DR=${deletedRowTenants.length}`);
+    }
 
     return didUpdate;
   });
@@ -211,6 +214,7 @@ export const GET = createSmartRouteHandler({
           try {
             const didUpdate = await backfillSequenceIds(batchSize);
             iterationSpan.setAttribute("stack.external-db-sync.did-update", didUpdate);
+            console.log(`[Sequencer] Backfilled ${didUpdate ? "some" : "no"} sequence IDs`);
           } catch (error) {
             iterationSpan.setAttribute("stack.external-db-sync.iteration-error", true);
             captureError(
