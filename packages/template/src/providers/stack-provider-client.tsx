@@ -2,9 +2,8 @@
 
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
-import React, { Suspense, useEffect } from "react";
+import React, { useEffect } from "react";
 import { useStackApp } from "..";
-import { AnalyticsOptions, StackAnalyticsInternal } from "../components/stack-analytics";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
 
 export const StackContext = React.createContext<null | {
@@ -14,7 +13,6 @@ export const StackContext = React.createContext<null | {
 export function StackProviderClient(props: {
   app: StackClientAppJson<true, string> | StackClientApp<true>,
   serialized: boolean,
-  analytics?: AnalyticsOptions,
   children?: React.ReactNode,
 }) {
   const app = props.serialized
@@ -24,7 +22,6 @@ export function StackProviderClient(props: {
 
   return (
     <StackContext.Provider value={{ app }}>
-      {props.analytics?.replays?.enabled === true ? <Suspense fallback={null}><StackAnalyticsInternal replayOptions={props.analytics.replays} /></Suspense> : null}
       {props.children}
     </StackContext.Provider>
   );

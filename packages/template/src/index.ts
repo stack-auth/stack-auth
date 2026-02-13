@@ -2,7 +2,7 @@ export * from './lib/stack-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
 
 // IF_PLATFORM react-like
-export type { AnalyticsOptions, AnalyticsReplayOptions } from "./components/stack-analytics";
+export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-recording";
 export { default as StackHandler } from "./components-page/stack-handler";
 export { useStackApp, useUser } from "./lib/hooks";
 export { default as StackProvider } from "./providers/stack-provider";
