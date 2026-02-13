@@ -4,7 +4,8 @@ import { CodeBlock } from '@/components/code-block';
 import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
+import { DesignButton } from "@/components/design-components";
 import { useThemeWatcher } from '@/lib/theme';
 import { BookIcon, XIcon } from "@phosphor-icons/react";
 import { use } from "@stackframe/stack-shared/dist/utils/react";
@@ -423,10 +424,10 @@ export default function SetupPage(props: { toMetrics: () => void }) {
   return (
     <PageLayout width={1000}>
       <div className="flex justify-end">
-        <Button variant='plain' onClick={props.toMetrics}>
+        <DesignButton variant='plain' onClick={props.toMetrics}>
           Close Setup
           <XIcon className="w-4 h-4 ml-1 mt-0.5" />
-        </Button>
+        </DesignButton>
       </div>
       <div className="flex gap-4 justify-center items-center border rounded-2xl py-4 px-8 backdrop-blur-md bg-slate-200/20 dark:bg-black/20">
         <GlobeIllustration />
@@ -443,7 +444,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
           </div>
 
           <Typography>
-            <Button
+            <DesignButton
               variant='outline'
               size='sm'
               onClick={() => {
@@ -452,7 +453,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             >
               <BookIcon className="w-4 h-4 mr-2" />
               Full Documentation
-            </Button>
+            </DesignButton>
           </Typography>
         </div>
       </div>
@@ -486,7 +487,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                     reverseIfDark: false,
                     imgSrc: '/python-logo.svg',
                   }] as const).map(({ name, imgSrc: src, reverseIfDark, id }) => (
-                    <Button
+                    <DesignButton
                       key={id}
                       variant={id === selectedFramework ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 '
                       onClick={() => setSelectedFramework(id)}
@@ -502,7 +503,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                         style={{ width: '30px', height: 'auto' }}
                       />
                       <Typography type='label'>{name}</Typography>
-                    </Button>
+                    </DesignButton>
                   ))}
                 </div>
               </div>,
@@ -634,9 +635,9 @@ function StackAuthKeys(props: {
         </>
       ) : (
         <div className="flex items-center justify-center">
-          <Button onClick={props.onGenerateKeys}>
+          <DesignButton onClick={props.onGenerateKeys}>
             Generate Keys
-          </Button>
+          </DesignButton>
         </div>
       )}
     </div>
