@@ -214,7 +214,6 @@ export const GET = createSmartRouteHandler({
           try {
             const didUpdate = await backfillSequenceIds(batchSize);
             iterationSpan.setAttribute("stack.external-db-sync.did-update", didUpdate);
-            console.log(`[Sequencer] Backfilled ${didUpdate ? "some" : "no"} sequence IDs`);
           } catch (error) {
             iterationSpan.setAttribute("stack.external-db-sync.iteration-error", true);
             captureError(
