@@ -833,7 +833,7 @@ model EmailOutbox {
   // The scheduled time of when the email should be added to the queue. Can be edited, but only if the email has not yet started sending. Doing so should set isQueued to false.
   scheduledAt DateTime
 
-  // The scheduled time of the email if it is in the future.
+  // Whether the email has been queued for sending. Once queued, this stays true unless the email is retried or rescheduled.
   isQueued Boolean @default(false)
 
   // A generated column that is equal to scheduledAt if isQueued is false, otherwise null. See the note above on EmailOutboxStatus.status for more details on dbgenerated values.
@@ -886,6 +886,7 @@ model EmailOutbox {
   @@index([tenancyId, finishedSendingAt(sort: Desc), scheduledAtIfNotYetQueued(sort: Desc), priority, id], map: "EmailOutbox_ordering_idx")
   @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
   @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
+  @@index([isQueued], map: "EmailOutbox_isQueued_idx")
 }
 
 model EmailOutboxProcessingMetadata {
