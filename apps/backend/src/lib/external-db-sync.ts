@@ -329,6 +329,16 @@ function getInternalDbFetchQuery(mapping: DbSyncMapping, dbType: ExternalDbType)
   return mapping.internalDbFetchQuery;
 }
 
+function normalizeClickhouseJsonObject(value: unknown, label: string): Record<string, unknown> {
+  if (value == null) {
+    return {};
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new StackAssertionError(`${label} must be a JSON object. Received: ${JSON.stringify(value)}`);
+  }
+  return value as Record<string, unknown>;
+}
+
 function normalizeClickhouseBoolean(value: unknown, label: string): number {
   if (typeof value === "boolean") {
     return value ? 1 : 0;
@@ -430,6 +440,9 @@ async function pushRowsToClickhouse(
     return {
       ...rest,
       sync_sequence_id: sequenceId,
+      client_metadata: normalizeClickhouseJsonObject(rest.client_metadata, "client_metadata"),
+      client_read_only_metadata: normalizeClickhouseJsonObject(rest.client_read_only_metadata, "client_read_only_metadata"),
+      server_metadata: normalizeClickhouseJsonObject(rest.server_metadata, "server_metadata"),
       primary_email_verified: normalizeClickhouseBoolean(rest.primary_email_verified, "primary_email_verified"),
       is_anonymous: normalizeClickhouseBoolean(rest.is_anonymous, "is_anonymous"),
       restricted_by_admin: normalizeClickhouseBoolean(rest.restricted_by_admin, "restricted_by_admin"),
