@@ -17,6 +17,7 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: USERS_TABLE_BASE_SQL });
   await client.exec({ query: USERS_VIEW_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
+  await client.exec({ query: SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",
@@ -93,6 +94,27 @@ WHERE event_type = '$token-refresh'
   AND JSONHas(toJSONString(data), 'refreshTokenId');
 `;
 
+// Normalizes legacy $sign-up-rule-trigger rows (camelCase JSON) to the new format:
+// - Row identity stays in columns (project_id/branch_id)
+// - data JSON becomes { project_id, branch_id, rule_id, action, email, auth_method, oauth_provider } (snake_case)
+const SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL = `
+ALTER TABLE analytics_internal.events
+UPDATE
+  data = CAST(concat(
+    '{',
+      '"project_id":', toJSONString(JSONExtractString(toJSONString(data), 'projectId')), ',',
+      '"branch_id":', toJSONString(JSONExtractString(toJSONString(data), 'branchId')), ',',
+      '"rule_id":', toJSONString(JSONExtractString(toJSONString(data), 'ruleId')), ',',
+      '"action":', toJSONString(JSONExtractString(toJSONString(data), 'action')), ',',
+      '"email":', toJSONString(JSONExtract(toJSONString(data), 'email', 'Nullable(String)')), ',',
+      '"auth_method":', toJSONString(JSONExtract(toJSONString(data), 'authMethod', 'Nullable(String)')), ',',
+      '"oauth_provider":', toJSONString(JSONExtract(toJSONString(data), 'oauthProvider', 'Nullable(String)')),
+    '}'
+  ) AS JSON)
+WHERE event_type = '$sign-up-rule-trigger'
+  AND JSONHas(toJSONString(data), 'ruleId');
+`;
+
 const USERS_TABLE_BASE_SQL = `
 CREATE TABLE IF NOT EXISTS analytics_internal.users (
     project_id String,
@@ -103,9 +125,9 @@ CREATE TABLE IF NOT EXISTS analytics_internal.users (
     primary_email Nullable(String),
     primary_email_verified UInt8,
     signed_up_at DateTime64(3, 'UTC'),
-    client_metadata JSON,
-    client_read_only_metadata JSON,
-    server_metadata JSON,
+    client_metadata String,
+    client_read_only_metadata String,
+    server_metadata String,
     is_anonymous UInt8,
     restricted_by_admin UInt8,
     restricted_by_admin_reason Nullable(String),

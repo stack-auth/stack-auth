@@ -430,6 +430,9 @@ async function pushRowsToClickhouse(
     return {
       ...rest,
       sync_sequence_id: sequenceId,
+      client_metadata: JSON.stringify(rest.client_metadata),
+      client_read_only_metadata: JSON.stringify(rest.client_read_only_metadata),
+      server_metadata: JSON.stringify(rest.server_metadata),
       primary_email_verified: normalizeClickhouseBoolean(rest.primary_email_verified, "primary_email_verified"),
       is_anonymous: normalizeClickhouseBoolean(rest.is_anonymous, "is_anonymous"),
       restricted_by_admin: normalizeClickhouseBoolean(rest.restricted_by_admin, "restricted_by_admin"),
