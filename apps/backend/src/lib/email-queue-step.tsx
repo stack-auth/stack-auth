@@ -502,15 +502,26 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
 }
 
 async function queueReadyEmails(): Promise<{ queuedCount: number }> {
-  // Queue emails that are ready to send:
-  // - Fresh emails: scheduledAt has passed and no retry pending
-  // - Retry emails: both scheduledAt AND nextSendRetryAt have passed
-  //
+  // Queue emails that are ready to send. Split into two queries for clarity and index usage.
   // We always require scheduledAt <= NOW() to respect the original scheduling intent.
-  // nextSendRetryAt should not bypass scheduledAt (e.g., if data is corrupted or manually edited).
-  //
+
+  // Query 1: Fresh emails (scheduledAt has passed, no retry pending)
+  const freshEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
+    UPDATE "EmailOutbox"
+    SET "isQueued" = TRUE
+    WHERE "isQueued" = FALSE
+      AND "isPaused" = FALSE
+      AND "skippedReason" IS NULL
+      AND "finishedRenderingAt" IS NOT NULL
+      AND "renderedHtml" IS NOT NULL
+      AND "scheduledAt" <= NOW()
+      AND "nextSendRetryAt" IS NULL
+    RETURNING "id";
+  `;
+
+  // Query 2: Retry emails (both scheduledAt AND nextSendRetryAt have passed)
   // Clear nextSendRetryAt when queuing so the email is in a clean "queued" state.
-  const res = await globalPrismaClient.$queryRaw<{ id: string }[]>`
+  const retryEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
     SET "isQueued" = TRUE, "nextSendRetryAt" = NULL
     WHERE "isQueued" = FALSE
@@ -519,17 +530,12 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
       AND "finishedRenderingAt" IS NOT NULL
       AND "renderedHtml" IS NOT NULL
       AND "scheduledAt" <= NOW()
-      AND (
-        -- Fresh emails: no retry pending
-        "nextSendRetryAt" IS NULL
-        OR
-        -- Retry emails: retry time has passed
-        "nextSendRetryAt" <= NOW()
-      )
+      AND "nextSendRetryAt" <= NOW()
     RETURNING "id";
   `;
+
   return {
-    queuedCount: res.length,
+    queuedCount: freshEmails.length + retryEmails.length,
   };
 }
 
