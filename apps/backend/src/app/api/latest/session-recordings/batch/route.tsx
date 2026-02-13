@@ -42,6 +42,7 @@ export const POST = createSmartRouteHandler({
     summary: "Upload rrweb session recording batch",
     description: "Uploads a batch of rrweb events for a cross-tab session recording.",
     tags: ["Session Recordings"],
+    hidden: true
   },
   request: yupObject({
     auth: yupObject({

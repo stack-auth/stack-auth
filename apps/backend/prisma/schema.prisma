@@ -301,6 +301,7 @@ model SessionRecording {
   @@id([tenancyId, id])
   @@index([tenancyId, projectUserId, startedAt])
   @@index([tenancyId, lastEventAt])
+  // index by updatedAt instead of lastEventAt because event timing can be spoofed
   @@index([tenancyId, refreshTokenId, updatedAt])
 }
 
