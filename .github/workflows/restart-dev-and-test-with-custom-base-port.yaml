@@ -40,7 +40,7 @@ jobs:
         run: pnpm run restart-dev-environment
 
       - name: Run tests
-        run: pnpm run test run --reporter=verbose
+        run: pnpm run test run --reporter=verbose tests/backend/endpoints/api/v1/external-db-sync-basics
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt

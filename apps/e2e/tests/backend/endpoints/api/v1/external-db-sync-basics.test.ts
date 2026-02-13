@@ -28,25 +28,26 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
   const intervalMs = 2_000;
   const start = performance.now();
 
+  let lastResponse: any;
   while (performance.now() - start < timeoutMs) {
-    const response = await runQueryForCurrentProject({
+    lastResponse = await runQueryForCurrentProject({
       query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
       params: {
         email,
       },
     });
     if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 1
-      && response.body.result[0]?.display_name === expectedDisplayName
+      lastResponse.status === 200
+      && Array.isArray(lastResponse.body?.result)
+      && lastResponse.body.result.length === 1
+      && lastResponse.body.result[0]?.display_name === expectedDisplayName
     ) {
-      return response;
+      return lastResponse;
     }
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`);
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync. Last response: status=${lastResponse?.status}, body=${JSON.stringify(lastResponse?.body)?.slice(0, 500)}`);
 }
 
 async function waitForClickhouseUserDeletion(email: string) {
@@ -54,24 +55,25 @@ async function waitForClickhouseUserDeletion(email: string) {
   const intervalMs = 2_000;
   const start = performance.now();
 
+  let lastResponse: any;
   while (performance.now() - start < timeoutMs) {
-    const response = await runQueryForCurrentProject({
+    lastResponse = await runQueryForCurrentProject({
       query: "SELECT primary_email FROM users WHERE primary_email = {email:String}",
       params: {
         email,
       },
     });
     if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 0
+      lastResponse.status === 200
+      && Array.isArray(lastResponse.body?.result)
+      && lastResponse.body.result.length === 0
     ) {
       return;
     }
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`);
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted. Last response: status=${lastResponse?.status}, body=${JSON.stringify(lastResponse?.body)?.slice(0, 500)}`);
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
