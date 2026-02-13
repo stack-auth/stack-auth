@@ -1,8 +1,10 @@
 import { cn } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
-import { ArrowSquareOutIcon, CheckIcon, CopyIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useChat } from "ai/react";
+import { useChat, type UIMessage } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { usePathname } from "next/navigation";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -152,6 +154,161 @@ const SmartLink = memo(function SmartLink({ href, children }: {
   );
 });
 
+// Tool invocation type from AI SDK (matches the actual UIMessage part structure)
+type ToolInvocationPart = {
+  type: `tool-${string}`,
+  toolCallId: string,
+  state: "input-streaming" | "input-available" | "output-available" | "output-error" | "approval-requested" | "approval-responded" | "output-denied",
+  input: unknown,
+  output?: unknown,
+  errorText?: string,
+};
+
+// Expandable tool invocation card
+const ToolInvocationCard = memo(function ToolInvocationCard({
+  invocation,
+}: {
+  invocation: ToolInvocationPart,
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isLoading = invocation.state === "input-streaming" || invocation.state === "input-available";
+  const hasResult = invocation.state === "output-available";
+  const hasError = invocation.state === "output-error";
+
+  // Extract tool name from type (e.g., "tool-queryAnalytics" → "queryAnalytics")
+  const toolName = invocation.type.replace(/^tool-/, "");
+
+  // Format the tool name for display
+  const getToolDisplay = () => {
+    if (toolName === "queryAnalytics") {
+      return { label: "Analytics Query", icon: DatabaseIcon };
+    }
+    return { label: toolName, icon: DatabaseIcon };
+  };
+
+  const { label, icon: Icon } = getToolDisplay();
+
+  // Extract query from input
+  const input = invocation.input as { query?: string } | undefined;
+  const queryArg = input?.query;
+  const result = invocation.output as { success?: boolean, result?: unknown[], error?: string, rowCount?: number } | undefined;
+
+  return (
+    <div
+      className={cn(
+        "my-2 rounded-lg overflow-hidden transition-all duration-200 ease-out",
+        "bg-foreground/[0.03] ring-1 ring-foreground/[0.08]",
+        isExpanded && "ring-purple-500/20"
+      )}
+    >
+      {/* Header - always visible */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "w-full flex items-center gap-2 px-3 py-2 text-left",
+          "hover:bg-foreground/[0.02] transition-colors"
+        )}
+      >
+        <Icon className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+        <span className="text-[12px] font-medium text-foreground/80 flex-1">
+          {label}
+        </span>
+        {isLoading ? (
+          <SpinnerGapIcon className="h-3 w-3 text-purple-400 animate-spin shrink-0" />
+        ) : hasError ? (
+          <span className="text-[10px] text-red-400/80 shrink-0">Error</span>
+        ) : hasResult && result?.success ? (
+          <span className="text-[10px] text-green-400/80 shrink-0">
+            {result.rowCount} {result.rowCount === 1 ? "row" : "rows"}
+          </span>
+        ) : hasResult && !result?.success ? (
+          <span className="text-[10px] text-red-400/80 shrink-0">Error</span>
+        ) : null}
+        <div className={cn(
+          "transition-transform duration-200",
+          isExpanded && "rotate-0",
+          !isExpanded && "-rotate-90"
+        )}>
+          <CaretDownIcon className="h-3 w-3 text-muted-foreground/50" />
+        </div>
+      </button>
+
+      {/* Expandable content */}
+      <div
+        className={cn(
+          "grid transition-all duration-200 ease-out",
+          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="px-3 pb-3 pt-1 space-y-2 border-t border-foreground/[0.06]">
+            {/* Query */}
+            {queryArg && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                    Query
+                  </span>
+                  <CopyButton text={queryArg} size="xs" />
+                </div>
+                <pre className="text-[10px] font-mono text-foreground/70 bg-foreground/[0.03] rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
+                  {queryArg}
+                </pre>
+              </div>
+            )}
+
+            {/* Result */}
+            {hasResult && result && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                    {result.success ? "Result" : "Error"}
+                  </span>
+                  {result.success && result.result && (
+                    <CopyButton text={JSON.stringify(result.result, null, 2)} size="xs" />
+                  )}
+                </div>
+                {result.success ? (
+                  <pre className="text-[10px] font-mono text-foreground/70 bg-foreground/[0.03] rounded px-2 py-1.5 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+                    {JSON.stringify(result.result, null, 2)}
+                  </pre>
+                ) : (
+                  <div className="text-[11px] text-red-400/90 bg-red-500/[0.08] rounded px-2 py-1.5">
+                    {result.error || "Query failed"}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Error state from SDK */}
+            {hasError && invocation.errorText && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+                    Error
+                  </span>
+                </div>
+                <div className="text-[11px] text-red-400/90 bg-red-500/[0.08] rounded px-2 py-1.5">
+                  {invocation.errorText}
+                </div>
+              </div>
+            )}
+
+            {/* Loading state */}
+            {isLoading && (
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 py-1">
+                <SpinnerGapIcon className="h-3 w-3 animate-spin" />
+                <span>Running query...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 // Memoized markdown components for consistent rendering
 const markdownComponents = {
   p: ({ children }: { children?: React.ReactNode }) => (
@@ -258,25 +415,66 @@ const UserMessage = memo(function UserMessage({ content }: { content: string }) 
 });
 
 // Memoized assistant message component
-const AssistantMessage = memo(function AssistantMessage({ content }: { content: string }) {
+const AssistantMessage = memo(function AssistantMessage({
+  content,
+  toolInvocations,
+}: {
+  content: string,
+  toolInvocations?: ToolInvocationPart[],
+}) {
+  const hasToolInvocations = toolInvocations && toolInvocations.length > 0;
+  const hasContent = content.trim().length > 0;
+
   return (
     <div className="flex gap-2.5 justify-start">
       <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-purple-500/10 flex items-center justify-center">
         <SparkleIcon className="h-3 w-3 text-purple-400" />
       </div>
-      <div className="min-w-0 rounded-xl px-3.5 py-2 max-w-[calc(100%-2rem)] bg-foreground/[0.02]">
-        <div className="min-w-0 overflow-hidden">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={markdownComponents}
-          >
-            {content}
-          </ReactMarkdown>
-        </div>
+      <div className="min-w-0 max-w-[calc(100%-2rem)] flex flex-col gap-1">
+        {/* Tool invocations */}
+        {hasToolInvocations && (
+          <div className="space-y-1">
+            {toolInvocations.map((invocation) => (
+              <ToolInvocationCard
+                key={invocation.toolCallId}
+                invocation={invocation}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Text content */}
+        {hasContent && (
+          <div className="rounded-xl px-3.5 py-2 bg-foreground/[0.02]">
+            <div className="min-w-0 overflow-hidden">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+              >
+                {content}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 });
+
+// Helper to extract text content from UIMessage parts
+function getMessageContent(message: UIMessage): string {
+  return message.parts
+    .filter((part): part is { type: "text", text: string } => part.type === "text")
+    .map(part => part.text)
+    .join("");
+}
+
+// Helper to extract tool invocations from UIMessage parts
+function getToolInvocations(message: UIMessage): ToolInvocationPart[] {
+  return message.parts
+    .filter((part) => part.type.startsWith("tool-"))
+    .map((part) => part as unknown as ToolInvocationPart);
+}
 
 // Word streaming hook - handles the progressive word reveal animation
 function useWordStreaming(content: string) {
@@ -336,29 +534,38 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
 
+  // Extract projectId from URL path (e.g., /projects/abc123/...)
+  const pathname = usePathname();
+  const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : null;
+
   const trimmedQuery = query.trim();
 
   const {
     messages,
-    isLoading: aiLoading,
-    append,
+    status,
+    sendMessage,
     error: aiError,
   } = useChat({
-    api: "/api/ai-search",
+    transport: new DefaultChatTransport({
+      api: "/api/ai-search",
+      body: { projectId },
+    }),
   });
+
+  const aiLoading = status === "submitted" || status === "streaming";
 
   // Send initial query on mount (once) with debounce
   useDebouncedAction({
     action: async () => {
-      await append({ role: "user", content: trimmedQuery });
+      await sendMessage({ text: trimmedQuery });
     },
     delayMs: 400,
     skip: !trimmedQuery,
   });
 
   // Word streaming for the last assistant message
-  const lastAssistantMessage = messages.slice(1).findLast(m => m.role === "assistant");
-  const lastAssistantContent = lastAssistantMessage?.content ?? "";
+  const lastAssistantMessage = messages.slice(1).findLast((m: UIMessage) => m.role === "assistant");
+  const lastAssistantContent = lastAssistantMessage ? getMessageContent(lastAssistantMessage) : "";
   const { displayedWordCount, targetWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
   const isStreaming = aiLoading && lastAssistantMessage;
 
@@ -397,15 +604,15 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   }, [messages, aiLoading]);
 
   // Handle follow-up questions
-  const handleFollowUp = useCallback(async () => {
+  const handleFollowUp = useCallback(() => {
     if (!followUpInput.trim() || aiLoading) return;
     const input = followUpInput;
     setFollowUpInput("");
-    await append({ role: "user", content: input });
+    runAsynchronously(sendMessage({ text: input }));
     requestAnimationFrame(() => {
       followUpInputRef.current?.focus();
     });
-  }, [followUpInput, append, aiLoading]);
+  }, [followUpInput, sendMessage, aiLoading]);
 
   // Handle follow-up input keyboard
   const handleFollowUpKeyDown = useCallback(
@@ -435,7 +642,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   );
 
   // Determine what to show in the loading state
-  const showLoadingIndicator = messages.length === 0 || (aiLoading && !messages.some(m => m.role === "assistant" && m.content));
+  const showLoadingIndicator = messages.length === 0 || (aiLoading && !messages.some((m: UIMessage) => m.role === "assistant" && getMessageContent(m)));
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -446,23 +653,32 @@ const AIChatPreviewInner = memo(function AIChatPreview({
         className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4"
         style={{ scrollbarGutter: "stable" }}
       >
-        {messages.slice(1).map((message, index, arr) => {
+        {messages.slice(1).map((message: UIMessage, index: number, arr: UIMessage[]) => {
+          const messageContent = getMessageContent(message);
+          const toolInvocations = message.role === "assistant" ? getToolInvocations(message) : [];
+
           // For the last assistant message, apply word-by-word streaming
           const isLastAssistant = message.role === "assistant" &&
             index === arr.length - 1 - (arr[arr.length - 1]?.role === "user" ? 1 : 0);
           const displayContent = message.role === "assistant" && isLastAssistant
-            ? getDisplayContent(message.content)
-            : message.content;
+            ? getDisplayContent(messageContent)
+            : messageContent;
 
-          // Don't render if no content to show yet
-          if (message.role === "assistant" && isLastAssistant && !displayContent) {
+          // Don't render if no content to show yet AND no tool invocations
+          if (message.role === "assistant" && isLastAssistant && !displayContent && toolInvocations.length === 0) {
             return null;
           }
 
           if (message.role === "user") {
-            return <UserMessage key={message.id || index} content={message.content} />;
+            return <UserMessage key={message.id || index} content={messageContent} />;
           }
-          return <AssistantMessage key={message.id || index} content={displayContent} />;
+          return (
+            <AssistantMessage
+              key={message.id || index}
+              content={displayContent}
+              toolInvocations={toolInvocations}
+            />
+          );
         })}
 
         {/* Loading indicator */}

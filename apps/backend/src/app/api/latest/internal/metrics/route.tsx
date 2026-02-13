@@ -1,7 +1,6 @@
-import { Prisma } from "@/generated/prisma/client";
-import { getOrSetCacheValue } from "@/lib/cache";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, PrismaClientTransaction, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, PrismaClientTransaction, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -11,25 +10,17 @@ import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../user
 
 type DataPoints = yup.InferType<typeof DataPointsSchema>;
 
-const METRICS_CACHE_NAMESPACE = "metrics";
-const ONE_HOUR_MS = 60 * 60 * 1000;
 const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
-
-async function withMetricsCache<T>(tenancy: Tenancy, suffix: string, prisma: PrismaClientTransaction, includeAnonymous: boolean = false, loader: () => Promise<T>): Promise<T> {
-  return await getOrSetCacheValue<T>({
-    namespace: METRICS_CACHE_NAMESPACE,
-    cacheKey: `${tenancy.id}:${suffix}:${includeAnonymous ? "anon" : "non_anon"}`,
-    ttlMs: ONE_HOUR_MS,
-    prisma,
-    loader,
-  });
-}
 
 const DataPointsSchema = yupArray(yupObject({
   date: yupString().defined(),
   activity: yupNumber().defined(),
 }).defined()).defined();
 
+function formatClickhouseDateTimeParam(date: Date): string {
+  // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
+  return date.toISOString().slice(0, 19);
+}
 
 async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransaction, includeAnonymous: boolean = false): Promise<Record<string, number>> {
   const totalUsers = await prisma.projectUser.count({
@@ -53,39 +44,57 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
   }
 
   const userIds = users.map((user) => user.projectUserId);
-  const userIdArray = Prisma.sql`ARRAY[${Prisma.join(userIds.map((id) => Prisma.sql`${id}`))}]::text[]`;
   const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
 
-  const rows = await globalPrismaClient.$replica().$queryRaw<{ countryCode: string | null, userCount: bigint }[]>(Prisma.sql`
-    WITH latest_ip AS (
-      SELECT DISTINCT ON (e."data"->>'userId')
-        e."data"->>'userId' AS "userId",
-        eip."countryCode" AS "countryCode"
-      FROM "Event" e
-      JOIN "EventIpInfo" eip
-        ON eip.id = e."endUserIpInfoGuessId"
-      WHERE '$user-activity' = ANY(e."systemEventTypeIds"::text[])
-        AND e."data"->>'projectId' = ${tenancy.project.id}
-        AND COALESCE(e."data"->>'branchId', 'main') = ${tenancy.branchId}
-        AND e."data"->>'userId' = ANY(${userIdArray})
-        AND e."endUserIpInfoGuessId" IS NOT NULL
-        AND eip."countryCode" IS NOT NULL
-      ORDER BY e."data"->>'userId', e."eventStartedAt" DESC
-    )
-    SELECT "countryCode", COUNT("userId") AS "userCount"
-    FROM latest_ip
-    GROUP BY "countryCode"
-    ORDER BY "userCount" DESC;
-  `);
+  const clickhouseClient = getClickhouseAdminClient();
+  const res = await clickhouseClient.query({
+    query: `
+      SELECT
+        country_code,
+        count() AS userCount
+      FROM (
+        SELECT
+          user_id,
+          argMax(cc, event_at) AS country_code
+        FROM (
+          SELECT
+            user_id,
+            event_at,
+            CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
+            CAST(data.is_anonymous, 'UInt8') AS is_anonymous
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND has({userIds:Array(String)}, assumeNotNull(user_id))
+        )
+        WHERE cc IS NOT NULL
+          AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
+        GROUP BY user_id
+      )
+      WHERE country_code IS NOT NULL
+      GROUP BY country_code
+      ORDER BY userCount DESC
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      userIds,
+      includeAnonymous: includeAnonymous ? 1 : 0,
+    },
+    format: "JSONEachRow",
+  });
+  const rows: { country_code: string, userCount: number }[] = await res.json();
 
   return Object.fromEntries(
-    rows.map(({ userCount, countryCode }) => {
-      if (!countryCode) {
+    rows.map(({ userCount, country_code }) => {
+      if (!country_code) {
         return null;
       }
       const count = Number(userCount);
       const estimatedCount = scalingFactor === 1 ? count : Math.round(count * scalingFactor);
-      return [countryCode, estimatedCount] as [string, number];
+      return [country_code, estimatedCount] as [string, number];
     })
       .filter((entry): entry is [string, number] => entry !== null)
   );
@@ -121,49 +130,56 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
 }
 
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
-  const res = await globalPrismaClient.$replica().$queryRaw<{ day: Date, dau: bigint }[]>`
-    WITH date_series AS (
-      SELECT GENERATE_SERIES(
-        ${now}::date - INTERVAL '30 days',
-        ${now}::date,
-        '1 day'
-      )
-      AS "day"
-    ),
-    filtered_events AS (
-      SELECT
-        ("eventStartedAt"::date) AS "day",
-        "data"->>'userId' AS "userId"
-      FROM "Event"
-      WHERE "eventStartedAt" >= ${now}::date - INTERVAL '30 days'
-        AND "eventStartedAt" < ${now}::date + INTERVAL '1 day'
-        AND '$user-activity' = ANY("systemEventTypeIds"::text[])
-        AND "data"->>'projectId' = ${tenancy.project.id}
-        AND COALESCE("data"->>'branchId', 'main') = ${tenancy.branchId}
-        AND (${includeAnonymous} OR COALESCE("data"->>'isAnonymous', 'false') != 'true')
-        AND "data"->>'userId' IS NOT NULL
-    ),
-    unique_daily_users AS (
-      SELECT "day", "userId"
-      FROM filtered_events
-      GROUP BY "day", "userId"
-    ),
-    daily_users AS (
-      SELECT "day", COUNT(*) AS "dau"
-      FROM unique_daily_users
-      GROUP BY "day"
-    )
-    SELECT ds."day", COALESCE(du.dau, 0) AS dau
-    FROM date_series ds
-    LEFT JOIN daily_users du 
-    ON ds."day" = du."day"
-    ORDER BY ds."day"
-  `;
+  const todayUtc = new Date(now);
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const untilExclusive = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
 
-  return res.map(x => ({
-    date: x.day.toISOString().split('T')[0],
-    activity: Number(x.dau),
-  })) as DataPoints;
+  const clickhouseClient = getClickhouseAdminClient();
+  const result = await clickhouseClient.query({
+    query: `
+      SELECT
+        toDate(event_at) AS day,
+        uniqExact(assumeNotNull(user_id)) AS dau
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND user_id IS NOT NULL
+        AND event_at >= {since:DateTime}
+        AND event_at < {untilExclusive:DateTime}
+        AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+      GROUP BY day
+      ORDER BY day ASC
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+      includeAnonymous: includeAnonymous ? 1 : 0,
+    },
+    format: "JSONEachRow",
+  });
+
+  const rows: { day: string, dau: number }[] = await result.json();
+  const dauByDay = new Map<string, number>();
+  for (const row of rows) {
+    // ClickHouse returns dates/datetimes without timezone, treat as UTC.
+    const dayKey = new Date(row.day + 'Z').toISOString().split('T')[0];
+    dauByDay.set(dayKey, Number(row.dau));
+  }
+
+  const out: DataPoints = [];
+  for (let i = 0; i <= 30; i += 1) {
+    const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+    const dayKey = day.toISOString().split('T')[0];
+    out.push({
+      date: dayKey,
+      activity: dauByDay.get(dayKey) ?? 0,
+    });
+  }
+  return out;
 }
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
@@ -255,20 +271,8 @@ export const GET = createSmartRouteHandler({
         where: { tenancyId: req.auth.tenancy.id, ...(includeAnonymous ? {} : { isAnonymous: false }) },
       }),
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
-      withMetricsCache(
-        req.auth.tenancy,
-        "daily_active_users",
-        prisma,
-        includeAnonymous,
-        () => loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous)
-      ),
-      withMetricsCache(
-        req.auth.tenancy,
-        "users_by_country",
-        prisma,
-        includeAnonymous,
-        () => loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous)
-      ),
+      loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
+      loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
