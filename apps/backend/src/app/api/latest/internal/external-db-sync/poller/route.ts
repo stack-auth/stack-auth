@@ -214,6 +214,7 @@ export const GET = createSmartRouteHandler({
             await upstash.batchJSON(batchPayload);
             await deleteOutgoingRequests(requests.map((request) => request.id));
             processSpan.setAttribute("stack.external-db-sync.processed-count", requests.length);
+            console.log(`[Poller] Processed requests: ${requests.length}`);
             return requests.length;
           } catch (error) {
             processSpan.setAttribute("stack.external-db-sync.iteration-error", true);
