@@ -20,6 +20,7 @@ const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
 const POLLER_CLAIM_LIMIT_ENV = "STACK_EXTERNAL_DB_SYNC_POLL_CLAIM_LIMIT";
 const DEFAULT_POLL_CLAIM_LIMIT = 1000;
+const STALE_REQUEST_THRESHOLD_MS = 60 * 1000;
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -90,7 +91,6 @@ export const GET = createSmartRouteHandler({
       span.setAttribute("stack.external-db-sync.max-duration-ms", maxDurationMs);
       span.setAttribute("stack.external-db-sync.poll-interval-ms", pollIntervalMs);
       span.setAttribute("stack.external-db-sync.poller-claim-limit", pollerClaimLimit);
-      span.setAttribute("stack.external-db-sync.direct-sync", directSyncEnabled());
       span.setAttribute("stack.external-db-sync.stale-claim-minutes", staleClaimIntervalMinutes);
 
       let totalRequestsProcessed = 0;
@@ -172,11 +172,13 @@ export const GET = createSmartRouteHandler({
         }
 
         const flowControl = options.flowControl as UpstashRequest["flowControl"];
+        const deduplicationId = options.deduplicationId as UpstashRequest["deduplicationId"];
 
         return {
           url: fullUrl,
           body: options.body,
           ...(flowControl ? { flowControl } : {}),
+          ...(deduplicationId ? { deduplicationId } : {})
         };
       }
 
@@ -241,6 +243,24 @@ export const GET = createSmartRouteHandler({
           iterationSpan.setAttribute("stack.external-db-sync.poller-enabled", fusebox.pollerEnabled);
           if (!fusebox.pollerEnabled) {
             return { stopReason: "disabled", processed: 0 };
+          }
+
+          const staleRequests = await globalPrismaClient.$queryRaw<{ id: string, startedFulfillingAt: Date }[]>`
+            SELECT "id", "startedFulfillingAt"
+            FROM "OutgoingRequest"
+            WHERE "startedFulfillingAt" IS NOT NULL
+              AND "startedFulfillingAt" < NOW() - ${STALE_REQUEST_THRESHOLD_MS} * INTERVAL '1 millisecond'
+            LIMIT 10
+          `;
+          iterationSpan.setAttribute("stack.external-db-sync.stale-count", staleRequests.length);
+          if (staleRequests.length > 0) {
+            captureError(
+              "poller-stale-outgoing-requests",
+              new StackAssertionError(
+                `Found ${staleRequests.length} outgoing request(s) with startedFulfillingAt older than ${STALE_REQUEST_THRESHOLD_MS}ms`,
+                { staleRequestIds: staleRequests.map(r => r.id) },
+              ),
+            );
           }
 
           const pendingRequests = await claimPendingRequests();

@@ -33,11 +33,12 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
       json_build_object(
         'url',  '/api/latest/internal/external-db-sync/sync-engine',
         'body', json_build_object('tenancyId', t.tenancy_id),
-        'flowControl', json_build_object('key', 'sentinel-sync-key', 'parallelism', 20)
+        'flowControl', json_build_object('key', 'sentinel-sync-key', 'parallelism', 20),
+        'deduplicationId', t.tenancy_id
       ),
       NULL,
       'sentinel-sync-key-' || t.tenancy_id
     FROM unnest(${tenancyIds}::uuid[]) AS t(tenancy_id)
-    ON CONFLICT ("deduplicationKey") DO NOTHING
+    ON CONFLICT ("deduplicationKey") WHERE "startedFulfillingAt" IS NULL DO NOTHING
   `;
 }
