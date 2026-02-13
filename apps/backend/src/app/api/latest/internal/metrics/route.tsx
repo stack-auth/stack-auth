@@ -46,6 +46,12 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
   const userIds = users.map((user) => user.projectUserId);
   const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
 
+  // Build ClickHouse array literal inline in the query body (sent via POST) instead of
+  // passing as query_params (sent as URL params) to avoid the HTTP form field size limit
+  // when there are many user IDs. UUIDs contain only hex chars and dashes, but we escape
+  // single quotes for safety.
+  const userIdsArrayLiteral = `[${userIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',')}]`;
+
   const clickhouseClient = getClickhouseAdminClient();
   const res = await clickhouseClient.query({
     query: `
@@ -67,7 +73,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
-            AND has({userIds:Array(String)}, assumeNotNull(user_id))
+            AND has(${userIdsArrayLiteral}, assumeNotNull(user_id))
         )
         WHERE cc IS NOT NULL
           AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
@@ -80,7 +86,6 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
     query_params: {
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
-      userIds,
       includeAnonymous: includeAnonymous ? 1 : 0,
     },
     format: "JSONEachRow",
