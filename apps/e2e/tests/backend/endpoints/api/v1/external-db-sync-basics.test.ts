@@ -97,6 +97,70 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     await dbManager.cleanup();
   }, 60000); // 60 second timeout for cleanup
 
+  test("Updates to user are synced to ClickHouse", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: "clickhouse-update@example.com" });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "Before CH Update" },
+    });
+
+    await waitForClickhouseUser("clickhouse-update@example.com", "Before CH Update");
+
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "After CH Update" },
+    });
+
+    const response = await waitForClickhouseUser("clickhouse-update@example.com", "After CH Update");
+    expect(response.status).toBe(200);
+    expect(response.body?.result?.[0]).toMatchObject({
+      display_name: "After CH Update",
+      primary_email: "clickhouse-update@example.com",
+    });
+  }, TEST_TIMEOUT);
+
+  test("Deleted user is removed from ClickHouse view", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: "clickhouse-delete@example.com" });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "CH Delete User" },
+    });
+
+    await waitForClickhouseUser("clickhouse-delete@example.com", "CH Delete User");
+
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "DELETE",
+    });
+
+    await waitForClickhouseUserDeletion("clickhouse-delete@example.com");
+  }, TEST_TIMEOUT);
+
+  test("Syncs users to ClickHouse by default", async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: "clickhouse-sync@example.com" });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { display_name: "ClickHouse Sync User" },
+    });
+
+    const response = await waitForClickhouseUser("clickhouse-sync@example.com", "ClickHouse Sync User");
+    expect(response.status).toBe(200);
+    expect(response.body?.result?.[0]).toMatchObject({
+      display_name: "ClickHouse Sync User",
+      primary_email: "clickhouse-sync@example.com",
+    });
+  }, TEST_TIMEOUT);
+
   /**
    * What it does:
    * - Creates a user, patches the display name, and triggers the sync once.
@@ -548,69 +612,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
   }, TEST_TIMEOUT);
 
-  test("Updates to user are synced to ClickHouse", async ({ expect }) => {
-    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-
-    const user = await User.create({ primary_email: "clickhouse-update@example.com" });
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: "admin",
-      method: "PATCH",
-      body: { display_name: "Before CH Update" },
-    });
-
-    await waitForClickhouseUser("clickhouse-update@example.com", "Before CH Update");
-
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: "admin",
-      method: "PATCH",
-      body: { display_name: "After CH Update" },
-    });
-
-    const response = await waitForClickhouseUser("clickhouse-update@example.com", "After CH Update");
-    expect(response.status).toBe(200);
-    expect(response.body?.result?.[0]).toMatchObject({
-      display_name: "After CH Update",
-      primary_email: "clickhouse-update@example.com",
-    });
-  }, TEST_TIMEOUT);
-
-  test("Deleted user is removed from ClickHouse view", async ({ expect }) => {
-    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-
-    const user = await User.create({ primary_email: "clickhouse-delete@example.com" });
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: "admin",
-      method: "PATCH",
-      body: { display_name: "CH Delete User" },
-    });
-
-    await waitForClickhouseUser("clickhouse-delete@example.com", "CH Delete User");
-
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: "admin",
-      method: "DELETE",
-    });
-
-    await waitForClickhouseUserDeletion("clickhouse-delete@example.com");
-  }, TEST_TIMEOUT);
-
-  test("Syncs users to ClickHouse by default", async ({ expect }) => {
-    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
-
-    const user = await User.create({ primary_email: "clickhouse-sync@example.com" });
-    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
-      accessType: "admin",
-      method: "PATCH",
-      body: { display_name: "ClickHouse Sync User" },
-    });
-
-    const response = await waitForClickhouseUser("clickhouse-sync@example.com", "ClickHouse Sync User");
-    expect(response.status).toBe(200);
-    expect(response.body?.result?.[0]).toMatchObject({
-      display_name: "ClickHouse Sync User",
-      primary_email: "clickhouse-sync@example.com",
-    });
-  }, TEST_TIMEOUT);
 });
 
 
