@@ -2,12 +2,14 @@ import { Tenancy } from "@/lib/tenancies";
 import type { PrismaTransaction } from "@/lib/types";
 import { getPrismaClientForTenancy, PrismaClientWithReplica } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { DEFAULT_DB_SYNC_MAPPINGS } from "@stackframe/stack-shared/dist/config/db-sync-mappings";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { ClickHouseClient } from "@clickhouse/client";
 import { Client } from 'pg';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,6 +42,9 @@ type ExternalDbSyncTarget =
     projectUserId: string,
     contactChannelId: string,
   };
+
+type ExternalDbType = NonNullable<NonNullable<CompleteConfig["dbSync"]["externalDatabases"][string]>["type"]>;
+type DbSyncMapping = typeof DEFAULT_DB_SYNC_MAPPINGS[keyof typeof DEFAULT_DB_SYNC_MAPPINGS];
 
 export function withExternalDbSyncUpdate<T extends object>(data: T): T & { shouldUpdateSequenceId: true } {
   return {
@@ -320,21 +325,203 @@ async function pushRowsToExternalDb(
   }
 }
 
+function getInternalDbFetchQuery(mapping: DbSyncMapping, dbType: ExternalDbType) {
+  return mapping.internalDbFetchQuery;
+}
 
-async function syncMapping(
+function normalizeClickhouseBoolean(value: unknown, label: string): number {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  if (typeof value === "bigint") {
+    if (value === 0n) return 0;
+    if (value === 1n) return 1;
+  }
+  if (value === 0 || value === 1) {
+    return value;
+  }
+  throw new StackAssertionError(`${label} must be a boolean or 0/1. Received: ${JSON.stringify(value)}`);
+}
+
+function parseSequenceId(value: unknown, mappingId: string): number | null {
+  if (value == null) {
+    return null;
+  }
+  const seqNum = typeof value === "bigint" ? Number(value) : Number(value);
+  if (!Number.isFinite(seqNum)) {
+    throw new StackAssertionError(
+      `Invalid sequence_id for mapping ${mappingId}: ${JSON.stringify(value)}`
+    );
+  }
+  return seqNum;
+}
+
+async function ensureClickhouseSchema(
+  client: ClickHouseClient,
+  tableSchemaSql: string,
+  tableName: string,
+) {
+  assertNonEmptyString(tableSchemaSql, "tableSchemaSql");
+  assertNonEmptyString(tableName, "tableName");
+  const queries = tableSchemaSql
+    .split(";")
+    .map((query) => query.trim())
+    .filter((query) => query.length > 0);
+  for (const query of queries) {
+    await client.exec({ query });
+  }
+}
+
+async function pushRowsToClickhouse(
+  client: ClickHouseClient,
+  tableName: string,
+  newRows: Array<Record<string, unknown>>,
+  expectedTenancyId: string,
+  mappingId: string,
+) {
+  assertNonEmptyString(tableName, "tableName");
+  assertNonEmptyString(mappingId, "mappingId");
+  assertUuid(expectedTenancyId, "expectedTenancyId");
+  if (!Array.isArray(newRows)) {
+    throw new StackAssertionError(`newRows must be an array for table ${JSON.stringify(tableName)}.`);
+  }
+  if (newRows.length === 0) return;
+
+  const sampleRow = newRows[0] ?? throwErr("Expected at least one row for ClickHouse sync.");
+  const orderedKeys = Object.keys(omit(sampleRow, ["tenancyId"]));
+
+  const normalizedRows = newRows.map((row) => {
+    const tenancyIdValue = row.tenancyId;
+    if (typeof tenancyIdValue !== "string") {
+      throw new StackAssertionError(
+        `Row has invalid tenancyId. Expected ${expectedTenancyId}, got ${JSON.stringify(tenancyIdValue)}.`
+      );
+    }
+    if (tenancyIdValue !== expectedTenancyId) {
+      throw new StackAssertionError(
+        `Row has unexpected tenancyId. Expected ${expectedTenancyId}, got ${tenancyIdValue}. ` +
+        `This indicates a bug in the internalDbFetchQuery.`
+      );
+    }
+
+    const rest = omit(row, ["tenancyId"]);
+    const rowKeys = Object.keys(rest);
+
+    const validShape =
+      rowKeys.length === orderedKeys.length &&
+      rowKeys.every((key, index) => key === orderedKeys[index]);
+
+    if (!validShape) {
+      throw new StackAssertionError(
+        `  Row shape mismatch for table "${tableName}".\n` +
+          `Expected column order: [${orderedKeys.join(", ")}]\n` +
+          `Received column order: [${rowKeys.join(", ")}]\n` +
+          `Your SELECT must be explicit, ordered, and NEVER use SELECT *.\n` +
+          `Fix the SELECT in internalDbFetchQuery immediately.`
+      );
+    }
+
+    const sequenceId = parseSequenceId(rest.sync_sequence_id, mappingId);
+    if (sequenceId === null) {
+      throw new StackAssertionError(
+        `sync_sequence_id must be defined for ClickHouse sync. Mapping: ${mappingId}`
+      );
+    }
+    return {
+      ...rest,
+      sync_sequence_id: sequenceId,
+      primary_email_verified: normalizeClickhouseBoolean(rest.primary_email_verified, "primary_email_verified"),
+      is_anonymous: normalizeClickhouseBoolean(rest.is_anonymous, "is_anonymous"),
+      restricted_by_admin: normalizeClickhouseBoolean(rest.restricted_by_admin, "restricted_by_admin"),
+      sync_is_deleted: normalizeClickhouseBoolean(rest.sync_is_deleted, "sync_is_deleted"),
+    };
+  });
+
+  await client.insert({
+    table: tableName,
+    values: normalizedRows,
+    format: "JSONEachRow",
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+    },
+  });
+}
+
+async function getClickhouseLastSyncedSequenceId(
+  client: ClickHouseClient,
+  tenancyId: string,
+  mappingId: string,
+): Promise<number> {
+  assertUuid(tenancyId, "tenancyId");
+  assertNonEmptyString(mappingId, "mappingId");
+  const resultSet = await client.query({
+    query: `
+      SELECT last_synced_sequence_id
+      FROM analytics_internal._stack_sync_metadata
+      WHERE tenancy_id = {tenancy_id:UUID}
+        AND mapping_name = {mapping_name:String}
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    query_params: {
+      tenancy_id: tenancyId,
+      mapping_name: mappingId,
+    },
+    format: "JSONEachRow",
+  });
+
+  const result = await resultSet.json<{ last_synced_sequence_id: string }>();
+  if (result.length === 0) {
+    return -1;
+  }
+  const parsed = Number(result[0]?.last_synced_sequence_id);
+  if (!Number.isFinite(parsed)) {
+    throw new StackAssertionError(
+      `Invalid last_synced_sequence_id for mapping ${mappingId}: ${JSON.stringify(result[0]?.last_synced_sequence_id)}`
+    );
+  }
+  return parsed;
+}
+
+async function updateClickhouseSyncMetadata(
+  client: ClickHouseClient,
+  tenancyId: string,
+  mappingId: string,
+  lastSequenceId: number,
+) {
+  assertUuid(tenancyId, "tenancyId");
+  assertNonEmptyString(mappingId, "mappingId");
+  if (!Number.isFinite(lastSequenceId)) {
+    throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
+  }
+  await client.insert({
+    table: "analytics_internal._stack_sync_metadata",
+    values: [{
+      tenancy_id: tenancyId,
+      mapping_name: mappingId,
+      last_synced_sequence_id: lastSequenceId,
+    }],
+    format: "JSONEachRow",
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+    },
+  });
+}
+
+
+async function syncPostgresMapping(
   externalClient: Client,
   mappingId: string,
-  mapping: typeof DEFAULT_DB_SYNC_MAPPINGS[keyof typeof DEFAULT_DB_SYNC_MAPPINGS],
+  mapping: DbSyncMapping,
   internalPrisma: PrismaClientWithReplica,
   dbId: string,
   tenancyId: string,
-  dbType: 'postgres',
 ): Promise<boolean> {
   assertNonEmptyString(mappingId, "mappingId");
   assertNonEmptyString(mapping.targetTable, "mapping.targetTable");
   assertUuid(tenancyId, "tenancyId");
-  const fetchQuery = mapping.internalDbFetchQuery;
-  const updateQuery = mapping.externalDbUpdateQueries[dbType];
+  const fetchQuery = getInternalDbFetchQuery(mapping, "postgres");
+  const updateQuery = mapping.externalDbUpdateQueries.postgres;
   const tableName = mapping.targetTable;
   assertNonEmptyString(fetchQuery, "internalDbFetchQuery");
   assertNonEmptyString(updateQuery, "externalDbUpdateQueries");
@@ -344,7 +531,7 @@ async function syncMapping(
     );
   }
 
-  const tableSchema = mapping.targetTableSchemas[dbType];
+  const tableSchema = mapping.targetTableSchemas.postgres;
   await ensureExternalSchema(externalClient, tableSchema, tableName);
 
   let lastSequenceId = -1;
@@ -388,15 +575,90 @@ async function syncMapping(
 
     let maxSeqInBatch = lastSequenceId;
     for (const row of rows) {
-      const seq = row.sequence_id;
-      if (seq != null) {
-        const seqNum = typeof seq === 'bigint' ? Number(seq) : Number(seq);
-        if (seqNum > maxSeqInBatch) {
-          maxSeqInBatch = seqNum;
-        }
+      const seqNum = parseSequenceId(row.sequence_id, mappingId);
+      if (seqNum !== null && seqNum > maxSeqInBatch) {
+        maxSeqInBatch = seqNum;
       }
     }
     lastSequenceId = maxSeqInBatch;
+
+    if (rows.length < BATCH_LIMIT) {
+      break;
+    }
+
+    batchesProcessed++;
+    if (maxBatchesPerMapping !== null && batchesProcessed >= maxBatchesPerMapping) {
+      throttled = true;
+      break;
+    }
+  }
+
+  return throttled;
+}
+
+async function syncClickhouseMapping(
+  client: ClickHouseClient,
+  mappingId: string,
+  mapping: DbSyncMapping,
+  internalPrisma: PrismaClientWithReplica,
+  tenancyId: string,
+): Promise<boolean> {
+  assertNonEmptyString(mappingId, "mappingId");
+  assertNonEmptyString(mapping.targetTable, "mapping.targetTable");
+  assertUuid(tenancyId, "tenancyId");
+  const fetchQuery = mapping.internalDbFetchQueries.clickhouse;
+  if (!fetchQuery) {
+    throw new StackAssertionError(`Missing ClickHouse fetch query for mapping ${mappingId}.`);
+  }
+  const tableSchema = mapping.targetTableSchemas.clickhouse;
+  if (!tableSchema) {
+    throw new StackAssertionError(`Missing ClickHouse table schema for mapping ${mappingId}.`);
+  }
+  assertNonEmptyString(fetchQuery, "internalDbFetchQuery");
+  if (!fetchQuery.includes("$1") || !fetchQuery.includes("$2")) {
+    throw new StackAssertionError(
+      `internalDbFetchQuery must reference $1 (tenancyId) and $2 (lastSequenceId). Mapping: ${mappingId}`
+    );
+  }
+
+  const clickhouseTableName = `analytics_internal.${mapping.targetTable}`;
+  await ensureClickhouseSchema(client, tableSchema, clickhouseTableName);
+
+  let lastSequenceId = await getClickhouseLastSyncedSequenceId(client, tenancyId, mappingId);
+
+  const BATCH_LIMIT = 1000;
+  const maxBatchesPerMapping = getMaxBatchesPerMapping();
+  let batchesProcessed = 0;
+  let throttled = false;
+
+  while (true) {
+    assertUuid(tenancyId, "tenancyId");
+    if (!Number.isFinite(lastSequenceId)) {
+      throw new StackAssertionError(`lastSequenceId must be a finite number for mapping ${mappingId}.`);
+    }
+    const rows = await internalPrisma.$replica().$queryRawUnsafe<Record<string, unknown>[]>(fetchQuery, tenancyId, lastSequenceId);
+
+    if (rows.length === 0) {
+      break;
+    }
+
+    await pushRowsToClickhouse(
+      client,
+      clickhouseTableName,
+      rows,
+      tenancyId,
+      mappingId,
+    );
+
+    let maxSeqInBatch = lastSequenceId;
+    for (const row of rows) {
+      const seqNum = parseSequenceId(row.sync_sequence_id, mappingId);
+      if (seqNum !== null && seqNum > maxSeqInBatch) {
+        maxSeqInBatch = seqNum;
+      }
+    }
+    lastSequenceId = maxSeqInBatch;
+    await updateClickhouseSyncMetadata(client, tenancyId, mappingId, lastSequenceId);
 
     if (rows.length < BATCH_LIMIT) {
       break;
@@ -422,56 +684,55 @@ async function syncDatabase(
   assertNonEmptyString(dbId, "dbId");
   assertUuid(tenancyId, "tenancyId");
   const dbType = dbConfig.type;
-  if (dbType !== 'postgres') {
-    throw new StackAssertionError(
-      `Unsupported database type '${String(dbType)}' for external DB ${dbId}. Only 'postgres' is currently supported.`
-    );
-  }
-
-  if (!dbConfig.connectionString) {
-    throw new StackAssertionError(
-      `Invalid configuration for external DB ${dbId}: 'connectionString' is missing.`
-    );
-  }
-  assertNonEmptyString(dbConfig.connectionString, `external DB ${dbId} connectionString`);
-
-  const externalClient = new Client({
-    connectionString: dbConfig.connectionString,
-  });
-
-  let needsResync = false;
-  const syncResult = await Result.fromPromise((async () => {
-    await externalClient.connect();
-
-    // Always use DEFAULT_DB_SYNC_MAPPINGS - users cannot customize mappings
-    // because internalDbFetchQuery runs against Stack Auth's internal DB
-    for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
-      const mappingThrottled = await syncMapping(
-        externalClient,
-        mappingId,
-        mapping,
-        internalPrisma,
-        dbId,
-        tenancyId,
-        dbType,
+  if (dbType === "postgres") {
+    if (!dbConfig.connectionString) {
+      throw new StackAssertionError(
+        `Invalid configuration for external DB ${dbId}: 'connectionString' is missing.`
       );
-      if (mappingThrottled) {
-        needsResync = true;
-      }
     }
-  })());
+    assertNonEmptyString(dbConfig.connectionString, `external DB ${dbId} connectionString`);
 
-  const closeResult = await Result.fromPromise(externalClient.end());
-  if (closeResult.status === "error") {
-    captureError(`external-db-sync-${dbId}-close`, closeResult.error);
+    const externalClient = new Client({
+      connectionString: dbConfig.connectionString,
+    });
+
+    let needsResync = false;
+    const syncResult = await Result.fromPromise((async () => {
+      await externalClient.connect();
+
+      // Always use DEFAULT_DB_SYNC_MAPPINGS - users cannot customize mappings
+      // because internalDbFetchQuery runs against Stack Auth's internal DB
+      for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
+        const mappingThrottled = await syncPostgresMapping(
+          externalClient,
+          mappingId,
+          mapping,
+          internalPrisma,
+          dbId,
+          tenancyId,
+        );
+        if (mappingThrottled) {
+          needsResync = true;
+        }
+      }
+    })());
+
+    const closeResult = await Result.fromPromise(externalClient.end());
+    if (closeResult.status === "error") {
+      captureError(`external-db-sync-${dbId}-close`, closeResult.error);
+    }
+
+    if (syncResult.status === "error") {
+      captureError(`external-db-sync-${dbId}`, syncResult.error);
+      return false;
+    }
+
+    return needsResync;
   }
 
-  if (syncResult.status === "error") {
-    captureError(`external-db-sync-${dbId}`, syncResult.error);
-    return false;
-  }
-
-  return needsResync;
+  throw new StackAssertionError(
+    `Unsupported database type '${String(dbType)}' for external DB ${dbId}.`
+  );
 }
 
 
@@ -480,6 +741,36 @@ export async function syncExternalDatabases(tenancy: Tenancy): Promise<boolean> 
   const externalDatabases = tenancy.config.dbSync.externalDatabases;
   const internalPrisma = await getPrismaClientForTenancy(tenancy);
   let needsResync = false;
+
+  // Always sync to ClickHouse if STACK_CLICKHOUSE_URL is set (not driven by config)
+  const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
+  if (clickhouseUrl) {
+    const clickhouseClient = getClickhouseAdminClient();
+    const syncResult = await Result.fromPromise((async () => {
+      for (const [mappingId, mapping] of Object.entries(DEFAULT_DB_SYNC_MAPPINGS)) {
+        const mappingThrottled = await syncClickhouseMapping(
+          clickhouseClient,
+          mappingId,
+          mapping,
+          internalPrisma,
+          tenancy.id,
+        );
+        if (mappingThrottled) {
+          needsResync = true;
+        }
+      }
+    })());
+
+    const closeResult = await Result.fromPromise(clickhouseClient.close());
+    if (closeResult.status === "error") {
+      captureError("external-db-sync-clickhouse-close", closeResult.error);
+    }
+
+    if (syncResult.status === "error") {
+      captureError("external-db-sync-clickhouse", syncResult.error);
+      needsResync = true;
+    }
+  }
 
   for (const [dbId, dbConfig] of Object.entries(externalDatabases)) {
     try {
