@@ -239,11 +239,16 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
     externalDatabases: yupRecord(
       userSpecifiedIdSchema("externalDatabaseId"),
       yupObject({
-        type: yupString().oneOf(['postgres']).defined(),
-        connectionString: yupString().defined(),
-      })
+        type: yupString().oneOf(["postgres"]).defined(),
+        connectionString: yupString().when("type", {
+          is: "postgres",
+          then: (schema) => schema.defined(),
+          otherwise: (schema) => schema.optional(),
+        }),
+      }),
     ),
   }),
+
 
   dataVault: yupObject({
     stores: yupRecord(

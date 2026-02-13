@@ -25,6 +25,119 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "updated_at" timestamp without time zone NOT NULL DEFAULT now()
         );
       `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.users (
+          project_id String,
+          branch_id String,
+          id UUID,
+          display_name Nullable(String),
+          profile_image_url Nullable(String),
+          primary_email Nullable(String),
+          primary_email_verified UInt8,
+          signed_up_at DateTime64(3, 'UTC'),
+          client_metadata JSON,
+          client_read_only_metadata JSON,
+          server_metadata JSON,
+          is_anonymous UInt8,
+          restricted_by_admin UInt8,
+          restricted_by_admin_reason Nullable(String),
+          restricted_by_admin_private_details Nullable(String),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(signed_up_at)
+        ORDER BY (project_id, branch_id, id);
+
+        CREATE TABLE IF NOT EXISTS analytics_internal._stack_sync_metadata (
+          tenancy_id UUID,
+          mapping_name String,
+          last_synced_sequence_id Int64,
+          updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(updated_at)
+        ORDER BY (tenancy_id, mapping_name);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "ProjectUser"."projectUserId" AS "id",
+            "ProjectUser"."displayName" AS "display_name",
+            "ProjectUser"."profileImageUrl" AS "profile_image_url",
+            (
+              SELECT "ContactChannel"."value"
+              FROM "ContactChannel"
+              WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                AND "ContactChannel"."type" = 'EMAIL'
+                AND "ContactChannel"."isPrimary" = 'TRUE'
+              LIMIT 1
+            ) AS "primary_email",
+            COALESCE(
+              (
+                SELECT "ContactChannel"."isVerified"
+                FROM "ContactChannel"
+                WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                  AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                  AND "ContactChannel"."type" = 'EMAIL'
+                  AND "ContactChannel"."isPrimary" = 'TRUE'
+                LIMIT 1
+              ),
+              false
+            ) AS "primary_email_verified",
+            "ProjectUser"."createdAt" AS "signed_up_at",
+            COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb) AS "client_metadata",
+            COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
+            COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
+            "ProjectUser"."isAnonymous" AS "is_anonymous",
+            "ProjectUser"."restrictedByAdmin" AS "restricted_by_admin",
+            "ProjectUser"."restrictedByAdminReason" AS "restricted_by_admin_reason",
+            "ProjectUser"."restrictedByAdminPrivateDetails" AS "restricted_by_admin_private_details",
+            "ProjectUser"."sequenceId" AS "sync_sequence_id",
+            "ProjectUser"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "ProjectUser"
+          JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUser"."tenancyId"
+          WHERE "ProjectUser"."tenancyId" = $1::uuid
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "id",
+            NULL::text AS "display_name",
+            NULL::text AS "profile_image_url",
+            NULL::text AS "primary_email",
+            false AS "primary_email_verified",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "signed_up_at",
+            '{}'::jsonb AS "client_metadata",
+            '{}'::jsonb AS "client_read_only_metadata",
+            '{}'::jsonb AS "server_metadata",
+            false AS "is_anonymous",
+            false AS "restricted_by_admin",
+            NULL::text AS "restricted_by_admin_reason",
+            NULL::text AS "restricted_by_admin_private_details",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'ProjectUser'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
     },
     internalDbFetchQuery: `
       SELECT *
