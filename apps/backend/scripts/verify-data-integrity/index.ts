@@ -79,6 +79,10 @@ async function main() {
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
   const noBail = flags.includes("--no-bail");
+  const maxUsersPerProjectFlag = flags.find(f => f.startsWith("--max-users-per-project="));
+  const maxUsersPerProject = maxUsersPerProjectFlag
+    ? parseInt(maxUsersPerProjectFlag.split("=")[1], 10)
+    : Infinity;
 
   const { recurse, collectedErrors } = createRecurse({ noBail });
 
@@ -147,7 +151,9 @@ async function main() {
     console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
   }
 
-  const maxUsersPerProject = 100;
+  if (maxUsersPerProject !== Infinity) {
+    console.log(`Will check at most ${maxUsersPerProject} users per project.`);
+  }
 
   const endAt = Math.min(startAt + count, projects.length);
   for (let i = startAt; i < endAt; i++) {
@@ -157,16 +163,8 @@ async function main() {
         return;
       }
 
-      const [currentProject, users, projectPermissionDefinitions, teamPermissionDefinitions] = await Promise.all([
+      const [currentProject, projectPermissionDefinitions, teamPermissionDefinitions] = await Promise.all([
         expectStatusCode(200, `/api/v1/internal/projects/current`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        }),
-        expectStatusCode(200, `/api/v1/users?limit=${maxUsersPerProject}`, {
           method: "GET",
           headers: {
             "x-stack-project-id": projectId,
@@ -192,6 +190,30 @@ async function main() {
         }),
       ]);
       void currentProject;
+
+      // Fetch users with pagination
+      const PAGE_LIMIT = 1000;
+      const allUsers: any[] = [];
+      let cursor: string | undefined = undefined;
+      while (allUsers.length < maxUsersPerProject) {
+        const remainingToFetch = maxUsersPerProject - allUsers.length;
+        const limit = Math.min(PAGE_LIMIT, remainingToFetch);
+        const cursorParam: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+        const usersPage = await expectStatusCode(200, `/api/v1/users?limit=${limit}${cursorParam}`, {
+          method: "GET",
+          headers: {
+            "x-stack-project-id": projectId,
+            "x-stack-access-type": "admin",
+            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+          },
+        });
+        allUsers.push(...usersPage.items);
+        if (!usersPage.pagination?.next_cursor) {
+          break;
+        }
+        cursor = usersPage.pagination.next_cursor;
+      }
+      const users = { items: allUsers.slice(0, maxUsersPerProject) };
 
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
       const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;

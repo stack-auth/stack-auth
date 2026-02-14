@@ -57,9 +57,9 @@ function createVercelSandboxEngine(): JsEngine {
   return {
     name: 'vercel-sandbox',
     execute: async (code: string, options: ExecuteJavascriptOptions): Promise<ExecuteResult> => {
-      const teamId = getEnvVariable("STACK_VERCEL_SANDBOX_TEAM_ID", "");
-      const projectId = getEnvVariable("STACK_VERCEL_SANDBOX_PROJECT_ID", "");
-      const token = getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN", "");
+      const teamId = getEnvVariable("STACK_VERCEL_SANDBOX_TEAM_ID");
+      const projectId = getEnvVariable("STACK_VERCEL_SANDBOX_PROJECT_ID");
+      const token = getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN");
 
       const sandbox = await Sandbox.create({
         resources: { vcpus: 2 },
@@ -139,11 +139,7 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
     }
   }, async () => {
 
-    if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN","") != "") {
-      if (!getNodeEnvironment().includes("prod")) {
-        throw new StackAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set in non-production environment. We do not use Vercel Sandbox in non-production environments.");
-      }
-
+    if (getEnvVariable("STACK_VERCEL_SANDBOX_TOKEN") != "vercel_sandbox_disabled_for_local_development") {
       const shouldSanityTest = Math.random() < 0.05;
       if (shouldSanityTest) {
         runAsynchronouslyAndWaitUntil(runSanityTest(code, options));
@@ -151,6 +147,10 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
 
       return await runWithFallback(code, options);
     } else {
+      if (getNodeEnvironment().includes("prod")) {
+        throw new StackAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
+      }
+
       return await runWithoutFallback(code, options);
     }
   });
@@ -244,7 +244,7 @@ async function runWithFallback(code: string, options: ExecuteJavascriptOptions):
         `JS execution vercel sandbox engine failed after fallback from freestyle engine`,
         { error: error, innerCode: code, innerOptions: options }
       ));
-      throw new StackAssertionError("Email rendering service unavailable", { cause: error, innerCode: code, innerOptions: options });
+      throw new StackAssertionError("Vercel Sandbox service unavailable", { cause: error, innerCode: code, innerOptions: options });
   }
 }
 
@@ -254,6 +254,6 @@ async function runWithoutFallback(code: string, options: ExecuteJavascriptOption
     const result = await freestyleEngine.execute(code, options);
     return result;
   } catch (error) {
-    throw new StackAssertionError("Email rendering service unavailable", { cause: error, innerCode: code, innerOptions: options });
+    throw new StackAssertionError("Freestyle rendering service unavailable when running without fallback", { cause: error, innerCode: code, innerOptions: options });
   }
 }

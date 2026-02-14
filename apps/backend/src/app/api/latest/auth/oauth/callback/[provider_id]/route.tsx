@@ -327,6 +327,12 @@ const handler = createSmartRouteHandler({
                     currentUser,
                     displayName: userInfo.displayName ?? undefined,
                     profileImageUrl: userInfo.profileImageUrl ?? undefined,
+                    signUpRuleOptions: {
+                      authMethod: 'oauth',
+                      oauthProvider: provider.id,
+                      // Note: Request context not easily available in OAuth callback
+                      // TODO: Pass IP and user agent from stored OAuth state if needed
+                    },
                   }
                 );
 

@@ -188,7 +188,8 @@ it("should provide delivery statistics", async ({ expect }) => {
   });
 
   // wait until the email is sent
-  await wait(5000);
+  // TODO: use the equivalent of waitForMessagesWithSubject
+  await wait(10_000);
 
   const info = await serverApp.getEmailDeliveryStats();
 

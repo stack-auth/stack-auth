@@ -11,3 +11,9 @@ A: The generated `.next/types/validator.ts` can keep stale imports for removed r
 
 Q: Why can auto-migrations time out and how should I mitigate it?
 A: Auto-migrations run each migration inside a Prisma interactive transaction with an 80s timeout. Long-running statements (even if marked RUN_OUTSIDE_TRANSACTION_SENTINEL) still consume that time, so keep each iteration small using CONDITIONALLY_REPEAT_MIGRATION_SENTINEL and reduce batch sizes (e.g., lower LIMIT) so each transaction finishes under 80s.
+
+Q: How should `restricted_by_admin` updates handle reason fields?
+A: When setting `restricted_by_admin` to false, explicitly clear `restricted_by_admin_reason` and `restricted_by_admin_private_details` to null (even if omitted in the PATCH) to satisfy the database constraint.
+
+Q: Where should `stackAppInternalsSymbol` be imported from in the dashboard?
+A: Use the shared `apps/dashboard/src/lib/stack-app-internals.ts` export to avoid duplicating the Symbol.for definition across files.

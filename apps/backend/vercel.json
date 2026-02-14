@@ -4,6 +4,14 @@
     {
       "path": "/api/latest/internal/email-queue-step",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/external-db-sync/poller",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/latest/internal/external-db-sync/sequencer",
+      "schedule": "* * * * *"
     }
   ],
   "github": {

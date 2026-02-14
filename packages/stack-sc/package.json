@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-sc",
-  "version": "2.8.63",
+  "version": "2.8.67",
   "repository": "https://github.com/stack-auth/stack-auth",
   "exports": {
     "./force-react-server": {

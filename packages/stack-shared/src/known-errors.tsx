@@ -528,16 +528,26 @@ const UnparsableAccessToken = createKnownErrorConstructor(
 const AccessTokenExpired = createKnownErrorConstructor(
   InvalidAccessToken,
   "ACCESS_TOKEN_EXPIRED",
-  (expiredAt: Date | undefined) => [
+  (expiredAt: Date | undefined, projectId: string | undefined, userId: string | undefined, refreshTokenId: string | undefined) => [
     401,
     deindent`
-      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}
+      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}${projectId ? ` Project ID: ${projectId}.` : ""}${userId ? ` User ID: ${userId}.` : ""}${refreshTokenId ? ` Refresh token ID: ${refreshTokenId}.` : ""}
 
       Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
     `,
-    { expired_at_millis: expiredAt?.getTime() ?? null },
+    {
+      expired_at_millis: expiredAt?.getTime() ?? null,
+      project_id: projectId ?? null,
+      user_id: userId ?? null,
+      refresh_token_id: refreshTokenId ?? null,
+    },
   ] as const,
-  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
+  (json: any) => [
+    json.expired_at_millis ? new Date(json.expired_at_millis) : undefined,
+    json.project_id ?? undefined,
+    json.user_id ?? undefined,
+    json.refresh_token_id ?? undefined,
+  ] as const,
 );
 
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
@@ -653,7 +663,7 @@ const UserNotFound = createKnownErrorConstructor(
 const RestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
     {
@@ -714,6 +724,19 @@ const SignUpNotEnabled = createKnownErrorConstructor(
     "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.",
   ] as const,
   () => [] as const,
+);
+
+const SignUpRejected = createKnownErrorConstructor(
+  KnownError,
+  "SIGN_UP_REJECTED",
+  (message?: string) => [
+    403,
+    message ?? "Your sign up was rejected. Please contact us for more information.",
+    {
+      message: message ?? "Your sign up was rejected. Please contact us for more information.",
+    },
+  ] as const,
+  (json: any) => [json.message] as const,
 );
 
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
@@ -1063,7 +1086,7 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
 const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
     {
@@ -1795,6 +1818,7 @@ export const KnownErrors = {
   CurrentProjectNotFound,
   BranchDoesNotExist,
   SignUpNotEnabled,
+  SignUpRejected,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,

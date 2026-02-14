@@ -42,7 +42,7 @@ export type ClientInterfaceOptions = {
 } & ({
   publishableClientKey: string,
 } | {
-  projectOwnerSession: InternalSession,
+  projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
 export class StackClientInterface {
@@ -229,7 +229,6 @@ export class StackClientInterface {
       refreshToken: null,
     });
 
-
     return await this._networkRetry(
       () => this.sendClientRequestInner(path, requestOptions, session!, requestType),
       session,
@@ -287,8 +286,25 @@ export class StackClientInterface {
      */
     let tokenObj = await session.getOrFetchLikelyValidTokens(20_000, null);
 
-    let adminSession = "projectOwnerSession" in this.options ? this.options.projectOwnerSession : null;
-    let adminTokenObj = adminSession ? await adminSession.getOrFetchLikelyValidTokens(20_000, null) : null;
+    let adminSession: InternalSession | null = null;
+    let adminTokenObj: { accessToken: AccessToken, refreshToken: RefreshToken | null } | null = null;
+
+    if ("projectOwnerSession" in this.options) {
+      const projectOwnerSession = this.options.projectOwnerSession;
+
+      if (typeof projectOwnerSession === 'function') {
+        const accessTokenString = await projectOwnerSession();
+        if (accessTokenString) {
+          const accessToken = AccessToken.createIfValid(accessTokenString);
+          if (accessToken) {
+            adminTokenObj = { accessToken, refreshToken: null };
+          }
+        }
+      } else {
+        adminSession = projectOwnerSession;
+        adminTokenObj = await projectOwnerSession.getOrFetchLikelyValidTokens(20_000, null);
+      }
+    }
 
     // all requests should be dynamic to prevent Next.js caching
     await this.options.prepareRequest?.();

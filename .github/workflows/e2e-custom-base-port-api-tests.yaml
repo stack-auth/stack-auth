@@ -19,6 +19,8 @@ jobs:
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:6728/stackframe"
       NEXT_PUBLIC_STACK_PORT_PREFIX: "67"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
       matrix:
@@ -94,6 +96,9 @@ jobs:
 
       - name: Wait on Svix
         run: pnpx wait-on tcp:localhost:6713
+      
+      - name: Wait on QStash
+        run: pnpx wait-on tcp:localhost:6725
 
       - name: Initialize database
         run: pnpm run db:init
@@ -134,20 +139,29 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+      - name: Start run-cron-jobs in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-cron-jobs --log-order=stream &
+          wait-on: |
+            http://localhost:6702
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Wait 10 seconds
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test run
 
-      - name: Run tests again, to make sure they are stable (attempt 1)
+      - name: Run tests again (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test
+        run: pnpm test run
 
-      - name: Run tests again, to make sure they are stable (attempt 2)
+      - name: Run tests again (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test
+        run: pnpm test run
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail

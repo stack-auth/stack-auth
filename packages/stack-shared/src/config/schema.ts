@@ -14,6 +14,7 @@ import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
+import { stringCompare } from "../utils/strings";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
 import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
@@ -129,6 +130,24 @@ const branchAuthSchema = yupObject({
       }),
     ),
   }),
+  signUpRules: yupRecord(
+    userSpecifiedIdSchema("signUpRuleId"),
+    yupObject({
+      enabled: yupBoolean(),
+      displayName: yupString(),
+      // Priority for rule ordering (higher number = higher priority, evaluated first)
+      // Rules with same priority are sorted alphabetically by ID
+      priority: yupNumber().integer().min(0),
+      // CEL expression string - evaluated against signup context
+      // Example: 'email.endsWith("@gmail.com") && authMethod == "password"'
+      condition: yupString(),
+      action: yupObject({
+        type: yupString().oneOf(['allow', 'reject', 'restrict', 'log']).defined(),
+        message: yupString().optional(), // for reject action custom message (internal use, not shown to user)
+      }),
+    }),
+  ),
+  signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
 });
 
 export const branchPaymentsSchema = yupObject({
@@ -215,6 +234,21 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   payments: branchPaymentsSchema,
+
+  dbSync: yupObject({
+    externalDatabases: yupRecord(
+      userSpecifiedIdSchema("externalDatabaseId"),
+      yupObject({
+        type: yupString().oneOf(["postgres"]).defined(),
+        connectionString: yupString().when("type", {
+          is: "postgres",
+          then: (schema) => schema.defined(),
+          otherwise: (schema) => schema.optional(),
+        }),
+      }),
+    ),
+  }),
+
 
   dataVault: yupObject({
     stores: yupRecord(
@@ -569,6 +603,17 @@ const organizationConfigDefaults = {
         appleBundles: undefined,
       }),
     },
+    signUpRules: (key: string) => ({
+      enabled: false,
+      displayName: undefined,
+      priority: 0,
+      condition: undefined,
+      action: {
+        type: 'allow',
+        message: undefined,
+      },
+    }),
+    signUpRulesDefaultAction: 'allow',
   },
 
   emails: {
@@ -626,6 +671,14 @@ const organizationConfigDefaults = {
       displayName: key,
       customerType: "user",
     } as const)
+  },
+
+
+  dbSync: {
+    externalDatabases: (key: string) => ({
+      type: undefined,
+      connectionString: undefined,
+    }),
   },
 
   dataVault: {
@@ -879,6 +932,17 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
 
+  // Get all sign-up rules and sort by priority (descending), then by ID (alphabetically)
+  // Note: We don't filter out disabled rules here because the dashboard needs to show them
+  // The runtime evaluation in sign-up-rules.ts handles skipping disabled rules
+  const sortedRuleEntries = typedEntries(prepared.auth.signUpRules)
+    .sort((a, b) => {
+      const priorityA = a[1].priority;
+      const priorityB = b[1].priority;
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      return stringCompare(a[0], b[0]);
+    });
+
   return {
     ...prepared,
     auth: {
@@ -887,6 +951,7 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
         ...prepared.auth.oauth,
         providers: typedFromEntries(typedEntries(prepared.auth.oauth.providers).filter(([key, value]) => value.type !== undefined)),
       },
+      signUpRules: typedFromEntries(sortedRuleEntries),
     },
     emails: {
       ...prepared.emails,
@@ -1000,7 +1065,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
         // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
         // const innerType = arraySchema.innerType;
-        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
+        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined());
       }
       case "tuple": {
         return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);

@@ -96,6 +96,12 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
 - NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT!
+- When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
+- NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
+- Fail early, fail loud. Fail fast with an error instead of silently continuing.
+- Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible.
+- When writing database migration files, assume that we have >1,000,000 rows in every table (unless otherwise specified). This means you may have to use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL to avoid running the migration and things like concurrent index builds; see the existing migrations for examples.
+- **When building frontend code, always carefully deal with loading and error states.** Be very explicit with these; some components make this easy, eg. the button onClick already takes an async callback for loading state, but make sure this is done everywhere, and make sure errors are NEVER just silently swallowed.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

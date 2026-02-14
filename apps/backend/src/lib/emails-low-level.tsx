@@ -14,8 +14,10 @@ import { Resend } from 'resend';
 import { getTenancy } from './tenancies';
 
 export function isSecureEmailPort(port: number | string) {
+  // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
+  // STARTTLS ports (25/587/2587) should return false.
   let parsedPort = parseInt(port.toString());
-  return parsedPort === 465;
+  return parsedPort === 465 || parsedPort === 2465;
 }
 
 export type LowLevelEmailConfig = {
@@ -72,17 +74,25 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
           host: options.emailConfig.host,
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
+          connectionTimeout: 15000,
+          greetingTimeout: 10000,
+          socketTimeout: 20000,
+          dnsTimeout: 7000,
           auth: {
             user: options.emailConfig.username,
             pass: options.emailConfig.password,
           },
         });
 
-        await transporter.sendMail({
-          from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
-          ...options,
-          to: toArray,
-        });
+        try {
+          await transporter.sendMail({
+            from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
+            ...options,
+            to: toArray,
+          });
+        } finally {
+          transporter.close();
+        }
 
         return Result.ok(undefined);
       } catch (error) {
@@ -184,6 +194,7 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
         }
 
         // ============ unknown error ============
+        captureError("unknown-email-send-error", new StackAssertionError("Unknown error while sending email. We should add a better error description for the user.", { cause: error }));
         return Result.error({
           rawError: error,
           errorType: 'UNKNOWN',
@@ -289,7 +300,7 @@ export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEm
       }
 
       return result;
-    }, 3, { exponentialDelayBase: 2000 });
+    }, 9, { exponentialDelayBase: 125 });
   } catch (error) {
     if (error instanceof DoNotRetryError) {
       return Result.error(error.errorObj);

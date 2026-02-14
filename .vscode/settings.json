@@ -7,6 +7,8 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.tabSize": 2,
   "cSpell.words": [
+    "sparkline",
+    "Clickhouse",
     "pushable",
     "autoupdate",
     "backlinks",
@@ -172,5 +174,6 @@
     "((?:<!-- *)?(?:#|// @|//|./\\*+|<!--|--|\\* @|{!|{{!--|{{!) *(?:IDEA)(?:\\s*\\([^)]+\\))?:?)((?!\\w)(?: *-->| *\\*/| *!}| *--}}| *}}|(?= *(?:[^:]//|/\\*+|<!--|@|--|{!|{{!--|{{!))|(?: +[^\\n@]*?)(?= *(?:[^:]//|/\\*+|<!--|@|--(?!>)|{!|{{!--|{{!))|(?: +[^@\\n]+)?))": [],
   },
   "editor.formatOnSaveMode": "file",
-  "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  "chatgpt.commentCodeLensEnabled": false
 }

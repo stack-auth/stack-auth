@@ -374,7 +374,7 @@ TokenPartialUser:
   primaryEmailVerified: bool
   isAnonymous: bool
   isRestricted: bool
-  restrictedReason: { type: "anonymous" | "email_not_verified" } | null
+  restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null
 
 Implementation for "token":
 1. Get access token from storage

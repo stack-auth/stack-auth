@@ -19,6 +19,8 @@ jobs:
     runs-on: ubicloud-standard-16
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     steps:
       - uses: actions/checkout@v6
@@ -38,7 +40,7 @@ jobs:
         run: pnpm run restart-dev-environment
 
       - name: Run tests
-        run: pnpm run test --reporter=verbose
+        run: pnpm run test run --reporter=verbose
       
       - name: Print dev server logs
         run: cat dev-server.log.untracked.txt
