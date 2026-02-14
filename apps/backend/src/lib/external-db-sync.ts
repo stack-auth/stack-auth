@@ -567,7 +567,7 @@ async function syncPostgresMapping(
       break;
     }
     if (rows.length > 1) {
-      console.log("db-sync-postgres: more than 1 row returned from source db fetch", { tenancyId, numRows: rows.length })
+      console.log("db-sync-postgres: more than 1 row returned from source db fetch", { tenancyId, numRows: rows.length });
     }
 
     await pushRowsToExternalDb(
@@ -648,7 +648,7 @@ async function syncClickhouseMapping(
       break;
     }
     if (rows.length > 1) {
-      console.log("db-sync-clickhouse: more than 1 row returned from source db fetch", { tenancyId, numRows: rows.length })
+      console.log("db-sync-clickhouse: more than 1 row returned from source db fetch", { tenancyId, numRows: rows.length });
     }
 
     await pushRowsToClickhouse(
