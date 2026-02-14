@@ -73,18 +73,18 @@ UPDATE
       '\"refresh_token_id\":', toJSONString(JSONExtractString(toJSONString(data), 'refreshTokenId')), ',',
       '\"is_anonymous\":', toJSONString(JSONExtract(toJSONString(data), 'isAnonymous', 'Bool')), ',',
       '\"ip_info\":', if(
-        JSONExtractString(toJSONString(data), 'ipInfo.ip') = '',
+        JSONExtractString(toJSONString(data), 'ipInfo', 'ip') = '',
         'null',
         concat(
           '{',
-            '\"ip\":', toJSONString(JSONExtractString(toJSONString(data), 'ipInfo.ip')), ',',
-            '\"is_trusted\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.isTrusted', 'Bool')), ',',
-            '\"country_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.countryCode', 'Nullable(String)')), ',',
-            '\"region_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.regionCode', 'Nullable(String)')), ',',
-            '\"city_name\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.cityName', 'Nullable(String)')), ',',
-            '\"latitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.latitude', 'Nullable(Float64)')), ',',
-            '\"longitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.longitude', 'Nullable(Float64)')), ',',
-            '\"tz_identifier\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.tzIdentifier', 'Nullable(String)')),
+            '\"ip\":', toJSONString(JSONExtractString(toJSONString(data), 'ipInfo', 'ip')), ',',
+            '\"is_trusted\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'isTrusted', 'Bool')), ',',
+            '\"country_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'countryCode', 'Nullable(String)')), ',',
+            '\"region_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'regionCode', 'Nullable(String)')), ',',
+            '\"city_name\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'cityName', 'Nullable(String)')), ',',
+            '\"latitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'latitude', 'Nullable(Float64)')), ',',
+            '\"longitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'longitude', 'Nullable(Float64)')), ',',
+            '\"tz_identifier\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo', 'tzIdentifier', 'Nullable(String)')),
           '}'
         )
       ),
