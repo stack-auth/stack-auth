@@ -185,10 +185,10 @@ export class InternalSession {
       const newTokens = await this.fetchNewTokens();
       const expiresInMillis = newTokens?.accessToken.expiresInMillis;
       const issuedMillisAgo = newTokens?.accessToken.issuedMillisAgo;
-      if (expiresInMillis && expiresInMillis < minMillisUntilExpiration) {
+      if (expiresInMillis !== undefined && expiresInMillis < minMillisUntilExpiration) {
         throw new StackAssertionError(`Required access token expiry ${minMillisUntilExpiration}ms is too long; access tokens are too short when they're generated (${expiresInMillis}ms)`);
       }
-      if (maxMillisSinceIssued !== null && issuedMillisAgo && issuedMillisAgo > maxMillisSinceIssued) {
+      if (maxMillisSinceIssued !== null && issuedMillisAgo !== undefined && issuedMillisAgo > maxMillisSinceIssued) {
         throw new StackAssertionError(`Required access token issuance ${maxMillisSinceIssued}ms is too short; access token issuance is too slow (${issuedMillisAgo}ms)`);
       }
       return newTokens;
@@ -309,3 +309,33 @@ export class InternalSession {
     this._refreshPromise = refreshPromise;
   }
 }
+
+import.meta.vitest?.test("getOrFetchLikelyValidTokens throws when freshly fetched token is already expired", async ({ expect }) => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const token = await new jose.SignJWT({
+    sub: "test-user-id",
+    iat: nowSeconds - 60 * 60,
+    exp: nowSeconds - 30 * 60,
+    iss: "https://issuer.example",
+    aud: "project-id",
+    project_id: "project-id",
+    branch_id: "main",
+    refresh_token_id: "refresh-token-id",
+    role: "authenticated",
+    name: "Test User",
+    email: "test@example.com",
+    email_verified: true,
+    selected_team_id: null,
+    is_anonymous: false,
+    is_restricted: false,
+    restricted_reason: null,
+  }).setProtectedHeader({ alg: "HS256" }).sign(new TextEncoder().encode("secret"));
+
+  const session = new InternalSession({
+    refreshAccessTokenCallback: async () => AccessToken.createIfValid(token),
+    refreshToken: "refresh-token",
+    accessToken: null,
+  });
+
+  await expect(session.getOrFetchLikelyValidTokens(20_000, 75_000)).rejects.toThrow(StackAssertionError);
+});
