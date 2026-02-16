@@ -1,6 +1,17 @@
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import {
+  FLUSH_INTERVAL_MS,
+  MAX_APPROX_BYTES_PER_BATCH,
+  MAX_EVENTS_PER_BATCH,
+  MAX_PREAUTH_BUFFER_BYTES,
+  MAX_PREAUTH_BUFFER_EVENTS,
+  type StoredSession,
+  generateSessionUuid,
+  getOrRotateSession,
+  makeStorageKey,
+} from "./session-shared";
 
 export type AnalyticsReplayOptions = {
   /**
@@ -79,58 +90,6 @@ export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): An
 
 // ---------- Recording internals ----------
 
-const LOCAL_STORAGE_PREFIX = "stack:session-recording:v1";
-const IDLE_TTL_MS = 3 * 60 * 1000;
-
-const FLUSH_INTERVAL_MS = 5_000;
-const MAX_EVENTS_PER_BATCH = 200;
-const MAX_APPROX_BYTES_PER_BATCH = 512_000;
-
-const MAX_PREAUTH_BUFFER_EVENTS = 10_000;
-const MAX_PREAUTH_BUFFER_BYTES = 5_000_000;
-
-type StoredSession = {
-  session_id: string,
-  created_at_ms: number,
-  last_activity_ms: number,
-};
-
-function safeParseStoredSession(raw: string | null): StoredSession | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return null;
-    if (typeof parsed.session_id !== "string") return null;
-    if (typeof parsed.created_at_ms !== "number") return null;
-    if (typeof parsed.last_activity_ms !== "number") return null;
-    return parsed as StoredSession;
-  } catch {
-    return null;
-  }
-}
-
-function makeStorageKey(projectId: string) {
-  return `${LOCAL_STORAGE_PREFIX}:${projectId}`;
-}
-
-function generateUuid() {
-  return crypto.randomUUID();
-}
-
-function getOrRotateSession(options: { key: string, nowMs: number }): StoredSession {
-  const existing = safeParseStoredSession(localStorage.getItem(options.key));
-  if (existing && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS) {
-    return existing;
-  }
-  const next: StoredSession = {
-    session_id: generateUuid(),
-    created_at_ms: options.nowMs,
-    last_activity_ms: options.nowMs,
-  };
-  localStorage.setItem(options.key, JSON.stringify(next));
-  return next;
-}
-
 export type SessionRecorderDeps = {
   projectId: string,
   getAccessToken: () => Promise<string | null>,
@@ -158,7 +117,7 @@ export class SessionRecorder {
   constructor(deps: SessionRecorderDeps, replayOptions: AnalyticsReplayOptions) {
     this._deps = deps;
     this._replayOptions = replayOptions;
-    this._tabId = generateUuid();
+    this._tabId = generateSessionUuid();
     this._storageKey = makeStorageKey(deps.projectId);
   }
 
@@ -203,7 +162,7 @@ export class SessionRecorder {
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, nowMs });
 
-    const batchId = generateUuid();
+    const batchId = generateSessionUuid();
     const payload = {
       browser_session_id: stored.session_id,
       tab_id: this._tabId,
