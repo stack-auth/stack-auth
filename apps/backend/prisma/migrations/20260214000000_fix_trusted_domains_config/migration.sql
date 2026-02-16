@@ -39,7 +39,7 @@ WITH rows_to_check AS (
   FROM /* SCHEMA_NAME_SENTINEL */."EnvironmentConfigOverride"
   WHERE "temp_trusted_domains_checked" IS NOT TRUE
   -- Keep batch size small for consistent performance
-  LIMIT 1000
+  LIMIT 5000
 ),
 matching_keys AS (
   -- Find all keys that look like "domains.trustedDomains.<id>.<property...>"
