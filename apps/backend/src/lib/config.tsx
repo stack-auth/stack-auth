@@ -729,21 +729,49 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   `));
 
   // Dot-notation into record entries — silently dropped cases
+  const objectRecordSchema = yupObject({ a: yupRecord(yupString().defined(), yupObject({ x: yupString().optional(), y: yupString().optional() })) }).defined();
+
   // Dot notation into a record entry that doesn't exist should warn
-  expect(await validateConfigOverrideSchema(recordSchema, {}, { "a.mykey.x": "val" } as any)).toMatchObject(
-    Result.error(expect.stringContaining("silently ignored"))
-  );
-  expect(await validateConfigOverrideSchema(recordSchema, {}, { "a.mykey": "val" })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey.x": "val" })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "a.mykey.x". Use nested object notation to create new record entries instead of dot notation.",
+      "status": "error",
+    }
+  `);
 
-  // When the record entry exists in the base, dot notation should work fine
-  expect(await validateConfigOverrideSchema(recordSchema, { a: { mykey: "old" } }, { "a.mykey": "new" })).toEqual(Result.ok(null));
+  // Setting the record entry itself (not dotting into it) should NOT warn
+  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey": { x: "val" } })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
 
-  // Dot-notation into non-existent record entry in actual schemas
+  // When the record entry exists in the base, dot notation into it should work fine
+  expect(await validateConfigOverrideSchema(objectRecordSchema, { a: { mykey: { x: "old" } } }, { "a.mykey.x": "new" })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // When the record entry exists as a flat key in the same override, dot notation should work fine
+  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey": { x: "old" }, "a.mykey.y": "new" })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot-notation into non-existent record entry in actual schemas (trustedDomains)
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
     'domains.trustedDomains.my-domain.baseUrl': 'https://example.com',
-  })).toMatchObject(
-    Result.error(expect.stringContaining("silently ignored"))
-  );
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "domains.trustedDomains.my-domain.baseUrl". Use nested object notation to create new record entries instead of dot notation.",
+      "status": "error",
+    }
+  `);
 
   // Nested object notation should work fine (no warning)
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
@@ -751,32 +779,60 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
       baseUrl: 'https://example.com',
       handlerPath: '/handler',
     },
-  })).toEqual(Result.ok(null));
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
 
   // Dot notation for static object fields should NOT warn
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
     'teams.allowClientTeamCreation': true,
-  })).toEqual(Result.ok(null));
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
     'auth.password.allowSignIn': true,
-  })).toEqual(Result.ok(null));
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
     'domains.allowLocalhost': true,
-  })).toEqual(Result.ok(null));
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
 
   // Dot notation into an oauth provider that doesn't exist should warn
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
     'auth.oauth.providers.google.clientId': 'test-id',
-  })).toMatchObject(
-    Result.error(expect.stringContaining("silently ignored"))
-  );
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "auth.oauth.providers.google.clientId". Use nested object notation to create new record entries instead of dot notation.",
+      "status": "error",
+    }
+  `);
 
-  // Dot notation into an oauth provider that exists should NOT warn
+  // Dot notation into an oauth provider that exists in the base should NOT warn
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {
     auth: { oauth: { providers: { google: { type: 'google', allowSignIn: true } } } },
   }, {
     'auth.oauth.providers.google.clientId': 'test-id',
-  })).toEqual(Result.ok(null));
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

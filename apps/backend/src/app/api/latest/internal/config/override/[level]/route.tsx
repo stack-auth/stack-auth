@@ -53,7 +53,6 @@ const levelConfigs = {
     validate: (options: { projectId: string, branchId: string, config: any }) =>
       validateBranchConfigOverride({
         projectId: options.projectId,
-        branchId: options.branchId,
         branchConfigOverride: options.config,
       }),
     requiresSource: true,
