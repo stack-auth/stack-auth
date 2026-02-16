@@ -8,6 +8,7 @@ export function PageLayout(props: {
   actions?: React.ReactNode,
   fillWidth?: boolean,
   noPadding?: boolean,
+  allowContentOverflow?: boolean,
 } & ({
   fillWidth: true,
 } | {
@@ -43,7 +44,10 @@ export function PageLayout(props: {
             )}
           </div>
         )}
-        <div className="flex flex-col gap-4 flex-1 min-h-0">
+        <div className={cn(
+          "flex flex-col gap-4",
+          !props.allowContentOverflow && "flex-1 min-h-0",
+        )}>
           {props.children}
         </div>
       </div>

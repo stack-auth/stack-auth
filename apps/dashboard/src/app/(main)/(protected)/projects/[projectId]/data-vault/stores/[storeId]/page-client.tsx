@@ -1,11 +1,19 @@
 "use client";
 
 import { CodeBlock } from "@/components/code-block";
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
+import {
+  DesignAlert,
+  DesignButton,
+  DesignCard,
+  DesignEditableGrid,
+  DesignInput,
+  type DesignEditableGridItem,
+} from "@/components/design-components";
+import { ActionDialog, Label, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
-import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilSimpleIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CopyIcon, DatabaseIcon, HashIcon, TagIcon, TrashIcon } from "@phosphor-icons/react";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "../../../../../../../../components/router";
 import { AppEnabledGuard } from "../../../app-enabled-guard";
 import { PageLayout } from "../../../page-layout";
@@ -13,7 +21,7 @@ import { useAdminApp } from "../../../use-admin-app";
 
 type PageClientProps = {
   storeId: string,
-}
+};
 
 export default function PageClient({ storeId }: PageClientProps) {
   const stackAdminApp = useAdminApp();
@@ -21,72 +29,53 @@ export default function PageClient({ storeId }: PageClientProps) {
   const router = useRouter();
   const updateConfig = useUpdateConfig();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editedDisplayName, setEditedDisplayName] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [localDisplayName, setLocalDisplayName] = useState<string | undefined>(undefined);
 
   const config = project.useConfig();
   const store = config.dataVault.stores[storeId];
+  const modifiedKeys = useMemo(() => new Set([
+    ...(localDisplayName !== undefined ? ["display-name"] : []),
+  ]), [localDisplayName]);
 
   if (!(storeId in config.dataVault.stores)) {
     return (
       <AppEnabledGuard appId="data-vault">
         <PageLayout title="Store Not Found">
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-muted-foreground mb-4">This data vault store does not exist.</p>
-            <Button onClick={() => router.push(`/projects/${project.id}/data-vault/stores`)}>
+            <p className="text-sm text-muted-foreground mb-4">This data vault store does not exist.</p>
+            <DesignButton onClick={() => router.push(`/projects/${project.id}/data-vault/stores`)}>
               <ArrowLeftIcon className="h-4 w-4 mr-2" />
               Back to Stores
-            </Button>
+            </DesignButton>
           </div>
         </PageLayout>
       </AppEnabledGuard>
     );
   }
 
-  const handleDeleteStore = async () => {
-    if (deleteConfirmation !== storeId) {
-      alert("Please type the store ID to confirm deletion");
-      return;
-    }
+  const displayName = localDisplayName ?? store.displayName;
+  const hasChanges = localDisplayName !== undefined;
 
-    setIsDeleting(true);
-    try {
-      const { [storeId]: _, ...remainingStores } = config.dataVault.stores;
-
+  const handleSaveDisplayName = async () => {
+    if (localDisplayName !== undefined) {
       await updateConfig({
         adminApp: stackAdminApp,
-        configUpdate: { [`dataVault.stores.${storeId}`]: null },
+        configUpdate: {
+          [`dataVault.stores.${storeId}`]: {
+            ...store,
+            displayName: localDisplayName.trim() || store.displayName,
+          },
+        },
         pushable: true,
       });
-
-      toast({ title: "Data vault store deleted successfully" });
-      router.push(`/projects/${project.id}/data-vault/stores`);
-    } finally {
-      setIsDeleting(false);
+      toast({ title: "Display name updated successfully" });
+      setLocalDisplayName(undefined);
     }
   };
 
-  const handleUpdateDisplayName = async () => {
-    await updateConfig({
-      adminApp: stackAdminApp,
-      configUpdate: {
-        [`dataVault.stores.${storeId}`]: {
-          ...store,
-          displayName: editedDisplayName.trim() || store.displayName,
-        },
-      },
-      pushable: true,
-    });
-
-    toast({ title: "Display name updated successfully" });
-    setIsEditingName(false);
-  };
-
-  const startEditingName = () => {
-    setEditedDisplayName(store.displayName || "");
-    setIsEditingName(true);
+  const handleDiscardDisplayName = () => {
+    setLocalDisplayName(undefined);
   };
 
   const copyToClipboard = async (text: string) => {
@@ -94,6 +83,60 @@ export default function PageClient({ storeId }: PageClientProps) {
     toast({ title: "Copied to clipboard" });
   };
 
+  const handleDeleteStore = async () => {
+    if (deleteConfirmation !== storeId) {
+      return "prevent-close" as const;
+    }
+
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { [`dataVault.stores.${storeId}`]: null },
+      pushable: true,
+    });
+
+    toast({ title: "Data vault store deleted successfully" });
+    router.push(`/projects/${project.id}/data-vault/stores`);
+  };
+
+  const storeDetailItems: DesignEditableGridItem[] = [
+    {
+      type: "custom",
+      icon: <HashIcon className="h-3.5 w-3.5" />,
+      name: "Store ID",
+      children: (
+        <div className="-ml-2 flex w-full items-center gap-2">
+          <div className="flex h-7 min-w-0 flex-1 items-center rounded-xl border border-transparent px-2">
+            <code className="truncate rounded-md bg-foreground/[0.04] px-2 py-0.5 text-sm">
+              {storeId}
+            </code>
+          </div>
+          <DesignButton
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 shrink-0 p-0"
+            onClick={() => copyToClipboard(storeId)}
+          >
+            <CopyIcon className="h-3.5 w-3.5" />
+          </DesignButton>
+        </div>
+      ),
+    },
+    {
+      itemKey: "display-name",
+      type: "text",
+      icon: <TagIcon className="h-3.5 w-3.5" />,
+      name: "Display Name",
+      value: displayName,
+      placeholder: "Enter display name",
+      onUpdate: async (val) => {
+        if (val === store.displayName) {
+          setLocalDisplayName(undefined);
+        } else {
+          setLocalDisplayName(val);
+        }
+      },
+    },
+  ];
 
   const serverExample = deindent`
     // In your .env file or environment variables:
@@ -115,143 +158,83 @@ export default function PageClient({ storeId }: PageClientProps) {
     });
   `;
 
-
   return (
     <AppEnabledGuard appId="data-vault">
-      <PageLayout
-        title={`Data Vault Store`}
-      >
-        <div className="space-y-6">
-          <div className="flex flex-row gap-4 justify-between items-center">
-            <div>
-              <Label>Store ID</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <code className="text-sm bg-muted px-2 py-1 rounded">{storeId}</code>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyToClipboard(storeId)}
-                >
-                  <CopyIcon className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div>
-              <Label>Display Name</Label>
-              {isEditingName ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <Input
-                    value={editedDisplayName}
-                    onChange={(e) => setEditedDisplayName(e.target.value)}
-                    placeholder="Enter display name"
-                    className="max-w-sm"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleUpdateDisplayName}
-                  >
-                    <CheckIcon className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsEditingName(false)}
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-sm text-muted-foreground">
-                    {store.displayName || "No display name set"}
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={startEditingName}
-                  >
-                    <PencilSimpleIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-            <Button
+      <PageLayout title="Data Vault Store" allowContentOverflow>
+        <DesignCard
+          title="Store Details"
+          subtitle="View and manage this data vault store"
+          icon={DatabaseIcon}
+          glassmorphic
+          actions={
+            <DesignButton
               variant="destructive"
               size="sm"
               onClick={() => setIsDeleteDialogOpen(true)}
             >
-              <TrashIcon className="h-4 w-4 mr-2" />
+              <TrashIcon className="h-3.5 w-3.5 mr-1.5" />
               Delete Store
-            </Button>
-          </div>
-
-          <div className="flex flex-col gap-2 text-muted-foreground text-sm">
-            <p>
-              Your data vault store has been created.
-            </p>
-            <p>
-              A store securely saves key-value pairs with Stack Auth. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
-            </p>
-            <p>
-              To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <b>Even Stack Auth</b> can&apos;t access your data if you lose it, so keep it safe.
-            </p>
-            <p>
-              Stack Auth only stores hashes of your keys, so you can&apos;t list all keys in a store. Each value is encrypted with its key, the provided secret, and an additional encryption secret that is kept safe by Stack Auth.
-            </p>
-          </div>
-
-          <CodeBlock
-            language="typescript"
-            content={serverExample}
-            title="Example Implementation"
-            icon="code"
+            </DesignButton>
+          }
+        >
+          <DesignEditableGrid
+            items={storeDetailItems}
+            columns={1}
+            deferredSave
+            hasChanges={hasChanges}
+            onSave={handleSaveDisplayName}
+            onDiscard={handleDiscardDisplayName}
+            externalModifiedKeys={modifiedKeys}
           />
+        </DesignCard>
 
-          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Delete Data Vault Store</DialogTitle>
-                <DialogDescription>
-                  This action cannot be undone. All encrypted data in this store will be permanently deleted.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="confirmation">
-                    Type <strong>{storeId}</strong> to confirm deletion
-                  </Label>
-                  <Input
-                    id="confirmation"
-                    value={deleteConfirmation}
-                    onChange={(e) => setDeleteConfirmation(e.target.value)}
-                    placeholder={storeId}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                    setIsDeleteDialogOpen(false);
-                    setDeleteConfirmation("");
-                    }}
-                    disabled={isDeleting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={handleDeleteStore}
-                    disabled={isDeleting || deleteConfirmation !== storeId}
-                  >
-                    {isDeleting ? "Deleting..." : "Delete Store"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+        <DesignAlert
+          variant="info"
+          title="How Data Vault Works"
+          description={<>
+            A store securely saves key-value pairs with Stack Auth. Plaintext keys and values are never written to a database; instead, they&apos;re encrypted and decrypted on-the-fly using envelope encryption with a rotating master key.
+            <br /><br />
+            To use the store, you&apos;ll need a random, unguessable secret. It can be any format, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. <strong className="text-foreground/90">Even Stack Auth</strong> can&apos;t access your data if you lose it, so keep it safe.
+            <br /><br />
+            Stack Auth only stores hashes of your keys, so you can&apos;t list all keys in a store. Each value is encrypted with its key, the provided secret, and an additional encryption secret that is kept safe by Stack Auth.
+          </>}
+        />
+
+        <CodeBlock
+          language="typescript"
+          content={serverExample}
+          title="Example Implementation"
+          icon="code"
+        />
+
+        <ActionDialog
+          open={isDeleteDialogOpen}
+          onOpenChange={(open) => {
+              setIsDeleteDialogOpen(open);
+              if (!open) setDeleteConfirmation("");
+          }}
+          title="Delete Data Vault Store"
+          description="This action cannot be undone. All encrypted data in this store will be permanently deleted."
+          danger
+          okButton={{
+            label: "Delete Store",
+            onClick: handleDeleteStore,
+            props: { disabled: deleteConfirmation !== storeId },
+          }}
+          cancelButton
+        >
+          <div className="space-y-2">
+            <Label htmlFor="confirmation">
+              Type <strong>{storeId}</strong> to confirm deletion
+            </Label>
+            <DesignInput
+              id="confirmation"
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              placeholder={storeId}
+            />
+          </div>
+        </ActionDialog>
       </PageLayout>
     </AppEnabledGuard>
   );

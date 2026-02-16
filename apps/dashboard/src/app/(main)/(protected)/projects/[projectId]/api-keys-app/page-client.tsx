@@ -101,13 +101,17 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="api-keys">
       <PageLayout title="API Keys" description="Configure API key settings for your project">
-        <DesignAlert variant="info" title="About API Keys">
-          This app allows your users to create API keys for their accounts and teams. It is helpful if you have your own API that you would like to secure with Stack Auth.
-          <br /><br />
-          If you are looking to create or manage keys for your Stack Auth project, head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> settings.
-          <br /><br />
-          For more information, see the <StyledLink href="https://docs.stack-auth.com/docs/apps/api-keys">API Keys docs</StyledLink>.
-        </DesignAlert>
+        <DesignAlert
+          variant="info"
+          title="About API Keys"
+          description={<>
+            This app allows your users to create API keys for their accounts and teams. It is helpful if you have your own API that you would like to secure with Stack Auth.
+            <br /><br />
+            If you are looking to create or manage keys for your Stack Auth project, head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> settings.
+            <br /><br />
+            For more information, see the <StyledLink href="https://docs.stack-auth.com/docs/apps/api-keys">API Keys docs</StyledLink>.
+          </>}
+        />
 
         <DesignCard
           title="API Key Settings"
