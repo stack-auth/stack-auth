@@ -64,6 +64,7 @@ export const PATCH = createSmartRouteHandler({
       throw new KnownErrors.EmailRenderingError("NotificationCategory is required, import it from @stackframe/emails");
     }
 
+    // Path-notation keys are dynamic strings and cannot be represented precisely by the override type.
     const configOverride: Record<string, any> = {
       [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
     };
@@ -120,6 +121,7 @@ export const DELETE = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
+        // null means delete this key, but the override map type does not model null-valued deletes.
         [`emails.templates.${templateId}`]: null as any,
       },
     });

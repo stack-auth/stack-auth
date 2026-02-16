@@ -5,6 +5,7 @@ import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import {
   DesignAlert,
   DesignBadge,
@@ -83,8 +84,8 @@ export default function PageClient() {
 
         setKeys({
           projectId: adminApp.projectId,
-          publishableClientKey: newKey.publishableClientKey!,
-          secretServerKey: newKey.secretServerKey!,
+          publishableClientKey: newKey.publishableClientKey ?? throwErr("Expected publishableClientKey after creating an API key with hasPublishableClientKey: true"),
+          secretServerKey: newKey.secretServerKey ?? throwErr("Expected secretServerKey after creating an API key with hasSecretServerKey: true"),
         });
       } finally {
         setIsGenerating(false);
@@ -265,7 +266,7 @@ export default function PageClient() {
     if (prevAllCompleted !== undefined && !prevAllCompleted && allCompleted) {
       // Create a confetti effect dropping from the top
       const duration = 3000;
-      const animationEnd = Date.now() + duration;
+      const animationEnd = performance.now() + duration;
       const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
       function randomInRange(min: number, max: number) {
@@ -273,7 +274,7 @@ export default function PageClient() {
       }
 
       const interval = setInterval(() => {
-        const timeLeft = animationEnd - Date.now();
+        const timeLeft = animationEnd - performance.now();
 
         if (timeLeft <= 0) {
           clearInterval(interval);

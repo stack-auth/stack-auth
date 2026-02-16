@@ -16,7 +16,7 @@ import {
   cn
 } from "@/components/ui";
 import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import * as confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -690,7 +690,7 @@ export default function PageClient() {
           checked={project.isProductionMode}
           disabled={!project.isProductionMode && productionModeErrors.length > 0}
           onCheckedChange={(checked) => {
-            runAsynchronously(project.update({ isProductionMode: checked }));
+            runAsynchronouslyWithAlert(project.update({ isProductionMode: checked }));
           }}
         />
       ),

@@ -62,10 +62,7 @@ export default function PageClient({ storeId }: PageClientProps) {
       await updateConfig({
         adminApp: stackAdminApp,
         configUpdate: {
-          [`dataVault.stores.${storeId}`]: {
-            ...store,
-            displayName: localDisplayName.trim() || store.displayName,
-          },
+          [`dataVault.stores.${storeId}.displayName`]: localDisplayName.trim() || store.displayName,
         },
         pushable: true,
       });

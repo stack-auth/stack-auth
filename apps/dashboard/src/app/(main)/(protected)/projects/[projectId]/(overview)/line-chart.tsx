@@ -7,6 +7,7 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { DesignCardTint, DesignCategoryTabs, DesignPillToggle } from "@/components/design-components";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
@@ -363,7 +364,7 @@ export function TabbedMetricsCard({
                 {listData.map((user) => (
                   <button
                     key={user.id}
-                    onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
+                    onClick={() => router.push(urlString`/projects/${projectId}/users/${user.id}`)}
                     className={cn(
                       "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
                       hoverAccentClass
