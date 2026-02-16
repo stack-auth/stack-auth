@@ -28,16 +28,28 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
 
   const timeoutMs = 180_000;
   const intervalMs = 2_000;
+  const perRequestTimeoutMs = 30_000;
   const start = performance.now();
 
   let response;
   while (performance.now() - start < timeoutMs) {
-    response = await runQueryForCurrentProject({
-      query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
-      params: {
-        email,
-      },
-    });
+    // Race against a per-request timeout so a single hanging fetch doesn't
+    // consume the entire test timeout (the outer while-loop timeout only
+    // checks at the top of the loop).
+    const maybeResponse = await Promise.race([
+      runQueryForCurrentProject({
+        query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
+        params: {
+          email,
+        },
+      }),
+      wait(perRequestTimeoutMs).then(() => null),
+    ]);
+    if (!maybeResponse) {
+      await wait(intervalMs);
+      continue;
+    }
+    response = maybeResponse;
     expect(response.status).toBe(200);
     if (response.body.result.length === 1 && response.body.result[0].display_name === expectedDisplayName) {
       return response;
@@ -54,16 +66,27 @@ async function waitForClickhouseUserDeletion(email: string) {
 
   const timeoutMs = 180_000;
   const intervalMs = 2_000;
+  const perRequestTimeoutMs = 30_000;
   const start = performance.now();
 
   let response;
   while (performance.now() - start < timeoutMs) {
-    response = await runQueryForCurrentProject({
-      query: "SELECT primary_email FROM users WHERE primary_email = {email:String}",
-      params: {
-        email,
-      },
-    });
+    // Race against a per-request timeout so a single hanging fetch doesn't
+    // consume the entire test timeout.
+    const maybeResponse = await Promise.race([
+      runQueryForCurrentProject({
+        query: "SELECT primary_email FROM users WHERE primary_email = {email:String}",
+        params: {
+          email,
+        },
+      }),
+      wait(perRequestTimeoutMs).then(() => null),
+    ]);
+    if (!maybeResponse) {
+      await wait(intervalMs);
+      continue;
+    }
+    response = maybeResponse;
     expect(response).toMatchObject({
       status: 200,
     });
