@@ -37,8 +37,9 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
   const intervalMs = 2_000;
   const start = performance.now();
 
+  let response;
   while (performance.now() - start < timeoutMs) {
-    const response = await runQueryForCurrentProject({
+    response = await runQueryForCurrentProject({
       query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
       params: { email },
     });
@@ -51,7 +52,7 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`);
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
 }
 
 describe.sequential('External DB Sync - Advanced Tests', () => {
