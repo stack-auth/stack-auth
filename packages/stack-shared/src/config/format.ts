@@ -102,6 +102,83 @@ export function override(c1: Config, ...configs: Config[]) {
   };
 }
 
+/**
+ * Removes keys from a config override, using the same nested key logic as the `override` function.
+ * Resetting key "a.b" also resets "a.b.c" (and any other descendants).
+ * Handles both flat dot-notation keys and nested object keys.
+ */
+export function removeKeysFromConfig(config: Config, keysToRemove: string[]): Config {
+  if (keysToRemove.length === 0) return config;
+
+  const result: Config = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (value === undefined) continue;
+
+    // Check if this flat key matches or is a child of any key to remove (same logic as override)
+    const shouldRemove = keysToRemove.some(k => key === k || key.startsWith(k + '.'));
+    if (shouldRemove) continue;
+
+    // Check if any key to remove is a descendant of this key (meaning it's nested inside this value)
+    const childKeysToRemove = keysToRemove
+      .filter(k => k.startsWith(key + '.'))
+      .map(k => k.slice(key.length + 1));
+
+    if (childKeysToRemove.length > 0 && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const cleaned = removeKeysFromConfig(value as Config, childKeysToRemove);
+      if (Object.keys(cleaned).length > 0) {
+        result[key] = cleaned;
+      }
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+import.meta.vitest?.test("removeKeysFromConfig(...)", ({ expect }) => {
+  // Basic flat key removal
+  expect(removeKeysFromConfig({ a: 1, b: 2 }, ["a"])).toEqual({ b: 2 });
+  expect(removeKeysFromConfig({ "a.b": 1, "a.c": 2, d: 3 }, ["a.b"])).toEqual({ "a.c": 2, d: 3 });
+
+  // Removing a parent removes children (flat keys)
+  expect(removeKeysFromConfig({ "a.b": 1, "a.b.c": 2, "a.d": 3 }, ["a.b"])).toEqual({ "a.d": 3 });
+  expect(removeKeysFromConfig({ "a.b": 1, "a.c": 2, "a.d": 3 }, ["a"])).toEqual({});
+  expect(removeKeysFromConfig({ "teams.allowClientTeamCreation": true, "teams.createPersonalTeamOnSignUp": true }, ["teams"])).toEqual({});
+
+  // Nested object key removal
+  expect(removeKeysFromConfig({ teams: { allowClientTeamCreation: true, createPersonalTeamOnSignUp: true } }, ["teams.allowClientTeamCreation"])).toEqual({ teams: { createPersonalTeamOnSignUp: true } });
+  expect(removeKeysFromConfig({ teams: { allowClientTeamCreation: true } }, ["teams.allowClientTeamCreation"])).toEqual({});
+  expect(removeKeysFromConfig({ teams: { allowClientTeamCreation: true, createPersonalTeamOnSignUp: true } }, ["teams"])).toEqual({});
+  expect(removeKeysFromConfig({ a: { b: { c: 1, d: 2 } } }, ["a.b.c"])).toEqual({ a: { b: { d: 2 } } });
+
+  // Mixed flat and nested
+  expect(removeKeysFromConfig({ "teams.allowClientTeamCreation": true, teams: { createPersonalTeamOnSignUp: true } }, ["teams.allowClientTeamCreation"])).toEqual({ teams: { createPersonalTeamOnSignUp: true } });
+  expect(removeKeysFromConfig({ "teams.allowClientTeamCreation": true, teams: { createPersonalTeamOnSignUp: true } }, ["teams"])).toEqual({});
+
+  // Nested with dot-notation inner keys
+  expect(removeKeysFromConfig({ teams: { "a.b": 1 } }, ["teams.a.b"])).toEqual({});
+  expect(removeKeysFromConfig({ teams: { "a.b.c": 1 } }, ["teams.a.b"])).toEqual({});
+
+  // No keys to remove
+  expect(removeKeysFromConfig({ a: 1, b: 2 }, [])).toEqual({ a: 1, b: 2 });
+
+  // Key not present (no-op)
+  expect(removeKeysFromConfig({ a: 1, b: 2 }, ["c"])).toEqual({ a: 1, b: 2 });
+  expect(removeKeysFromConfig({ a: 1, b: 2 }, ["a.b"])).toEqual({ a: 1, b: 2 });
+
+  // Multiple keys to remove
+  expect(removeKeysFromConfig({ "a.b": 1, "c.d": 2, "e.f": 3 }, ["a.b", "e.f"])).toEqual({ "c.d": 2 });
+  expect(removeKeysFromConfig({ a: { b: 1 }, c: { d: 2 } }, ["a.b", "c.d"])).toEqual({});
+
+  // Removing non-object values with nested key path (no-op for non-objects)
+  expect(removeKeysFromConfig({ a: "string" }, ["a.b"])).toEqual({ a: "string" });
+  expect(removeKeysFromConfig({ a: 123 }, ["a.b"])).toEqual({ a: 123 });
+  expect(removeKeysFromConfig({ a: null }, ["a.b"])).toEqual({ a: null });
+
+  // Array values are preserved (not recursed into)
+  expect(removeKeysFromConfig({ a: [1, 2, 3] }, ["a.0"])).toEqual({ a: [1, 2, 3] });
+});
+
 import.meta.vitest?.test("override(...)", ({ expect }) => {
   expect(
     override(
