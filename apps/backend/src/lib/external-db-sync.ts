@@ -460,7 +460,7 @@ async function getClickhouseLastSyncedSequenceId(
   const resultSet = await client.query({
     query: `
       SELECT last_synced_sequence_id
-      FROM analytics_internal._stack_sync_metadata
+      FROM analytics_internal._stack_sync_metadata FINAL
       WHERE tenancy_id = {tenancy_id:UUID}
         AND mapping_name = {mapping_name:String}
       ORDER BY updated_at DESC
