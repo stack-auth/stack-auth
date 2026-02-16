@@ -68,6 +68,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _serverTeamsCache = createCache<[string | undefined], TeamsCrud['Server']['Read'][]>(async ([userId]) => {
     return await this._interface.listServerTeams({ userId });
   });
+  private readonly _serverUserTeamInvitationsCache = createCache<string[], TeamInvitationCrud['Client']['Read'][]>(async ([userId]) => {
+    return await this._interface.listServerUserTeamInvitations(userId);
+  });
   private readonly _serverTeamUserPermissionsCache = createCache<
     [string, string, boolean],
     TeamPermissionsCrud['Server']['Read'][]
@@ -566,6 +569,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
         // TODO: refresh cache
       },
+      async listTeamInvitations() {
+        const invitations = Result.orThrow(await app._serverUserTeamInvitationsCache.getOrWait([crud.id], "write-only"));
+        return invitations.map((inv) => app._clientUserTeamInvitationFromCrud(inv));
+      },
+      // IF_PLATFORM react-like
+      useTeamInvitations() {
+        const invitations = useAsyncCache(app._serverUserTeamInvitationsCache, [crud.id], "user.useTeamInvitations()");
+        return useMemo(() => invitations.map((inv) => app._clientUserTeamInvitationFromCrud(inv)), [invitations]);
+      },
+      // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;

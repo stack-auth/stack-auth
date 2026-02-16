@@ -33,6 +33,20 @@ export type TeamInvitation = {
   revoke(): Promise<void>,
 }
 
+/**
+ * A team invitation as seen from the invited user's perspective.
+ *
+ * Returned by `user.listTeamInvitations()`. Contains information about teams that have
+ * sent invitations to any of the user's verified email addresses.
+ */
+export type UserTeamInvitation = {
+  id: string,
+  teamId: string,
+  teamDisplayName: string,
+  recipientEmail: string,
+  expiresAt: Date,
+}
+
 export type Team = {
   id: string,
   displayName: string,

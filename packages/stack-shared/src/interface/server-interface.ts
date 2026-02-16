@@ -431,6 +431,16 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async listServerUserTeamInvitations(userId: string): Promise<TeamInvitationCrud['Client']['Read'][]> {
+    const response = await this.sendServerRequest(
+      "/team-invitations?" + new URLSearchParams({ user_id: userId }),
+      {},
+      null,
+    );
+    const result = await response.json() as TeamInvitationCrud['Client']['List'];
+    return result.items;
+  }
+
   async updateServerUser(userId: string, update: UsersCrud['Server']['Update']): Promise<UsersCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       urlString`/users/${userId}`,

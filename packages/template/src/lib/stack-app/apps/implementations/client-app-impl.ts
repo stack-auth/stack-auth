@@ -48,7 +48,7 @@ import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoic
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
-import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, UserTeamInvitation, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
@@ -187,6 +187,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.getTeamMemberProfile({ teamId, userId: 'me' }, session);
     }
   );
+  private readonly _currentUserTeamInvitationsCache = createCacheBySession(async (session) => {
+    return await this._interface.listCurrentUserTeamInvitations(session);
+  });
   private readonly _clientContactChannelsCache = createCacheBySession<[], ContactChannelsCrud['Client']['Read'][]>(
     async (session) => {
       return await this._interface.listClientContactChannels(session);
@@ -974,6 +977,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _clientUserTeamInvitationFromCrud(crud: TeamInvitationCrud['Client']['Read']): UserTeamInvitation {
+    return {
+      id: crud.id,
+      teamId: crud.team_id,
+      teamDisplayName: crud.team_display_name,
+      recipientEmail: crud.recipient_email,
+      expiresAt: new Date(crud.expires_at_millis),
+    };
+  }
+
   protected _baseApiKeyFromCrud(
     crud: TeamApiKeysCrud['Client']['Read'] | UserApiKeysCrud['Client']['Read'] | yup.InferType<typeof teamApiKeysCreateOutputSchema> | yup.InferType<typeof userApiKeysCreateOutputSchema>
   ): Omit<ApiKey<"user", boolean>, "revoke" | "update"> | Omit<ApiKey<"team", boolean>, "revoke" | "update"> {
@@ -1429,6 +1442,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveTeam(team.id, session);
         // TODO: refresh cache
       },
+      async listTeamInvitations() {
+        const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
+        return invitations.map((crud) => app._clientUserTeamInvitationFromCrud(crud));
+      },
+      // IF_PLATFORM react-like
+      useTeamInvitations() {
+        const invitations = useAsyncCache(app._currentUserTeamInvitationsCache, [session], "user.useTeamInvitations()");
+        return useMemo(() => invitations.map((crud) => app._clientUserTeamInvitationFromCrud(crud)), [invitations]);
+      },
+      // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<TeamPermission[]> {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;
