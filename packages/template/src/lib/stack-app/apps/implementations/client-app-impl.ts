@@ -53,6 +53,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-recording";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -94,6 +95,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected readonly _redirectMethod: RedirectMethod | undefined;
   protected readonly _urlOptions: Partial<HandlerUrls>;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
+
+  private readonly _analyticsOptions: AnalyticsOptions | undefined;
+  private _sessionRecorder: SessionRecorder | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -430,6 +434,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
       this._initUniqueIdentifier();
+    }
+
+    this._analyticsOptions = resolvedOptions.analytics;
+    if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
+      this._sessionRecorder = new SessionRecorder({
+        projectId: this.projectId,
+        getAccessToken: async () => {
+          const session = await this._getSession();
+          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
+          return tokens?.accessToken.token ?? null;
+        },
+        sendBatch: async (body, opts) => {
+          return await this._interface.sendSessionRecordingBatch(body, await this._getSession(), opts);
+        },
+      }, this._analyticsOptions.replays);
+      this._sessionRecorder.start();
     }
   }
 
@@ -2790,8 +2810,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           return clientApp as any;
         }
 
+        const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
         return new _StackClientAppImplIncomplete<HasTokenStore, ProjectId>({
-          ...omit(json, ["uniqueIdentifier"]) as any,
+          ...restJson as any,
+          analytics: analyticsOptionsFromJson(analytics),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
@@ -2822,6 +2844,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
+          analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {
@@ -2830,6 +2853,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         });
       },
       getConstructorOptions: () => this._options,
+      sendSessionRecordingBatch: async (body: string, options: { keepalive: boolean }) => {
+        return await this._interface.sendSessionRecordingBatch(body, await this._getSession(), options);
+      },
       sendRequest: async (
         path: string,
         requestOptions: RequestInit,

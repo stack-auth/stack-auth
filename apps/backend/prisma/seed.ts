@@ -1118,6 +1118,13 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     userEmailToId,
   });
 
+  await seedDummySessionRecordings({
+    prisma: dummyPrisma,
+    tenancyId: dummyTenancy.id,
+    userEmailToId,
+    targetSessionRecordingCount: 75
+  });
+
   console.log('Seeded dummy project data');
 }
 
@@ -1764,4 +1771,66 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   }
 
   console.log('Finished seeding session activity events');
+}
+
+type SessionRecordingSeedOptions = {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  userEmailToId: Map<string, string>,
+  targetSessionRecordingCount?: number,
+};
+
+async function seedDummySessionRecordings(options: SessionRecordingSeedOptions) {
+  const {
+    prisma,
+    tenancyId,
+    userEmailToId,
+    targetSessionRecordingCount = 250,
+  } = options;
+
+  const existingCount = await prisma.sessionRecording.count({
+    where: {
+      tenancyId,
+    },
+  });
+
+  if (existingCount >= targetSessionRecordingCount) {
+    console.log(`Dummy project already has ${existingCount} session recordings, skipping seeding`);
+    return;
+  }
+
+  const toCreate = targetSessionRecordingCount - existingCount;
+  const userIds = Array.from(userEmailToId.values());
+  if (userIds.length === 0) {
+    throw new Error('Cannot seed session recordings: no dummy project users exist');
+  }
+
+  const now = new Date();
+  const twoWeeksAgo = new Date(now);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  const seeds: Prisma.SessionRecordingCreateManyInput[] = [];
+  for (let i = 0; i < toCreate; i++) {
+    const startedAt = new Date(
+      twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
+    );
+    const durationMs = 10_000 + Math.floor(Math.random() * (20 * 60 * 1000)); // 10s..20m
+    const lastEventAt = new Date(startedAt.getTime() + durationMs);
+    const projectUserId = userIds[Math.floor(Math.random() * userIds.length)]!;
+
+    seeds.push({
+      tenancyId,
+      refreshTokenId: generateUuid(),
+      projectUserId,
+      id: generateUuid(),
+      startedAt,
+      lastEventAt,
+    });
+  }
+
+  await prisma.sessionRecording.createMany({
+    data: seeds,
+  });
+
+  console.log(`Seeded ${toCreate} session recordings`);
 }
