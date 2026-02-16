@@ -1,5 +1,6 @@
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
+import type { AdminGetSessionRecordingChunkEventsResponse, AdminGetSessionRecordingAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-recordings";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
@@ -29,6 +30,9 @@ export type EmailOutboxUpdateOptions = {
   scheduledAtMillis?: number,
   cancel?: boolean,
 };
+
+import type { ListSessionRecordingChunksOptions, ListSessionRecordingChunksResult, ListSessionRecordingsOptions, ListSessionRecordingsResult, SessionRecordingAllEventsResult } from "../../session-recordings";
+export type { AdminSessionRecording, AdminSessionRecordingChunk, ListSessionRecordingsOptions, ListSessionRecordingsResult, ListSessionRecordingChunksOptions, ListSessionRecordingChunksResult, SessionRecordingAllEventsResult } from "../../session-recordings";
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
@@ -117,6 +121,11 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
     }): Promise<void>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
+
+    listSessionRecordings(options?: ListSessionRecordingsOptions): Promise<ListSessionRecordingsResult>,
+    listSessionRecordingChunks(sessionRecordingId: string, options?: ListSessionRecordingChunksOptions): Promise<ListSessionRecordingChunksResult>,
+    getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse>,
+    getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<SessionRecordingAllEventsResult>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,
