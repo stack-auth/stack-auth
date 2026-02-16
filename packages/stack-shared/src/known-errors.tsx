@@ -84,7 +84,7 @@ export abstract class KnownError extends StatusError {
       }
     }
 
-    throw new Error(`Unknown KnownError code. You may need to update your version of Stack to see more detailed information. ${json.code}: ${json.message}`);
+    throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
   }
 }
 
@@ -731,9 +731,9 @@ const SignUpRejected = createKnownErrorConstructor(
   "SIGN_UP_REJECTED",
   (message?: string) => [
     403,
-    message ?? "Your sign up was rejected. Please contact us for more information.",
+    message ?? "Your sign up was rejected by an administrator's sign-up rule.",
     {
-      message: message ?? "Your sign up was rejected. Please contact us for more information.",
+      message: message ?? "Your sign up was rejected by an administrator's sign-up rule.",
     },
   ] as const,
   (json: any) => [json.message] as const,
