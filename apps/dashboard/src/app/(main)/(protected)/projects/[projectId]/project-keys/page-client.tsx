@@ -1,10 +1,11 @@
 "use client";
 import { InternalApiKeyTable } from "@/components/data-table/api-key-table";
+import { DesignAlert, DesignButton } from "@/components/design-components";
 import { EnvKeys } from "@/components/env-keys";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
-import { ActionDialog, Button, Typography } from "@/components/ui";
+import { ActionDialog } from "@/components/ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
@@ -26,9 +27,9 @@ export default function PageClient() {
     <PageLayout
       title="Project Keys"
       actions={
-        <Button onClick={() => setIsNewApiKeyDialogOpen(true)}>
+        <DesignButton onClick={() => setIsNewApiKeyDialogOpen(true)}>
           Create Project Keys
-        </Button>
+        </DesignButton>
       }
     >
       <InternalApiKeyTable apiKeys={apiKeySets} />
@@ -115,12 +116,15 @@ function ShowKeyDialog(props: {
       confirmText="I understand that I will not be able to view these keys again."
     >
       <div className="flex flex-col gap-4">
-        <Typography>
-          Here are your project keys.{" "}
-          <span className="font-bold">
-            Copy them to a safe place. You will not be able to view them again.
-          </span>
-        </Typography>
+        <DesignAlert
+          variant="warning"
+          description={<>
+            Here are your project keys.{" "}
+            <span className="font-bold text-foreground/90">
+              Copy them to a safe place. You will not be able to view them again.
+            </span>
+          </>}
+        />
         <EnvKeys
           projectId={project.id}
           publishableClientKey={props.apiKey.publishableClientKey}
