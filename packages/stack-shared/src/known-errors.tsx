@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
+      // @ts-ignore legendary comment, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -1487,7 +1487,6 @@ const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
-
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",

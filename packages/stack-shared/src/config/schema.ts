@@ -261,6 +261,26 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 }));
 
 
+// --- Analytics Schema (environment config only - not pushable) ---
+const environmentAnalyticsSchema = yupObject({
+  queryFolders: yupRecord(
+    userSpecifiedIdSchema("folderId"),
+    yupObject({
+      displayName: yupString(),
+      sortOrder: yupNumber().optional(),
+      queries: yupRecord(
+        userSpecifiedIdSchema("queryId"),
+        yupObject({
+          displayName: yupString(),
+          sqlQuery: yupString(),  // SQL query string (not English language)
+          description: yupString().optional(),
+        }),
+      ),
+    }),
+  ),
+});
+// --- END Analytics Schema ---
+
 export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
     oauth: branchConfigSchema.getNested("auth").getNested("oauth").concat(yupObject({
@@ -313,6 +333,8 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   payments: branchConfigSchema.getNested("payments").concat(yupObject({
     testMode: yupBoolean(),
   })),
+
+  analytics: environmentAnalyticsSchema,
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
@@ -498,7 +520,6 @@ import.meta.vitest?.test("renameProperty", ({ expect }) => {
 // Wherever an object could be used as a value, a function can instead be used to generate the default values on a per-key basis
 // To make sure you don't accidentally forget setting a default value, you must explicitly set fields with no default value to `undefined`.
 // NOTE: These values are the defaults of the schema, NOT the defaults for newly created projects. The values here signify what `null` means for each property. If you want new projects by default to have a certain value set to true, you should update the corresponding function in the backend instead.
-// NOTE: If an config's default value is a function, then the rendered config object {} MUST have the exact same behavior as { <some-key>: defaultFunc(<some-key>) }; in other words, the implementation may evaluate the default function for whatever additional keys it pleases. Note that it is guaranteed that the implementation will always evaluate the function for config keys that are present in the config overrides. // TODO write some tests/fuzzes to ensure this
 const projectConfigDefaults = {
   sourceOfTruth: {
     type: 'hosted',
@@ -665,6 +686,18 @@ const organizationConfigDefaults = {
       displayName: "Unnamed Vault",
     }),
   },
+
+  analytics: {
+    queryFolders: (key: string) => ({
+      displayName: "Unnamed Folder",
+      sortOrder: 0,
+      queries: (queryKey: string) => ({
+        displayName: "Unnamed Query",
+        sqlQuery: "",
+        description: undefined,
+      }),
+    }),
+  },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
@@ -711,9 +744,8 @@ import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
 });
 
 type ApplyDefaults<D extends object | ((key: string) => unknown), C extends object> = {} extends D ? C : DeepMerge<DeepReplaceFunctionsWithObjects<D>, C>;  // the {} extends D makes TypeScript not recurse if the defaults are empty, hence allowing us more recursion until "type instantiation too deep" kicks in... it's a total hack, but it works, so hey?
-function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C, parentPaths: string[] = []): ApplyDefaults<D, C> {
-  const paths = [...parentPaths, ...Object.keys(config)];
-  const res: any = deepReplaceFunctionsWithObjects(defaults, paths);
+function applyDefaults<D extends object | ((key: string) => unknown), C extends object>(defaults: D, config: C): ApplyDefaults<D, C> {
+  const res: any = deepReplaceFunctionsWithObjects(defaults);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
     if (!isObjectLike(mergeValue) && mergeValue !== null) {
@@ -721,19 +753,21 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
     } else {
       const keyParts = key.split(".");
       let baseValue: any = defaults;
+      let lastWasFunction = false;
       for (const [index, part] of keyParts.entries()) {
         if (!isObjectLike(baseValue)) {
           set(res, key, mergeValue ?? null);
           continue outer;
         }
-        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
+        lastWasFunction = false;
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (lastWasFunction = true, baseValue as any)(part) : undefined);
       }
-      if (!isObjectLike(baseValue)) {
+      if (lastWasFunction && mergeValue == null) {
+        set(res, key, null);
+      } else if (!isObjectLike(baseValue)) {
         set(res, key, mergeValue ?? baseValue ?? null);
-        continue outer;
       } else {
-        const newPaths = paths.filter(p => p.startsWith(key + ".")).map(p => p.slice(key.length + 1));
-        set(res, key, applyDefaults(baseValue, mergeValue ?? {}, newPaths));
+        set(res, key, applyDefaults(baseValue, mergeValue ?? {}) as any);
       }
     }
   }
@@ -750,11 +784,12 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
-  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({ a: { b: "a" } });
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({ a: null });
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: null })).toEqual({ a: {} });
+  expect(applyDefaults({ a: (key: string) => ({ c: key }) }, { a: { b: null } })).toEqual({ a: { b: null } });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { a: {} })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { d: {} })).toEqual({ a: { b: 1, c: 2 }, d: { b: 1 } });
@@ -762,6 +797,12 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 }, "a.c": null });
+  expect(applyDefaults({ a: { b: 1 } }, { a: { b: 2 }, "a.b": null })).toEqual({ a: { b: 2 }, "a.b": 1 });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { a: { b: { c: 2 } }, "a.b.c": null })).toEqual({ a: { b: { c: 2 } }, "a.b.c": 1 });
+  expect(applyDefaults({}, { a: { b: 2 }, "a.b": null })).toEqual({ a: { b: 2 }, "a.b": null });
+  expect(applyDefaults({ a: { b: 1, c: 2 } }, { "a.c": null })).toEqual({ a: { b: 1, c: 2 }, "a.c": 2 });
+  expect(applyDefaults({ a: { b: 1, c: () => {} } }, { "a.c": null })).toEqual({ a: { b: 1, c: {} }, "a.c": {} });
+  expect(applyDefaults({ a: { b: 1, c: () => {} } }, { "a.c.d": null })).toEqual({ a: { b: 1, c: {} }, "a.c.d": null });
   expect(applyDefaults({ a: { b: 1 } }, { "a.b": null })).toEqual({ a: { b: 1 }, "a.b": 1 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
   expect(applyDefaults({ a: {} }, { "a.b": null })).toEqual({ a: {}, "a.b": null });
@@ -772,15 +813,15 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: { b: {} }, "a.b": {} });
-  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
-  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: { "x-y": { c: 1, d: 2 } } }, "a.b.x-y.c": 3 });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2 })).toEqual({ a: { b: { c: 1 } }, "a.b.d": 2 });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, "a.e.d": 3 })).toEqual({ a: { b: { c: 1 }, e: { c: 1 } }, "a.b.d": 2, "a.e.d": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: {}, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: {}, "a.b": null });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: {}, "a.b.c": { d: 1 } });
+  expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: {} }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2 })).toEqual({ a: {}, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, "a.e.d": 3 })).toEqual({ a: {}, "a.b.d": 2, "a.e.d": 3 });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { b: { d: 3 } } })).toEqual({ a: { b: { c: 1, d: 3 } }, "a.b.d": 2 });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { e: { d: 3 } } })).toEqual({ a: { b: { c: 1 }, e: { c: 1, d: 3 } }, "a.b.d": 2 });
-  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: { e: 2 } }, "a.b.d": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: { e: 2 } }, "a.b.d": null });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { e: { d: 3 } } })).toEqual({ a: { e: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: { e: 2 } }, "a.b.d": null })).toEqual({ a: {}, "a.b": { c: 1, d: { e: 2 } }, "a.b.d": null });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -1143,6 +1184,17 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
   // every rendered config should also be a config override without errors (regardless of whether it has warnings or not)
   await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
 
+  // Check for dot-notation keys that go through record fields into non-existent entries.
+  // These keys would be silently ignored during config rendering because applyDefaults creates
+  // empty objects for records (function-based defaults) and normalization drops the dot-notation
+  // keys that reference entries that don't exist in those empty objects.
+  const droppedKeys = getDotNotationKeysDroppedByRecords(schema, incompleteConfig);
+  if (droppedKeys.length > 0) {
+    return Result.error(
+      `Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: ${droppedKeys.map(k => JSON.stringify(k)).join(', ')}. Use nested object notation to create new record entries instead of dot notation.`
+    );
+  }
+
   let normalized: Config;
   try {
     normalized = normalize(incompleteConfig, { onDotIntoNull: "empty-object" });
@@ -1168,6 +1220,112 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
     }
     throw error;
   }
+}
+
+/**
+ * Detects dot-notation keys that go through a record field into a non-existent entry.
+ *
+ * For example, `'domains.trustedDomains.2.baseUrl'` goes through the `trustedDomains` record.
+ * If entry `2` doesn't exist as a standalone entry in the config (either as a flat key like
+ * `'domains.trustedDomains.2': {...}` or nested in an object), the dot-notation key will be
+ * silently dropped during rendering.
+ *
+ * This does NOT flag dot-notation keys that only go through static object fields (like
+ * `'domains.allowLocalhost'`), because `applyDefaults` creates those parent objects from
+ * static defaults.
+ */
+function getDotNotationKeysDroppedByRecords(schema: yup.AnySchema, config: Config): string[] {
+  const droppedKeys: string[] = [];
+
+  for (const key of Object.keys(config)) {
+    if (!key.includes('.') || config[key] === undefined) continue;
+
+    const segments = key.split('.');
+    if (isDotNotationKeyDroppedByRecord(schema, config, segments, 0)) {
+      droppedKeys.push(key);
+    }
+  }
+
+  return droppedKeys;
+}
+
+function isDotNotationKeyDroppedByRecord(schema: yup.AnySchema, config: Config, segments: string[], startIndex: number): boolean {
+  let currentSchema = schema;
+
+  for (let i = startIndex; i < segments.length; i++) {
+    const schemaInfo = currentSchema.meta()?.stackSchemaInfo;
+    if (!schemaInfo) return false;
+
+    switch (schemaInfo.type) {
+      case 'record': {
+        // The current segment is a record key. If there are more segments after it,
+        // we're dotting INTO the record entry (setting a field inside it). This only
+        // works if the entry already exists in the config.
+        if (i < segments.length - 1) {
+          const entryPath = segments.slice(0, i + 1);
+          if (!configCreatesEntryAtPath(config, entryPath)) {
+            return true;
+          }
+        }
+        currentSchema = schemaInfo.valueSchema;
+        break;
+      }
+      case 'object': {
+        if (!currentSchema.hasNested(segments[i])) return false;
+        currentSchema = currentSchema.getNested(segments[i]);
+        break;
+      }
+      case 'union': {
+        // Check all variants; if any object/record variant has this segment, follow it
+        for (const variant of schemaInfo.items) {
+          const variantInfo = variant.meta()?.stackSchemaInfo;
+          if (variantInfo?.type === 'object' && variant.hasNested(segments[i])) {
+            return isDotNotationKeyDroppedByRecord(variant, config, segments, i);
+          }
+          if (variantInfo?.type === 'record') {
+            return isDotNotationKeyDroppedByRecord(variant, config, segments, i);
+          }
+        }
+        return false;
+      }
+      default: {
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Checks whether the config creates an entry at the given path (either via a flat key or
+ * nested inside an object value of a shorter key).
+ */
+function configCreatesEntryAtPath(config: Config, pathSegments: string[]): boolean {
+  const targetKey = pathSegments.join('.');
+
+  for (const [key, value] of Object.entries(config)) {
+    if (value === undefined) continue;
+
+    // Exact flat key match (value can be anything — null means "delete", object means "create")
+    if (key === targetKey) return true;
+
+    // Check if this key is a prefix of the target path and its nested value contains the entry
+    if (targetKey.startsWith(key + '.') && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const remainingSegments = targetKey.slice(key.length + 1).split('.');
+      let current: unknown = value;
+      for (const segment of remainingSegments) {
+        if (typeof current !== 'object' || current === null || Array.isArray(current)) {
+          current = undefined;
+          break;
+        }
+        current = (current as Record<string, unknown>)[segment];
+      }
+      if (current !== undefined) return true;
+    }
+  }
+
+  return false;
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
 
