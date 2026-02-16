@@ -172,13 +172,11 @@ export const GET = createSmartRouteHandler({
         }
 
         const flowControl = options.flowControl as UpstashRequest["flowControl"];
-        const deduplicationId = options.deduplicationId as UpstashRequest["deduplicationId"];
 
         return {
           url: fullUrl,
           body: options.body,
           ...(flowControl ? { flowControl } : {}),
-          ...(deduplicationId ? { deduplicationId } : {})
         };
       }
 
