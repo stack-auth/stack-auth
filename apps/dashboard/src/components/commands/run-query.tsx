@@ -192,7 +192,7 @@ function SaveQueryDialog({
       .map(([id, folder]) => ({
         id,
         displayName: folder.displayName,
-        sortOrder: folder.sortOrder ?? 0,
+        sortOrder: folder.sortOrder,
         queries: Object.entries(folder.queries).map(([queryId, q]) => ({
           id: queryId,
           displayName: q.displayName,

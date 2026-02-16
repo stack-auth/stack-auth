@@ -356,7 +356,7 @@ function QueriesContent() {
       .map(([id, folder]) => ({
         id,
         displayName: folder.displayName,
-        sortOrder: folder.sortOrder ?? 0,
+        sortOrder: folder.sortOrder,
         queries: Object.entries(folder.queries).map(([queryId, query]) => ({
           id: queryId,
           displayName: query.displayName,
