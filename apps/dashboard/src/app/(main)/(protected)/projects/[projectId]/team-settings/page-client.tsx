@@ -1,18 +1,22 @@
 "use client";
-import { SmartFormDialog } from "@/components/form-dialog";
-import { InlineSaveDiscard } from "@/components/inline-save-discard";
-import { PermissionListField } from "@/components/permission-field";
-import { SettingCard, SettingSwitch } from "@/components/settings";
-import { Badge, Button, Typography } from "@/components/ui";
+import { PermissionGraph } from "@/components/permission-field";
+import {
+  DesignBadge,
+  DesignButton,
+  DesignCard,
+  DesignEditableGrid,
+  type DesignEditableGridItem,
+} from "@/components/design-components";
+import { ActionDialog, Checkbox, Switch, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
+import { GearSix, ShieldCheck, ShieldIcon, UserPlus, UsersIcon } from "@phosphor-icons/react";
 import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { useMemo, useState } from "react";
-import * as yup from "yup";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
-function CreateDialog(props: {
+function PermissionSelectDialog(props: {
   trigger: React.ReactNode,
   type: "creator" | "member",
 }) {
@@ -22,46 +26,109 @@ function CreateDialog(props: {
   const permissions = stackAdminApp.useTeamPermissionDefinitions();
   const updateConfig = useUpdateConfig();
 
+  const [open, setOpen] = useState(false);
+
   const defaultPermissions = props.type === "creator"
     ? config.rbac.defaultPermissions.teamCreator
     : config.rbac.defaultPermissions.teamMember;
-  const selectedPermissionIds = Object.keys(defaultPermissions).filter(id => defaultPermissions[id]);
 
-  const formSchema = yup.object({
-    permissions: yup.array().of(yup.string().defined()).defined().meta({
-      stackFormFieldRender: (props) => (
-        <PermissionListField
-          {...props}
-          permissions={permissions}
-          selectedPermissionIds={selectedPermissionIds}
-          type="select"
-          label="Default Permissions"
-        />
-      ),
-    }).default(selectedPermissionIds),
-  });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  return <SmartFormDialog
-    trigger={props.trigger}
-    title={props.type === "creator" ? "Team Creator Default Permissions" : "Team Member Default Permissions"}
-    formSchema={formSchema}
-    okButton={{ label: "Save" }}
-    onSubmit={async (values) => {
-      const permissionsMap = typedFromEntries(values.permissions.map((id) => [id, true]));
-      const configKey = props.type === "creator"
-        ? 'rbac.defaultPermissions.teamCreator'
-        : 'rbac.defaultPermissions.teamMember';
+  // Reset selection when dialog opens
+  useEffect(() => {
+    if (open) {
+      setSelectedIds(Object.keys(defaultPermissions).filter(id => defaultPermissions[id]));
+    }
+  }, [open, defaultPermissions]);
 
-      await updateConfig({
-        adminApp: stackAdminApp,
-        configUpdate: {
-          [configKey]: permissionsMap,
-        },
-        pushable: true,
-      });
-    }}
-    cancelButton
-  />;
+  // Recompute graph from current selection (avoids stale closure issues)
+  const graph = useMemo(() => {
+    if (!open) return null;
+    return new PermissionGraph(permissions).addPermission(selectedIds);
+  }, [open, permissions, selectedIds]);
+
+  // Find the sentinel entry (the synthetic "currently edited" permission)
+  const sentinelId = useMemo(() => {
+    if (!graph) return null;
+    return [...graph.permissions.keys()].find(
+      id => !permissions.some(orig => orig.id === id)
+    ) ?? null;
+  }, [graph, permissions]);
+
+  const handleToggle = useCallback((permissionId: string, checked: boolean) => {
+    setSelectedIds(prev =>
+      checked
+        ? [...new Set([...prev, permissionId])]
+        : prev.filter(id => id !== permissionId)
+    );
+  }, []);
+
+  const handleSave = async () => {
+    const permissionsMap = typedFromEntries(selectedIds.map((id) => [id, true]));
+    const configKey = props.type === "creator"
+      ? 'rbac.defaultPermissions.teamCreator'
+      : 'rbac.defaultPermissions.teamMember';
+
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        [configKey]: permissionsMap,
+      },
+      pushable: true,
+    });
+  };
+
+  return (
+    <ActionDialog
+      trigger={props.trigger}
+      title={props.type === "creator" ? "Team Creator Default Permissions" : "Team Member Default Permissions"}
+      description="Select the permissions that will be automatically granted."
+      open={open}
+      onOpenChange={setOpen}
+      okButton={{ label: "Save", onClick: handleSave }}
+      cancelButton
+    >
+      <div className="space-y-1">
+        <p className="text-xs font-semibold text-foreground uppercase tracking-wider mb-2">
+          Default Permissions
+        </p>
+        <div className="rounded-xl border border-border/50 bg-foreground/[0.02] max-h-64 overflow-y-auto">
+          {permissions.map(permission => {
+            const isSelected = selectedIds.includes(permission.id);
+
+            let inheritedFrom: string | false = false;
+            if (graph && sentinelId) {
+              const contain = graph.hasPermission(sentinelId, permission.id);
+              const ancestors = graph.recursiveAncestors(permission.id)
+                .map(p => p.id)
+                .filter(id => id !== permission.id && id !== sentinelId && selectedIds.includes(id));
+              inheritedFrom = contain && ancestors.length > 0 && `(from ${ancestors.join(', ')})`;
+            }
+
+            return (
+              <label
+                key={permission.id}
+                className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-foreground/[0.03] transition-colors duration-150 hover:transition-none first:rounded-t-xl last:rounded-b-xl"
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={(checked) => handleToggle(permission.id, !!checked)}
+                />
+                <span className="text-sm text-foreground">
+                  {permission.id}
+                </span>
+                {inheritedFrom && (
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {inheritedFrom}
+                  </span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </ActionDialog>
+  );
 }
 
 export default function PageClient() {
@@ -70,7 +137,6 @@ export default function PageClient() {
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
-  // Local state for team settings
   const [localClientTeamCreation, setLocalClientTeamCreation] = useState<boolean | undefined>(undefined);
   const [localPersonalTeamOnSignUp, setLocalPersonalTeamOnSignUp] = useState<boolean | undefined>(undefined);
 
@@ -80,6 +146,11 @@ export default function PageClient() {
   const hasChanges = useMemo(() =>
     localClientTeamCreation !== undefined || localPersonalTeamOnSignUp !== undefined,
   [localClientTeamCreation, localPersonalTeamOnSignUp]);
+
+  const modifiedKeys = useMemo(() => new Set([
+    ...(localClientTeamCreation !== undefined ? ["client-team-creation"] : []),
+    ...(localPersonalTeamOnSignUp !== undefined ? ["personal-team-signup"] : []),
+  ]), [localClientTeamCreation, localPersonalTeamOnSignUp]);
 
   const handleSave = async () => {
     const configUpdate: Record<string, boolean> = {};
@@ -103,6 +174,47 @@ export default function PageClient() {
     setLocalPersonalTeamOnSignUp(undefined);
   };
 
+  const teamCreationItems: DesignEditableGridItem[] = [
+    {
+      itemKey: "client-team-creation",
+      type: "custom",
+      icon: <UsersIcon className="h-3.5 w-3.5" />,
+      name: "Client Team Creation",
+      tooltip: "Controls whether users can create teams from account settings and the team switcher",
+      children: (
+        <Switch
+          checked={clientTeamCreation}
+          onCheckedChange={(checked) => {
+            if (checked === config.teams.allowClientTeamCreation) {
+              setLocalClientTeamCreation(undefined);
+            } else {
+              setLocalClientTeamCreation(checked);
+            }
+          }}
+        />
+      ),
+    },
+    {
+      itemKey: "personal-team-signup",
+      type: "custom",
+      icon: <UserPlus className="h-3.5 w-3.5" />,
+      name: "Personal Team on Sign-up",
+      tooltip: "Creates a personal team for each new user on sign-up (does not affect existing users)",
+      children: (
+        <Switch
+          checked={personalTeamOnSignUp}
+          onCheckedChange={(checked) => {
+            if (checked === config.teams.createPersonalTeamOnSignUp) {
+              setLocalPersonalTeamOnSignUp(undefined);
+            } else {
+              setLocalPersonalTeamOnSignUp(checked);
+            }
+          }}
+        />
+      ),
+    },
+  ];
+
   const teamCreatorPermissions = Object.keys(config.rbac.defaultPermissions.teamCreator)
     .filter(id => config.rbac.defaultPermissions.teamCreator[id]);
   const teamMemberPermissions = Object.keys(config.rbac.defaultPermissions.teamMember)
@@ -111,76 +223,60 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="teams">
       <PageLayout title="Team Settings">
-        <SettingCard title="Team Creation Settings">
-          <SettingSwitch
-            label="Allow client users to create teams"
-            checked={clientTeamCreation}
-            onCheckedChange={(checked) => {
-              if (checked === config.teams.allowClientTeamCreation) {
-                setLocalClientTeamCreation(undefined);
-              } else {
-                setLocalClientTeamCreation(checked);
-              }
-            }}
-          />
-          <Typography variant="secondary" type="footnote">
-            {'When enabled, a "Create Team" button will be added to the account settings page and the team switcher.'}
-          </Typography>
-
-          <div className="mt-4">
-            <SettingSwitch
-              label="Create a personal team for each user on sign-up"
-              checked={personalTeamOnSignUp}
-              onCheckedChange={(checked) => {
-                if (checked === config.teams.createPersonalTeamOnSignUp) {
-                  setLocalPersonalTeamOnSignUp(undefined);
-                } else {
-                  setLocalPersonalTeamOnSignUp(checked);
-                }
-              }}
-            />
-          </div>
-          <Typography variant="secondary" type="footnote">
-            When enabled, a personal team will be created for each user when they sign up. This will not automatically create teams for existing users.
-          </Typography>
-          <InlineSaveDiscard
+        <DesignCard
+          title="Team Creation"
+          subtitle="Control how teams are created in your project"
+          icon={GearSix}
+          glassmorphic
+        >
+          <DesignEditableGrid
+            items={teamCreationItems}
+            columns={1}
+            deferredSave
             hasChanges={hasChanges}
             onSave={handleSave}
             onDiscard={handleDiscard}
+            externalModifiedKeys={modifiedKeys}
           />
-        </SettingCard>
+        </DesignCard>
 
         {([
           {
             type: 'creator' as const,
             title: "Team Creator Default Permissions",
-            description: "Permissions the user will automatically be granted when creating a team",
+            subtitle: "Permissions automatically granted when creating a team",
             permissions: teamCreatorPermissions,
+            icon: ShieldCheck,
           }, {
             type: 'member' as const,
             title: "Team Member Default Permissions",
-            description: "Permissions the user will automatically be granted when joining a team",
+            subtitle: "Permissions automatically granted when joining a team",
             permissions: teamMemberPermissions,
+            icon: ShieldIcon,
           }
-        ]).map(({ type, title, description, permissions }) => (
-          <SettingCard
+        ]).map(({ type, title, subtitle, permissions, icon }) => (
+          <DesignCard
             key={type}
             title={title}
-            description={description}
-            actions={<CreateDialog
-              trigger={<Button variant="secondary">Edit</Button>}
-              type={type}
-            />}
+            subtitle={subtitle}
+            icon={icon}
+            glassmorphic
+            actions={
+              <PermissionSelectDialog
+                trigger={<DesignButton variant="secondary" size="sm">Edit</DesignButton>}
+                type={type}
+              />
+            }
           >
             <div className="flex flex-wrap gap-2">
               {permissions.length > 0 ?
                 permissions.map((id) => (
-                  <Badge key={id} variant='secondary'>{id}</Badge>
+                  <DesignBadge key={id} label={id} color="blue" size="sm" />
                 )) :
                 <Typography variant="secondary" type="label">No default permissions set</Typography>
               }
             </div>
-          </SettingCard>
+          </DesignCard>
         ))}
       </PageLayout>
     </AppEnabledGuard>
