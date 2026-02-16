@@ -7,10 +7,10 @@ import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/cru
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
 import { EmailConfig, stackAppInternalsSymbol } from "../../common";
@@ -242,6 +242,23 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       async unlinkPushedConfigSource(): Promise<void> {
         await app._interface.unlinkPushedConfigSource();
+        await app._refreshProjectConfig();
+      },
+      async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
+        await app._interface.resetConfigOverrideKeys(level, keys);
+        await app._refreshProjectConfig();
+      },
+      async getConfigOverride(level: "branch" | "environment"): Promise<Record<string, unknown>> {
+        const result = await app._interface.getConfigOverride(level);
+        return JSON.parse(result.config_string);
+      },
+      async replaceConfigOverride(level: "branch" | "environment", config: Record<string, unknown>): Promise<void> {
+        if (level === "branch") {
+          const source = await app._interface.getPushedConfigSource();
+          await app._interface.setConfigOverride(level, config, source);
+        } else {
+          await app._interface.setConfigOverride(level, config);
+        }
         await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {

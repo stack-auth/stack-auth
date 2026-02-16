@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { Config, getInvalidConfigReason, normalize, override, removeKeysFromConfig } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
@@ -458,6 +458,75 @@ export function overrideOrganizationConfigOverride(options: {
 
 
 // ---------------------------------------------------------------------------------------------------------------------
+// reset functions (remove specific keys from config override)
+// ---------------------------------------------------------------------------------------------------------------------
+// Uses the same nested key logic as the `override` function: resetting key "a.b" also resets "a.b.c".
+
+export async function resetProjectConfigOverrideKeys(options: {
+  projectId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setProjectConfigOverride({
+    projectId: options.projectId,
+    projectConfigOverride: newConfig as ProjectConfigOverride,
+  });
+}
+
+export async function resetBranchConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getBranchConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setBranchConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    branchConfigOverride: newConfig as BranchConfigOverride,
+  });
+}
+
+export async function resetEnvironmentConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setEnvironmentConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    environmentConfigOverride: newConfig as EnvironmentConfigOverride,
+  });
+}
+
+export async function resetOrganizationConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  organizationId: string | null,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getOrganizationConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setOrganizationConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    organizationId: options.organizationId,
+    organizationConfigOverride: newConfig as OrganizationConfigOverride,
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // internal functions
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -658,6 +727,112 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
       Schema 2:
         sourceOfTruth.connectionString must be defined
   `));
+
+  // Dot-notation into record entries — silently dropped cases
+  const objectRecordSchema = yupObject({ a: yupRecord(yupString().defined(), yupObject({ x: yupString().optional(), y: yupString().optional() })) }).defined();
+
+  // Dot notation into a record entry that doesn't exist should warn
+  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey.x": "val" })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "a.mykey.x". Use nested object notation to create new record entries instead of dot notation.",
+      "status": "error",
+    }
+  `);
+
+  // Setting the record entry itself (not dotting into it) should NOT warn
+  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey": { x: "val" } })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // When the record entry exists in the base, dot notation into it should work fine
+  expect(await validateConfigOverrideSchema(objectRecordSchema, { a: { mykey: { x: "old" } } }, { "a.mykey.x": "new" })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // When the record entry exists as a flat key in the same override, dot notation should work fine
+  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey": { x: "old" }, "a.mykey.y": "new" })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot-notation into non-existent record entry in actual schemas (trustedDomains)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain.baseUrl': 'https://example.com',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "domains.trustedDomains.my-domain.baseUrl". Use nested object notation to create new record entries instead of dot notation.",
+      "status": "error",
+    }
+  `);
+
+  // Nested object notation should work fine (no warning)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': {
+      baseUrl: 'https://example.com',
+      handlerPath: '/handler',
+    },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation for static object fields should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'teams.allowClientTeamCreation': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.password.allowSignIn': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.allowLocalhost': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into an oauth provider that doesn't exist should warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.oauth.providers.google.clientId': 'test-id',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "auth.oauth.providers.google.clientId". Use nested object notation to create new record entries instead of dot notation.",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation into an oauth provider that exists in the base should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {
+    auth: { oauth: { providers: { google: { type: 'google', allowSignIn: true } } } },
+  }, {
+    'auth.oauth.providers.google.clientId': 'test-id',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

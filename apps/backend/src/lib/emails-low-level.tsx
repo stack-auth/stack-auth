@@ -48,9 +48,9 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 }>> {
   let finished = false;
   runAsynchronously(async () => {
-    await wait(10000);
+    await wait(15_000);
     if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 10s; maybe the email service is too slow?", {
+      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 15s; maybe the email service is too slow?", {
         config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
         to: options.to,
         subject: options.subject,
