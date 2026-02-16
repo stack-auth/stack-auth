@@ -23,29 +23,6 @@ function formatClickhouseDateTimeParam(date: Date): string {
 }
 
 async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransaction, includeAnonymous: boolean = false): Promise<Record<string, number>> {
-  const totalUsers = await prisma.projectUser.count({
-    where: {
-      tenancyId: tenancy.id,
-      ...(includeAnonymous ? {} : { isAnonymous: false }),
-    },
-  });
-  const users = await prisma.projectUser.findMany({
-    where: {
-      tenancyId: tenancy.id,
-      ...(includeAnonymous ? {} : { isAnonymous: false }),
-    },
-    select: { projectUserId: true },
-    orderBy: { projectUserId: "asc" },
-    take: Math.min(totalUsers, MAX_USERS_FOR_COUNTRY_SAMPLE),
-  });
-
-  if (users.length === 0) {
-    return {};
-  }
-
-  const userIds = users.map((user) => user.projectUserId);
-  const scalingFactor = totalUsers > users.length ? totalUsers / users.length : 1;
-
   const clickhouseClient = getClickhouseAdminClient();
   const res = await clickhouseClient.query({
     query: `
@@ -67,7 +44,6 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
             AND project_id = {projectId:String}
             AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
-            AND has({userIds:Array(String)}, assumeNotNull(user_id))
         )
         WHERE cc IS NOT NULL
           AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
@@ -80,7 +56,6 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
     query_params: {
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
-      userIds,
       includeAnonymous: includeAnonymous ? 1 : 0,
     },
     format: "JSONEachRow",
@@ -93,8 +68,7 @@ async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransact
         return null;
       }
       const count = Number(userCount);
-      const estimatedCount = scalingFactor === 1 ? count : Math.round(count * scalingFactor);
-      return [country_code, estimatedCount] as [string, number];
+      return [country_code, count] as [string, number];
     })
       .filter((entry): entry is [string, number] => entry !== null)
   );

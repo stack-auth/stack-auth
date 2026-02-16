@@ -1149,7 +1149,8 @@ model OutgoingRequest {
   startedFulfillingAt DateTime?
   deduplicationKey String?
 
-  @@unique([deduplicationKey])
+  // Partial unique index on deduplicationKey WHERE startedFulfillingAt IS NULL
+  // is created in a custom migration (not expressible in Prisma schema)
   @@index([startedFulfillingAt, createdAt])
   @@index([startedFulfillingAt, deduplicationKey])
 }

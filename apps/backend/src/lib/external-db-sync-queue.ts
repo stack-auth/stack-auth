@@ -38,6 +38,6 @@ export async function enqueueExternalDbSyncBatch(tenancyIds: string[]): Promise<
       NULL,
       'sentinel-sync-key-' || t.tenancy_id
     FROM unnest(${tenancyIds}::uuid[]) AS t(tenancy_id)
-    ON CONFLICT ("deduplicationKey") DO NOTHING
+    ON CONFLICT ("deduplicationKey") WHERE "startedFulfillingAt" IS NULL DO NOTHING
   `;
 }
