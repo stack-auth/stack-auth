@@ -1,4 +1,4 @@
-import type { OutgoingRequest } from "@/generated/prisma/client";
+import { Prisma, type OutgoingRequest } from "@/generated/prisma/client";
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { upstash } from "@/lib/upstash";
 import { globalPrismaClient, retryTransaction } from "@/prisma-client";
@@ -219,6 +219,17 @@ export const GET = createSmartRouteHandler({
           } catch (error) {
             processSpan.setAttribute("stack.external-db-sync.iteration-error", true);
             captureError("poller-iteration-error", error);
+            // Reset claimed requests so they can be retried on the next iteration
+            // instead of staying stuck with startedFulfillingAt set
+            try {
+              await globalPrismaClient.$executeRaw`
+                UPDATE "OutgoingRequest"
+                SET "startedFulfillingAt" = NULL
+                WHERE "id" IN (${Prisma.join(requests.map(r => r.id))})
+              `;
+            } catch (resetError) {
+              captureError("poller-reset-claimed-requests", resetError);
+            }
             processSpan.setAttribute("stack.external-db-sync.processed-count", 0);
             return 0;
           }
