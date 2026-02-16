@@ -507,7 +507,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async getActiveSessions() {
         const sessions = await app._interface.listServerSessions(crud.id);
-        return sessions.map((session) => app._clientSessionFromCrud(session));
+        return sessions.items.map((session) => app._clientSessionFromCrud(session));
       },
 
       async revokeSession(sessionId: string) {
