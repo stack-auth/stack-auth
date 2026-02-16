@@ -1,6 +1,7 @@
 "use client";
 
 import Loading from "@/app/loading";
+import { CursorBlastEffect } from "@/components/design-components/cursor-blast-effect";
 import { ConfigUpdateDialogProvider } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@stackframe/stack";
@@ -28,6 +29,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
   } else {
     return (
       <ConfigUpdateDialogProvider>
+        <CursorBlastEffect />
         {children}
       </ConfigUpdateDialogProvider>
     );

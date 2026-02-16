@@ -4,6 +4,7 @@ import type { AdminGetSessionRecordingChunkEventsResponse, AdminGetSessionRecord
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
@@ -51,6 +52,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"projectPermissionDefinitions", [], AdminProjectPermissionDefinition[], true>
   & AsyncStoreProperty<"emailThemes", [], { id: string, displayName: string }[], true>
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
+  & AsyncStoreProperty<"emailPreviewWithEditableMarkers", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }], { html: string, editableRegions?: Record<string, unknown> }, false> // THIS_LINE_PLATFORM react-like
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
   & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[], true>
   & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
@@ -92,6 +94,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
     updateEmailTheme(id: string, tsxSource: string): Promise<void>,
+    deleteEmailTheme(id: string): Promise<void>,
 
     sendChatMessage(
       threadId: string,
@@ -101,8 +104,18 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     ): Promise<{ content: ChatContent }>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
+    applyWysiwygEdit(options: {
+      sourceType: "template" | "theme" | "draft",
+      sourceCode: string,
+      oldText: string,
+      newText: string,
+      metadata: EditableMetadata,
+      domPath: Array<{ tagName: string, index: number }>,
+      htmlContext: string,
+    }): Promise<{ updatedSource: string }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
+    deleteEmailTemplate(id: string): Promise<void>,
 
     setupPayments(): Promise<{ url: string }>,
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
@@ -110,6 +123,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void>,
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
+    deleteEmailDraft(id: string): Promise<void>,
     createItemQuantityChange(options: (
       { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |

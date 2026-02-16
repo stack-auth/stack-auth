@@ -26,6 +26,7 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
@@ -103,6 +104,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
+  });
+  private readonly _emailPreviewWithEditableMarkersCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource, editableSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined, 'template' | 'theme' | 'both' | undefined]) => {
+    return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource, editableMarkers: true, editableSource });
   });
   private readonly _configOverridesCache = createCache(async () => {
     return await this._interface.getConfig();
@@ -589,7 +593,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const result = await this._interface.createEmailTemplate(displayName);
     await this._adminEmailTemplatesCache.refresh([]);
+
     return result;
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this._interface.deleteEmailTemplate(id);
+    await this._adminEmailTemplatesCache.refresh([]);
   }
 
   async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {
@@ -611,6 +621,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailDraftsCache.refresh([]);
   }
 
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this._interface.deleteEmailDraft(id);
+    const current = this._adminEmailDraftsCache.getIfCached([]);
+    if (current.status === "ok" && current.data.status === "ok") {
+      this._adminEmailDraftsCache.forceSetCachedValue([], Result.ok(current.data.data.filter((d) => d.id !== id)));
+    }
+    await this._adminEmailDraftsCache.refresh([]);
+  }
+
   async sendChatMessage(
     threadId: string,
     contextType: "email-theme" | "email-template" | "email-draft",
@@ -628,6 +647,18 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listChatMessages(threadId);
   }
 
+  async applyWysiwygEdit(options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: EditableMetadata,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+  }): Promise<{ updatedSource: string }> {
+    return await this._interface.applyWysiwygEdit(options);
+  }
+
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
     const result = await this._interface.createEmailTheme(displayName);
     await this._adminEmailThemesCache.refresh([]);
@@ -643,6 +674,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return crud.html;
   }
   // END_PLATFORM
+  async getEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }): Promise<{ html: string, editableRegions?: Record<string, unknown> }> {
+    const result = await this._interface.renderEmailPreview({ ...options, editableMarkers: true, editableSource: options.editableSource });
+    return { html: result.html, editableRegions: result.editable_regions };
+  }
+  // IF_PLATFORM react-like
+  useEmailPreviewWithEditableMarkers(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }): { html: string, editableRegions?: Record<string, unknown> } {
+    const crud = useAsyncCache(this._emailPreviewWithEditableMarkersCache, [options.themeId, options.themeTsxSource, options.templateId, options.templateTsxSource, options.editableSource] as const, "adminApp.useEmailPreviewWithEditableMarkers()");
+    return { html: crud.html, editableRegions: crud.editable_regions };
+  }
+  // END_PLATFORM
   // IF_PLATFORM react-like
   useEmailTheme(id: string): { displayName: string, tsxSource: string } {
     const crud = useAsyncCache(this._adminEmailThemeCache, [id] as const, "adminApp.useEmailTheme()");
@@ -654,7 +695,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   // END_PLATFORM
   async updateEmailTheme(id: string, tsxSource: string): Promise<void> {
     await this._interface.updateEmailTheme(id, tsxSource);
+    await this._adminEmailThemesCache.refresh([]);
+    await this._adminEmailThemeCache.invalidate([id]);
   }
+
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this._interface.deleteEmailTheme(id);
+    await this._adminEmailThemesCache.refresh([]);
+    await this._adminEmailThemeCache.invalidate([id]);
+  }
+
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }> {
     const result = await this._interface.updateEmailTemplate(id, tsxSource, themeId);
     await this._adminEmailTemplatesCache.refresh([]);
