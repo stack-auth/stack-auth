@@ -585,6 +585,20 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
   }
+
+  async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}/reset-keys`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ keys }),
+      },
+      null,
+    );
+  }
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates`,

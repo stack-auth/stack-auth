@@ -244,6 +244,23 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         await app._interface.unlinkPushedConfigSource();
         await app._refreshProjectConfig();
       },
+      async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
+        await app._interface.resetConfigOverrideKeys(level, keys);
+        await app._refreshProjectConfig();
+      },
+      async getConfigOverride(level: "branch" | "environment"): Promise<Record<string, unknown>> {
+        const result = await app._interface.getConfigOverride(level);
+        return JSON.parse(result.config_string);
+      },
+      async replaceConfigOverride(level: "branch" | "environment", config: Record<string, unknown>): Promise<void> {
+        if (level === "branch") {
+          const source = await app._interface.getPushedConfigSource();
+          await app._interface.setConfigOverride(level, config, source);
+        } else {
+          await app._interface.setConfigOverride(level, config);
+        }
+        await app._refreshProjectConfig();
+      },
       async update(update: AdminProjectUpdateOptions) {
         const updateOptions = adminProjectUpdateOptionsToCrud(update);
         await app._interface.updateProject(updateOptions);

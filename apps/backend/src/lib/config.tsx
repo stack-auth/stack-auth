@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
+import { Config, getInvalidConfigReason, normalize, override, removeKeysFromConfig } from "@stackframe/stack-shared/dist/config/format";
 import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
@@ -456,6 +456,75 @@ export function overrideOrganizationConfigOverride(options: {
   throw new StackAssertionError('Not implemented');
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------
+// reset functions (remove specific keys from config override)
+// ---------------------------------------------------------------------------------------------------------------------
+// Uses the same nested key logic as the `override` function: resetting key "a.b" also resets "a.b.c".
+
+export async function resetProjectConfigOverrideKeys(options: {
+  projectId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setProjectConfigOverride({
+    projectId: options.projectId,
+    projectConfigOverride: newConfig as ProjectConfigOverride,
+  });
+}
+
+export async function resetBranchConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getBranchConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setBranchConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    branchConfigOverride: newConfig as BranchConfigOverride,
+  });
+}
+
+export async function resetEnvironmentConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setEnvironmentConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    environmentConfigOverride: newConfig as EnvironmentConfigOverride,
+  });
+}
+
+export async function resetOrganizationConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  organizationId: string | null,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getOrganizationConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setOrganizationConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    organizationId: options.organizationId,
+    organizationConfigOverride: newConfig as OrganizationConfigOverride,
+  });
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // internal functions

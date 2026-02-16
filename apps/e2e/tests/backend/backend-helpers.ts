@@ -1332,6 +1332,20 @@ export namespace Project {
     expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
   }
+
+  /**
+   * Reset specific keys from a config override level.
+   * Uses the same nested key logic as the override algorithm.
+   */
+  export async function resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/${level}/reset-keys`, {
+      accessType: "admin",
+      method: "POST",
+      body: { keys },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
 }
 
 export namespace Team {
