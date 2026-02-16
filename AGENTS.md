@@ -103,6 +103,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - When writing database migration files, assume that we have >1,000,000 rows in every table (unless otherwise specified). This means you may have to use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL to avoid running the migration and things like concurrent index builds; see the existing migrations for examples.
 - Each migration file runs in its own transaction with a relatively short timeout. Split long-running operations into separate migration files to avoid timeouts. For example, when adding CHECK constraints, use `NOT VALID` in one migration, then `VALIDATE CONSTRAINT` in a separate migration file.
 - **When building frontend code, always carefully deal with loading and error states.** Be very explicit with these; some components make this easy, eg. the button onClick already takes an async callback for loading state, but make sure this is done everywhere, and make sure errors are NEVER just silently swallowed.
+- Any design components you add or modify in the dashboard, update the Playground page accordingly to showcase the changes.
 - Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
 
 ### Code-related
