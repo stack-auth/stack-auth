@@ -187,7 +187,7 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
 }
 
 // Type for outbox email items (simplified - full type is EmailOutboxCrud["Server"]["Read"])
-type OutboxEmail = {
+export type OutboxEmail = {
   id: string,
   subject?: string,
   status: string,

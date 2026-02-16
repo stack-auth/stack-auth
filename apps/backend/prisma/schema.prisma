@@ -101,8 +101,8 @@ model ExternalDbSyncMetadata {
 
   singleton BooleanTrue @unique @default(TRUE)
 
-  sequencerEnabled  Boolean @default(true)
-  pollerEnabled     Boolean @default(true)
+  sequencerEnabled Boolean @default(true)
+  pollerEnabled    Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -892,7 +892,7 @@ model EmailOutbox {
   // The scheduled time of when the email should be added to the queue. Can be edited, but only if the email has not yet started sending. Doing so should set isQueued to false.
   scheduledAt DateTime
 
-  // The scheduled time of the email if it is in the future.
+  // Whether the email has been queued for sending. Once queued, this stays true unless the email is retried or rescheduled.
   isQueued Boolean @default(false)
 
   // A generated column that is equal to scheduledAt if isQueued is false, otherwise null. See the note above on EmailOutboxStatus.status for more details on dbgenerated values.
@@ -902,6 +902,14 @@ model EmailOutbox {
   startedSendingAt  DateTime?
   // if startedSendingAt is not set, then finishedSendingAt is also not set
   finishedSendingAt DateTime?
+
+  // Deferred retry fields for email sending
+  // Number of send retries attempted (starts at 0, incremented on each failure). Reset when email content is edited.
+  sendRetries       Int       @default(0)
+  // When to retry sending (null = not waiting for retry). Set when a retryable error occurs. Reset when email content is edited. Must be null if sendRetries is 0 (enforced by EmailOutbox_nextSendRetryAt_requires_failure). Must be null when finishedSendingAt is set (enforced by EmailOutbox_no_retry_after_finished).
+  nextSendRetryAt   DateTime?
+  // JSON array of errors from each failed send attempt. Each entry has: { attemptNumber, timestamp, externalMessage, externalDetails, internalMessage, internalDetails }. Reset when email content is edited. Must be null if sendRetries is 0 (enforced by EmailOutbox_sendAttemptErrors_requires_failure).
+  sendAttemptErrors Json?
 
   // A generated column that is equal to finishedSendingAt if canHaveDeliveryInfo is false, otherwise deliveredAt.
   sentAt DateTime? @default(dbgenerated("\nCASE\n    WHEN (\"canHaveDeliveryInfo\" IS TRUE) THEN \"deliveredAt\"\n    WHEN (\"canHaveDeliveryInfo\" IS FALSE) THEN \"finishedSendingAt\"\n    ELSE NULL::timestamp without time zone\nEND"))
@@ -937,6 +945,7 @@ model EmailOutbox {
   @@index([tenancyId, finishedSendingAt(sort: Desc), scheduledAtIfNotYetQueued(sort: Desc), priority, id], map: "EmailOutbox_ordering_idx")
   @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
   @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
+  @@index([isQueued], map: "EmailOutbox_isQueued_idx")
 }
 
 model EmailOutboxProcessingMetadata {
@@ -1147,7 +1156,7 @@ model OutgoingRequest {
 
   qstashOptions       Json
   startedFulfillingAt DateTime?
-  deduplicationKey String?
+  deduplicationKey    String?
 
   // Partial unique index on deduplicationKey WHERE startedFulfillingAt IS NULL
   // is created in a custom migration (not expressible in Prisma schema)

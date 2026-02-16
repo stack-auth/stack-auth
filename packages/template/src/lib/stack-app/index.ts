@@ -56,6 +56,7 @@ export type {
   AdminEmailOutboxRecipient,
   AdminEmailOutboxSimpleStatus,
   AdminEmailOutboxStatus,
+  AdminSendAttemptError,
   AdminSentEmail
 } from "./email";
 

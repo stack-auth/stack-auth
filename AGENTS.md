@@ -101,6 +101,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
 - Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible.
 - When writing database migration files, assume that we have >1,000,000 rows in every table (unless otherwise specified). This means you may have to use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL to avoid running the migration and things like concurrent index builds; see the existing migrations for examples.
+- Each migration file runs in its own transaction with a relatively short timeout. Split long-running operations into separate migration files to avoid timeouts. For example, when adding CHECK constraints, use `NOT VALID` in one migration, then `VALIDATE CONSTRAINT` in a separate migration file.
 - **When building frontend code, always carefully deal with loading and error states.** Be very explicit with these; some components make this easy, eg. the button onClick already takes an async callback for loading state, but make sure this is done everywhere, and make sure errors are NEVER just silently swallowed.
 - Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
 
