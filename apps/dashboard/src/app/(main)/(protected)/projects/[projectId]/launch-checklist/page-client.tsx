@@ -3,25 +3,20 @@
 import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
-import { SettingSwitch } from "@/components/settings";
-import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  Typography,
+  DesignBadge,
+  DesignButton,
+  DesignCard,
+  DesignCategoryTabs,
+  DesignEditableGrid,
+  type DesignEditableGridItem,
+} from "@/components/design-components";
+import {
+  Switch,
   cn
 } from "@/components/ui";
+import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import * as confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -200,15 +195,17 @@ function TaskCard(props: {
   const allItemsDone = props.task.items.every((item) => item.done);
 
   return (
-    <Card
+    <DesignCard
+      glassmorphic
+      contentClassName="p-0"
       className={cn(
         "transition-all duration-300",
         meta.cardClass,
         allItemsDone && "border-emerald-500/30 bg-emerald-500/5 dark:border-emerald-500/40 dark:bg-emerald-500/10"
       )}
     >
-      <CardHeader
-        className="cursor-pointer select-none"
+      <div
+        className="cursor-pointer select-none px-6 pt-5"
         onClick={props.onToggle}
         role="button"
         tabIndex={0}
@@ -222,25 +219,19 @@ function TaskCard(props: {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5 flex-1">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-xl font-semibold">{props.task.title}</CardTitle>
+              <h3 className="text-xl font-semibold">{props.task.title}</h3>
               {allItemsDone && (
-                <Badge
-                  variant="outline"
-                  className="border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:border-emerald-500/50 dark:bg-emerald-500/20 dark:text-emerald-400"
-                >
-                  <CheckCircleIcon className="mr-1 h-3 w-3" />
-                  Complete
-                </Badge>
+                <DesignBadge label="Complete" icon={CheckCircleIcon} color="green" size="sm" />
               )}
             </div>
-            <CardDescription
+            <p
               className={cn(
-                "text-sm transition-opacity duration-300 ease-in-out",
+                "text-sm text-muted-foreground transition-opacity duration-300 ease-in-out",
                 props.isExpanded ? "opacity-100" : "opacity-0"
               )}
             >
               {props.task.subtitle}
-            </CardDescription>
+            </p>
           </div>
           <button
             type="button"
@@ -258,7 +249,7 @@ function TaskCard(props: {
             )}
           </button>
         </div>
-      </CardHeader>
+      </div>
       <div
         className={cn(
           "grid transition-all duration-300 ease-in-out",
@@ -266,7 +257,7 @@ function TaskCard(props: {
         )}
       >
         <div className="overflow-hidden">
-          <CardContent className="space-y-4">
+          <div className="space-y-4 px-6 pb-4">
             <ul className="divide-y divide-border/40">
               {props.task.items.map((item) => (
                 <ChecklistRow
@@ -279,21 +270,21 @@ function TaskCard(props: {
               ))}
             </ul>
             {props.children}
-          </CardContent>
-          <CardFooter className="flex justify-end">
+          </div>
+          <div className="flex justify-end px-6 pb-5">
             {props.footer ?? (
-              <Button
+              <DesignButton
                 size="sm"
                 onClick={props.task.onAction}
                 className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
               >
                 {props.task.actionLabel}
-              </Button>
+              </DesignButton>
             )}
-          </CardFooter>
+          </div>
         </div>
       </div>
-    </Card>
+    </DesignCard>
   );
 }
 
@@ -331,13 +322,13 @@ export default function PageClient() {
             <InlineCode key={domain}>{domain}</InlineCode>
           ))}
           {domainConfigs.length > 3 && (
-            <Badge variant="outline">+{domainConfigs.length - 3}</Badge>
+            <DesignBadge label={`+${domainConfigs.length - 3}`} color="blue" size="sm" />
           )}
         </div>
       ) : (
-        <Typography variant="secondary" className="text-xs">
+        <p className="text-xs text-muted-foreground">
           Add the HTTPS domain your users return to after signing in.
-        </Typography>
+        </p>
       ),
     },
     {
@@ -345,9 +336,9 @@ export default function PageClient() {
       title: "Localhost callbacks disabled",
       done: !isLocalhostAllowed,
       detail: isLocalhostAllowed ? (
-        <Typography variant="secondary" className="text-xs">
+        <p className="text-xs text-muted-foreground">
           Turn it off so unknown origins can&apos;t capture OAuth responses.
-        </Typography>
+        </p>
       ) : null,
     },
   ];
@@ -379,19 +370,17 @@ export default function PageClient() {
         done: sharedOAuthProviders.length === 0,
         detail:
           sharedOAuthProviders.length === 0 ? (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               All providers use your own credentials. You&apos;re good to go.
-            </Typography>
+            </p>
           ) : (
             <div className="space-y-2">
-              <Typography variant="secondary" className="text-xs">
+              <p className="text-xs text-muted-foreground">
                 Swap custom keys for:
-              </Typography>
+              </p>
               <div className="flex flex-wrap gap-2">
                 {sharedProviderLabels.map((label: string) => (
-                  <Badge key={label} variant="outline">
-                    {label}
-                  </Badge>
+                  <DesignBadge key={label} label={label} color="orange" size="sm" />
                 ))}
               </div>
             </div>
@@ -413,14 +402,14 @@ export default function PageClient() {
         title: "Custom SMTP or Resend in use",
         done: !isSharedEmailServer,
         detail: isSharedEmailServer ? (
-          <Typography variant="secondary" className="text-xs">
+          <p className="text-xs text-muted-foreground">
             Switch away from the shared Stack server so customers receive emails
             from your brand.
-          </Typography>
+          </p>
         ) : (
-          <Typography variant="secondary" className="text-xs">
+          <p className="text-xs text-muted-foreground">
             Great! Send a quick test email to confirm deliverability.
-          </Typography>
+          </p>
         ),
       },
     ],
@@ -446,14 +435,14 @@ export default function PageClient() {
         done: productionChecksPassing,
         detail:
           productionChecksPassing || productionModeErrors.length === 0 ? (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               All checks are passing.
-            </Typography>
+            </p>
           ) : (
             <div className="space-y-1">
-              <Typography variant="secondary" className="text-xs">
+              <p className="text-xs text-muted-foreground">
                 Fix these before enabling production mode:
-              </Typography>
+              </p>
               <ul className="list-disc space-y-1 pl-4 text-xs text-destructive">
                 {productionModeErrors.map((error: { message: string, relativeFixUrl: string }) => (
                   <li key={error.message}>
@@ -472,13 +461,13 @@ export default function PageClient() {
         title: "Production mode enabled",
         done: project.isProductionMode,
         detail: project.isProductionMode ? (
-          <Typography variant="secondary" className="text-xs">
+          <p className="text-xs text-muted-foreground">
             Production mode is on.
-          </Typography>
+          </p>
         ) : (
-          <Typography variant="secondary" className="text-xs">
+          <p className="text-xs text-muted-foreground">
             Flip the switch below when everything above is green.
-          </Typography>
+          </p>
         ),
       },
     ],
@@ -586,6 +575,8 @@ export default function PageClient() {
 
   const providerEntries = Array.from(PROVIDER_GUIDES.entries());
   const defaultProviderTab = providerEntries[0]?.[0] ?? "google";
+  const [selectedProviderTab, setSelectedProviderTab] = useState(defaultProviderTab);
+  const selectedProviderGuide = PROVIDER_GUIDES.get(selectedProviderTab);
 
   const oauthChildren =
     sharedOAuthProviders.length > 0 ? (
@@ -619,30 +610,27 @@ export default function PageClient() {
           )}
         >
           <div className="overflow-hidden">
-            <Tabs defaultValue={defaultProviderTab} className="w-full">
-              <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
-                {providerEntries.map(([id, guide]) => (
-                  <TabsTrigger
-                    key={id}
-                    value={id}
-                    className="rounded border border-transparent bg-transparent px-2.5 py-1 text-xs data-[state=active]:border-border data-[state=active]:bg-accent"
-                  >
-                    {guide.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {providerEntries.map(([id, guide]) => (
-                <TabsContent key={id} value={id} className="mt-3 space-y-2.5">
-                  <StyledLink href={guide.docsUrl} target="_blank" className="text-sm">
-                    View {guide.label} documentation →
+            <div className="space-y-3">
+              <DesignCategoryTabs
+                categories={providerEntries.map(([id, guide]) => ({ id, label: guide.label }))}
+                selectedCategory={selectedProviderTab}
+                onSelect={setSelectedProviderTab}
+                showBadge={false}
+                gradient="default"
+                className="!border-0 !bg-transparent !p-0"
+              />
+              {selectedProviderGuide && (
+                <div className="space-y-2.5">
+                  <StyledLink href={selectedProviderGuide.docsUrl} target="_blank" className="text-sm">
+                    View {selectedProviderGuide.label} documentation →
                   </StyledLink>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">Callback URL</p>
-                    <InlineCode>{guide.callbackUrl}</InlineCode>
+                    <InlineCode>{selectedProviderGuide.callbackUrl}</InlineCode>
                   </div>
-                </TabsContent>
-              ))}
-            </Tabs>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -691,17 +679,30 @@ export default function PageClient() {
     </div>
   );
 
+  const productionToggleItems: DesignEditableGridItem[] = [
+    {
+      itemKey: "production-mode-toggle",
+      type: "custom",
+      icon: <CheckCircleIcon className="h-3.5 w-3.5" />,
+      name: "Enable production mode",
+      children: (
+        <Switch
+          checked={project.isProductionMode}
+          disabled={!project.isProductionMode && productionModeErrors.length > 0}
+          onCheckedChange={(checked) => {
+            runAsynchronously(project.update({ isProductionMode: checked }));
+          }}
+        />
+      ),
+    },
+  ];
+
   const productionChildren = (
     <div className="border-t border-border/40 pt-4">
-      <SettingSwitch
-        label="Enable production mode"
-        checked={project.isProductionMode}
-        disabled={
-          !project.isProductionMode && productionModeErrors.length > 0
-        }
-        onCheckedChange={async (checked) => {
-          await project.update({ isProductionMode: checked });
-        }}
+      <DesignEditableGrid
+        items={productionToggleItems}
+        columns={1}
+        deferredSave={false}
       />
     </div>
   );
@@ -713,7 +714,7 @@ export default function PageClient() {
           Production mode is live.
         </span>
       )}
-      <Button
+      <DesignButton
         size="sm"
         onClick={() => router.push(`${baseProjectPath}/project-settings`)}
         className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
@@ -721,7 +722,7 @@ export default function PageClient() {
         {productionTaskStatus === "done"
           ? "Review settings"
           : "Open project settings"}
-      </Button>
+      </DesignButton>
     </div>
   );
 
@@ -739,8 +740,13 @@ export default function PageClient() {
       <PageLayout
         title="Launch Checklist"
         description="Finish these quick checks before turning on production mode."
+        allowContentOverflow
       >
-        <div className="group relative overflow-hidden rounded-2xl border border-sky-400/40 bg-gradient-to-br from-card/95 to-card p-7 shadow-sm ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:shadow-sm dark:ring-sky-500/30">
+        <DesignCard
+          glassmorphic
+          className="group relative overflow-hidden border border-sky-400/40 ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:ring-sky-500/30"
+          contentClassName="p-7"
+        >
           {/* Subtle blue glow on bottom border */}
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-sky-400/30 to-transparent blur-[2px] dark:via-sky-500/40" />
 
@@ -801,13 +807,13 @@ export default function PageClient() {
                     }}
                   />
 
-                  <Button
+                  <DesignButton
                     size="sm"
                     onClick={checklistProgress.next.task.onAction}
                     className="relative font-medium shadow-lg transition-all duration-150 hover:shadow-xl active:scale-95"
                   >
                     Go to {checklistProgress.next.task.title}
-                  </Button>
+                  </DesignButton>
                 </div>
               </div>
             ) : (
@@ -819,7 +825,7 @@ export default function PageClient() {
               </div>
             )}
           </div>
-        </div>
+        </DesignCard>
 
         <div className="grid gap-4">
           {orderedTasks.map((task, index) => {
