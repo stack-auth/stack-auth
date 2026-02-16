@@ -11,6 +11,14 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
+import type {
+  AdminGetSessionRecordingAllEventsResponse,
+  AdminGetSessionRecordingChunkEventsResponse,
+  AdminListSessionRecordingChunksOptions,
+  AdminListSessionRecordingChunksResponse,
+  AdminListSessionRecordingsOptions,
+  AdminListSessionRecordingsResponse
+} from "./crud/session-recordings";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -773,6 +781,51 @@ export class StackAdminInterface extends StackServerInterface {
     );
     const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
+  }
+
+  async listSessionRecordings(params?: AdminListSessionRecordingsOptions): Promise<AdminListSessionRecordingsResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-recordings${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listSessionRecordingChunks(sessionRecordingId: string, params?: AdminListSessionRecordingChunksOptions): Promise<AdminListSessionRecordingChunksResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionRecordingAllEventsResponse> {
+    const qs = new URLSearchParams();
+    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
+    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
   }
 
   async refundTransaction(options: {

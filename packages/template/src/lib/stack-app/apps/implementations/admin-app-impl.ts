@@ -2,6 +2,7 @@ import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
+import type { AdminGetSessionRecordingAllEventsResponse, AdminGetSessionRecordingChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-recordings";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -18,6 +19,7 @@ import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
+import type { AdminSessionRecording, AdminSessionRecordingChunk, ListSessionRecordingChunksOptions, ListSessionRecordingChunksResult, ListSessionRecordingsOptions, ListSessionRecordingsResult, SessionRecordingAllEventsResult } from "../../session-recordings";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
@@ -1038,6 +1040,79 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
     return await this._interface.queryAnalytics(options);
+  }
+
+  async listSessionRecordings(options?: ListSessionRecordingsOptions): Promise<ListSessionRecordingsResult> {
+    const response = await this._interface.listSessionRecordings({
+      cursor: options?.cursor,
+      limit: options?.limit,
+    });
+
+    const items: AdminSessionRecording[] = response.items.map((r) => ({
+      id: r.id,
+      projectUser: {
+        id: r.project_user.id,
+        displayName: r.project_user.display_name,
+        primaryEmail: r.project_user.primary_email,
+      },
+      startedAt: new Date(r.started_at_millis),
+      lastEventAt: new Date(r.last_event_at_millis),
+      chunkCount: r.chunk_count,
+      eventCount: r.event_count,
+    }));
+
+    return {
+      items,
+      nextCursor: response.pagination.next_cursor,
+    };
+  }
+
+  async listSessionRecordingChunks(sessionRecordingId: string, options?: ListSessionRecordingChunksOptions): Promise<ListSessionRecordingChunksResult> {
+    const response = await this._interface.listSessionRecordingChunks(sessionRecordingId, {
+      cursor: options?.cursor,
+      limit: options?.limit,
+    });
+
+    const items: AdminSessionRecordingChunk[] = response.items.map((c) => ({
+      id: c.id,
+      batchId: c.batch_id,
+      tabId: c.tab_id,
+      browserSessionId: c.browser_session_id,
+      eventCount: c.event_count,
+      byteLength: c.byte_length,
+      firstEventAt: new Date(c.first_event_at_millis),
+      lastEventAt: new Date(c.last_event_at_millis),
+      createdAt: new Date(c.created_at_millis),
+    }));
+
+    return {
+      items,
+      nextCursor: response.pagination.next_cursor,
+    };
+  }
+
+  async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
+    return await this._interface.getSessionRecordingChunkEvents(sessionRecordingId, chunkId);
+  }
+
+  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<SessionRecordingAllEventsResult> {
+    const response = await this._interface.getSessionRecordingEvents(sessionRecordingId, options);
+    return {
+      chunks: response.chunks.map((c) => ({
+        id: c.id,
+        batchId: c.batch_id,
+        tabId: c.tab_id,
+        eventCount: c.event_count,
+        byteLength: c.byte_length,
+        firstEventAt: new Date(c.first_event_at_millis),
+        lastEventAt: new Date(c.last_event_at_millis),
+        createdAt: new Date(c.created_at_millis),
+      })),
+      chunkEvents: response.chunk_events.map((ce) => ({
+        chunkId: ce.chunk_id,
+        events: ce.events,
+      })),
+    };
   }
 
   async previewAffectedUsersByOnboardingChange(
