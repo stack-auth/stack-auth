@@ -2,7 +2,7 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
-import { Project, User, niceBackendFetch } from '../../../backend-helpers';
+import { InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import {
   TEST_TIMEOUT,
   TestDbManager,
@@ -23,6 +23,9 @@ async function runQueryForCurrentProject(body: { query: string, params?: Record<
 }
 
 async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
+  // ensure we definitely have project keys that don't expire (unlike an admin access token)
+  await InternalApiKey.createAndSetProjectKeys();
+
   const timeoutMs = 180_000;
   const intervalMs = 2_000;
   const start = performance.now();
@@ -34,11 +37,8 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
         email,
       },
     });
-    expect(response).toMatchObject({
-      status: 200,
-    });
-    if (response.body.result.length === 1) {
-      expect(response.body.result[0].display_name).toBe(expectedDisplayName);
+    expect(response.status).toBe(200);
+    if (response.body.result.length === 1 && response.body.result[0].display_name === expectedDisplayName) {
       return response;
     }
     await wait(intervalMs);
