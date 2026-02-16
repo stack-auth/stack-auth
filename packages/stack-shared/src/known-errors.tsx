@@ -84,7 +84,7 @@ export abstract class KnownError extends StatusError {
       }
     }
 
-    throw new Error(`Unknown KnownError code. You may need to update your version of Stack to see more detailed information. ${json.code}: ${json.message}`);
+    throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
   }
 }
 
@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
+      // @ts-ignore legendary comment, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -731,9 +731,9 @@ const SignUpRejected = createKnownErrorConstructor(
   "SIGN_UP_REJECTED",
   (message?: string) => [
     403,
-    message ?? "Your sign up was rejected. Please contact us for more information.",
+    message ?? "Your sign up was rejected by an administrator's sign-up rule.",
     {
-      message: message ?? "Your sign up was rejected. Please contact us for more information.",
+      message: message ?? "Your sign up was rejected by an administrator's sign-up rule.",
     },
   ] as const,
   (json: any) => [json.message] as const,
@@ -1487,7 +1487,6 @@ const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
-
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",

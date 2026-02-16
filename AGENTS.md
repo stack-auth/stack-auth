@@ -12,7 +12,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 #### Extra commands
 These commands are usually already called by the user, but you can remind them to run it for you if they forgot to.
-- **Build packages**: `pnpm build:packages`
+- **Build packages**: `pnpm build:packages` (you should never call this yourself)
 - **Start dependencies**: `pnpm restart-deps` (resets & restarts Docker containers for DB, Inbucket, etc. Usually already called by the user)
 - **Run development**: Already called by the user in the background. You don't need to do this. This will also watch for changes and rebuild packages, codegen, etc. Do NOT call build:packages, dev, codegen, or anything like that yourself, as the dev is already running it.
 - **Run minimal dev**: `pnpm dev:basic` (only backend and dashboard for resource-limited systems)
@@ -93,13 +93,18 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - If there is an external browser tool connected, use it to test changes you make to the frontend when possible.
 - Whenever you update an SDK implementation in `sdks/implementations`, make sure to update the specs accordingly in `sdks/specs` such that if you reimplemented the entire SDK from the specs again, you would get the same implementation. (For example, if the specs are not precise enough to describe a change you made, make the specs more precise.)
 - When building internal tools for Stack Auth developers (eg. internal interfaces like the WAL info log etc.): Make the interfaces look very concise, assume the user is a pro-user. This only applies to internal tools that are used primarily by Stack Auth developers.
+- The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
+- When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
+- NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT!
 - When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
 - Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible.
 - When writing database migration files, assume that we have >1,000,000 rows in every table (unless otherwise specified). This means you may have to use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL to avoid running the migration and things like concurrent index builds; see the existing migrations for examples.
+- Each migration file runs in its own transaction with a relatively short timeout. Split long-running operations into separate migration files to avoid timeouts. For example, when adding CHECK constraints, use `NOT VALID` in one migration, then `VALIDATE CONSTRAINT` in a separate migration file.
 - **When building frontend code, always carefully deal with loading and error states.** Be very explicit with these; some components make this easy, eg. the button onClick already takes an async callback for loading state, but make sure this is done everywhere, and make sure errors are NEVER just silently swallowed.
 - Any design components you add or modify in the dashboard, update the Playground page accordingly to showcase the changes.
+- Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

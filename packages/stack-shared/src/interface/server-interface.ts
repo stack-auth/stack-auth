@@ -711,7 +711,7 @@ export class StackServerInterface extends StackClientInterface {
   }
 
 
-  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['List']> {
     const response = await this.sendServerRequest(
       urlString`/auth/sessions?user_id=${userId}`,
       {

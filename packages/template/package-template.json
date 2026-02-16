@@ -11,7 +11,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.67",
+  "version": "2.8.68",
   "repository": "https://github.com/stack-auth/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -116,6 +116,7 @@
     "rimraf": "^6.1.2",
     "//": "NEXT_LINE_PLATFORM react-like",
     "tailwindcss-animate": "^1.0.7",
+    "rrweb": "^1.1.3",
     "tsx": "^4.21.0",
     "yup": "^1.7.1"
   },

@@ -1,10 +1,12 @@
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
-import { describe } from "vitest";
+import * as net from "net";
+import { afterAll, beforeAll, describe } from "vitest";
 import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Auth, Project, User, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, OutboxEmail, Project, User, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
@@ -419,9 +421,12 @@ describe("send email to all users", () => {
           "is_high_priority": false,
           "is_paused": false,
           "is_transactional": true,
+          "next_send_retry_at_millis": null,
           "notification_category_id": "<stripped UUID>",
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
+          "send_attempt_errors": null,
+          "send_retries": 0,
           "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
@@ -456,9 +461,12 @@ describe("send email to all users", () => {
           "is_high_priority": false,
           "is_paused": false,
           "is_transactional": true,
+          "next_send_retry_at_millis": null,
           "notification_category_id": "<stripped UUID>",
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
+          "send_attempt_errors": null,
+          "send_retries": 0,
           "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
@@ -1846,5 +1854,343 @@ describe("email outbox pagination", () => {
       expect(current.created_at_millis).toBeGreaterThanOrEqual(next.created_at_millis);
     }
   }, 60_000);
+});
+
+// Invalid SMTP config - causes HOST_NOT_FOUND (non-retryable error)
+const brokenSmtpConfig = {
+  type: "standard",
+  host: "this-host-does-not-exist.invalid",
+  port: 25,
+  username: "test",
+  password: "test",
+  sender_name: "Test Project",
+  sender_email: "test@example.com",
+} as const;
+
+// SMTP server that responds with 450 (temporary failure) - retryable and fast
+let tempFailServer: net.Server | null = null;
+let tempFailPort: number | null = null;
+
+async function startTempFailSmtpServer(): Promise<number> {
+  if (tempFailServer) {
+    return tempFailPort ?? throwErr("tempFailServer not initialized");
+  }
+
+  return await new Promise((resolve, reject) => {
+    tempFailServer = net.createServer((socket) => {
+      // Send SMTP greeting
+      socket.write('220 localhost SMTP Test Server\r\n');
+
+      socket.on('data', (data) => {
+        const command = data.toString().trim().toUpperCase();
+        // Respond with 450 (temporary failure) to all commands
+        // This is a retryable error that happens immediately
+        if (command.startsWith('EHLO') || command.startsWith('HELO')) {
+          socket.write('250 localhost Hello\r\n');
+        } else if (command.startsWith('MAIL FROM')) {
+          // Temporary failure - "mailbox unavailable, try again later"
+          socket.write('450 Requested mail action not taken: mailbox unavailable (test)\r\n');
+          socket.end();
+        } else if (command.startsWith('QUIT')) {
+          socket.write('221 Bye\r\n');
+          socket.end();
+        } else {
+          socket.write('450 Temporary failure (test)\r\n');
+        }
+      });
+
+      socket.on('error', () => {
+        // Ignore errors (client may disconnect)
+      });
+    });
+
+    tempFailServer.listen(0, '127.0.0.1', () => {
+      const address = (tempFailServer ?? throwErr("tempFailServer unexpectedly null in listen callback")).address();
+      if (typeof address === 'object' && address !== null) {
+        tempFailPort = address.port;
+        resolve(tempFailPort);
+      } else {
+        reject(new Error('Failed to get server address'));
+      }
+    });
+
+    tempFailServer.on('error', reject);
+  });
+}
+
+function stopTempFailSmtpServer(): void {
+  if (tempFailServer) {
+    tempFailServer.close();
+    tempFailServer = null;
+    tempFailPort = null;
+  }
+}
+
+// Factory function to create temp-fail SMTP config with dynamic port
+function createTempFailSmtpConfig(port: number) {
+  return {
+    type: "standard",
+    host: "127.0.0.1",
+    port: port,
+    username: "test",
+    password: "test",
+    sender_name: "Test Project",
+    sender_email: "test@example.com",
+  } as const;
+}
+
+// Helper type for send attempt error entries
+type SendAttemptErrorEntry = {
+  attempt_number: number,
+  timestamp: string,
+  external_message: string,
+  external_details: Record<string, unknown>,
+  internal_message: string,
+  internal_details: Record<string, unknown>,
+};
+
+// Helper type for email outbox items with retry fields
+type OutboxEmailWithRetryFields = OutboxEmail & {
+  send_retries: number,
+  next_send_retry_at_millis: number | null,
+  send_attempt_errors: SendAttemptErrorEntry[] | null,
+};
+
+// Helper to get detailed email from the outbox
+async function getOutboxEmailById(emailId: string): Promise<OutboxEmailWithRetryFields> {
+  const response = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  if (response.status !== 200) {
+    throw new StackAssertionError(`Failed to get email ${emailId}: status ${response.status}`, { response });
+  }
+  return response.body;
+}
+
+// Helper to poll until an email with the given subject appears in the outbox
+async function waitForOutboxEmail(subject: string, timeoutMs = 30000): Promise<OutboxEmailWithRetryFields> {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
+    const emails = await getOutboxEmails({ subject });
+    if (emails.length > 0) {
+      return await getOutboxEmailById(emails[0].id);
+    }
+    await wait(500);
+  }
+  throw new StackAssertionError(
+    `Timeout waiting for email with subject "${subject}" to appear in outbox`,
+    { subject }
+  );
+}
+
+// Helper to poll until the email has reached a specific send_retries
+// Note: Status may be "queued" or "sending" due to race conditions - that's expected
+async function waitForAttemptCount(emailId: string, attemptCount: number, timeoutMs = 60000): Promise<OutboxEmailWithRetryFields> {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
+    const email = await getOutboxEmailById(emailId);
+    if (email.send_retries >= attemptCount) {
+      return email;
+    }
+    // Terminal state - no more retries will happen
+    if (email.status === "server-error") {
+      return email;
+    }
+    await wait(500);
+  }
+  const finalEmail = await getOutboxEmailById(emailId);
+  throw new StackAssertionError(
+    `Timeout waiting for email ${emailId} to reach send_retries >= ${attemptCount}`,
+    { emailId, attemptCount, finalState: { count: finalEmail.send_retries, status: finalEmail.status } }
+  );
+}
+
+describe("email queue deferred retry logic", () => {
+  it("should immediately mark non-retryable errors as server-error without retrying", async ({ expect }) => {
+    // brokenSmtpConfig causes HOST_NOT_FOUND which has canRetry: false
+    await Project.createAndSwitch({
+      display_name: "Test Non-Retryable Error Project",
+      config: {
+        email_config: brokenSmtpConfig,
+      },
+    });
+
+    const mailbox = backendContext.value.mailbox;
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+    const userId = createUserResponse.body.id;
+
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        html: "Test email for non-retryable error",
+        subject: "Non-Retryable Error Test",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Wait for the email to appear in the outbox and reach server-error state
+    const initialEmail = await waitForOutboxEmail("Non-Retryable Error Test");
+    const emailId = initialEmail.id;
+
+    // Wait for the email to reach server-error status
+    const maxWaitMs = 30000;
+    const startTime = performance.now();
+    let email = initialEmail;
+    while (performance.now() - startTime < maxWaitMs && email.status !== "server-error") {
+      await wait(500);
+      email = await getOutboxEmailById(emailId);
+    }
+
+    // Non-retryable errors should go directly to server-error
+    expect(email.send_retries).toBe(1);
+    expect(email.next_send_retry_at_millis).toBeNull();
+    expect(email.send_attempt_errors).not.toBeNull();
+    expect(email.send_attempt_errors?.length).toBe(1);
+    expect(email.status).toBe("server-error");
+
+    logIfTestFails("Email after non-retryable error", email);
+  });
+
+  describe("retryable errors (using temp-fail SMTP server)", () => {
+    // These tests use a local SMTP server that responds with 450 (temporary failure).
+    // This is fast (immediate response) and produces retryable errors.
+
+    let tempFailSmtpConfig: ReturnType<typeof createTempFailSmtpConfig>;
+
+    beforeAll(async () => {
+      const port = await startTempFailSmtpServer();
+      tempFailSmtpConfig = createTempFailSmtpConfig(port);
+    });
+
+    afterAll(() => {
+      stopTempFailSmtpServer();
+    });
+
+    it("should schedule retry on retryable failure and release email for next iteration", { timeout: 60000 }, async ({ expect }) => {
+      await Project.createAndSwitch({
+        display_name: "Test Deferred Retry Project",
+        config: {
+          email_config: tempFailSmtpConfig,
+        },
+      });
+      // Create API keys that don't expire (JWT admin tokens expire in 60s which is too short for retry tests)
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const mailbox = backendContext.value.mailbox;
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: mailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id;
+
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          html: "Test email for retry logic",
+          subject: "Retry Test Email",
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      // Wait for the email to appear in the outbox
+      const initialEmail = await waitForOutboxEmail("Retry Test Email");
+      const emailId = initialEmail.id;
+
+      // Wait for first send attempt to complete (450 response is immediate)
+      const emailAfterFirstAttempt = await waitForAttemptCount(emailId, 1, 30000);
+
+      // Verify the email was released for a DIFFERENT queue iteration to pick up
+      // - status should NOT be server-error (retries remaining)
+      expect(emailAfterFirstAttempt.send_retries).toBe(1);
+      expect(emailAfterFirstAttempt.send_attempt_errors).not.toBeNull();
+      expect(emailAfterFirstAttempt.send_attempt_errors?.length).toBe(1);
+      expect(emailAfterFirstAttempt.send_attempt_errors?.[0].attempt_number).toBe(1);
+      expect(emailAfterFirstAttempt.send_attempt_errors?.[0].external_message).toContain("450");
+      expect(emailAfterFirstAttempt.status).not.toBe("server-error");
+
+      // Status could be:
+      // - "scheduled": isQueued=false, waiting for nextSendRetryAt to pass
+      // - "queued": queueReadyEmails() ran, isQueued=true, waiting to be claimed
+      // - "sending": next iteration already picked it up
+      expect(["scheduled", "queued", "sending"]).toContain(emailAfterFirstAttempt.status);
+
+      logIfTestFails("Email after first retry attempt", emailAfterFirstAttempt);
+    });
+
+    it("should retry emails until max attempts exhausted, then mark as server-error", { timeout: 150000 }, async ({ expect }) => {
+      await Project.createAndSwitch({
+        display_name: "Test Retry Exhaustion Project",
+        config: {
+          email_config: tempFailSmtpConfig,
+        },
+      });
+      // Create API keys that don't expire (JWT admin tokens expire in 60s which is too short for retry tests)
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const mailbox = backendContext.value.mailbox;
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: mailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id;
+
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          html: "Test email for retry exhaustion",
+          subject: "Retry Exhaustion Test",
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      // Wait for the email to appear in the outbox
+      const initialEmail = await waitForOutboxEmail("Retry Exhaustion Test");
+      const emailId = initialEmail.id;
+
+      // Wait for all retries to exhaust (MAX_SEND_ATTEMPTS = 5)
+      // With 450 errors (immediate) + exponential backoff (2s base * 2^attempt), worst case ~90s
+      const maxWaitMs = 120000;
+      const startTime = performance.now();
+      let email = await getOutboxEmailById(emailId);
+      while (performance.now() - startTime < maxWaitMs && email.status !== "server-error") {
+        await wait(1000);
+        email = await getOutboxEmailById(emailId);
+      }
+
+      // Log the email object to help debug undefined status issues
+      logIfTestFails("Email after retry exhaustion loop", email);
+
+      expect(email.status).toBe("server-error");
+      expect(email.send_retries).toBe(5); // MAX_SEND_ATTEMPTS
+      expect(email.send_attempt_errors?.length).toBe(5);
+      // No more retries scheduled
+      expect(email.next_send_retry_at_millis).toBeNull();
+    });
+  });
 });
 

@@ -187,7 +187,7 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
 }
 
 // Type for outbox email items (simplified - full type is EmailOutboxCrud["Server"]["Read"])
-type OutboxEmail = {
+export type OutboxEmail = {
   id: string,
   subject?: string,
   status: string,
@@ -1328,6 +1328,20 @@ export namespace Project {
     const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
       accessType: "admin",
       method: "DELETE",
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Reset specific keys from a config override level.
+   * Uses the same nested key logic as the override algorithm.
+   */
+  export async function resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/${level}/reset-keys`, {
+      accessType: "admin",
+      method: "POST",
+      body: { keys },
     });
     expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);

@@ -8,4 +8,10 @@ export const stackServerApp = new StackServerApp({
   publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
   baseUrl: process.env.NEXT_PUBLIC_STACK_API_URL,
+  analytics: {
+    replays: {
+      enabled: true,
+      maskAllInputs: false,
+    },
+  },
 });
