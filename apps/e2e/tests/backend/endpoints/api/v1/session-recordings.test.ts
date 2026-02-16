@@ -26,6 +26,7 @@ async function uploadBatch(options: {
 
 it("requires a user token", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   backendContext.set({ userAuth: null });
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
@@ -45,8 +46,32 @@ it("requires a user token", async ({ expect }) => {
   expect(res.status).toBeLessThan(500);
 });
 
+it("returns 200 no-op when analytics is not enabled", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  // Analytics is disabled by default - do NOT call Project.updateConfig
+  await Auth.Otp.signIn();
+
+  const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      browser_session_id: randomUUID(),
+      tab_id: randomUUID(),
+      batch_id: randomUUID(),
+      started_at_ms: Date.now(),
+      sent_at_ms: Date.now(),
+      events: [{ timestamp: Date.now() }],
+    },
+  });
+
+  expect(res.status).toBe(200);
+  expect(res.body?.session_recording_id).toBe("");
+  expect(res.body?.s3_key).toBe("");
+});
+
 it("stores session recording batch metadata and dedupes by (session_recording_id, batch_id)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const now = Date.now();
@@ -103,6 +128,7 @@ it("stores session recording batch metadata and dedupes by (session_recording_id
 
 it("rejects empty events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
@@ -124,6 +150,7 @@ it("rejects empty events", async ({ expect }) => {
 
 it("rejects too many events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const tooManyEvents = Array.from({ length: 5001 }, (_, i) => ({ timestamp: 1_700_000_000_000 + i }));
@@ -147,6 +174,7 @@ it("rejects too many events", async ({ expect }) => {
 
 it("rejects invalid browser_session_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
@@ -168,6 +196,7 @@ it("rejects invalid browser_session_id", async ({ expect }) => {
 
 it("rejects invalid batch_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
@@ -189,6 +218,7 @@ it("rejects invalid batch_id", async ({ expect }) => {
 
 it("rejects invalid tab_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
@@ -210,6 +240,7 @@ it("rejects invalid tab_id", async ({ expect }) => {
 
 it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const browserSessionId = randomUUID();
@@ -238,6 +269,7 @@ it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expe
 
 it("rejects non-integer started_at_ms", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const res = await niceBackendFetch("/api/v1/session-recordings/batch", {
@@ -259,6 +291,7 @@ it("rejects non-integer started_at_ms", async ({ expect }) => {
 
 it("rejects oversized payloads", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   // Backend limit is 5_000_000 bytes; a single large string is sufficient to exceed it.
@@ -282,6 +315,7 @@ it("rejects oversized payloads", async ({ expect }) => {
 
 it("admin can list session recordings, list chunks, and fetch events", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const browserSessionId = randomUUID();
@@ -330,6 +364,7 @@ it("admin can list session recordings, list chunks, and fetch events", async ({ 
 
 it("admin list session recordings paginates without skipping items", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // Use separate sign-ins to get different refresh tokens → different session recordings.
   await Auth.Otp.signIn();
@@ -396,6 +431,7 @@ it("admin list session recordings rejects unknown cursor", async ({ expect }) =>
 
 it("admin list chunks paginates and rejects a cursor from another session", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   const now = Date.now();
 
@@ -474,6 +510,7 @@ it("admin list chunks paginates and rejects a cursor from another session", asyn
 
 it("admin events endpoint does not allow fetching a chunk via the wrong session id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
 
   // session1: upload under first refresh token
   await Auth.Otp.signIn();
@@ -540,6 +577,7 @@ it("non-admin access cannot call internal session recordings endpoints", async (
 
 it("groups batches from same refresh token into one session recording", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
   const now = Date.now();

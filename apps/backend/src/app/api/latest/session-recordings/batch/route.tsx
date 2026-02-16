@@ -71,6 +71,18 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }, fullReq) {
+    if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          session_recording_id: "",
+          batch_id: body.batch_id,
+          s3_key: "",
+          deduped: false,
+        },
+      };
+    }
     if (!auth.user) {
       throw new KnownErrors.UserAuthenticationRequired();
     }
