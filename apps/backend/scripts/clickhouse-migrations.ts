@@ -70,28 +70,28 @@ ALTER TABLE analytics_internal.events
 UPDATE
   data = CAST(concat(
     '{',
-      '\"refresh_token_id\":', toJSONString(JSONExtractString(toJSONString(data), 'refreshTokenId')), ',',
-      '\"is_anonymous\":', toJSONString(JSONExtract(toJSONString(data), 'isAnonymous', 'Bool')), ',',
-      '\"ip_info\":', if(
-        JSONExtractString(toJSONString(data), 'ipInfo.ip') = '',
+      '"refresh_token_id":', toJSONString(data.refreshTokenId::String), ',',
+      '"is_anonymous":', if(ifNull(data.isAnonymous::Nullable(Bool), false), 'true', 'false'), ',',
+      '"ip_info":', if(
+        isNull(data.ipInfo.ip::Nullable(String)),
         'null',
         concat(
           '{',
-            '\"ip\":', toJSONString(JSONExtractString(toJSONString(data), 'ipInfo.ip')), ',',
-            '\"is_trusted\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.isTrusted', 'Bool')), ',',
-            '\"country_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.countryCode', 'Nullable(String)')), ',',
-            '\"region_code\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.regionCode', 'Nullable(String)')), ',',
-            '\"city_name\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.cityName', 'Nullable(String)')), ',',
-            '\"latitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.latitude', 'Nullable(Float64)')), ',',
-            '\"longitude\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.longitude', 'Nullable(Float64)')), ',',
-            '\"tz_identifier\":', toJSONString(JSONExtract(toJSONString(data), 'ipInfo.tzIdentifier', 'Nullable(String)')),
+            '"ip":', toJSONString(data.ipInfo.ip::String), ',',
+            '"is_trusted":', if(ifNull(data.ipInfo.isTrusted::Nullable(Bool), false), 'true', 'false'), ',',
+            '"country_code":', if(isNull(data.ipInfo.countryCode::Nullable(String)), 'null', toJSONString(data.ipInfo.countryCode::String)), ',',
+            '"region_code":', if(isNull(data.ipInfo.regionCode::Nullable(String)), 'null', toJSONString(data.ipInfo.regionCode::String)), ',',
+            '"city_name":', if(isNull(data.ipInfo.cityName::Nullable(String)), 'null', toJSONString(data.ipInfo.cityName::String)), ',',
+            '"latitude":', if(isNull(data.ipInfo.latitude::Nullable(Float64)), 'null', toString(data.ipInfo.latitude::Float64)), ',',
+            '"longitude":', if(isNull(data.ipInfo.longitude::Nullable(Float64)), 'null', toString(data.ipInfo.longitude::Float64)), ',',
+            '"tz_identifier":', if(isNull(data.ipInfo.tzIdentifier::Nullable(String)), 'null', toJSONString(data.ipInfo.tzIdentifier::String)),
           '}'
         )
       ),
     '}'
   ) AS JSON)
 WHERE event_type = '$token-refresh'
-  AND JSONHas(toJSONString(data), 'refreshTokenId');
+  AND data.refreshTokenId::Nullable(String) IS NOT NULL;
 `;
 
 // Normalizes legacy $sign-up-rule-trigger rows (camelCase JSON) to the new format:

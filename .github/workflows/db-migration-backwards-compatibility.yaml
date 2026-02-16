@@ -150,6 +150,9 @@ jobs:
       - name: Wait on Svix
         run: pnpx wait-on tcp:localhost:8113
 
+      - name: Wait on ClickHouse
+        run: pnpx wait-on http://localhost:8136/ping
+
       - name: Initialize database
         run: pnpm run db:init
   
