@@ -727,6 +727,56 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
       Schema 2:
         sourceOfTruth.connectionString must be defined
   `));
+
+  // Dot-notation into record entries — silently dropped cases
+  // Dot notation into a record entry that doesn't exist should warn
+  expect(await validateConfigOverrideSchema(recordSchema, {}, { "a.mykey.x": "val" } as any)).toMatchObject(
+    Result.error(expect.stringContaining("silently ignored"))
+  );
+  expect(await validateConfigOverrideSchema(recordSchema, {}, { "a.mykey": "val" })).toEqual(Result.ok(null));
+
+  // When the record entry exists in the base, dot notation should work fine
+  expect(await validateConfigOverrideSchema(recordSchema, { a: { mykey: "old" } }, { "a.mykey": "new" })).toEqual(Result.ok(null));
+
+  // Dot-notation into non-existent record entry in actual schemas
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain.baseUrl': 'https://example.com',
+  })).toMatchObject(
+    Result.error(expect.stringContaining("silently ignored"))
+  );
+
+  // Nested object notation should work fine (no warning)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': {
+      baseUrl: 'https://example.com',
+      handlerPath: '/handler',
+    },
+  })).toEqual(Result.ok(null));
+
+  // Dot notation for static object fields should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'teams.allowClientTeamCreation': true,
+  })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.password.allowSignIn': true,
+  })).toEqual(Result.ok(null));
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.allowLocalhost': true,
+  })).toEqual(Result.ok(null));
+
+  // Dot notation into an oauth provider that doesn't exist should warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.oauth.providers.google.clientId': 'test-id',
+  })).toMatchObject(
+    Result.error(expect.stringContaining("silently ignored"))
+  );
+
+  // Dot notation into an oauth provider that exists should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {
+    auth: { oauth: { providers: { google: { type: 'google', allowSignIn: true } } } },
+  }, {
+    'auth.oauth.providers.google.clientId': 'test-id',
+  })).toEqual(Result.ok(null));
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

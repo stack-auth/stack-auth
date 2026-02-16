@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  ConfigFolder,
   FolderWithId,
   isDateValue,
   isJsonValue,
@@ -9,7 +8,7 @@ import {
   parseClickHouseDate,
   RowData,
   RowDetailDialog,
-  VirtualizedFlatTable,
+  VirtualizedFlatTable
 } from "@/app/(main)/(protected)/projects/[projectId]/analytics/shared";
 import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
@@ -39,7 +38,6 @@ import {
   WarningCircleIcon
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
@@ -187,10 +185,8 @@ function SaveQueryDialog({
   // Get folders from config - hooks are now called unconditionally
   const config = adminApp.useProject().useConfig();
   const folders = useMemo((): FolderWithId[] => {
-    // Type assertion because config types may not be updated yet
-    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics
-    ?? throwErr("Missing analytics config");
-    const queryFolders = analyticsConfig.queryFolders ?? throwErr("Missing queryFolders in analytics config");
+    const analyticsConfig = config.analytics;
+    const queryFolders = analyticsConfig.queryFolders;
 
     return Object.entries(queryFolders)
       .map(([id, folder]) => ({

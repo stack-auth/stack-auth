@@ -29,19 +29,17 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import {
-  ConfigFolder,
   ErrorDisplay,
   FolderWithId,
   RowData,
   RowDetailDialog,
-  VirtualizedFlatTable,
+  VirtualizedFlatTable
 } from "../shared";
 
 // Delete icon button for sidebar items
@@ -351,9 +349,8 @@ function QueriesContent() {
 
   // Get folders and queries from environment config
   const folders = useMemo((): FolderWithId[] => {
-    const analyticsConfig = (config as { analytics?: { queryFolders?: Record<string, ConfigFolder> } }).analytics
-      ?? throwErr("Missing analytics config");
-    const queryFolders = analyticsConfig.queryFolders ?? throwErr("Missing queryFolders in analytics config");
+    const analyticsConfig = config.analytics;
+    const queryFolders = analyticsConfig.queryFolders;
 
     return Object.entries(queryFolders)
       .map(([id, folder]) => ({

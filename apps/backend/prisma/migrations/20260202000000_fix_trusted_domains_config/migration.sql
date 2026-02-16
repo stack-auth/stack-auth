@@ -113,7 +113,7 @@ FROM rows_to_check;
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
-DROP INDEX IF EXISTS "temp_eco_trusted_domains_checked_idx";
+DROP INDEX IF EXISTS /* SCHEMA_NAME_SENTINEL */."temp_eco_trusted_domains_checked_idx";
 -- SPLIT_STATEMENT_SENTINEL
 
 -- Clean up: drop temporary column (outside transaction)
