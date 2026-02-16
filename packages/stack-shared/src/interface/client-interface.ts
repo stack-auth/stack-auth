@@ -1187,6 +1187,17 @@ export class StackClientInterface {
     return result.items;
   }
 
+  async acceptTeamInvitationById(
+    invitationId: string,
+    session: InternalSession,
+  ) {
+    await this.sendClientRequest(
+      `/team-invitations/${invitationId}/accept`,
+      { method: "POST" },
+      session,
+    );
+  }
+
   async revokeTeamInvitation(
     invitationId: string,
     teamId: string,

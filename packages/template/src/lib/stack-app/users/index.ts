@@ -16,7 +16,7 @@ import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
-import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions, UserTeamInvitation } from "../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
@@ -207,7 +207,7 @@ export type UserExtra = {
    * This allows the user to discover which teams have invited them, even if they haven't
    * joined those teams yet. Only invitations sent to verified email addresses are included.
    *
-   * @returns An array of `UserTeamInvitation` objects, each containing the team ID, team
+   * @returns An array of `ReceivedTeamInvitation` objects, each containing the team ID, team
    * display name, recipient email, and expiration date.
    *
    * @example
@@ -218,13 +218,13 @@ export type UserExtra = {
    * }
    * ```
    */
-  listTeamInvitations(): Promise<UserTeamInvitation[]>,
+  listTeamInvitations(): Promise<ReceivedTeamInvitation[]>,
   /**
    * Lists all pending team invitations sent to any of the current user's verified email addresses.
    *
    * React hook version of `listTeamInvitations()`. Automatically re-renders when invitations change.
    */
-  useTeamInvitations(): UserTeamInvitation[], // THIS_LINE_PLATFORM react-like
+  useTeamInvitations(): ReceivedTeamInvitation[], // THIS_LINE_PLATFORM react-like
 
   getActiveSessions(): Promise<ActiveSession[]>,
   revokeSession(sessionId: string): Promise<void>,
@@ -244,7 +244,7 @@ export type UserExtra = {
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
-& AsyncStoreProperty<"teamInvitations", [], UserTeamInvitation[], true>
+& AsyncStoreProperty<"teamInvitations", [], ReceivedTeamInvitation[], true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { recursive?: boolean }], TeamPermission | null, false>
 & AsyncStoreProperty<"permissions", [scope: Team, options?: { recursive?: boolean }], TeamPermission[], true>;
 

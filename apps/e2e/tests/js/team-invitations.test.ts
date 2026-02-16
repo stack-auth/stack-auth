@@ -196,3 +196,106 @@ it("should list invitations from multiple teams", async ({ expect }) => {
   const teamNames = invitations.map(i => i.teamDisplayName).sort();
   expect(teamNames).toEqual(["Team Alpha", "Team Beta"]);
 });
+
+
+it("should accept a team invitation via the client SDK", async ({ expect }) => {
+  const { clientApp, serverApp } = await createApp();
+
+  // Create a team
+  await clientApp.signUpWithCredential({
+    email: "accept-owner@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "accept-owner@test.com",
+    password: "password",
+  });
+  const owner = await clientApp.getUser({ or: "throw" });
+  const team = await owner.createTeam({ displayName: "Accept Test Team" });
+
+  // Invite a user
+  const serverTeam = await serverApp.getTeam(team.id);
+  if (!serverTeam) throw new Error("Team not found on server");
+  await serverTeam.inviteUser({
+    email: "accept-user@test.com",
+    callbackUrl: "http://localhost:3000/team-invite",
+  });
+
+  // Sign up as the invited user with verified email
+  await clientApp.signUpWithCredential({
+    email: "accept-user@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "accept-user@test.com",
+    password: "password",
+  });
+  const createdUser = await clientApp.getUser({ or: "throw" });
+  const serverCreatedUser = await serverApp.getUser(createdUser.id);
+  if (!serverCreatedUser) throw new Error("User not found on server");
+  await serverCreatedUser.update({ primaryEmailVerified: true });
+
+  // List and accept the invitation
+  const user = await clientApp.getUser({ or: "throw" });
+  const invitations = await user.listTeamInvitations();
+  expect(invitations).toHaveLength(1);
+
+  await invitations[0].accept();
+
+  // Verify user is now a member of the team
+  const teams = await user.listTeams();
+  const joinedTeam = teams.find(t => t.id === team.id);
+  expect(joinedTeam).toBeDefined();
+  expect(joinedTeam!.displayName).toBe("Accept Test Team");
+
+  // Invitation should no longer be listed (it was used)
+  const remainingInvitations = await user.listTeamInvitations();
+  expect(remainingInvitations).toHaveLength(0);
+});
+
+
+it("should accept a team invitation via the server SDK", async ({ expect }) => {
+  const { clientApp, serverApp } = await createApp();
+
+  // Create team
+  await clientApp.signUpWithCredential({
+    email: "server-accept-owner@test.com",
+    password: "password",
+    verificationCallbackUrl: "http://localhost:3000",
+  });
+  await clientApp.signInWithCredential({
+    email: "server-accept-owner@test.com",
+    password: "password",
+  });
+  const owner = await clientApp.getUser({ or: "throw" });
+  const team = await owner.createTeam({ displayName: "Server Accept Team" });
+
+  // Create user and send invitation
+  const invitedUser = await serverApp.createUser({
+    primaryEmail: "server-accept@test.com",
+    primaryEmailVerified: true,
+  });
+  const serverTeam = await serverApp.getTeam(team.id);
+  if (!serverTeam) throw new Error("Team not found on server");
+  await serverTeam.inviteUser({
+    email: "server-accept@test.com",
+    callbackUrl: "http://localhost:3000/team-invite",
+  });
+
+  // Accept via server user
+  const invitations = await invitedUser.listTeamInvitations();
+  expect(invitations).toHaveLength(1);
+
+  await invitations[0].accept();
+
+  // Verify membership
+  const teams = await invitedUser.listTeams();
+  const joinedTeam = teams.find(t => t.id === team.id);
+  expect(joinedTeam).toBeDefined();
+
+  // Invitation consumed
+  const remaining = await invitedUser.listTeamInvitations();
+  expect(remaining).toHaveLength(0);
+});

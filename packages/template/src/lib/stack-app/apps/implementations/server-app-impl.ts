@@ -31,7 +31,7 @@ import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
-import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
@@ -571,12 +571,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._serverUserTeamInvitationsCache.getOrWait([crud.id], "write-only"));
-        return invitations.map((inv) => app._clientUserTeamInvitationFromCrud(inv));
+        return invitations.map((inv) => app._serverReceivedTeamInvitationFromCrud(crud.id, inv));
       },
       // IF_PLATFORM react-like
       useTeamInvitations() {
         const invitations = useAsyncCache(app._serverUserTeamInvitationsCache, [crud.id], "user.useTeamInvitations()");
-        return useMemo(() => invitations.map((inv) => app._clientUserTeamInvitationFromCrud(inv)), [invitations]);
+        return useMemo(() => invitations.map((inv) => app._serverReceivedTeamInvitationFromCrud(crud.id, inv)), [invitations]);
       },
       // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
@@ -804,7 +804,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return teamUser;
   }
 
-  protected _serverTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): TeamInvitation {
+  protected _serverSentTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): SentTeamInvitation {
     return {
       id: crud.id,
       recipientEmail: crud.recipient_email,
@@ -812,6 +812,22 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
         await this._serverTeamInvitationsCache.refresh([crud.team_id]);
+      },
+    };
+  }
+
+  protected _serverReceivedTeamInvitationFromCrud(userId: string, crud: TeamInvitationCrud['Client']['Read']): ReceivedTeamInvitation {
+    const app = this;
+    return {
+      id: crud.id,
+      teamId: crud.team_id,
+      teamDisplayName: crud.team_display_name,
+      recipientEmail: crud.recipient_email,
+      expiresAt: new Date(crud.expires_at_millis),
+      accept: async () => {
+        await app._interface.acceptServerTeamInvitationById(crud.id, userId);
+        await app._serverUserTeamInvitationsCache.refresh([userId]);
+        await app._serverTeamsCache.refresh([userId]);
       },
     };
   }
@@ -878,12 +894,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async listInvitations() {
         const result = Result.orThrow(await app._serverTeamInvitationsCache.getOrWait([crud.id], "write-only"));
-        return result.map((crud) => app._serverTeamInvitationFromCrud(crud));
+        return result.map((crud) => app._serverSentTeamInvitationFromCrud(crud));
       },
       // IF_PLATFORM react-like
       useInvitations() {
         const result = useAsyncCache(app._serverTeamInvitationsCache, [crud.id] as const, "team.useInvitations()");
-        return useMemo(() => result.map((crud) => app._serverTeamInvitationFromCrud(crud)), [result]);
+        return useMemo(() => result.map((crud) => app._serverSentTeamInvitationFromCrud(crud)), [result]);
       },
       // END_PLATFORM
       // IF_PLATFORM react-like

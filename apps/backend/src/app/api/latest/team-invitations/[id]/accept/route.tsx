@@ -1,0 +1,139 @@
+import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
+import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
+import { VerificationCodeType } from "@/generated/prisma/client";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+
+export const POST = createSmartRouteHandler({
+  metadata: {
+    summary: "Accept a team invitation by ID",
+    description: "Accepts a team invitation for the current user. The user must have a verified email matching the invitation's recipient email. This marks the invitation as used and adds the user to the team.",
+    tags: ["Teams"],
+  },
+  request: yupObject({
+    auth: yupObject({
+      type: clientOrHigherAuthTypeSchema,
+      tenancy: adaptSchema.defined(),
+      user: adaptSchema.defined(),
+    }).defined(),
+    params: yupObject({
+      id: yupString().uuid().defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({}).defined(),
+  }),
+  async handler({ auth, params }) {
+    const user = auth.user ?? throwErr(new KnownErrors.UserAuthenticationRequired());
+
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
+
+    // Look up the invitation (verification code) by ID
+    const code = await globalPrismaClient.verificationCode.findUnique({
+      where: {
+        projectId_branchId_id: {
+          projectId: auth.tenancy.project.id,
+          branchId: auth.tenancy.branchId,
+          id: params.id,
+        },
+        type: VerificationCodeType.TEAM_INVITATION,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!code) {
+      throw new KnownErrors.VerificationCodeNotFound();
+    }
+
+    const invitationData = code.data as { team_id: string };
+    const invitationMethod = code.method as { email: string };
+
+    // Verify that the current user has a verified email matching the invitation's recipient
+    const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const matchingChannel = await prisma.contactChannel.findFirst({
+      where: {
+        tenancyId: auth.tenancy.id,
+        projectUserId: user.id,
+        type: 'EMAIL',
+        isVerified: true,
+        value: invitationMethod.email,
+      },
+    });
+
+    if (!matchingChannel) {
+      throw new StackAssertionError(
+        "Cannot accept this invitation: no verified email matching the invitation's recipient email was found on the current user",
+      );
+    }
+
+    await retryTransaction(prisma, async (tx) => {
+      // Internal project payment checks (same as in the verification code handler)
+      if (auth.tenancy.project.id === "internal") {
+        const currentMemberCount = await tx.teamMember.count({
+          where: {
+            tenancyId: auth.tenancy.id,
+            teamId: invitationData.team_id,
+          },
+        });
+        const maxDashboardAdmins = await getItemQuantityForCustomer({
+          prisma: tx,
+          tenancy: auth.tenancy,
+          customerId: invitationData.team_id,
+          itemId: "dashboard_admins",
+          customerType: "team",
+        });
+        if (currentMemberCount + 1 > maxDashboardAdmins) {
+          throw new KnownErrors.ItemQuantityInsufficientAmount("dashboard_admins", invitationData.team_id, -1);
+        }
+      }
+
+      const oldMembership = await tx.teamMember.findUnique({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: auth.tenancy.id,
+            projectUserId: user.id,
+            teamId: invitationData.team_id,
+          },
+        },
+      });
+
+      if (!oldMembership) {
+        await teamMembershipsCrudHandlers.adminCreate({
+          tenancy: auth.tenancy,
+          team_id: invitationData.team_id,
+          user_id: user.id,
+          data: {},
+        });
+      }
+    });
+
+    // Mark the invitation as used
+    await globalPrismaClient.verificationCode.update({
+      where: {
+        projectId_branchId_id: {
+          projectId: auth.tenancy.project.id,
+          branchId: auth.tenancy.branchId,
+          id: params.id,
+        },
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {},
+    };
+  },
+});

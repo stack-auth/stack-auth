@@ -1043,3 +1043,48 @@ it("client cannot list invitations for a user_id other than 'me'", async ({ expe
     }
   `);
 });
+
+
+it("can accept invitation by ID", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  const { sendTeamInvitationResponse } = await Team.sendInvitation(receiveMailbox.emailAddress, teamId);
+  const invitationId = sendTeamInvitationResponse.body.id;
+
+  // Sign up as the invited user with the matching verified email
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  // Accept the invitation by ID
+  const acceptResponse = await niceBackendFetch(`/api/v1/team-invitations/${invitationId}/accept`, {
+    accessType: "client",
+    method: "POST",
+  });
+  expect(acceptResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Verify the user is now a member
+  const teamsResponse = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+
+  // Verify the invitation is consumed (no longer listed)
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(listResponse.body.items).toHaveLength(0);
+});

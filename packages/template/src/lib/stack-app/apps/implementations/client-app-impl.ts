@@ -48,7 +48,7 @@ import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoic
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
-import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, UserTeamInvitation, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
@@ -965,7 +965,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientTeamInvitationFromCrud(session: InternalSession, crud: TeamInvitationCrud['Client']['Read']): TeamInvitation {
+  protected _clientSentTeamInvitationFromCrud(session: InternalSession, crud: TeamInvitationCrud['Client']['Read']): SentTeamInvitation {
     return {
       id: crud.id,
       recipientEmail: crud.recipient_email,
@@ -977,13 +977,19 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientUserTeamInvitationFromCrud(crud: TeamInvitationCrud['Client']['Read']): UserTeamInvitation {
+  protected _clientReceivedTeamInvitationFromCrud(session: InternalSession, crud: TeamInvitationCrud['Client']['Read']): ReceivedTeamInvitation {
+    const app = this;
     return {
       id: crud.id,
       teamId: crud.team_id,
       teamDisplayName: crud.team_display_name,
       recipientEmail: crud.recipient_email,
       expiresAt: new Date(crud.expires_at_millis),
+      accept: async () => {
+        await app._interface.acceptTeamInvitationById(crud.id, session);
+        await app._currentUserTeamInvitationsCache.refresh([session]);
+        await app._currentUserTeamsCache.refresh([session]);
+      },
     };
   }
 
@@ -1067,12 +1073,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       async listInvitations() {
         const result = Result.orThrow(await app._teamInvitationsCache.getOrWait([session, crud.id], "write-only"));
-        return result.map((crud) => app._clientTeamInvitationFromCrud(session, crud));
+        return result.map((crud) => app._clientSentTeamInvitationFromCrud(session, crud));
       },
       // IF_PLATFORM react-like
       useInvitations() {
         const result = useAsyncCache(app._teamInvitationsCache, [session, crud.id] as const, "team.useInvitations()");
-        return result.map((crud) => app._clientTeamInvitationFromCrud(session, crud));
+        return result.map((crud) => app._clientSentTeamInvitationFromCrud(session, crud));
       },
       // END_PLATFORM
       async update(data: TeamUpdateOptions) {
@@ -1444,12 +1450,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async listTeamInvitations() {
         const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
-        return invitations.map((crud) => app._clientUserTeamInvitationFromCrud(crud));
+        return invitations.map((crud) => app._clientReceivedTeamInvitationFromCrud(session, crud));
       },
       // IF_PLATFORM react-like
       useTeamInvitations() {
         const invitations = useAsyncCache(app._currentUserTeamInvitationsCache, [session], "user.useTeamInvitations()");
-        return useMemo(() => invitations.map((crud) => app._clientUserTeamInvitationFromCrud(crud)), [invitations]);
+        return useMemo(() => invitations.map((crud) => app._clientReceivedTeamInvitationFromCrud(session, crud)), [invitations]);
       },
       // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<TeamPermission[]> {
