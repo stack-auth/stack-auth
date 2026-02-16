@@ -1,8 +1,9 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { DesignDataTable } from "@/components/design-components/table";
 import { useRouter } from "@/components/router";
 import { ServerTeam } from '@stackframe/stack';
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
+import { ActionCell, ActionDialog, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
@@ -131,12 +132,13 @@ export function TeamTable(props: { teams: ServerTeam[] }) {
   const router = useRouter();
   const stackAdminApp = useAdminApp();
 
-  return <DataTable
+  return <DesignDataTable
     data={props.teams}
     columns={columns}
     toolbarRender={toolbarRender}
     defaultColumnFilters={[]}
     defaultSorting={[{ id: 'createdAt', desc: true }]}
+    glassmorphic
     onRowClick={(row) => {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
     }}
