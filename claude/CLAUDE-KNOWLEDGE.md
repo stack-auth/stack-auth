@@ -67,3 +67,5 @@ A: The card playground now includes a `Header Actions` toggle that injects a sam
 
 Q: What is the reliable way to lint a single dashboard file in this monorepo?
 A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx"`), because running root `pnpm lint -- <file>` fans out through Turbo packages where that path does not exist.
+Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
+A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
