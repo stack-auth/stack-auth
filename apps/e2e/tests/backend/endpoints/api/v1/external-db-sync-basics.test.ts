@@ -1,5 +1,5 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
 import { Project, User, niceBackendFetch } from '../../../backend-helpers';
@@ -9,7 +9,6 @@ import {
   createProjectWithExternalDb as createProjectWithExternalDbRaw,
   verifyInExternalDb,
   verifyNotInExternalDb,
-  waitForCondition,
   waitForSyncedData,
   waitForSyncedDeletion,
   waitForTable
@@ -35,12 +34,11 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
         email,
       },
     });
-    if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 1
-      && response.body.result[0]?.display_name === expectedDisplayName
-    ) {
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    if (response.body.result.length === 1) {
+      expect(response.body.result[0].display_name).toBe(expectedDisplayName);
       return response;
     }
     await wait(intervalMs);
@@ -61,12 +59,11 @@ async function waitForClickhouseUserDeletion(email: string) {
         email,
       },
     });
-    if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 0
-    ) {
-      return;
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    if (response.body.result.length === 0) {
+      return response;
     }
     await wait(intervalMs);
   }

@@ -1,9 +1,9 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
-import { InternalApiKey, Project, User, backendContext, niceBackendFetch } from '../../../backend-helpers';
+import { InternalApiKey, User, backendContext, niceBackendFetch } from '../../../backend-helpers';
 import {
   HIGH_VOLUME_TIMEOUT,
   POSTGRES_HOST,
@@ -39,12 +39,11 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
       query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
       params: { email },
     });
-    if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 1
-      && response.body.result[0]?.display_name === expectedDisplayName
-    ) {
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    if (response.body.result.length === 1) {
+      expect(response.body.result[0].display_name).toBe(expectedDisplayName);
       return response;
     }
     await wait(intervalMs);
