@@ -733,6 +733,24 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       isPaused: false as const,
       hasRendered: false as const,
       hasDelivered: false as const,
+      // Retry tracking fields
+      sendRetries: crud.send_retries as number,
+      nextSendRetryAt: crud.next_send_retry_at_millis ? new Date(crud.next_send_retry_at_millis) : null,
+      sendAttemptErrors: crud.send_attempt_errors ? (crud.send_attempt_errors as Array<{
+        attempt_number: number,
+        timestamp: string,
+        external_message: string,
+        external_details: Record<string, unknown>,
+        internal_message: string,
+        internal_details: Record<string, unknown>,
+      }>).map((e) => ({
+        attemptNumber: e.attempt_number,
+        timestamp: e.timestamp,
+        externalMessage: e.external_message,
+        externalDetails: e.external_details,
+        internalMessage: e.internal_message,
+        internalDetails: e.internal_details,
+      })) : null,
     };
 
     // Rendered fields (available after rendering completes successfully)
