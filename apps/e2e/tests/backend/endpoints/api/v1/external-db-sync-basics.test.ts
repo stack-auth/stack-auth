@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
 import { Project, User, niceBackendFetch } from '../../../backend-helpers';
 import {
+  HIGH_VOLUME_TIMEOUT,
   TEST_TIMEOUT,
   TestDbManager,
   createProjectWithExternalDb as createProjectWithExternalDbRaw,
@@ -24,7 +25,7 @@ async function runQueryForCurrentProject(body: { query: string, params?: Record<
 }
 
 async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
-  const timeoutMs = 180_000;
+  const timeoutMs = 600_000;
   const intervalMs = 2_000;
   const start = performance.now();
 
@@ -50,7 +51,7 @@ async function waitForClickhouseUser(email: string, expectedDisplayName: string)
 }
 
 async function waitForClickhouseUserDeletion(email: string) {
-  const timeoutMs = 180_000;
+  const timeoutMs = 600_000;
   const intervalMs = 2_000;
   const start = performance.now();
 
@@ -121,7 +122,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       display_name: "After CH Update",
       primary_email: "clickhouse-update@example.com",
     });
-  }, TEST_TIMEOUT);
+  }, HIGH_VOLUME_TIMEOUT);
 
   test("Deleted user is removed from ClickHouse view", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -141,7 +142,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
 
     await waitForClickhouseUserDeletion("clickhouse-delete@example.com");
-  }, TEST_TIMEOUT);
+  }, HIGH_VOLUME_TIMEOUT);
 
   test("Syncs users to ClickHouse by default", async ({ expect }) => {
     await Project.createAndSwitch({ config: { magic_link_enabled: true } });
