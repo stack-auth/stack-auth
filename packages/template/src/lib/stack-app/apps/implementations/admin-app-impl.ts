@@ -2,7 +2,7 @@ import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
-import type { AdminGetSessionRecordingAllEventsResponse, AdminGetSessionRecordingChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-recordings";
+import type { AdminGetSessionReplayAllEventsResponse, AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -19,7 +19,7 @@ import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
-import type { AdminSessionRecording, AdminSessionRecordingChunk, ListSessionRecordingChunksOptions, ListSessionRecordingChunksResult, ListSessionRecordingsOptions, ListSessionRecordingsResult, SessionRecordingAllEventsResult } from "../../session-recordings";
+import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
@@ -1042,13 +1042,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.queryAnalytics(options);
   }
 
-  async listSessionRecordings(options?: ListSessionRecordingsOptions): Promise<ListSessionRecordingsResult> {
-    const response = await this._interface.listSessionRecordings({
+  async listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult> {
+    const response = await this._interface.listSessionReplays({
       cursor: options?.cursor,
       limit: options?.limit,
     });
 
-    const items: AdminSessionRecording[] = response.items.map((r) => ({
+    const items: AdminSessionReplay[] = response.items.map((r) => ({
       id: r.id,
       projectUser: {
         id: r.project_user.id,
@@ -1067,16 +1067,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  async listSessionRecordingChunks(sessionRecordingId: string, options?: ListSessionRecordingChunksOptions): Promise<ListSessionRecordingChunksResult> {
-    const response = await this._interface.listSessionRecordingChunks(sessionRecordingId, {
+  async listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult> {
+    const response = await this._interface.listSessionReplayChunks(sessionReplayId, {
       cursor: options?.cursor,
       limit: options?.limit,
     });
 
-    const items: AdminSessionRecordingChunk[] = response.items.map((c) => ({
+    const items: AdminSessionReplayChunk[] = response.items.map((c) => ({
       id: c.id,
       batchId: c.batch_id,
-      tabId: c.tab_id,
+      sessionReplaySegmentId: c.session_replay_segment_id,
       browserSessionId: c.browser_session_id,
       eventCount: c.event_count,
       byteLength: c.byte_length,
@@ -1091,17 +1091,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
-    return await this._interface.getSessionRecordingChunkEvents(sessionRecordingId, chunkId);
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
+    return await this._interface.getSessionReplayChunkEvents(sessionReplayId, chunkId);
   }
 
-  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<SessionRecordingAllEventsResult> {
-    const response = await this._interface.getSessionRecordingEvents(sessionRecordingId, options);
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<SessionReplayAllEventsResult> {
+    const response = await this._interface.getSessionReplayEvents(sessionReplayId, options);
     return {
       chunks: response.chunks.map((c) => ({
         id: c.id,
         batchId: c.batch_id,
-        tabId: c.tab_id,
+        sessionReplaySegmentId: c.session_replay_segment_id,
         eventCount: c.event_count,
         byteLength: c.byte_length,
         firstEventAt: new Date(c.first_event_at_millis),
