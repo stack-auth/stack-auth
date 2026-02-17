@@ -332,7 +332,9 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
       }
       
       // AI-generated code will be inserted here
-      ${sourceCode}
+      (() => {
+        ${sourceCode}
+      })();
       
       // Boot the dashboard
       const rootElement = document.getElementById('root');
