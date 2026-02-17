@@ -430,6 +430,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
         return;
       }
       if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) {
+        console.warn("Unknown iframe source; rejecting message", event);
         return;
       }
       if (event.origin !== "null") {
