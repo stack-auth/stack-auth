@@ -53,6 +53,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { EventTracker } from "./event-tracker";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
 // IF_PLATFORM react-like
@@ -98,6 +99,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
   private _sessionRecorder: SessionRecorder | null = null;
+  private _eventTracker: EventTracker | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -450,6 +452,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
       }, this._analyticsOptions.replays);
       this._sessionRecorder.start();
+    }
+
+    // for now we only track events for internal project
+    if (isBrowserLike() && this.projectId === "internal") {
+      this._eventTracker = new EventTracker({
+        projectId: this.projectId,
+        getAccessToken: async () => {
+          const session = await this._getSession();
+          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
+          return tokens?.accessToken.token ?? null;
+        },
+        sendBatch: async (body, opts) => {
+          return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
+        },
+      });
+      this._eventTracker.start();
     }
   }
 
@@ -2855,6 +2873,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       getConstructorOptions: () => this._options,
       sendSessionReplayBatch: async (body: string, options: { keepalive: boolean }) => {
         return await this._interface.sendSessionReplayBatch(body, await this._getSession(), options);
+      },
+      sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
+        return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
       },
       sendRequest: async (
         path: string,

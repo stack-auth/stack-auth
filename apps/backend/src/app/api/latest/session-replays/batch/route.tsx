@@ -2,6 +2,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
+import { findRecentSessionReplay } from "@/lib/session-replays";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -15,8 +16,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0
 
 const MAX_BODY_BYTES = 5_000_000;
 const MAX_EVENTS = 5_000;
-const SESSION_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
-const MAX_SESSION_DURATION_MS = 12 * 60 * 60 * 1000;
 
 function extractEventTimesMs(events: unknown[], fallbackMs: number) {
   let minTs = Infinity;
@@ -114,22 +113,7 @@ export const POST = createSmartRouteHandler({
     const { firstMs, lastMs } = extractEventTimesMs(body.events, body.sent_at_ms);
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-
-    // Find a recent session replay for this refresh token (temporal grouping).
-    // If the last batch arrived within SESSION_IDLE_TIMEOUT_MS, reuse that replay.
-    // Also enforce a max session duration so replays don't grow indefinitely.
-    const cutoff = new Date(Date.now() - SESSION_IDLE_TIMEOUT_MS);
-    const maxDurationCutoff = new Date(Date.now() - MAX_SESSION_DURATION_MS);
-    const recentSession = await prisma.sessionReplay.findFirst({
-      where: {
-        tenancyId,
-        refreshTokenId,
-        updatedAt: { gte: cutoff },
-        startedAt: { gte: maxDurationCutoff },
-      },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true, startedAt: true, lastEventAt: true },
-    });
+    const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });
 
     const replayId = recentSession?.id ?? randomUUID();
     const s3Key = `session-replays/${projectId}/${branchId}/${replayId}/${batchId}.json.gz`;

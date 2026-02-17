@@ -89,13 +89,13 @@ const MAX_APPROX_BYTES_PER_BATCH = 512_000;
 const MAX_PREAUTH_BUFFER_EVENTS = 10_000;
 const MAX_PREAUTH_BUFFER_BYTES = 5_000_000;
 
-type StoredSession = {
+export type StoredSession = {
   session_id: string,
   created_at_ms: number,
   last_activity_ms: number,
 };
 
-function safeParseStoredSession(raw: string | null): StoredSession | null {
+export function safeParseStoredSession(raw: string | null): StoredSession | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
@@ -109,15 +109,15 @@ function safeParseStoredSession(raw: string | null): StoredSession | null {
   }
 }
 
-function makeStorageKey(projectId: string) {
+export function makeStorageKey(projectId: string) {
   return `${LOCAL_STORAGE_PREFIX}:${projectId}`;
 }
 
-function generateUuid() {
+export function generateUuid() {
   return crypto.randomUUID();
 }
 
-function getOrRotateSession(options: { key: string, nowMs: number }): StoredSession {
+export function getOrRotateSession(options: { key: string, nowMs: number }): StoredSession {
   const existing = safeParseStoredSession(localStorage.getItem(options.key));
   if (existing && options.nowMs - existing.last_activity_ms <= IDLE_TTL_MS) {
     return existing;
