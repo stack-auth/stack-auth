@@ -1,12 +1,12 @@
+import { CustomerType } from "@/generated/prisma/client";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { CustomerType } from "@/generated/prisma/client";
+import { InputJsonValue } from "@prisma/client/runtime/client";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
-import { InputJsonValue } from "@prisma/client/runtime/client";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
@@ -16,6 +16,43 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   host: "localhost",
   port: Number(`${stackPortPrefix}23`),
 } : {};
+
+/**
+ * Sanitizes subscription period dates from Stripe.
+ *
+ * The Stripe mock returns hardcoded fixture dates that are invalid (e.g., start in 2030, end in 2000).
+ * This function detects invalid dates and replaces them with sensible defaults.
+ *
+ * @param startTimestamp - Unix timestamp in seconds for period start
+ * @param endTimestamp - Unix timestamp in seconds for period end
+ * @param intervalMonths - Billing interval in months (default: 1)
+ * @returns Sanitized Date objects for start and end
+ */
+export function sanitizeStripePeriodDates(
+  startTimestamp: number,
+  endTimestamp: number,
+  intervalMonths: number = 1
+): { start: Date, end: Date } {
+  const now = new Date();
+  const startDate = new Date(startTimestamp * 1000);
+  const endDate = new Date(endTimestamp * 1000);
+
+  const tenYearsMs = 10 * 365 * 24 * 60 * 60 * 1000;
+  const isStartValid = startDate.getTime() > 0 && Math.abs(startDate.getTime() - now.getTime()) < tenYearsMs;
+  const isEndValid = endDate.getTime() > 0 && Math.abs(endDate.getTime() - now.getTime()) < tenYearsMs;
+  const isOrderValid = startDate < endDate;
+
+  if (isStartValid && isEndValid && isOrderValid) {
+    return { start: startDate, end: endDate };
+  }
+
+  // Dates are invalid (likely from Stripe mock), use sensible defaults
+  const defaultStart = now;
+  const defaultEnd = new Date(now);
+  defaultEnd.setMonth(defaultEnd.getMonth() + intervalMonths);
+
+  return { start: defaultStart, end: defaultEnd };
+}
 
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
@@ -92,6 +129,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       continue;
     }
     const item = subscription.items.data[0];
+    const sanitizedDates = sanitizeStripePeriodDates(item.current_period_start, item.current_period_end);
     const priceId = subscription.metadata.priceId as string | undefined;
     // old subscriptions were created with offer metadata instead of product metadata
     const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
@@ -116,8 +154,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         status: subscription.status,
         product: productJson,
         quantity: item.quantity ?? 1,
-        currentPeriodEnd: new Date(item.current_period_end * 1000),
-        currentPeriodStart: new Date(item.current_period_start * 1000),
+        currentPeriodEnd: sanitizedDates.end,
+        currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         priceId: priceId ?? null,
       },
@@ -131,8 +169,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
-        currentPeriodEnd: new Date(item.current_period_end * 1000),
-        currentPeriodStart: new Date(item.current_period_start * 1000),
+        currentPeriodEnd: sanitizedDates.end,
+        currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         creationSource: "PURCHASE_PAGE"
       },
