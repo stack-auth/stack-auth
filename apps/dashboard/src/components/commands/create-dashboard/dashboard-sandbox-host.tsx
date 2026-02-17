@@ -165,7 +165,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
         });
         
         // Make it globally available for AI-generated code
-        // Note: Variable name remains stackServerApp for compatibility, but it's a StackAdminApp instance
+        // Note: Variable name remains stackServerApp as we may change StackAdminApp in the future while StackServerApp is stable, even though it's a StackAdminApp instance
         window.stackServerApp = stackServerApp;
         
         return stackServerApp;
