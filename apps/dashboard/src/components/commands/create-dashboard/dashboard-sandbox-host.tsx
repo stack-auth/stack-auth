@@ -331,10 +331,10 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
           return this.props.children;
         }
       }
-      
-      // AI-generated code will be inserted here
-      (() => {
+        
+      window.Dashboard = (() => {
         ${sourceCode}
+        return Dashboard;
       })();
       
       // Boot the dashboard
@@ -349,6 +349,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
       initializeStackApp().then(() => {
         try {
           // Dashboard should be defined by the AI-generated code
+          const Dashboard = window.Dashboard;
           if (typeof Dashboard !== 'function') {
             throw new Error('Dashboard component not found in generated code');
           }
