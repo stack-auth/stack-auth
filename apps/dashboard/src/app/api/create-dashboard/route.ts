@@ -1,6 +1,5 @@
 import { generateDashboardRuntimeCodegen } from "@/lib/ai-dashboard/model";
 import { stackServerApp } from "@/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const requestSchema = yupObject({

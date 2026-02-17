@@ -87,7 +87,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
     
     <!-- Stack SDK (via esm.sh CDN) -->
     <script type="module">
-      import * as StackSDK from 'https://esm.sh/@stackframe/stack@${packageJson.version}';
+      import * as StackSDK from 'https://esm.sh/@stackframe/js@${packageJson.version}';
       
       // Expose Stack SDK globally for the Babel-transpiled code
       window.StackAdminApp = StackSDK.StackAdminApp;
@@ -442,29 +442,22 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       if (type === "stack-access-token-request") {
         const requestId = event.data.requestId;
         runAsynchronously(async () => {
-          try {
-            const accessToken = await user.getAccessToken();
-            if (!accessToken) {
-              event.source?.postMessage({
-                type: 'stack-access-token-response',
-                requestId,
-                accessToken: null,
-              }, { targetOrigin: '*' });
-              return;
-            }
-
-            event.source?.postMessage({
-              type: 'stack-access-token-response',
-              requestId,
-              accessToken,
-            }, { targetOrigin: '*' });
-          } catch (error) {
+          const accessToken = await user.getAccessToken();
+          if (!accessToken) {
             event.source?.postMessage({
               type: 'stack-access-token-response',
               requestId,
               accessToken: null,
+              error: '[DashboardSandboxHost] Failed to get access token: access token is null',
             }, { targetOrigin: '*' });
+            return;
           }
+
+          event.source?.postMessage({
+            type: 'stack-access-token-response',
+            requestId,
+            accessToken,
+          }, { targetOrigin: '*' });
         });
         return;
       }

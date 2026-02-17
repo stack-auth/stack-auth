@@ -23,6 +23,7 @@ async function main() {
       `${stackAppPath}/**/global.css`,
     ],
   });
+  files.sort();
   
   console.log(`[Bundle Type Definitions] Found ${files.length} type definition files`);
   
