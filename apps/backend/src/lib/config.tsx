@@ -728,47 +728,15 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
         sourceOfTruth.connectionString must be defined
   `));
 
-  // Dot-notation into record entries — silently dropped cases
-  const objectRecordSchema = yupObject({ a: yupRecord(yupString().defined(), yupObject({ x: yupString().optional(), y: yupString().optional() })) }).defined();
-
-  // Dot notation into a record entry that doesn't exist should warn
-  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey.x": "val" })).toMatchInlineSnapshot(`
-    {
-      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "a.mykey.x". Use nested object notation to create new record entries instead of dot notation.",
-      "status": "error",
-    }
-  `);
-
-  // Setting the record entry itself (not dotting into it) should NOT warn
-  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey": { x: "val" } })).toMatchInlineSnapshot(`
-    {
-      "data": null,
-      "status": "ok",
-    }
-  `);
-
-  // When the record entry exists in the base, dot notation into it should work fine
-  expect(await validateConfigOverrideSchema(objectRecordSchema, { a: { mykey: { x: "old" } } }, { "a.mykey.x": "new" })).toMatchInlineSnapshot(`
-    {
-      "data": null,
-      "status": "ok",
-    }
-  `);
-
-  // When the record entry exists as a flat key in the same override, dot notation should work fine
-  expect(await validateConfigOverrideSchema(objectRecordSchema, {}, { "a.mykey": { x: "old" }, "a.mykey.y": "new" })).toMatchInlineSnapshot(`
-    {
-      "data": null,
-      "status": "ok",
-    }
-  `);
+  // Dot-notation keys that dot into nothing — detected by simulating the rendering pipeline
+  // (apply all production defaults, then normalize with onDotIntoNonObject: "ignore")
 
   // Dot-notation into non-existent record entry in actual schemas (trustedDomains)
   expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
     'domains.trustedDomains.my-domain.baseUrl': 'https://example.com',
   })).toMatchInlineSnapshot(`
     {
-      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "domains.trustedDomains.my-domain.baseUrl". Use nested object notation to create new record entries instead of dot notation.",
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.my-domain.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.my-domain". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.my-domain": { "baseUrl": ... } }",
       "status": "error",
     }
   `);
@@ -817,7 +785,7 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
     'auth.oauth.providers.google.clientId': 'test-id',
   })).toMatchInlineSnapshot(`
     {
-      "error": "[WARNING] Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: "auth.oauth.providers.google.clientId". Use nested object notation to create new record entries instead of dot notation.",
+      "error": "[WARNING] Dot-notation key "auth.oauth.providers.google.clientId" will be silently ignored because it references non-existent parent "auth.oauth.providers.google". Instead of dot notation, use nested object notation like this: { "auth.oauth.providers.google": { "clientId": ... } }",
       "status": "error",
     }
   `);
@@ -828,6 +796,224 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
   }, {
     'auth.oauth.providers.google.clientId': 'test-id',
   })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // --- More dot-notation warning tests ---
+
+  // Multiple dropped keys should all be reported
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.d1.baseUrl': 'https://a.com',
+    'auth.oauth.providers.github.clientId': 'id',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.d1.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "baseUrl": ... } }
+    Dot-notation key "auth.oauth.providers.github.clientId" will be silently ignored because it references non-existent parent "auth.oauth.providers.github". Instead of dot notation, use nested object notation like this: { "auth.oauth.providers.github": { "clientId": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Setting an entire record entry directly via dot notation (no dotting INTO it) should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Setting the entire record via nested object notation should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    domains: { trustedDomains: { 'my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' } } },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into a permission that doesn't exist (branch-level record)
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'rbac.permissions.my_perm.description': 'hello',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "rbac.permissions.my_perm.description" will be silently ignored because it references non-existent parent "rbac.permissions.my_perm". Instead of dot notation, use nested object notation like this: { "rbac.permissions.my_perm": { "description": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Setting a permission entry directly should NOT warn
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'rbac.permissions.my_perm': { description: 'hello', scope: 'team' },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into a permission that exists in the base should NOT warn
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {
+    rbac: { permissions: { my_perm: { description: 'old' } } },
+  }, {
+    'rbac.permissions.my_perm.description': 'new',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into sign-up rules record
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'auth.signUpRules.my_rule.enabled': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "auth.signUpRules.my_rule.enabled" will be silently ignored because it references non-existent parent "auth.signUpRules.my_rule". Instead of dot notation, use nested object notation like this: { "auth.signUpRules.my_rule": { "enabled": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Setting sign-up rule entry directly should NOT warn
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'auth.signUpRules.my_rule': { enabled: true, displayName: 'My Rule', priority: 1, condition: 'true', action: { type: 'allow' } },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into email themes record
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'emails.themes.my_theme.displayName': 'My Theme',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[ERROR] The key "emails.themes.my_theme.displayName" is not valid (nested object not found in schema: "emails.themes.my_theme").",
+      "status": "error",
+    }
+  `);
+
+  // Deeply nested dot notation into payments products record
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'payments.products.my_product.displayName': 'My Product',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "payments.products.my_product.displayName" will be silently ignored because it references non-existent parent "payments.products.my_product". Instead of dot notation, use nested object notation like this: { "payments.products.my_product": { "displayName": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Mix of valid dot notation and invalid dot notation in the same override
+  // The valid one (static object field) should not prevent the invalid one from being flagged
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'teams.allowClientTeamCreation': true,
+    'domains.trustedDomains.d1.baseUrl': 'https://example.com',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.d1.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "baseUrl": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Non-dot-notation keys should never trigger the warning
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    domains: { allowLocalhost: true },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation with an entry that exists in the SAME override (as a flat key) should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+    'domains.trustedDomains.my-domain.handlerPath': '/new-handler',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation with entry created via nested object in same override should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    domains: { trustedDomains: { 'my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' } } },
+    'domains.trustedDomains.my-domain.handlerPath': '/new-handler',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Multiple dot-notation keys into the SAME non-existent record entry
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.d1.baseUrl': 'https://example.com',
+    'domains.trustedDomains.d1.handlerPath': '/handler',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.d1.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "baseUrl": ... } }
+    Dot-notation key "domains.trustedDomains.d1.handlerPath" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "handlerPath": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation into nested records (products -> prices)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {
+    payments: { products: { 'my-product': { displayName: 'My Product', customerType: 'user' } } },
+  }, {
+    'payments.products.my-product.prices.monthly.USD': '10.00',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "payments.products.my-product.prices.monthly.USD" will be silently ignored because it references non-existent parent "payments.products.my-product.prices.monthly". Instead of dot notation, use nested object notation like this: { "payments.products.my-product.prices.monthly": { "USD": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation into external databases record
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'dbSync.externalDatabases.my_db.type': 'postgres',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "dbSync.externalDatabases.my_db.type" will be silently ignored because it references non-existent parent "dbSync.externalDatabases.my_db". Instead of dot notation, use nested object notation like this: { "dbSync.externalDatabases.my_db": { "type": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation for deeply nested static fields should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.oauth.accountMergeStrategy': 'link_method',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'emails.server.isShared': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'rbac.defaultPermissions.teamCreator': { my_perm: true },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Empty override should never warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {})).toMatchInlineSnapshot(`
     {
       "data": null,
       "status": "ok",

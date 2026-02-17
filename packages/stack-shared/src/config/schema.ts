@@ -1184,15 +1184,55 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
   // every rendered config should also be a config override without errors (regardless of whether it has warnings or not)
   await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
 
-  // Check for dot-notation keys that go through record fields into non-existent entries.
-  // These keys would be silently ignored during config rendering because applyDefaults creates
-  // empty objects for records (function-based defaults) and normalization drops the dot-notation
-  // keys that reference entries that don't exist in those empty objects.
-  const droppedKeys = getDotNotationKeysDroppedByRecords(schema, incompleteConfig);
-  if (droppedKeys.length > 0) {
-    return Result.error(
-      `Dot-notation keys set fields inside non-existent record entries and will be silently ignored during rendering: ${droppedKeys.map(k => JSON.stringify(k)).join(', ')}. Use nested object notation to create new record entries instead of dot notation.`
-    );
+  // Check for dot-notation keys that would be silently dropped during rendering.
+  // We simulate the rendering pipeline: apply all defaults, then normalize with
+  // onDotIntoNonObject: "ignore" (same as the actual renderer). Any key that gets
+  // dropped during normalization (because a parent doesn't exist or isn't an object)
+  // means it dots into nothing — the user's change would be silently lost.
+  const withDefaults = applyDefaults(
+    organizationConfigDefaults,
+    applyDefaults(projectConfigDefaults, incompleteConfig),
+  );
+  const droppedKeys: string[] = [];
+  const normalizedWithDefaults = normalize(withDefaults as Config, { onDotIntoNonObject: "ignore", droppedKeys });
+
+  // Only report keys that were in the original incomplete config, not anything from defaults
+  const incompleteConfigDotKeys = new Set(
+    Object.keys(incompleteConfig).filter(k => k.includes('.') && incompleteConfig[k] !== undefined)
+  );
+  const relevantDroppedKeys = droppedKeys.filter(k => incompleteConfigDotKeys.has(k));
+
+  if (relevantDroppedKeys.length > 0) {
+    const messages = relevantDroppedKeys.map(key => {
+      const segments = key.split('.');
+
+      // Walk the normalized config to find the deepest existing parent
+      let current: unknown = normalizedWithDefaults;
+      let lastExistingIdx = -1;
+      for (let i = 0; i < segments.length - 1; i++) {
+        if (current != null && typeof current === 'object' && !Array.isArray(current) && segments[i] in (current as Record<string, unknown>)) {
+          current = (current as Record<string, unknown>)[segments[i]];
+          lastExistingIdx = i;
+        } else {
+          break;
+        }
+      }
+
+      // The non-existent parent is one level deeper than the last existing segment
+      const nonExistentParent = segments.slice(0, lastExistingIdx + 2).join('.');
+
+      // Build a suggested nested object notation starting from the non-existent parent
+      const remainingSegments = segments.slice(lastExistingIdx + 2);
+      let suggestion = '...';
+      for (let i = remainingSegments.length - 1; i >= 0; i--) {
+        suggestion = `{ ${JSON.stringify(remainingSegments[i])}: ${suggestion} }`;
+      }
+      suggestion = `{ ${JSON.stringify(nonExistentParent)}: ${suggestion} }`;
+
+      return `Dot-notation key ${JSON.stringify(key)} will be silently ignored because it references non-existent parent ${JSON.stringify(nonExistentParent)}. Instead of dot notation, use nested object notation like this: ${suggestion}`;
+    });
+
+    return Result.error(messages.join('\n'));
   }
 
   let normalized: Config;
@@ -1220,112 +1260,6 @@ export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schem
     }
     throw error;
   }
-}
-
-/**
- * Detects dot-notation keys that go through a record field into a non-existent entry.
- *
- * For example, `'domains.trustedDomains.2.baseUrl'` goes through the `trustedDomains` record.
- * If entry `2` doesn't exist as a standalone entry in the config (either as a flat key like
- * `'domains.trustedDomains.2': {...}` or nested in an object), the dot-notation key will be
- * silently dropped during rendering.
- *
- * This does NOT flag dot-notation keys that only go through static object fields (like
- * `'domains.allowLocalhost'`), because `applyDefaults` creates those parent objects from
- * static defaults.
- */
-function getDotNotationKeysDroppedByRecords(schema: yup.AnySchema, config: Config): string[] {
-  const droppedKeys: string[] = [];
-
-  for (const key of Object.keys(config)) {
-    if (!key.includes('.') || config[key] === undefined) continue;
-
-    const segments = key.split('.');
-    if (isDotNotationKeyDroppedByRecord(schema, config, segments, 0)) {
-      droppedKeys.push(key);
-    }
-  }
-
-  return droppedKeys;
-}
-
-function isDotNotationKeyDroppedByRecord(schema: yup.AnySchema, config: Config, segments: string[], startIndex: number): boolean {
-  let currentSchema = schema;
-
-  for (let i = startIndex; i < segments.length; i++) {
-    const schemaInfo = currentSchema.meta()?.stackSchemaInfo;
-    if (!schemaInfo) return false;
-
-    switch (schemaInfo.type) {
-      case 'record': {
-        // The current segment is a record key. If there are more segments after it,
-        // we're dotting INTO the record entry (setting a field inside it). This only
-        // works if the entry already exists in the config.
-        if (i < segments.length - 1) {
-          const entryPath = segments.slice(0, i + 1);
-          if (!configCreatesEntryAtPath(config, entryPath)) {
-            return true;
-          }
-        }
-        currentSchema = schemaInfo.valueSchema;
-        break;
-      }
-      case 'object': {
-        if (!currentSchema.hasNested(segments[i])) return false;
-        currentSchema = currentSchema.getNested(segments[i]);
-        break;
-      }
-      case 'union': {
-        // Check all variants; if any object/record variant has this segment, follow it
-        for (const variant of schemaInfo.items) {
-          const variantInfo = variant.meta()?.stackSchemaInfo;
-          if (variantInfo?.type === 'object' && variant.hasNested(segments[i])) {
-            return isDotNotationKeyDroppedByRecord(variant, config, segments, i);
-          }
-          if (variantInfo?.type === 'record') {
-            return isDotNotationKeyDroppedByRecord(variant, config, segments, i);
-          }
-        }
-        return false;
-      }
-      default: {
-        return false;
-      }
-    }
-  }
-
-  return false;
-}
-
-/**
- * Checks whether the config creates an entry at the given path (either via a flat key or
- * nested inside an object value of a shorter key).
- */
-function configCreatesEntryAtPath(config: Config, pathSegments: string[]): boolean {
-  const targetKey = pathSegments.join('.');
-
-  for (const [key, value] of Object.entries(config)) {
-    if (value === undefined) continue;
-
-    // Exact flat key match (value can be anything — null means "delete", object means "create")
-    if (key === targetKey) return true;
-
-    // Check if this key is a prefix of the target path and its nested value contains the entry
-    if (targetKey.startsWith(key + '.') && typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      const remainingSegments = targetKey.slice(key.length + 1).split('.');
-      let current: unknown = value;
-      for (const segment of remainingSegments) {
-        if (typeof current !== 'object' || current === null || Array.isArray(current)) {
-          current = undefined;
-          break;
-        }
-        current = (current as Record<string, unknown>)[segment];
-      }
-      if (current !== undefined) return true;
-    }
-  }
-
-  return false;
 }
 export type ValidatedToHaveNoIncompleteConfigWarnings<T extends yup.AnySchema> = yup.InferType<T>;
 
