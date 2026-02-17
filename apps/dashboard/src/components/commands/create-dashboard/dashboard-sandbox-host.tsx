@@ -15,7 +15,7 @@ type DashboardArtifact = {
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): string {
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
 
-  return `<!doctype html>
+  return html`<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
