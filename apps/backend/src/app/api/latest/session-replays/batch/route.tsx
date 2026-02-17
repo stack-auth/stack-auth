@@ -39,9 +39,9 @@ function extractEventTimesMs(events: unknown[], fallbackMs: number) {
 
 export const POST = createSmartRouteHandler({
   metadata: {
-    summary: "Upload rrweb session recording batch",
-    description: "Uploads a batch of rrweb events for a cross-tab session recording.",
-    tags: ["Session Recordings"],
+    summary: "Upload rrweb session replay batch",
+    description: "Uploads a batch of rrweb events for a cross-tab session replay.",
+    tags: ["Session Replays"],
     hidden: true
   },
   request: yupObject({
@@ -64,7 +64,7 @@ export const POST = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
-      session_recording_id: yupString().defined(),
+      session_replay_id: yupString().defined(),
       batch_id: yupString().defined(),
       s3_key: yupString().defined(),
       deduped: yupMixed().defined(),
@@ -76,7 +76,7 @@ export const POST = createSmartRouteHandler({
         statusCode: 200,
         bodyType: "json",
         body: {
-          session_recording_id: "",
+          session_replay_id: "",
           batch_id: body.batch_id,
           s3_key: "",
           deduped: false,
@@ -87,7 +87,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.UserAuthenticationRequired();
     }
     if (!auth.refreshTokenId) {
-      throw new StatusError(StatusError.BadRequest, "A refresh token is required for session recordings");
+      throw new StatusError(StatusError.BadRequest, "A refresh token is required for session replays");
     }
     const projectUserId = auth.user.id;
     const refreshTokenId = auth.refreshTokenId;
@@ -115,12 +115,12 @@ export const POST = createSmartRouteHandler({
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    // Find a recent session recording for this refresh token (temporal grouping).
-    // If the last batch arrived within SESSION_IDLE_TIMEOUT_MS, reuse that recording.
-    // Also enforce a max session duration so recordings don't grow indefinitely.
+    // Find a recent session replay for this refresh token (temporal grouping).
+    // If the last batch arrived within SESSION_IDLE_TIMEOUT_MS, reuse that replay.
+    // Also enforce a max session duration so replays don't grow indefinitely.
     const cutoff = new Date(Date.now() - SESSION_IDLE_TIMEOUT_MS);
     const maxDurationCutoff = new Date(Date.now() - MAX_SESSION_DURATION_MS);
-    const recentSession = await prisma.sessionRecording.findFirst({
+    const recentSession = await prisma.sessionReplay.findFirst({
       where: {
         tenancyId,
         refreshTokenId,
@@ -131,15 +131,15 @@ export const POST = createSmartRouteHandler({
       select: { id: true, startedAt: true, lastEventAt: true },
     });
 
-    const recordingId = recentSession?.id ?? randomUUID();
-    const s3Key = `session-recordings/${projectId}/${branchId}/${recordingId}/${batchId}.json.gz`;
+    const replayId = recentSession?.id ?? randomUUID();
+    const s3Key = `session-replays/${projectId}/${branchId}/${replayId}/${batchId}.json.gz`;
 
     const newStartedAtMs = Math.min(recentSession?.startedAt.getTime() ?? Number.POSITIVE_INFINITY, firstMs);
     const newLastEventAtMs = Math.max(recentSession?.lastEventAt.getTime() ?? 0, lastMs);
-    await prisma.sessionRecording.upsert({
-      where: { tenancyId_id: { tenancyId, id: recordingId } },
+    await prisma.sessionReplay.upsert({
+      where: { tenancyId_id: { tenancyId, id: replayId } },
       create: {
-        id: recordingId,
+        id: replayId,
         tenancyId,
         projectUserId,
         refreshTokenId,
@@ -153,8 +153,8 @@ export const POST = createSmartRouteHandler({
     });
 
     // If we already have this batch for this session, return deduped without touching S3.
-    const existingChunk = await prisma.sessionRecordingChunk.findUnique({
-      where: { tenancyId_sessionRecordingId_batchId: { tenancyId, sessionRecordingId: recordingId, batchId } },
+    const existingChunk = await prisma.sessionReplayChunk.findUnique({
+      where: { tenancyId_sessionReplayId_batchId: { tenancyId, sessionReplayId: replayId, batchId } },
       select: { s3Key: true },
     });
     if (existingChunk) {
@@ -162,7 +162,7 @@ export const POST = createSmartRouteHandler({
         statusCode: 200,
         bodyType: "json",
         body: {
-          session_recording_id: recordingId,
+          session_replay_id: replayId,
           batch_id: batchId,
           s3_key: existingChunk.s3Key,
           deduped: true,
@@ -172,7 +172,7 @@ export const POST = createSmartRouteHandler({
 
     const payload = {
       v: 1,
-      session_recording_id: recordingId,
+      session_replay_id: replayId,
       browser_session_id: browserSessionId,
       session_replay_segment_id: sessionReplaySegmentId,
       batch_id: batchId,
@@ -192,10 +192,10 @@ export const POST = createSmartRouteHandler({
     });
 
     try {
-      await prisma.sessionRecordingChunk.create({
+      await prisma.sessionReplayChunk.create({
         data: {
           tenancyId,
-          sessionRecordingId: recordingId,
+          sessionReplayId: replayId,
           batchId,
           sessionReplaySegmentId,
           browserSessionId,
@@ -212,7 +212,7 @@ export const POST = createSmartRouteHandler({
           statusCode: 200,
           bodyType: "json",
           body: {
-            session_recording_id: recordingId,
+            session_replay_id: replayId,
             batch_id: batchId,
             s3_key: s3Key,
             deduped: true,
@@ -226,7 +226,7 @@ export const POST = createSmartRouteHandler({
       statusCode: 200,
       bodyType: "json",
       body: {
-        session_recording_id: recordingId,
+        session_replay_id: replayId,
         batch_id: batchId,
         s3_key: s3Key,
         deduped: false,

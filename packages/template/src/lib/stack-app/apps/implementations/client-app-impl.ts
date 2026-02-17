@@ -53,7 +53,7 @@ import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthPro
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
-import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-recording";
+import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -446,7 +446,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           return tokens?.accessToken.token ?? null;
         },
         sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionRecordingBatch(body, await this._getSession(), opts);
+          return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
         },
       }, this._analyticsOptions.replays);
       this._sessionRecorder.start();
@@ -2853,8 +2853,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         });
       },
       getConstructorOptions: () => this._options,
-      sendSessionRecordingBatch: async (body: string, options: { keepalive: boolean }) => {
-        return await this._interface.sendSessionRecordingBatch(body, await this._getSession(), options);
+      sendSessionReplayBatch: async (body: string, options: { keepalive: boolean }) => {
+        return await this._interface.sendSessionReplayBatch(body, await this._getSession(), options);
       },
       sendRequest: async (
         path: string,

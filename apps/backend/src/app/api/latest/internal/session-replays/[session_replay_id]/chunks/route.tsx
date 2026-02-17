@@ -15,7 +15,7 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      session_recording_id: yupString().defined(),
+      session_replay_id: yupString().defined(),
     }).defined(),
     query: yupObject({
       cursor: yupString().optional(),
@@ -45,13 +45,13 @@ export const GET = createSmartRouteHandler({
   async handler({ auth, params, query }) {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const sessionRecordingId = params.session_recording_id;
-    const exists = await prisma.sessionRecording.findUnique({
-      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: sessionRecordingId } },
+    const sessionReplayId = params.session_replay_id;
+    const exists = await prisma.sessionReplay.findUnique({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: sessionReplayId } },
       select: { id: true },
     });
     if (!exists) {
-      throw new KnownErrors.ItemNotFound(sessionRecordingId);
+      throw new KnownErrors.ItemNotFound(sessionReplayId);
     }
 
     const rawLimit = query.limit ?? String(DEFAULT_LIMIT);
@@ -61,10 +61,10 @@ export const GET = createSmartRouteHandler({
     const cursorId = query.cursor;
     let cursorPivot: { firstEventAt: Date } | null = null;
     if (cursorId) {
-      cursorPivot = await prisma.sessionRecordingChunk.findFirst({
+      cursorPivot = await prisma.sessionReplayChunk.findFirst({
         where: {
           tenancyId: auth.tenancy.id,
-          sessionRecordingId,
+          sessionReplayId,
           id: cursorId,
         },
         select: { firstEventAt: true },
@@ -74,17 +74,17 @@ export const GET = createSmartRouteHandler({
       }
     }
 
-    const cursorWhere: Prisma.SessionRecordingChunkWhereInput = cursorId && cursorPivot ? {
+    const cursorWhere: Prisma.SessionReplayChunkWhereInput = cursorId && cursorPivot ? {
       OR: [
         { firstEventAt: { gt: cursorPivot.firstEventAt } },
         { AND: [{ firstEventAt: { equals: cursorPivot.firstEventAt } }, { id: { gt: cursorId } }] },
       ],
     } : {};
 
-    const chunks = await prisma.sessionRecordingChunk.findMany({
+    const chunks = await prisma.sessionReplayChunk.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        sessionRecordingId,
+        sessionReplayId,
         ...cursorWhere,
       },
       orderBy: [{ firstEventAt: "asc" }, { id: "asc" }],

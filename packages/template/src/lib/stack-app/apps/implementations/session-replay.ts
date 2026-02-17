@@ -79,7 +79,7 @@ export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): An
 
 // ---------- Recording internals ----------
 
-const LOCAL_STORAGE_PREFIX = "stack:session-recording:v1";
+const LOCAL_STORAGE_PREFIX = "stack:session-replay:v1";
 const IDLE_TTL_MS = 3 * 60 * 1000;
 
 const FLUSH_INTERVAL_MS = 5_000;
