@@ -272,10 +272,6 @@ export default function PageClient() {
         onOpenChange={setIsProjectDetailsDialogOpen}
         title="Edit Project Details"
         formSchema={projectInformationSchema}
-        defaultValues={{
-          displayName: project.displayName,
-          description: project.description || undefined,
-        }}
         onSubmit={handleProjectDetailsSubmit}
         okButton={{ label: "Save" }}
         cancelButton

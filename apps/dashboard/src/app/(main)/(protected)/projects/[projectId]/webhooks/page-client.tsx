@@ -20,6 +20,7 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { useTheme } from "next-themes";
 import { AppPortal } from "svix-react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { GlobeHemisphereWestIcon } from "@phosphor-icons/react";
 import "svix-react/style.css";
 
 
@@ -441,6 +442,7 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
       <DesignCard
         title="Endpoints"
         subtitle="Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data."
+        icon={GlobeHemisphereWestIcon}
         glassmorphic
         actions={(
           <CreateDialog
