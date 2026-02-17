@@ -5,10 +5,9 @@ import { CheckIcon, ChevronRightIcon, DotFilledIcon } from "@radix-ui/react-icon
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import React from "react";
 
-import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { cn } from "@/lib/utils";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { cn } from "@/lib/utils";
 import { Spinner } from "./spinner";
 
 const DropdownMenuContext = React.createContext<{
@@ -100,7 +99,7 @@ const DropdownMenuContent = forwardRefIfNeeded<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/50 bg-popover p-1.5 text-popover-foreground shadow-md",
+        "stack-scope z-50 min-w-[8rem] overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-white/95 dark:bg-background/95 backdrop-blur-xl p-1 text-popover-foreground shadow-lg ring-1 ring-black/[0.08] dark:ring-white/[0.08]",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
@@ -119,25 +118,39 @@ const DropdownMenuItem = forwardRefIfNeeded<
   }
 >(({ className, inset, icon, ...props }, ref) => {
   const { setOpen } = React.useContext(DropdownMenuContext) ?? throwErr("No DropdownMenuContext found");
-  const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    await props.onClick?.(e);
-    setOpen(false);
-  }, [props.onClick]);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  // Share activation logic so keyboard onSelect matches mouse clicks.
+  const handleItemAction = (event: { preventDefault: () => void, stopPropagation: () => void }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const result = props.onClick?.(event as React.MouseEvent<HTMLDivElement, MouseEvent>);
+    if (result && typeof (result as Promise<void>).then === "function") {
+      setIsLoading(true);
+      runAsynchronouslyWithAlert(
+        Promise.resolve(result).finally(() => {
+          setIsLoading(false);
+          setOpen(false);
+        })
+      );
+    } else {
+      setOpen(false);
+    }
+  };
+
+  const paddingClasses = inset || icon ? "pl-9 pr-2.5" : "px-2.5";
 
   return <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "stack-scope relative flex cursor-default select-none items-center rounded-sm px-3 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      (inset || icon) && "pl-9",
+      "stack-scope relative flex cursor-default select-none items-center rounded-lg py-2 text-sm outline-none transition-all duration-150 hover:transition-none focus:bg-foreground/[0.05] focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      paddingClasses,
       className
     )}
     {...props}
     disabled={isLoading || props.disabled}
-    onClick={props.onClick ? (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      runAsynchronouslyWithAlert(handleClick(e));
-    } : undefined}
+    onSelect={props.onClick ? handleItemAction : undefined}
+    onClick={props.onClick ? handleItemAction : undefined}
   >
     <div style={{ visibility: isLoading ? "visible" : "hidden", position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
       <Spinner />

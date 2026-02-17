@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 230 45% 86%;
     --foreground: 240 10% 3.9%;
 
     --card: 0 0% 100% / 0.5;
@@ -16,15 +16,15 @@
     --primary: 240 5.9% 10%;
     --primary-foreground: 0 0% 98%;
 
-    --secondary: 240 4.8% 95.9%;
+    --secondary: 245 30% 90%;
     --secondary-in-card: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 240 4.8% 95.9%;
+    --muted: 250 35% 92%;
     --muted-in-card: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted-foreground: 232 12% 38%;
 
-    --accent: 240 4.8% 95.9%;
+    --accent: 248 32% 91%;
     --accent-in-card: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
 
@@ -34,9 +34,9 @@
     --success: 120 40% 50%;
     --success-foreground: 0 0% 98%;
 
-    --border: 240 5.9% 90%;
+    --border: 230 25% 78%;
     --border-in-card: 240 5.9% 90%;
-    --input: 240 5.9% 80%;
+    --input: 230 20% 72%;
     --input-in-card: 240 5.9% 80%;
     --ring: 240 10% 3.9%;
 
@@ -44,6 +44,9 @@
 
     --rainbow-beam-blur: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899, #f59e0b, #10b981, #3b82f6);
     --rainbow-beam-sharp: linear-gradient(90deg, #60a5fa, #a78bfa, #f472b6, #fbbf24, #34d399, #60a5fa);
+
+    --page-ambient:
+      linear-gradient(145deg, hsl(232 42% 88%) 0%, hsl(228 48% 84%) 40%, hsl(244 38% 86%) 100%);
   }
 
   .dark {
@@ -82,6 +85,8 @@
     --input: 240 3.7% 25.9%;
     --input-in-card: 240 3.7% 43.9%;
     --ring: 240 4.9% 83.9%;
+
+    --page-ambient: none;
   }
 }
 
@@ -131,7 +136,59 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image: var(--page-ambient);
+    background-blend-mode: normal, screen, screen, normal;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
+    position: relative;
   }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.75;
+    background-image: var(--page-ambient);
+    background-blend-mode: normal, screen, screen, normal;
+    mix-blend-mode: normal;
+  }
+
+  .dark body::before {
+    opacity: 0;
+  }
+
+  html:not(.dark) body:has([data-stack-handler-page]) {
+    background-color: white;
+    background-image: none;
+  }
+
+  html:not(.dark) body:has([data-stack-handler-page])::before {
+    opacity: 0;
+    background-image: none;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  transform-origin: center center;
+}
+
+/* Applied during theme view-transitions so component-level CSS transitions
+   (transition-colors, transition-all, etc.) don't lag behind the swipe. */
+.vt-disable-transitions,
+.vt-disable-transitions *,
+.vt-disable-transitions *::before,
+.vt-disable-transitions *::after {
+  transition-duration: 0s !important;
 }
 
 .bg-card {

@@ -6,7 +6,7 @@ import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 
 export const SearchBar = forwardRefIfNeeded<
   HTMLInputElement,
-  React.InputHTMLAttributes<HTMLInputElement>
+  React.ComponentProps<typeof Input>
 >((props, ref) => (
   <div className="relative">
     <Input ref={ref} className="pl-8" {...props} />

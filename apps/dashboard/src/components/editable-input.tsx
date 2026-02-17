@@ -1,8 +1,9 @@
-import { Button, Input } from "@/components/ui";
+import { DesignButton, DesignInput } from "@/components/design-components";
 import { cn } from "@/lib/utils";
-import { CheckIcon, XIcon } from "@phosphor-icons/react";
+import { Check, X } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useRef, useState } from "react";
 
 
@@ -40,7 +41,10 @@ export function EditableInput({
     await onUpdate?.(value);
   }, [onUpdate]);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   return <div
+    ref={containerRef}
     className="flex items-center relative w-full"
     onFocus={() => {
       if (!readOnly) {
@@ -63,22 +67,26 @@ export function EditableInput({
       }
     }}
     onMouseDown={(ev) => {
-      // prevent blur from happening
-      ev.preventDefault();
-      return false;
+      // Prevent blur when clicking on buttons inside the container (except input, which has stopPropagation).
+      // This keeps focus on input while user clicks accept/reject buttons.
+      if (containerRef.current?.contains(ev.target as Node)) {
+        ev.preventDefault();
+        return false;
+      }
     }}
   >
-    <Input
+    <DesignInput
       type={mode === 'password' ? 'password' : 'text'}
       ref={inputRef}
       readOnly={readOnly}
       disabled={isLoading}
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
+      size="sm"
       className={cn(
-        "w-full px-1 py-0 h-[unset] border-transparent",
-        /* Hover */ !readOnly && "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-        /* Focus */ !readOnly && "focus:cursor-[unset] focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
+        "w-full px-3 h-8 text-sm",
+        /* Hover */ !readOnly && "hover:cursor-pointer",
+        /* Focus */ !readOnly && "focus:cursor-[unset]",
         readOnly && "focus-visible:ring-0 cursor-default text-muted-foreground",
         shiftTextToLeft && "ml-[-7px]",
         inputClassName,
@@ -102,7 +110,7 @@ export function EditableInput({
         ev.stopPropagation();
       }}
     />
-    <div className="flex gap-2" style={{
+    <div className="flex gap-1" style={{
       overflow: "hidden",
       width: editing ? "4rem" : 0,
       marginLeft: editing ? "0.5rem" : 0,
@@ -110,18 +118,24 @@ export function EditableInput({
       transition: "width 0.2s ease-in-out, margin-left 0.2s ease-in-out, opacity 0.2s ease-in-out",
     }}>
       {["accept", "reject"].map((action) => (
-        <Button
+        <DesignButton
           ref={action === "accept" ? acceptRef : undefined}
           key={action}
           disabled={isLoading}
           type="button"
           variant="plain"
-          size="plain"
+          size="icon"
           className={cn(
-            "min-h-5 min-w-5 h-5 w-5 rounded-full flex items-center justify-center",
-            action === "accept" ? "bg-green-500 active:bg-green-600" : "bg-red-500 active:bg-red-600"
+            "h-7 w-7 rounded-lg flex items-center justify-center backdrop-blur-sm",
+            "border border-black/[0.08] dark:border-white/[0.08]",
+            "bg-white/75 dark:bg-foreground/[0.04]",
+            "shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]",
+            "transition-colors duration-150 hover:transition-none",
+            action === "accept"
+              ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.12] hover:ring-emerald-500/30"
+              : "text-red-600 dark:text-red-400 hover:bg-red-500/[0.12] hover:ring-red-500/30"
           )}
-          onClick={async () => {
+          onClick={() => runAsynchronouslyWithAlert(async () => {
             try {
               forceAllowBlur.current = true;
               inputRef.current?.blur();
@@ -133,12 +147,12 @@ export function EditableInput({
             } finally {
               forceAllowBlur.current = false;
             }
-          }}
+          })}
         >
           {action === "accept" ?
-            <CheckIcon size={15} className="text-white dark:text-black" /> :
-            <XIcon size={15} className="text-white dark:text-black" />}
-        </Button>
+            <Check weight="bold" className="h-3.5 w-3.5" /> :
+            <X weight="bold" className="h-3.5 w-3.5" />}
+        </DesignButton>
       ))}
     </div>
   </div>;
