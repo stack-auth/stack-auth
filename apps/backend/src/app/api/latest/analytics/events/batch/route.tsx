@@ -73,7 +73,7 @@ export const POST = createSmartRouteHandler({
     const rows = body.events.map((event) => ({
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
-      data: event.data as Record<string, unknown>,
+      data: event.data,
       project_id: projectId,
       branch_id: branchId,
       user_id: userId,
