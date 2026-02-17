@@ -558,14 +558,14 @@ describe("session-replay-machine", () => {
   describe("TOGGLE_PLAY_PAUSE", () => {
     it("pauses from playing", () => {
       const state = twoTabReadyState({ playbackMode: "playing" });
-      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("paused");
       expect(hasEffect(effects, "pause_all")).toBe(true);
     });
 
     it("pauses from gap_fast_forward", () => {
       const state = twoTabReadyState({ playbackMode: "gap_fast_forward" });
-      const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("paused");
       expect(s.gapFastForward).toBeNull();
     });
@@ -576,7 +576,7 @@ describe("session-replay-machine", () => {
         bufferingAtGlobalMs: 1000,
         autoResumeAfterBuffering: true,
       });
-      const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("paused");
       expect(s.bufferingAtGlobalMs).toBeNull();
       expect(s.autoResumeAfterBuffering).toBe(false);
@@ -584,7 +584,7 @@ describe("session-replay-machine", () => {
 
     it("plays from paused", () => {
       const state = twoTabReadyState({ playbackMode: "paused", pausedAtGlobalMs: 500 });
-      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("playing");
       expect(hasEffect(effects, "play_replayer")).toBe(true);
     });
@@ -598,7 +598,7 @@ describe("session-replay-machine", () => {
       // Active tab "a" has no full snapshot — can't play
       state.hasFullSnapshotByTab.delete("a");
       state.replayerReady.delete("a");
-      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.activeTabKey).toBe("b");
       expect(s.playbackMode).toBe("playing");
       expect(hasEffect(effects, "play_replayer")).toBe(true);
@@ -614,7 +614,7 @@ describe("session-replay-machine", () => {
       // Tab "a" firstMs=1000, globalStartTs=1000, so localTarget = max(0, 1000+3500-1000) = 3500
       // loaded = 2000, so 3500 > 2000 => buffer
       state.loadedDurationByTabMs.set("a", 2000);
-      const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("buffering");
       expect(s.autoResumeAfterBuffering).toBe(true);
     });
@@ -627,7 +627,7 @@ describe("session-replay-machine", () => {
       });
       state.hasFullSnapshotByTab.clear();
       state.replayerReady.clear();
-      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("buffering");
       expect(hasEffect(effects, "schedule_buffer_poll")).toBe(true);
     });
@@ -640,7 +640,7 @@ describe("session-replay-machine", () => {
         phase: "downloading",
       });
       state.loadedDurationByTabMs.set("a", 2000);
-      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+      const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
       expect(s.playbackMode).toBe("buffering");
       expect(hasEffect(effects, "schedule_buffer_poll")).toBe(true);
     });
@@ -1275,7 +1275,7 @@ describe("scenarios", () => {
       bufferingAtGlobalMs: 2000,
       autoResumeAfterBuffering: true,
     });
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
     expect(s.playbackMode).toBe("paused");
     expect(s.bufferingAtGlobalMs).toBeNull();
     expect(s.autoResumeAfterBuffering).toBe(false);
@@ -1665,7 +1665,7 @@ describe("stall detection", () => {
     // No tab has snapshot or replayer — nothing can play
     state.hasFullSnapshotByTab.clear();
     state.replayerReady.clear();
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
     expect(s.playbackMode).toBe("paused");
     expect(s.playerError).toContain("Unable to play");
   });
@@ -1678,7 +1678,7 @@ describe("stall detection", () => {
     });
     state.hasFullSnapshotByTab.clear();
     state.replayerReady.clear();
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
     expect(s.playbackMode).toBe("paused");
     expect(s.playerError).toContain("Unable to play");
   });
@@ -1692,7 +1692,7 @@ describe("stall detection", () => {
     // No tab has snapshot or replayer yet — data still arriving
     state.hasFullSnapshotByTab.clear();
     state.replayerReady.clear();
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
     expect(s.playbackMode).toBe("buffering");
     expect(s.autoResumeAfterBuffering).toBe(true);
     expect(s.playerError).toBeNull();
@@ -1703,7 +1703,7 @@ describe("stall detection", () => {
       playbackMode: "playing",
       playingWithoutProgressSinceMs: 1000,
     });
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 2000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 2000, activeReplayerLocalTimeMs: null });
     expect(s.playingWithoutProgressSinceMs).toBeNull();
   });
 
@@ -1712,7 +1712,7 @@ describe("stall detection", () => {
       playbackMode: "paused",
       playingWithoutProgressSinceMs: 1000,
     });
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 2000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 2000, activeReplayerLocalTimeMs: null });
     expect(s.playingWithoutProgressSinceMs).toBeNull();
   });
 
@@ -1763,7 +1763,7 @@ describe("playerError clearing", () => {
       playbackMode: "paused",
       playerError: "Playback stalled: unable to recover.",
     });
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
     expect(s.playbackMode).toBe("playing");
     expect(s.playerError).toBeNull();
   });
@@ -1773,7 +1773,7 @@ describe("playerError clearing", () => {
       playbackMode: "playing",
       playerError: "Some error",
     });
-    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
+    const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000, activeReplayerLocalTimeMs: null });
     expect(s.playbackMode).toBe("paused");
     expect(s.playerError).toBeNull();
   });
@@ -1855,7 +1855,7 @@ describe("invariants", () => {
   function randomAction(state: ReplayState): ReplayAction {
     const actions: ReplayAction[] = [
       { type: "SELECT_RECORDING", generation: state.generation + 1 },
-      { type: "TOGGLE_PLAY_PAUSE", nowMs: Math.random() * 10000 },
+      { type: "TOGGLE_PLAY_PAUSE", nowMs: Math.random() * 10000, activeReplayerLocalTimeMs: Math.random() > 0.3 ? Math.random() * 5000 : null },
       { type: "SEEK", globalOffsetMs: Math.random() * (state.globalTotalMs || 1000), nowMs: Math.random() * 10000 },
       { type: "UPDATE_SPEED", speed: [0.5, 1, 2, 4][Math.floor(Math.random() * 4)] },
       { type: "UPDATE_SETTINGS", updates: { followActiveTab: Math.random() > 0.5 } },

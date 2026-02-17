@@ -139,7 +139,7 @@ export type ReplayAction =
     localTimeMs: number,
     nowMs: number,
   }
-  | { type: "TOGGLE_PLAY_PAUSE", nowMs: number }
+  | { type: "TOGGLE_PLAY_PAUSE", nowMs: number, activeReplayerLocalTimeMs: number | null }
   | { type: "SEEK", globalOffsetMs: number, nowMs: number }
   | { type: "SELECT_TAB", tabKey: TabKey, nowMs: number }
   | { type: "UPDATE_SPEED", speed: number }
@@ -757,10 +757,13 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
 
       if (isPlaying || isBuffering) {
         // Pause
+        const currentGlobalMs = computeDesiredGlobalOffset(state, action.nowMs, action.activeReplayerLocalTimeMs);
         return {
           state: {
             ...state,
             playbackMode: "paused",
+            pausedAtGlobalMs: currentGlobalMs,
+            currentGlobalTimeMsForUi: currentGlobalMs,
             gapFastForward: null,
             bufferingAtGlobalMs: null,
             autoResumeAfterBuffering: false,

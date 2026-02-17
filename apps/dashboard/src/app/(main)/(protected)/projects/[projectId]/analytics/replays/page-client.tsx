@@ -1073,8 +1073,18 @@ export default function PageClient() {
   // ---- Action callbacks ----
 
   const togglePlayPause = useCallback(() => {
-    actRef.current({ type: "TOGGLE_PLAY_PAUSE", nowMs: performance.now() });
-  }, []);
+    const key = msRef.current.activeTabKey;
+    const r = key ? replayerByTabRef.current.get(key) ?? null : null;
+    let activeReplayerLocalTimeMs: number | null = null;
+    if (r) {
+      try {
+        activeReplayerLocalTimeMs = r.getCurrentTime();
+      } catch {
+        /* ignore */
+      }
+    }
+    actRef.current({ type: "TOGGLE_PLAY_PAUSE", nowMs: performance.now(), activeReplayerLocalTimeMs });
+  }, [msRef]);
 
   const handleSeek = useCallback((globalOffset: number) => {
     actRef.current({ type: "SEEK", globalOffsetMs: globalOffset, nowMs: performance.now() });
