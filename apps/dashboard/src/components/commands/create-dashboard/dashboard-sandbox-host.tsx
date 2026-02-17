@@ -429,7 +429,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       if (typeof event.data !== "object" || event.data === null) {
         return;
       }
-      if (iframeRef.current?.contentWindow && event.source !== iframeRef.current.contentWindow) {
+      if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) {
         return;
       }
       if (event.origin !== "null") {
