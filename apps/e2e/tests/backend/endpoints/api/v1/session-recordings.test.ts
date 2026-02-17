@@ -8,14 +8,14 @@ async function uploadBatch(options: {
   startedAtMs: number,
   sentAtMs: number,
   events: unknown[],
-  tabId?: string,
+  sessionReplaySegmentId?: string,
 }) {
   return await niceBackendFetch("/api/v1/session-recordings/batch", {
     method: "POST",
     accessType: "client",
     body: {
       browser_session_id: options.browserSessionId,
-      tab_id: options.tabId ?? randomUUID(),
+      session_replay_segment_id: options.sessionReplaySegmentId ?? randomUUID(),
       batch_id: options.batchId,
       started_at_ms: options.startedAtMs,
       sent_at_ms: options.sentAtMs,
@@ -34,7 +34,7 @@ it("requires a user token", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -56,7 +56,7 @@ it("returns 200 no-op when analytics is not enabled", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -77,14 +77,14 @@ it("stores session recording batch metadata and dedupes by (session_recording_id
   const now = Date.now();
   const browserSessionId = randomUUID();
   const batchId = randomUUID();
-  const tabId = randomUUID();
+  const sessionReplaySegmentId = randomUUID();
 
   const first = await niceBackendFetch("/api/v1/session-recordings/batch", {
     method: "POST",
     accessType: "client",
     body: {
       browser_session_id: browserSessionId,
-      tab_id: tabId,
+      session_replay_segment_id: sessionReplaySegmentId,
       batch_id: batchId,
       started_at_ms: now,
       sent_at_ms: now + 500,
@@ -110,7 +110,7 @@ it("stores session recording batch metadata and dedupes by (session_recording_id
     accessType: "client",
     body: {
       browser_session_id: browserSessionId,
-      tab_id: tabId,
+      session_replay_segment_id: sessionReplaySegmentId,
       batch_id: batchId,
       started_at_ms: now,
       sent_at_ms: now + 500,
@@ -136,7 +136,7 @@ it("rejects empty events", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -160,7 +160,7 @@ it("rejects too many events", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: 1_700_000_000_000,
       sent_at_ms: 1_700_000_000_100,
@@ -182,7 +182,7 @@ it("rejects invalid browser_session_id", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: "not-a-uuid",
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -204,7 +204,7 @@ it("rejects invalid batch_id", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: "not-a-uuid",
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -216,7 +216,7 @@ it("rejects invalid batch_id", async ({ expect }) => {
   expect(res.status).toBeLessThan(500);
 });
 
-it("rejects invalid tab_id", async ({ expect }) => {
+it("rejects invalid session_replay_segment_id", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
@@ -226,7 +226,7 @@ it("rejects invalid tab_id", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: "not-a-uuid",
+      session_replay_segment_id: "not-a-uuid",
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),
@@ -251,7 +251,7 @@ it("accepts events without timestamps (falls back to sent_at_ms)", async ({ expe
     accessType: "client",
     body: {
       browser_session_id: browserSessionId,
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: batchId,
       started_at_ms: 1_700_000_000_000,
       sent_at_ms: 1_700_000_000_500,
@@ -277,7 +277,7 @@ it("rejects non-integer started_at_ms", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: 123.4,
       sent_at_ms: Date.now(),
@@ -302,7 +302,7 @@ it("rejects oversized payloads", async ({ expect }) => {
     accessType: "client",
     body: {
       browser_session_id: randomUUID(),
-      tab_id: randomUUID(),
+      session_replay_segment_id: randomUUID(),
       batch_id: randomUUID(),
       started_at_ms: Date.now(),
       sent_at_ms: Date.now(),

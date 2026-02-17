@@ -29,7 +29,7 @@ export const GET = createSmartRouteHandler({
       items: yupArray(yupObject({
         id: yupString().defined(),
         batch_id: yupString().defined(),
-        tab_id: yupString().nullable().defined(),
+        session_replay_segment_id: yupString().nullable().defined(),
         browser_session_id: yupString().nullable().defined(),
         event_count: yupNumber().defined(),
         byte_length: yupNumber().defined(),
@@ -92,7 +92,7 @@ export const GET = createSmartRouteHandler({
       select: {
         id: true,
         batchId: true,
-        tabId: true,
+        sessionReplaySegmentId: true,
         browserSessionId: true,
         eventCount: true,
         byteLength: true,
@@ -113,7 +113,7 @@ export const GET = createSmartRouteHandler({
         items: page.map((c) => ({
           id: c.id,
           batch_id: c.batchId,
-          tab_id: c.tabId,
+          session_replay_segment_id: c.sessionReplaySegmentId,
           browser_session_id: c.browserSessionId,
           event_count: c.eventCount,
           byte_length: c.byteLength,

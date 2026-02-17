@@ -14,7 +14,7 @@ export type AdminSessionRecording = {
 export type AdminSessionRecordingChunk = {
   id: string,
   batchId: string,
-  tabId: string | null,
+  sessionReplaySegmentId: string | null,
   browserSessionId: string | null,
   eventCount: number,
   byteLength: number,
@@ -47,7 +47,7 @@ export type SessionRecordingAllEventsResult = {
   chunks: Array<{
     id: string,
     batchId: string,
-    tabId: string | null,
+    sessionReplaySegmentId: string | null,
     eventCount: number,
     byteLength: number,
     firstEventAt: Date,

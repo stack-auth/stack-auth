@@ -1076,7 +1076,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const items: AdminSessionRecordingChunk[] = response.items.map((c) => ({
       id: c.id,
       batchId: c.batch_id,
-      tabId: c.tab_id,
+      sessionReplaySegmentId: c.session_replay_segment_id,
       browserSessionId: c.browser_session_id,
       eventCount: c.event_count,
       byteLength: c.byte_length,
@@ -1101,7 +1101,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       chunks: response.chunks.map((c) => ({
         id: c.id,
         batchId: c.batch_id,
-        tabId: c.tab_id,
+        sessionReplaySegmentId: c.session_replay_segment_id,
         eventCount: c.event_count,
         byteLength: c.byte_length,
         firstEventAt: new Date(c.first_event_at_millis),

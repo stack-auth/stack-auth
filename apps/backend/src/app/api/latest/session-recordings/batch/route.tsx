@@ -53,7 +53,7 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       browser_session_id: yupString().defined().matches(UUID_RE, "Invalid browser_session_id"),
-      tab_id: yupString().defined().matches(UUID_RE, "Invalid tab_id"),
+      session_replay_segment_id: yupString().defined().matches(UUID_RE, "Invalid session_replay_segment_id"),
       batch_id: yupString().defined().matches(UUID_RE, "Invalid batch_id"),
       started_at_ms: yupNumber().defined().integer().min(0),
       sent_at_ms: yupNumber().defined().integer().min(0),
@@ -105,7 +105,7 @@ export const POST = createSmartRouteHandler({
 
     const browserSessionId = body.browser_session_id;
     const batchId = body.batch_id;
-    const tabId = body.tab_id;
+    const sessionReplaySegmentId = body.session_replay_segment_id;
     const tenancyId = auth.tenancy.id;
 
     const projectId = auth.tenancy.project.id;
@@ -174,7 +174,7 @@ export const POST = createSmartRouteHandler({
       v: 1,
       session_recording_id: recordingId,
       browser_session_id: browserSessionId,
-      tab_id: tabId,
+      session_replay_segment_id: sessionReplaySegmentId,
       batch_id: batchId,
       started_at_ms: body.started_at_ms,
       sent_at_ms: body.sent_at_ms,
@@ -197,7 +197,7 @@ export const POST = createSmartRouteHandler({
           tenancyId,
           sessionRecordingId: recordingId,
           batchId,
-          tabId,
+          sessionReplaySegmentId,
           browserSessionId,
           s3Key,
           eventCount: body.events.length,

@@ -2,12 +2,12 @@ export const NULL_TAB_KEY = "__null_tab__";
 
 export type TabKey = string;
 
-export function toTabKey(tabId: string | null): TabKey {
-  return tabId ?? NULL_TAB_KEY;
+export function toTabKey(sessionReplaySegmentId: string | null): TabKey {
+  return sessionReplaySegmentId ?? NULL_TAB_KEY;
 }
 
 export type TabStream<TChunk> = {
-  tabId: string | null,
+  sessionReplaySegmentId: string | null,
   tabKey: TabKey,
   chunks: TChunk[],
   firstEventAt: Date,
@@ -17,7 +17,7 @@ export type TabStream<TChunk> = {
 };
 
 type ChunkLike = {
-  tabId: string | null,
+  sessionReplaySegmentId: string | null,
   firstEventAt: Date,
   lastEventAt: Date,
   eventCount: number,
@@ -41,20 +41,20 @@ function compareChunks(a: ChunkLike, b: ChunkLike) {
 }
 
 export function groupChunksIntoTabStreams<TChunk extends ChunkLike>(chunks: TChunk[]): TabStream<TChunk>[] {
-  const byTab = new Map<TabKey, { tabId: string | null, chunks: TChunk[] }>();
+  const byTab = new Map<TabKey, { sessionReplaySegmentId: string | null, chunks: TChunk[] }>();
 
   for (const c of chunks) {
-    const tabKey = toTabKey(c.tabId);
+    const tabKey = toTabKey(c.sessionReplaySegmentId);
     const existing = byTab.get(tabKey);
     if (existing) {
       existing.chunks.push(c);
     } else {
-      byTab.set(tabKey, { tabId: c.tabId, chunks: [c] });
+      byTab.set(tabKey, { sessionReplaySegmentId: c.sessionReplaySegmentId, chunks: [c] });
     }
   }
 
   const streams: TabStream<TChunk>[] = [];
-  for (const { tabId, chunks: tabChunks } of byTab.values()) {
+  for (const { sessionReplaySegmentId, chunks: tabChunks } of byTab.values()) {
     tabChunks.sort(compareChunks);
 
     let firstEventAtMs = Infinity;
@@ -71,8 +71,8 @@ export function groupChunksIntoTabStreams<TChunk extends ChunkLike>(chunks: TChu
     const lastEventAt = new Date(Number.isFinite(lastEventAtMs) ? lastEventAtMs : 0);
 
     streams.push({
-      tabId,
-      tabKey: toTabKey(tabId),
+      sessionReplaySegmentId,
+      tabKey: toTabKey(sessionReplaySegmentId),
       chunks: tabChunks,
       firstEventAt,
       lastEventAt,

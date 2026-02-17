@@ -60,7 +60,7 @@ type RecordingRow = {
 type ChunkRow = {
   id: string,
   batchId: string,
-  tabId: string | null,
+  sessionReplaySegmentId: string | null,
   eventCount: number,
   byteLength: number,
   firstEventAt: Date,
@@ -860,7 +860,7 @@ export default function PageClient() {
       const allChunkRows: ChunkRow[] = initialResponse.chunks.map((c) => ({
         id: c.id,
         batchId: c.batchId,
-        tabId: c.tabId,
+        sessionReplaySegmentId: c.sessionReplaySegmentId,
         eventCount: c.eventCount,
         byteLength: c.byteLength,
         firstEventAt: c.firstEventAt,
