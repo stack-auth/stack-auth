@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const projects = await user.listOwnedProjects();
   const project = projects.find((p: { id: string }) => p.id === payload.projectId);
   if (!project) {
-    throwErr("You do not own this project");
+    return Response.json({ error: "You do not own this project" }, { status: 403 });
   }
 
   const runtimeCodegen = await generateDashboardRuntimeCodegen(payload.prompt);
