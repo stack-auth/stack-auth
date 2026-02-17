@@ -168,6 +168,11 @@ export default function PageClient() {
     await project.update(values);
   }, [project]);
 
+  const projectDetailsDefaultValues = useMemo(() => ({
+    displayName: project.displayName,
+    description: project.description || undefined,
+  }), [project.displayName, project.description]);
+
   // Memoize project delete callback
   const handleProjectDelete = useCallback(async () => {
     await project.delete();
@@ -272,6 +277,7 @@ export default function PageClient() {
         onOpenChange={setIsProjectDetailsDialogOpen}
         title="Edit Project Details"
         formSchema={projectInformationSchema}
+        defaultValues={projectDetailsDefaultValues}
         onSubmit={handleProjectDetailsSubmit}
         okButton={{ label: "Save" }}
         cancelButton

@@ -11,6 +11,7 @@ import { SmartForm } from "./smart-form";
 export function SmartFormDialog<S extends yup.ObjectSchema<any, any, any, any>>(
   props: Omit<ActionDialogProps, 'children'> & {
     formSchema: S,
+    defaultValues?: Partial<yup.InferType<S>>,
     onSubmit: (values: yup.InferType<S>) => Promise<void | 'prevent-close'> | void | 'prevent-close',
   },
 ) {
@@ -45,7 +46,14 @@ export function SmartFormDialog<S extends yup.ObjectSchema<any, any, any, any>>(
         },
       }}
     >
-      <SmartForm formSchema={props.formSchema} onSubmit={handleSubmit} onChangeIsSubmitting={setSubmitting} formId={formId} />
+      <SmartForm
+        formSchema={props.formSchema}
+        onSubmit={handleSubmit}
+        onChangeIsSubmitting={setSubmitting}
+        formId={formId}
+        defaultValues={props.defaultValues}
+        isOpen={props.open ?? openState}
+      />
     </ActionDialog>
   );
 }

@@ -74,6 +74,7 @@ type Endpoint = {
   id: string,
   url: string,
   description?: string,
+  disabled: boolean,
 };
 
 function CreateDialog(props: {
@@ -114,6 +115,7 @@ function CreateDialog(props: {
       id: created.id,
       url: created.url,
       description: created.description,
+      disabled: created.disabled ?? false,
     });
   });
 
@@ -415,10 +417,10 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
       {
         id: "status",
         header: "Status",
-        cell: () => (
+        cell: ({ row }) => (
           <DesignBadge
-            label="Active"
-            color="green"
+            label={row.original.disabled ? "Disabled" : "Active"}
+            color={row.original.disabled ? "red" : "green"}
             size="sm"
           />
         ),
@@ -438,6 +440,12 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
       },
     ];
 
+    const endpointRows: Endpoint[] = endpoints.data.map((endpoint) => ({
+      ...endpoint,
+      description: endpoint.description,
+      disabled: endpoint.disabled ?? false,
+    }));
+
     return (
       <DesignCard
         title="Endpoints"
@@ -453,7 +461,7 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
         )}
       >
         <DesignDataTable
-          data={endpoints.data}
+          data={endpointRows}
           columns={columns}
           defaultColumnFilters={[]}
           defaultSorting={[]}
