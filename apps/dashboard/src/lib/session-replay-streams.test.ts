@@ -14,11 +14,11 @@ function d(ms: number) {
 }
 
 describe("session-replay-streams", () => {
-  it("treats null tabId as its own stream", () => {
+  it("treats null sessionReplaySegmentId as its own stream", () => {
     const streams = groupChunksIntoTabStreams([
-      { tabId: null, firstEventAt: d(10), lastEventAt: d(20), eventCount: 2 },
-      { tabId: null, firstEventAt: d(21), lastEventAt: d(30), eventCount: 1 },
-      { tabId: "a", firstEventAt: d(5), lastEventAt: d(25), eventCount: 10 },
+      { sessionReplaySegmentId: null, firstEventAt: d(10), lastEventAt: d(20), eventCount: 2 },
+      { sessionReplaySegmentId: null, firstEventAt: d(21), lastEventAt: d(30), eventCount: 1 },
+      { sessionReplaySegmentId: "a", firstEventAt: d(5), lastEventAt: d(25), eventCount: 10 },
     ]);
 
     expect(streams.map(s => s.tabKey).sort()).toEqual([NULL_TAB_KEY, "a"].sort());
@@ -27,19 +27,19 @@ describe("session-replay-streams", () => {
 
   it("sorts streams by lastEventAt desc then eventCount desc", () => {
     const streams = groupChunksIntoTabStreams([
-      { tabId: "a", firstEventAt: d(0), lastEventAt: d(10), eventCount: 5 },
-      { tabId: "b", firstEventAt: d(0), lastEventAt: d(20), eventCount: 1 },
-      { tabId: "c", firstEventAt: d(0), lastEventAt: d(20), eventCount: 9 },
+      { sessionReplaySegmentId: "a", firstEventAt: d(0), lastEventAt: d(10), eventCount: 5 },
+      { sessionReplaySegmentId: "b", firstEventAt: d(0), lastEventAt: d(20), eventCount: 1 },
+      { sessionReplaySegmentId: "c", firstEventAt: d(0), lastEventAt: d(20), eventCount: 9 },
     ]);
 
-    expect(streams.map(s => s.tabId)).toEqual(["c", "b", "a"]);
+    expect(streams.map(s => s.sessionReplaySegmentId)).toEqual(["c", "b", "a"]);
   });
 
   it("limits streams and reports hiddenCount", () => {
     const streams = groupChunksIntoTabStreams([
-      { tabId: "a", firstEventAt: d(0), lastEventAt: d(10), eventCount: 1 },
-      { tabId: "b", firstEventAt: d(0), lastEventAt: d(20), eventCount: 1 },
-      { tabId: "c", firstEventAt: d(0), lastEventAt: d(30), eventCount: 1 },
+      { sessionReplaySegmentId: "a", firstEventAt: d(0), lastEventAt: d(10), eventCount: 1 },
+      { sessionReplaySegmentId: "b", firstEventAt: d(0), lastEventAt: d(20), eventCount: 1 },
+      { sessionReplaySegmentId: "c", firstEventAt: d(0), lastEventAt: d(30), eventCount: 1 },
     ]);
 
     const limited = limitTabStreams(streams, 2);
@@ -49,8 +49,8 @@ describe("session-replay-streams", () => {
 
   it("maps global offsets to local offsets and back", () => {
     const streams = groupChunksIntoTabStreams([
-      { tabId: "a", firstEventAt: d(1000), lastEventAt: d(5000), eventCount: 1 },
-      { tabId: "b", firstEventAt: d(2000), lastEventAt: d(4000), eventCount: 1 },
+      { sessionReplaySegmentId: "a", firstEventAt: d(1000), lastEventAt: d(5000), eventCount: 1 },
+      { sessionReplaySegmentId: "b", firstEventAt: d(2000), lastEventAt: d(4000), eventCount: 1 },
     ]);
     const { globalStartTs } = computeGlobalTimeline(streams);
 

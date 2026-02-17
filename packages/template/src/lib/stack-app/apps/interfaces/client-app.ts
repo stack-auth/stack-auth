@@ -6,7 +6,7 @@ import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsL
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _StackClientAppImpl } from "../implementations";
-import { AnalyticsOptions } from "../implementations/session-recording";
+import { AnalyticsOptions } from "../implementations/session-replay";
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
@@ -100,7 +100,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
-      sendSessionRecordingBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
+      sendSessionReplayBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

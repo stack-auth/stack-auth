@@ -79,7 +79,7 @@ export function analyticsOptionsFromJson(json: AnalyticsOptions | undefined): An
 
 // ---------- Recording internals ----------
 
-const LOCAL_STORAGE_PREFIX = "stack:session-recording:v1";
+const LOCAL_STORAGE_PREFIX = "stack:session-replay:v1";
 const IDLE_TTL_MS = 3 * 60 * 1000;
 
 const FLUSH_INTERVAL_MS = 5_000;
@@ -150,7 +150,7 @@ export class SessionRecorder {
   private _rrwebModule: typeof import("rrweb") | null = null;
   private _lastKnownAccessToken: string | null = null;
   private _wasAuthenticated = false;
-  private readonly _tabId: string;
+  private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   private readonly _deps: SessionRecorderDeps;
   private readonly _replayOptions: AnalyticsReplayOptions;
@@ -158,7 +158,7 @@ export class SessionRecorder {
   constructor(deps: SessionRecorderDeps, replayOptions: AnalyticsReplayOptions) {
     this._deps = deps;
     this._replayOptions = replayOptions;
-    this._tabId = generateUuid();
+    this._sessionReplaySegmentId = generateUuid();
     this._storageKey = makeStorageKey(deps.projectId);
   }
 
@@ -206,7 +206,7 @@ export class SessionRecorder {
     const batchId = generateUuid();
     const payload = {
       browser_session_id: stored.session_id,
-      tab_id: this._tabId,
+      session_replay_segment_id: this._sessionReplaySegmentId,
       batch_id: batchId,
       started_at_ms: stored.created_at_ms,
       sent_at_ms: nowMs,

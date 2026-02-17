@@ -1118,11 +1118,11 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     userEmailToId,
   });
 
-  await seedDummySessionRecordings({
+  await seedDummySessionReplays({
     prisma: dummyPrisma,
     tenancyId: dummyTenancy.id,
     userEmailToId,
-    targetSessionRecordingCount: 75
+    targetSessionReplayCount: 75
   });
 
   console.log('Seeded dummy project data');
@@ -1773,43 +1773,43 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   console.log('Finished seeding session activity events');
 }
 
-type SessionRecordingSeedOptions = {
+type SessionReplaySeedOptions = {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   userEmailToId: Map<string, string>,
-  targetSessionRecordingCount?: number,
+  targetSessionReplayCount?: number,
 };
 
-async function seedDummySessionRecordings(options: SessionRecordingSeedOptions) {
+async function seedDummySessionReplays(options: SessionReplaySeedOptions) {
   const {
     prisma,
     tenancyId,
     userEmailToId,
-    targetSessionRecordingCount = 250,
+    targetSessionReplayCount = 250,
   } = options;
 
-  const existingCount = await prisma.sessionRecording.count({
+  const existingCount = await prisma.sessionReplay.count({
     where: {
       tenancyId,
     },
   });
 
-  if (existingCount >= targetSessionRecordingCount) {
-    console.log(`Dummy project already has ${existingCount} session recordings, skipping seeding`);
+  if (existingCount >= targetSessionReplayCount) {
+    console.log(`Dummy project already has ${existingCount} session replays, skipping seeding`);
     return;
   }
 
-  const toCreate = targetSessionRecordingCount - existingCount;
+  const toCreate = targetSessionReplayCount - existingCount;
   const userIds = Array.from(userEmailToId.values());
   if (userIds.length === 0) {
-    throw new Error('Cannot seed session recordings: no dummy project users exist');
+    throw new Error('Cannot seed session replays: no dummy project users exist');
   }
 
   const now = new Date();
   const twoWeeksAgo = new Date(now);
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
-  const seeds: Prisma.SessionRecordingCreateManyInput[] = [];
+  const seeds: Prisma.SessionReplayCreateManyInput[] = [];
   for (let i = 0; i < toCreate; i++) {
     const startedAt = new Date(
       twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
@@ -1828,9 +1828,9 @@ async function seedDummySessionRecordings(options: SessionRecordingSeedOptions) 
     });
   }
 
-  await prisma.sessionRecording.createMany({
+  await prisma.sessionReplay.createMany({
     data: seeds,
   });
 
-  console.log(`Seeded ${toCreate} session recordings`);
+  console.log(`Seeded ${toCreate} session replays`);
 }

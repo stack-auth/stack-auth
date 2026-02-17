@@ -244,14 +244,14 @@ export class StackClientInterface {
     return session;
   }
 
-  async sendSessionRecordingBatch(
+  async sendSessionReplayBatch(
     body: string,
     session: InternalSession | null,
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
       const response = await this.sendClientRequest(
-        "/session-recordings/batch",
+        "/session-replays/batch",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

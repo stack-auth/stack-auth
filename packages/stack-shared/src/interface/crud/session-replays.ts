@@ -1,9 +1,9 @@
-export type AdminListSessionRecordingsOptions = {
+export type AdminListSessionReplaysOptions = {
   limit?: number,
   cursor?: string,
 };
 
-export type AdminListSessionRecordingsResponse = {
+export type AdminListSessionReplaysResponse = {
   items: Array<{
     id: string,
     project_user: {
@@ -21,16 +21,16 @@ export type AdminListSessionRecordingsResponse = {
   },
 };
 
-export type AdminListSessionRecordingChunksOptions = {
+export type AdminListSessionReplayChunksOptions = {
   limit?: number,
   cursor?: string,
 };
 
-export type AdminListSessionRecordingChunksResponse = {
+export type AdminListSessionReplayChunksResponse = {
   items: Array<{
     id: string,
     batch_id: string,
-    tab_id: string | null,
+    session_replay_segment_id: string | null,
     browser_session_id: string | null,
     event_count: number,
     byte_length: number,
@@ -43,15 +43,15 @@ export type AdminListSessionRecordingChunksResponse = {
   },
 };
 
-export type AdminGetSessionRecordingChunkEventsResponse = {
+export type AdminGetSessionReplayChunkEventsResponse = {
   events: unknown[],
 };
 
-export type AdminGetSessionRecordingAllEventsResponse = {
+export type AdminGetSessionReplayAllEventsResponse = {
   chunks: Array<{
     id: string,
     batch_id: string,
-    tab_id: string | null,
+    session_replay_segment_id: string | null,
     event_count: number,
     byte_length: number,
     first_event_at_millis: number,
@@ -63,4 +63,3 @@ export type AdminGetSessionRecordingAllEventsResponse = {
     events: unknown[],
   }>,
 };
-

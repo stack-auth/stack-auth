@@ -19,7 +19,7 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      session_recording_id: yupString().defined(),
+      session_replay_id: yupString().defined(),
     }).defined(),
     query: yupObject({
       offset: yupString().optional(),
@@ -33,7 +33,7 @@ export const GET = createSmartRouteHandler({
       chunks: yupArray(yupObject({
         id: yupString().defined(),
         batch_id: yupString().defined(),
-        tab_id: yupString().nullable().defined(),
+        session_replay_segment_id: yupString().nullable().defined(),
         event_count: yupNumber().defined(),
         byte_length: yupNumber().defined(),
         first_event_at_millis: yupNumber().defined(),
@@ -49,25 +49,25 @@ export const GET = createSmartRouteHandler({
   async handler({ auth, params, query }) {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const sessionRecordingId = params.session_recording_id;
-    const exists = await prisma.sessionRecording.findUnique({
-      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: sessionRecordingId } },
+    const sessionReplayId = params.session_replay_id;
+    const exists = await prisma.sessionReplay.findUnique({
+      where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: sessionReplayId } },
       select: { id: true },
     });
     if (!exists) {
-      throw new KnownErrors.ItemNotFound(sessionRecordingId);
+      throw new KnownErrors.ItemNotFound(sessionReplayId);
     }
 
-    const chunks = await prisma.sessionRecordingChunk.findMany({
+    const chunks = await prisma.sessionReplayChunk.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        sessionRecordingId,
+        sessionReplayId,
       },
       orderBy: [{ firstEventAt: "asc" }, { id: "asc" }],
       select: {
         id: true,
         batchId: true,
-        tabId: true,
+        sessionReplaySegmentId: true,
         eventCount: true,
         byteLength: true,
         firstEventAt: true,
@@ -110,20 +110,20 @@ export const GET = createSmartRouteHandler({
         try {
           parsed = JSON.parse(new TextDecoder().decode(unzipped));
         } catch (e) {
-          throw new StackAssertionError("Failed to decode session recording chunk JSON", { cause: e });
+          throw new StackAssertionError("Failed to decode session replay chunk JSON", { cause: e });
         }
 
         if (typeof parsed !== "object" || parsed === null) {
-          throw new StackAssertionError("Decoded session recording chunk is not an object");
+          throw new StackAssertionError("Decoded session replay chunk is not an object");
         }
-        if (parsed.session_recording_id !== sessionRecordingId) {
-          throw new StackAssertionError("Decoded session recording chunk session_recording_id mismatch", {
-            expected: sessionRecordingId,
-            actual: parsed.session_recording_id,
+        if (parsed.session_replay_id !== sessionReplayId) {
+          throw new StackAssertionError("Decoded session replay chunk session_replay_id mismatch", {
+            expected: sessionReplayId,
+            actual: parsed.session_replay_id,
           });
         }
         if (!Array.isArray(parsed.events)) {
-          throw new StackAssertionError("Decoded session recording chunk events is not an array");
+          throw new StackAssertionError("Decoded session replay chunk events is not an array");
         }
 
         chunkEvents[idx] = { chunk_id: chunk.id, events: parsed.events as any[] };
@@ -143,7 +143,7 @@ export const GET = createSmartRouteHandler({
         chunks: chunks.map((c) => ({
           id: c.id,
           batch_id: c.batchId,
-          tab_id: c.tabId,
+          session_replay_segment_id: c.sessionReplaySegmentId,
           event_count: c.eventCount,
           byte_length: c.byteLength,
           first_event_at_millis: c.firstEventAt.getTime(),
