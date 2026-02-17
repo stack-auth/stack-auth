@@ -17,7 +17,7 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     params: yupObject({
-      session_recording_id: yupString().defined(),
+      session_replay_id: yupString().defined(),
       chunk_id: yupString().defined(),
     }).defined(),
   }),
@@ -31,13 +31,13 @@ export const GET = createSmartRouteHandler({
   async handler({ auth, params }) {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const sessionRecordingId = params.session_recording_id;
+    const sessionReplayId = params.session_replay_id;
     const chunkId = params.chunk_id;
 
-    const chunk = await prisma.sessionRecordingChunk.findFirst({
+    const chunk = await prisma.sessionReplayChunk.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
-        sessionRecordingId,
+        sessionReplayId,
         id: chunkId,
       },
       select: {
@@ -64,20 +64,20 @@ export const GET = createSmartRouteHandler({
     try {
       parsed = JSON.parse(new TextDecoder().decode(unzipped));
     } catch (e) {
-      throw new StackAssertionError("Failed to decode session recording chunk JSON", { cause: e });
+      throw new StackAssertionError("Failed to decode session replay chunk JSON", { cause: e });
     }
 
     if (typeof parsed !== "object" || parsed === null) {
-      throw new StackAssertionError("Decoded session recording chunk is not an object");
+      throw new StackAssertionError("Decoded session replay chunk is not an object");
     }
-    if (parsed.session_recording_id !== sessionRecordingId) {
-      throw new StackAssertionError("Decoded session recording chunk session_recording_id mismatch", {
-        expected: sessionRecordingId,
-        actual: parsed.session_recording_id,
+    if (parsed.session_replay_id !== sessionReplayId) {
+      throw new StackAssertionError("Decoded session replay chunk session_replay_id mismatch", {
+        expected: sessionReplayId,
+        actual: parsed.session_replay_id,
       });
     }
     if (!Array.isArray(parsed.events)) {
-      throw new StackAssertionError("Decoded session recording chunk events is not an array");
+      throw new StackAssertionError("Decoded session replay chunk events is not an array");
     }
 
     return {

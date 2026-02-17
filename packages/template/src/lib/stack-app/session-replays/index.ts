@@ -1,4 +1,4 @@
-export type AdminSessionRecording = {
+export type AdminSessionReplay = {
   id: string,
   projectUser: {
     id: string,
@@ -11,7 +11,7 @@ export type AdminSessionRecording = {
   eventCount: number,
 };
 
-export type AdminSessionRecordingChunk = {
+export type AdminSessionReplayChunk = {
   id: string,
   batchId: string,
   sessionReplaySegmentId: string | null,
@@ -23,27 +23,27 @@ export type AdminSessionRecordingChunk = {
   createdAt: Date,
 };
 
-export type ListSessionRecordingsOptions = {
+export type ListSessionReplaysOptions = {
   limit?: number,
   cursor?: string,
 };
 
-export type ListSessionRecordingsResult = {
-  items: AdminSessionRecording[],
+export type ListSessionReplaysResult = {
+  items: AdminSessionReplay[],
   nextCursor: string | null,
 };
 
-export type ListSessionRecordingChunksOptions = {
+export type ListSessionReplayChunksOptions = {
   limit?: number,
   cursor?: string,
 };
 
-export type ListSessionRecordingChunksResult = {
-  items: AdminSessionRecordingChunk[],
+export type ListSessionReplayChunksResult = {
+  items: AdminSessionReplayChunk[],
   nextCursor: string | null,
 };
 
-export type SessionRecordingAllEventsResult = {
+export type SessionReplayAllEventsResult = {
   chunks: Array<{
     id: string,
     batchId: string,

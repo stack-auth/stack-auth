@@ -60,8 +60,8 @@ model Tenancy {
   organizationId    String?       @db.Uuid
   hasNoOrganization BooleanTrue?
   emailOutboxes     EmailOutbox[]
-  sessionRecordings SessionRecording[]
-  sessionRecordingChunks SessionRecordingChunk[]
+  sessionReplays SessionReplay[]
+  sessionReplayChunks SessionReplayChunk[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
@@ -236,7 +236,7 @@ model ProjectUser {
   Project                    Project?                      @relation(fields: [projectId], references: [id])
   projectId                  String?
   userNotificationPreference UserNotificationPreference[]
-  sessionRecordings          SessionRecording[]
+  sessionReplays             SessionReplay[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -280,7 +280,7 @@ model ProjectUserOAuthAccount {
   @@index([tenancyId, projectUserId])
 }
 
-model SessionRecording {
+model SessionReplay {
   id String @db.Uuid
 
   tenancyId      String @db.Uuid
@@ -296,20 +296,21 @@ model SessionRecording {
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
-  chunks SessionRecordingChunk[]
+  chunks SessionReplayChunk[]
 
   @@id([tenancyId, id])
+  @@map("SessionReplay")
   @@index([tenancyId, projectUserId, startedAt])
   @@index([tenancyId, lastEventAt])
   // index by updatedAt instead of lastEventAt because event timing can be spoofed
   @@index([tenancyId, refreshTokenId, updatedAt])
 }
 
-model SessionRecordingChunk {
+model SessionReplayChunk {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId          String @db.Uuid
-  sessionRecordingId String @db.Uuid
+  tenancyId        String @db.Uuid
+  sessionReplayId  String @db.Uuid @map("sessionReplayId")
 
   // Unique per uploaded batch for a given session id.
   batchId String @db.Uuid
@@ -329,11 +330,12 @@ model SessionRecordingChunk {
 
   createdAt DateTime @default(now())
 
-  sessionRecording SessionRecording @relation(fields: [tenancyId, sessionRecordingId], references: [tenancyId, id], onDelete: Cascade)
-  tenancy         Tenancy          @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  sessionReplay SessionReplay @relation(fields: [tenancyId, sessionReplayId], references: [tenancyId, id], onDelete: Cascade)
+  tenancy       Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
-  @@unique([tenancyId, sessionRecordingId, batchId])
-  @@index([tenancyId, sessionRecordingId, createdAt])
+  @@unique([tenancyId, sessionReplayId, batchId])
+  @@map("SessionReplayChunk")
+  @@index([tenancyId, sessionReplayId, createdAt])
 }
 
 enum ContactChannelType {

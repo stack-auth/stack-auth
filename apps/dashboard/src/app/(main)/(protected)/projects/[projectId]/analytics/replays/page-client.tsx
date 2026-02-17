@@ -68,12 +68,12 @@ type ChunkRow = {
   createdAt: Date,
 };
 
-type AdminAppWithSessionRecordings = ReturnType<typeof useAdminApp> & {
-  listSessionRecordings: (options?: { limit?: number, cursor?: string }) => Promise<{
+type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
+  listSessionReplays: (options?: { limit?: number, cursor?: string }) => Promise<{
     items: RecordingRow[],
     nextCursor: string | null,
   }>,
-  getSessionRecordingEvents: (sessionRecordingId: string, options?: { offset?: number, limit?: number }) => Promise<{
+  getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<{
     chunks: ChunkRow[],
     chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
   }>,
@@ -337,7 +337,7 @@ function useReplayMachine(initialSettings: ReplaySettings) {
 // ---------------------------------------------------------------------------
 
 export default function PageClient() {
-  const adminApp = useAdminApp() as AdminAppWithSessionRecordings;
+  const adminApp = useAdminApp() as AdminAppWithSessionReplays;
 
   // ---- Recording list state (unchanged from original) ----
 
@@ -371,7 +371,7 @@ export default function PageClient() {
     setListError(null);
 
     try {
-      const res = await adminApp.listSessionRecordings({ limit: PAGE_SIZE, cursor: cursor ?? undefined });
+      const res = await adminApp.listSessionReplays({ limit: PAGE_SIZE, cursor: cursor ?? undefined });
       const items = cursor ? [...recordings, ...res.items] : res.items;
       setRecordings(items);
       setNextCursor(res.nextCursor);
@@ -854,7 +854,7 @@ export default function PageClient() {
 
     try {
       // Phase 1: Fetch initial batch (fast start).
-      const initialResponse = await adminApp.getSessionRecordingEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
+      const initialResponse = await adminApp.getSessionReplayEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
       if (msRef.current.generation !== gen) return;
 
       const allChunkRows: ChunkRow[] = initialResponse.chunks.map((c) => ({
@@ -942,7 +942,7 @@ export default function PageClient() {
       while (offset < totalChunks) {
         if (msRef.current.generation !== gen) return;
 
-        const batchResponse = await adminApp.getSessionRecordingEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
+        const batchResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
         if (msRef.current.generation !== gen) return;
 
         processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);

@@ -12,13 +12,13 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
-  AdminGetSessionRecordingAllEventsResponse,
-  AdminGetSessionRecordingChunkEventsResponse,
-  AdminListSessionRecordingChunksOptions,
-  AdminListSessionRecordingChunksResponse,
-  AdminListSessionRecordingsOptions,
-  AdminListSessionRecordingsResponse
-} from "./crud/session-recordings";
+  AdminGetSessionReplayAllEventsResponse,
+  AdminGetSessionReplayChunkEventsResponse,
+  AdminListSessionReplayChunksOptions,
+  AdminListSessionReplayChunksResponse,
+  AdminListSessionReplaysOptions,
+  AdminListSessionReplaysResponse
+} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -783,45 +783,45 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async listSessionRecordings(params?: AdminListSessionRecordingsOptions): Promise<AdminListSessionRecordingsResponse> {
+  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings${qs.size ? `?${qs.toString()}` : ""}`,
+      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async listSessionRecordingChunks(sessionRecordingId: string, params?: AdminListSessionRecordingChunksOptions): Promise<AdminListSessionRecordingChunksResponse> {
+  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionRecordingAllEventsResponse> {
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
     const qs = new URLSearchParams();
     if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
     if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );

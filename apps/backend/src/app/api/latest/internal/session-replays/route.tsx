@@ -50,7 +50,7 @@ export const GET = createSmartRouteHandler({
     const cursorId = query.cursor;
     let cursorPivot: { lastEventAt: Date } | null = null;
     if (cursorId) {
-      cursorPivot = await prisma.sessionRecording.findUnique({
+      cursorPivot = await prisma.sessionReplay.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
         select: { lastEventAt: true },
       });
@@ -59,14 +59,14 @@ export const GET = createSmartRouteHandler({
       }
     }
 
-    const where: Prisma.SessionRecordingWhereInput = cursorId && cursorPivot ? {
+    const where: Prisma.SessionReplayWhereInput = cursorId && cursorPivot ? {
       OR: [
         { lastEventAt: { lt: cursorPivot.lastEventAt } },
         { AND: [{ lastEventAt: { equals: cursorPivot.lastEventAt } }, { id: { lt: cursorId } }] },
       ],
     } : {};
 
-    const sessions = await prisma.sessionRecording.findMany({
+    const sessions = await prisma.sessionReplay.findMany({
       where: { tenancyId: auth.tenancy.id, ...where },
       orderBy: [{ lastEventAt: "desc" }, { id: "desc" }],
       take: limit + 1,
@@ -86,12 +86,12 @@ export const GET = createSmartRouteHandler({
     const userIds = [...new Set(page.map(s => s.projectUserId))];
 
     const [chunkAggs, users] = await Promise.all([
-      sessionIds.length ? prisma.sessionRecordingChunk.groupBy({
-        by: ["sessionRecordingId"],
-        where: { tenancyId: auth.tenancy.id, sessionRecordingId: { in: sessionIds } },
+      sessionIds.length ? prisma.sessionReplayChunk.groupBy({
+        by: ["sessionReplayId"],
+        where: { tenancyId: auth.tenancy.id, sessionReplayId: { in: sessionIds } },
         _count: { _all: true },
         _sum: { eventCount: true },
-      }) : Promise.resolve([] as Array<{ sessionRecordingId: string, _count: { _all: number }, _sum: { eventCount: number | null } }>),
+      }) : Promise.resolve([] as Array<{ sessionReplayId: string, _count: { _all: number }, _sum: { eventCount: number | null } }>),
       userIds.length ? prisma.projectUser.findMany({
         where: { tenancyId: auth.tenancy.id, projectUserId: { in: userIds } },
         select: {
@@ -108,7 +108,7 @@ export const GET = createSmartRouteHandler({
 
     const aggBySessionId = new Map<string, { chunkCount: number, eventCount: number }>();
     for (const a of chunkAggs) {
-      aggBySessionId.set(a.sessionRecordingId, {
+      aggBySessionId.set(a.sessionReplayId, {
         chunkCount: a._count._all,
         eventCount: a._sum.eventCount ?? 0,
       });
