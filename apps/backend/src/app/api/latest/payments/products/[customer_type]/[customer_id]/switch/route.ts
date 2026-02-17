@@ -1,6 +1,6 @@
+import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
-import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
-import { getStripeForAccount } from "@/lib/stripe";
+import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -8,7 +8,6 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupOb
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { SubscriptionStatus } from "@/generated/prisma/client";
 import Stripe from "stripe";
 
 
@@ -200,6 +199,7 @@ export const POST = createSmartRouteHandler({
         },
       });
       const updatedSubscription = updated as Stripe.Subscription;
+      const sanitizedUpdateDates = sanitizeStripePeriodDates(existingItem.current_period_start, existingItem.current_period_end);
 
       await prisma.subscription.update({
         where: {
@@ -214,8 +214,8 @@ export const POST = createSmartRouteHandler({
           priceId: selectedPriceId,
           quantity,
           status: updatedSubscription.status,
-          currentPeriodStart: new Date(existingItem.current_period_start * 1000),
-          currentPeriodEnd: new Date(existingItem.current_period_end * 1000),
+          currentPeriodStart: sanitizedUpdateDates.start,
+          currentPeriodEnd: sanitizedUpdateDates.end,
           cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
         },
       });
@@ -248,6 +248,7 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Stripe subscription has no items", { stripeSubscriptionId: createdSubscription.id });
       }
       const createdItem = createdSubscription.items.data[0];
+      const sanitizedCreateDates = sanitizeStripePeriodDates(createdItem.current_period_start, createdItem.current_period_end);
 
       await prisma.subscription.create({
         data: {
@@ -260,8 +261,8 @@ export const POST = createSmartRouteHandler({
           quantity,
           stripeSubscriptionId: createdSubscription.id,
           status: createdSubscription.status,
-          currentPeriodStart: new Date(createdItem.current_period_start * 1000),
-          currentPeriodEnd: new Date(createdItem.current_period_end * 1000),
+          currentPeriodStart: sanitizedCreateDates.start,
+          currentPeriodEnd: sanitizedCreateDates.end,
           cancelAtPeriodEnd: createdSubscription.cancel_at_period_end,
           creationSource: "PURCHASE_PAGE",
         },
