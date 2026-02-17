@@ -5,6 +5,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { useUser } from "@stackframe/stack";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import packageJson from "../../../../package.json";
 
 type DashboardArtifact = {
   prompt: string,
@@ -86,7 +87,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
     
     <!-- Stack SDK (via esm.sh CDN) -->
     <script type="module">
-      import * as StackSDK from 'https://esm.sh/@stackframe/stack@2.8.67';
+      import * as StackSDK from 'https://esm.sh/@stackframe/stack@${packageJson.version}';
       
       // Expose Stack SDK globally for the Babel-transpiled code
       window.StackAdminApp = StackSDK.StackAdminApp;
@@ -100,7 +101,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
     
     <!-- UUID utility (via esm.sh CDN) -->
     <script type="module">
-      import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@2.8.67/dist/utils/uuids';
+      import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${packageJson.version}/dist/utils/uuids';
       window.generateUuid = generateUuid;
     </script>
     
