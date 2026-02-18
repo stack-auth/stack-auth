@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ImageProcessingError, parseBase64Image } from "./lib/images";
@@ -7,6 +7,7 @@ const S3_REGION = getEnvVariable("STACK_S3_REGION", "");
 const S3_ENDPOINT = getEnvVariable("STACK_S3_ENDPOINT", "");
 const S3_PUBLIC_ENDPOINT = getEnvVariable("STACK_S3_PUBLIC_ENDPOINT", "");
 const S3_BUCKET = getEnvVariable("STACK_S3_BUCKET", "");
+const S3_PRIVATE_BUCKET = getEnvVariable("STACK_S3_PRIVATE_BUCKET", "");
 const S3_ACCESS_KEY_ID = getEnvVariable("STACK_S3_ACCESS_KEY_ID", "");
 const S3_SECRET_ACCESS_KEY = getEnvVariable("STACK_S3_SECRET_ACCESS_KEY", "");
 
@@ -14,6 +15,10 @@ const HAS_S3 = !!S3_REGION && !!S3_ENDPOINT && !!S3_BUCKET && !!S3_ACCESS_KEY_ID
 
 if (!HAS_S3) {
   console.warn("S3 bucket is not configured. File upload features will not be available.");
+}
+
+if (HAS_S3 && !S3_PRIVATE_BUCKET) {
+  console.warn("S3 private bucket is not configured (STACK_S3_PRIVATE_BUCKET). Session recordings will not be available.");
 }
 
 const s3Client = HAS_S3 ? new S3Client({
@@ -32,6 +37,87 @@ export function getS3PublicUrl(key: string): string {
   } else {
     return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
   }
+}
+
+export async function uploadBytes(options: {
+  key: string,
+  body: Uint8Array,
+  contentType?: string,
+  contentEncoding?: string,
+  private?: boolean,
+}) {
+  if (!s3Client) {
+    throw new StackAssertionError("S3 is not configured");
+  }
+
+  const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
+  if (!bucket) {
+    throw new StackAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+  }
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: options.key,
+    Body: options.body,
+    ...(options.contentType ? { ContentType: options.contentType } : {}),
+    ...(options.contentEncoding ? { ContentEncoding: options.contentEncoding } : {}),
+  });
+
+  await s3Client.send(command);
+
+  return {
+    key: options.key,
+  };
+}
+
+async function readBodyToBytes(body: unknown): Promise<Uint8Array> {
+  if (body instanceof Uint8Array) return body;
+  if (Buffer.isBuffer(body)) return new Uint8Array(body);
+
+  // Web ReadableStream (some runtimes)
+  if (typeof body === "object" && body !== null && "transformToByteArray" in body && typeof (body as any).transformToByteArray === "function") {
+    return (body as any).transformToByteArray();
+  }
+
+  // Node.js Readable or any AsyncIterable<Uint8Array>
+  if (typeof body === "object" && body !== null && Symbol.asyncIterator in (body as any)) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body as any) {
+      if (chunk instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunk));
+      } else if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+      } else {
+        throw new StackAssertionError("Unexpected S3 body chunk type");
+      }
+    }
+    return new Uint8Array(Buffer.concat(chunks));
+  }
+
+  throw new StackAssertionError("Unexpected S3 body type");
+}
+
+export async function downloadBytes(options: { key: string, private?: boolean }): Promise<Uint8Array> {
+  if (!s3Client) {
+    throw new StackAssertionError("S3 is not configured");
+  }
+
+  const bucket = options.private ? S3_PRIVATE_BUCKET : S3_BUCKET;
+  if (!bucket) {
+    throw new StackAssertionError(options.private ? "S3 private bucket is not configured" : "S3 bucket is not configured");
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: options.key,
+  });
+
+  const res = await s3Client.send(command);
+  if (!res.Body) {
+    throw new StackAssertionError("S3 getObject returned empty body");
+  }
+
+  return await readBodyToBytes(res.Body);
 }
 
 async function uploadBase64Image({

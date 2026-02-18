@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@stackframe/js",
-  "version": "2.8.67",
+  "version": "2.8.68",
   "repository": "https://github.com/stack-auth/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -62,6 +62,7 @@
     "@oslojs/otp": "^1.1.0",
     "qrcode": "^1.5.4",
     "rimraf": "^6.1.2",
+    "rrweb": "^1.1.3",
     "tsx": "^4.21.0",
     "yup": "^1.7.1"
   },

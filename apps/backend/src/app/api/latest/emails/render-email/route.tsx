@@ -1,8 +1,9 @@
 import { getEmailThemeForThemeId, renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { adaptSchema, templateThemeIdSchema, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, templateThemeIdSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -19,18 +20,26 @@ export const POST = createSmartRouteHandler({
       yupObject({
         template_id: yupString().uuid().defined(),
         theme_id: templateThemeIdSchema,
+        editable_markers: yupBoolean().optional(),
+        editable_source: yupString().oneOf(['template', 'theme', 'both']).optional(),
       }),
       yupObject({
         template_id: yupString().uuid().defined(),
         theme_tsx_source: yupString().defined(),
+        editable_markers: yupBoolean().optional(),
+        editable_source: yupString().oneOf(['template', 'theme', 'both']).optional(),
       }),
       yupObject({
         template_tsx_source: yupString().defined(),
         theme_id: templateThemeIdSchema,
+        editable_markers: yupBoolean().optional(),
+        editable_source: yupString().oneOf(['template', 'theme', 'both']).optional(),
       }),
       yupObject({
         template_tsx_source: yupString().defined(),
         theme_tsx_source: yupString().defined(),
+        editable_markers: yupBoolean().optional(),
+        editable_source: yupString().oneOf(['template', 'theme', 'both']).optional(),
       }),
     ).defined(),
   }),
@@ -41,6 +50,7 @@ export const POST = createSmartRouteHandler({
       html: yupString().defined(),
       subject: yupString(),
       notification_category: yupString(),
+      editable_regions: yupMixed<Record<string, EditableMetadata>>().optional(),
     }).defined(),
   }),
   async handler({ body, auth: { tenancy } }) {
@@ -69,12 +79,17 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.SchemaError("Either template_id or template_tsx_source must be provided");
     }
 
+    const editableMarkers = 'editable_markers' in body && body.editable_markers === true;
+    const editableSource = ('editable_source' in body ? body.editable_source : 'template') as 'template' | 'theme' | 'both';
+
     const result = await renderEmailWithTemplate(
       contentSource,
       themeSource,
       {
         project: { displayName: tenancy.project.display_name },
         previewMode: true,
+        editableMarkers,
+        editableSource,
         themeProps: {
           projectLogos: {
             logoUrl: tenancy.project.logo_url ?? undefined,
@@ -95,6 +110,7 @@ export const POST = createSmartRouteHandler({
         html: result.data.html,
         subject: result.data.subject,
         notification_category: result.data.notificationCategory,
+        editable_regions: result.data.editableRegions,
       },
     };
   },

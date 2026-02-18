@@ -431,6 +431,27 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async listServerUserTeamInvitations(userId: string): Promise<TeamInvitationCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      "/team-invitations?" + new URLSearchParams({ user_id: userId }),
+      {},
+      null,
+    );
+    const result = await response.json() as TeamInvitationCrud['Server']['List'];
+    return result.items;
+  }
+
+  async acceptServerTeamInvitationById(
+    invitationId: string,
+    userId: string,
+  ) {
+    await this.sendServerRequest(
+      urlString`/team-invitations/${invitationId}/accept` + "?" + new URLSearchParams({ user_id: userId }),
+      { method: "POST" },
+      null,
+    );
+  }
+
   async updateServerUser(userId: string, update: UsersCrud['Server']['Update']): Promise<UsersCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       urlString`/users/${userId}`,
@@ -711,7 +732,7 @@ export class StackServerInterface extends StackClientInterface {
   }
 
 
-  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['List']> {
     const response = await this.sendServerRequest(
       urlString`/auth/sessions?user_id=${userId}`,
       {

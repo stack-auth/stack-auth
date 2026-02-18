@@ -40,6 +40,15 @@ const subscriptionChangedEvents = [
   "payment_intent.canceled",
 ] as const satisfies Stripe.Event.Type[];
 
+const ignoredEvents = [
+  "account.updated",
+  "account.application.authorized",
+  "capability.updated",
+  "charge.failed",
+  "balance.available",
+  "customer.updated",
+] as const satisfies Stripe.Event.Type[];
+
 const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event & { type: (typeof subscriptionChangedEvents)[number] } => {
   return subscriptionChangedEvents.includes(event.type as any);
 };
@@ -398,6 +407,10 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         extraVariables,
       });
     }
+  }
+  else if (typedIncludes(ignoredEvents, event.type)) {
+    // These events are received but don't require processing
+    return;
   }
   else {
     throw new StackAssertionError("Unknown stripe webhook type received: " + event.type, { event });

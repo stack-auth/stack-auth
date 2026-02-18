@@ -4,6 +4,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [tsconfigPaths() as any],
   test: {
+    watch: false,
     pool: 'threads',
     maxWorkers: 8,
     include: ['**/*.test.{js,ts,jsx,tsx}'],

@@ -3,6 +3,7 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
+import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -10,6 +11,14 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
+import type {
+  AdminGetSessionReplayAllEventsResponse,
+  AdminGetSessionReplayChunkEventsResponse,
+  AdminListSessionReplayChunksOptions,
+  AdminListSessionReplayChunksResponse,
+  AdminListSessionReplaysOptions,
+  AdminListSessionReplaysResponse
+} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -198,6 +207,16 @@ export class StackAdminInterface extends StackServerInterface {
           "content-type": "application/json",
         },
         body: JSON.stringify(data),
+      },
+      null,
+    );
+  }
+
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "DELETE",
       },
       null,
     );
@@ -446,7 +465,46 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async applyWysiwygEdit(options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: EditableMetadata,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+  }): Promise<{ updatedSource: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/wysiwyg-edit`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          source_type: options.sourceType,
+          source_code: options.sourceCode,
+          old_text: options.oldText,
+          new_text: options.newText,
+          metadata: options.metadata,
+          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
+          html_context: options.htmlContext,
+        }),
+      },
+      null,
+    );
+    const result = await response.json();
+    return { updatedSource: result.updated_source };
+  }
+
+  async renderEmailPreview(options: {
+    themeId?: string | null | false,
+    themeTsxSource?: string,
+    templateId?: string,
+    templateTsxSource?: string,
+    editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
+  }): Promise<{ html: string, editable_regions?: Record<string, unknown> }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -457,6 +515,8 @@ export class StackAdminInterface extends StackServerInterface {
         theme_tsx_source: options.themeTsxSource,
         template_id: options.templateId,
         template_tsx_source: options.templateTsxSource,
+        editable_markers: options.editableMarkers,
+        editable_source: options.editableSource,
       }),
     }, null);
     return await response.json();
@@ -499,6 +559,16 @@ export class StackAdminInterface extends StackServerInterface {
         body: JSON.stringify({
           tsx_source: tsxSource,
         }),
+      },
+      null,
+    );
+  }
+
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "DELETE",
       },
       null,
     );
@@ -585,6 +655,20 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
   }
+
+  async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}/reset-keys`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ keys }),
+      },
+      null,
+    );
+  }
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates`,
@@ -600,6 +684,16 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-templates/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
   }
 
   async setupPayments(): Promise<{ url: string }> {
@@ -687,6 +781,51 @@ export class StackAdminInterface extends StackServerInterface {
     );
     const json = await response.json() as { transactions: Transaction[], next_cursor: string | null };
     return { transactions: json.transactions, nextCursor: json.next_cursor };
+  }
+
+  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
+    const qs = new URLSearchParams();
+    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
+    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
   }
 
   async refundTransaction(options: {

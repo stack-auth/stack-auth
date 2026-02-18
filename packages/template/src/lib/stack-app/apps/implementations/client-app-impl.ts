@@ -48,11 +48,13 @@ import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoic
 import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
-import { EditableTeamMemberProfile, Team, TeamCreateOptions, TeamInvitation, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { EventTracker } from "./event-tracker";
+import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
@@ -94,6 +96,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected readonly _redirectMethod: RedirectMethod | undefined;
   protected readonly _urlOptions: Partial<HandlerUrls>;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
+
+  private readonly _analyticsOptions: AnalyticsOptions | undefined;
+  private _sessionRecorder: SessionRecorder | null = null;
+  private _eventTracker: EventTracker | null = null;
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -187,6 +193,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return await this._interface.getTeamMemberProfile({ teamId, userId: 'me' }, session);
     }
   );
+  private readonly _currentUserTeamInvitationsCache = createCacheBySession(async (session) => {
+    return await this._interface.listCurrentUserTeamInvitations(session);
+  });
   private readonly _clientContactChannelsCache = createCacheBySession<[], ContactChannelsCrud['Client']['Read'][]>(
     async (session) => {
       return await this._interface.listClientContactChannels(session);
@@ -411,6 +420,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       this._interface = new StackClientInterface({
         getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(getBaseUrl(resolvedOptions.baseUrl)),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,
@@ -430,6 +440,38 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
       this._initUniqueIdentifier();
+    }
+
+    this._analyticsOptions = resolvedOptions.analytics;
+    if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
+      this._sessionRecorder = new SessionRecorder({
+        projectId: this.projectId,
+        getAccessToken: async () => {
+          const session = await this._getSession();
+          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
+          return tokens?.accessToken.token ?? null;
+        },
+        sendBatch: async (body, opts) => {
+          return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
+        },
+      }, this._analyticsOptions.replays);
+      this._sessionRecorder.start();
+    }
+
+    // for now we only track events for internal project
+    if (isBrowserLike() && this.projectId === "internal") {
+      this._eventTracker = new EventTracker({
+        projectId: this.projectId,
+        getAccessToken: async () => {
+          const session = await this._getSession();
+          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
+          return tokens?.accessToken.token ?? null;
+        },
+        sendBatch: async (body, opts) => {
+          return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
+        },
+      });
+      this._eventTracker.start();
     }
   }
 
@@ -962,7 +1004,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
-  protected _clientTeamInvitationFromCrud(session: InternalSession, crud: TeamInvitationCrud['Client']['Read']): TeamInvitation {
+  protected _clientSentTeamInvitationFromCrud(session: InternalSession, crud: TeamInvitationCrud['Client']['Read']): SentTeamInvitation {
     return {
       id: crud.id,
       recipientEmail: crud.recipient_email,
@@ -970,6 +1012,25 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       revoke: async () => {
         await this._interface.revokeTeamInvitation(crud.id, crud.team_id, session);
         await this._teamInvitationsCache.refresh([session, crud.team_id]);
+      },
+    };
+  }
+
+  protected _clientReceivedTeamInvitationFromCrud(session: InternalSession, crud: TeamInvitationCrud['Client']['Read']): ReceivedTeamInvitation {
+    const app = this;
+    return {
+      id: crud.id,
+      teamId: crud.team_id,
+      teamDisplayName: crud.team_display_name,
+      recipientEmail: crud.recipient_email,
+      expiresAt: new Date(crud.expires_at_millis),
+      accept: async () => {
+        await app._interface.acceptTeamInvitationById(crud.id, session);
+        await Promise.all([
+          app._currentUserTeamInvitationsCache.refresh([session]),
+          app._currentUserTeamsCache.refresh([session]),
+          app._teamInvitationsCache.refresh([session, crud.team_id]),
+        ]);
       },
     };
   }
@@ -1054,12 +1115,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       async listInvitations() {
         const result = Result.orThrow(await app._teamInvitationsCache.getOrWait([session, crud.id], "write-only"));
-        return result.map((crud) => app._clientTeamInvitationFromCrud(session, crud));
+        return result.map((crud) => app._clientSentTeamInvitationFromCrud(session, crud));
       },
       // IF_PLATFORM react-like
       useInvitations() {
         const result = useAsyncCache(app._teamInvitationsCache, [session, crud.id] as const, "team.useInvitations()");
-        return result.map((crud) => app._clientTeamInvitationFromCrud(session, crud));
+        return result.map((crud) => app._clientSentTeamInvitationFromCrud(session, crud));
       },
       // END_PLATFORM
       async update(data: TeamUpdateOptions) {
@@ -1195,6 +1256,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       stackable: item.product.stackable,
       type: item.type,
       subscription: item.subscription ? {
+        subscriptionId: item.subscription.subscription_id,
         currentPeriodEnd: item.subscription.current_period_end ? new Date(item.subscription.current_period_end) : null,
         cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
         isCancelable: item.subscription.is_cancelable,
@@ -1429,6 +1491,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveTeam(team.id, session);
         // TODO: refresh cache
       },
+      async listTeamInvitations() {
+        const invitations = Result.orThrow(await app._currentUserTeamInvitationsCache.getOrWait([session], "write-only"));
+        return invitations.map((crud) => app._clientReceivedTeamInvitationFromCrud(session, crud));
+      },
+      // IF_PLATFORM react-like
+      useTeamInvitations() {
+        const invitations = useAsyncCache(app._currentUserTeamInvitationsCache, [session], "user.useTeamInvitations()");
+        return useMemo(() => invitations.map((crud) => app._clientReceivedTeamInvitationFromCrud(session, crud)), [invitations]);
+      },
+      // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<TeamPermission[]> {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;
@@ -1785,7 +1857,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerInvoicesFromResponse(response);
   }
 
-  async cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void> {
+  async cancelSubscription(options: { productId: string, subscriptionId?: string } | { productId: string, subscriptionId?: string, teamId: string }): Promise<void> {
     const session = await this._getSession();
     const user = await this.getUser();
     if (!user) {
@@ -1797,6 +1869,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       customer_type: customerType,
       customer_id: customerId,
       product_id: options.productId,
+      subscription_id: options.subscriptionId,
     }, session);
     if (customerType === "user") {
       await this._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === session && userId === customerId);
@@ -1862,6 +1935,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   get projectId(): ProjectId {
     return this._interface.projectId as ProjectId;
+  }
+
+  get version(): string {
+    return clientVersion;
   }
 
   protected async _isTrusted(url: string): Promise<boolean> {
@@ -2790,8 +2867,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           return clientApp as any;
         }
 
+        const { analytics, ...restJson } = omit(json, ["uniqueIdentifier"]);
         return new _StackClientAppImplIncomplete<HasTokenStore, ProjectId>({
-          ...omit(json, ["uniqueIdentifier"]) as any,
+          ...restJson as any,
+          analytics: analyticsOptionsFromJson(analytics),
         }, {
           uniqueIdentifier: json.uniqueIdentifier,
           checkString: providedCheckString,
@@ -2822,6 +2901,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
+          analytics: analyticsOptionsToJson(this._analyticsOptions),
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {
@@ -2830,6 +2910,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         });
       },
       getConstructorOptions: () => this._options,
+      sendSessionReplayBatch: async (body: string, options: { keepalive: boolean }) => {
+        return await this._interface.sendSessionReplayBatch(body, await this._getSession(), options);
+      },
+      sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
+        return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
+      },
       sendRequest: async (
         path: string,
         requestOptions: RequestInit,

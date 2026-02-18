@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 type HandleType = 'top' | 'right' | 'bottom' | 'left';
 
@@ -9,10 +10,10 @@ type DragHandle = {
 }
 
 const DRAG_HANDLES: DragHandle[] = [
-  { type: 'top', className: 'top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-2', cursor: 'ns-resize' },
-  { type: 'right', className: 'right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-2 h-6', cursor: 'ew-resize' },
-  { type: 'bottom', className: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-6 h-2', cursor: 'ns-resize' },
-  { type: 'left', className: 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-6', cursor: 'ew-resize' },
+  { type: 'top', className: 'top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-1 rounded-full', cursor: 'ns-resize' },
+  { type: 'right', className: 'right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-1 h-10 rounded-full', cursor: 'ew-resize' },
+  { type: 'bottom', className: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-10 h-1 rounded-full', cursor: 'ns-resize' },
+  { type: 'left', className: 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-10 rounded-full', cursor: 'ew-resize' },
 ];
 
 const makeIframeDocumentBubbleEvents = (iframe: HTMLIFrameElement) => {
@@ -40,13 +41,8 @@ const makeIframeDocumentBubbleEvents = (iframe: HTMLIFrameElement) => {
 const CONTAINER_PADDING = 0;
 
 const calculateInitialDimensions = (containerElement: HTMLElement | null) => {
-  const defaultWidth = 600;
-  const defaultHeight = 400;
-  const minWidth = 200;
-  const minHeight = 150;
-
   if (!containerElement) {
-    return { width: defaultWidth, height: defaultHeight };
+    return { width: 1000, height: 800 };
   }
 
   const containerRect = containerElement.getBoundingClientRect();
@@ -54,8 +50,8 @@ const calculateInitialDimensions = (containerElement: HTMLElement | null) => {
   const maxHeight = containerRect.height - CONTAINER_PADDING;
 
   return {
-    width: Math.min(defaultWidth, Math.max(minWidth, maxWidth)),
-    height: Math.min(defaultHeight, Math.max(minHeight, maxHeight))
+    width: maxWidth,
+    height: maxHeight
   };
 };
 
@@ -202,27 +198,41 @@ export default function ResizableContainer({ children, className }: ResizableCon
 
   return (
     <div ref={parentContainerRef} className="relative flex items-center justify-center h-full w-full">
+      {/* Dimension indicator */}
       {isDragging && (
-        <div className="absolute top-0 left-0 bg-gray-200 text-black px-3 py-1 rounded text-sm font-mono z-20 shadow-sm">
+        <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm text-foreground px-2.5 py-1 rounded-lg text-xs font-mono z-20 shadow-lg ring-1 ring-foreground/[0.08]">
           {Math.round(dimensions.width)} × {Math.round(dimensions.height)}
         </div>
       )}
 
       <div
         ref={containerRef}
-        className={`relative border border-gray-300 rounded-lg overflow-hidden shadow-lg group ${className || ''}`}
+        className={cn(
+          "relative rounded-2xl overflow-hidden group",
+          "bg-white shadow-2xl",
+          "ring-1 ring-black/[0.08] dark:ring-white/[0.08]",
+          className
+        )}
         style={{
           width: dimensions.width,
           height: dimensions.height,
-          transition: isDragging ? 'none' : 'all 0.2s ease-out'
+          transition: isDragging ? 'none' : 'width 0.15s ease-out, height 0.15s ease-out'
         }}
       >
         {children}
         {/* Drag Handles */}
-        {DRAG_HANDLES.map(({ type, className, cursor }) => (
+        {DRAG_HANDLES.map(({ type, className: handleClassName, cursor }) => (
           <div
             key={type}
-            className={`absolute ${className} bg-blue-500 border border-blue-600 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-blue-600 active:bg-blue-700 z-10 ${isDragging && activeHandle === type ? 'opacity-100' : ''}`}
+            className={cn(
+              "absolute z-10",
+              handleClassName,
+              "bg-blue-500/80 opacity-0 group-hover:opacity-100",
+              "transition-opacity duration-150 hover:transition-none",
+              "hover:bg-blue-500 active:bg-blue-600",
+              "shadow-sm",
+              isDragging && activeHandle === type && "opacity-100 bg-blue-600"
+            )}
             style={{ cursor }}
             onMouseDown={(e) => handleMouseDown(type, e)}
           />

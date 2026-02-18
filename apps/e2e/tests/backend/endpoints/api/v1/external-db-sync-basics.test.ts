@@ -1,15 +1,14 @@
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
-import { Project, User, niceBackendFetch } from '../../../backend-helpers';
+import { InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import {
   TEST_TIMEOUT,
   TestDbManager,
   createProjectWithExternalDb as createProjectWithExternalDbRaw,
   verifyInExternalDb,
   verifyNotInExternalDb,
-  waitForCondition,
   waitForSyncedData,
   waitForSyncedDeletion,
   waitForTable
@@ -24,54 +23,57 @@ async function runQueryForCurrentProject(body: { query: string, params?: Record<
 }
 
 async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
+  // ensure we definitely have project keys that don't expire (unlike an admin access token)
+  await InternalApiKey.createAndSetProjectKeys();
+
   const timeoutMs = 180_000;
   const intervalMs = 2_000;
   const start = performance.now();
 
+  let response;
   while (performance.now() - start < timeoutMs) {
-    const response = await runQueryForCurrentProject({
+    response = await runQueryForCurrentProject({
       query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
       params: {
         email,
       },
     });
-    if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 1
-      && response.body.result[0]?.display_name === expectedDisplayName
-    ) {
+    expect(response.status).toBe(200);
+    if (response.body.result.length === 1 && response.body.result[0].display_name === expectedDisplayName) {
       return response;
     }
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`);
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
 }
 
 async function waitForClickhouseUserDeletion(email: string) {
+  // ensure we definitely have project keys that don't expire (unlike an admin access token)
+  await InternalApiKey.createAndSetProjectKeys();
+
   const timeoutMs = 180_000;
   const intervalMs = 2_000;
   const start = performance.now();
 
+  let response;
   while (performance.now() - start < timeoutMs) {
-    const response = await runQueryForCurrentProject({
+    response = await runQueryForCurrentProject({
       query: "SELECT primary_email FROM users WHERE primary_email = {email:String}",
       params: {
         email,
       },
     });
-    if (
-      response.status === 200
-      && Array.isArray(response.body?.result)
-      && response.body.result.length === 0
-    ) {
-      return;
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    if (response.body.result.length === 0) {
+      return response;
     }
     await wait(intervalMs);
   }
 
-  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`);
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to be deleted.`, { response });
 }
 
 // Run tests sequentially to avoid concurrency issues with shared backend state
