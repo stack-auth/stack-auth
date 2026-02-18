@@ -1214,7 +1214,7 @@ export class StackClientInterface {
     session: InternalSession,
   ) {
     await this.sendClientRequest(
-      `/team-invitations/${invitationId}/accept?` + new URLSearchParams({ user_id: 'me' }),
+      urlString`/team-invitations/${invitationId}/accept?` + new URLSearchParams({ user_id: 'me' }),
       { method: "POST" },
       session,
     );

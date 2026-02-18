@@ -6,7 +6,6 @@ import { VerificationCodeType } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -82,9 +81,7 @@ export const POST = createSmartRouteHandler({
     });
 
     if (!matchingChannel) {
-      throw new StackAssertionError(
-        "Cannot accept this invitation: no verified email matching the invitation's recipient email was found on the target user",
-      );
+      throw new KnownErrors.VerificationCodeNotFound();
     }
 
     await retryTransaction(prisma, async (tx) => {
@@ -126,20 +123,23 @@ export const POST = createSmartRouteHandler({
           data: {},
         });
       }
-    });
 
-    // Mark the invitation as used
-    await globalPrismaClient.verificationCode.update({
-      where: {
-        projectId_branchId_id: {
+      // Mark the invitation as used inside the transaction to prevent race conditions
+      const updated = await globalPrismaClient.verificationCode.updateMany({
+        where: {
           projectId: auth.tenancy.project.id,
           branchId: auth.tenancy.branchId,
           id: params.id,
+          usedAt: null,
         },
-      },
-      data: {
-        usedAt: new Date(),
-      },
+        data: {
+          usedAt: new Date(),
+        },
+      });
+
+      if (updated.count === 0) {
+        throw new KnownErrors.VerificationCodeNotFound();
+      }
     });
 
     return {

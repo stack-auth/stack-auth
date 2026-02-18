@@ -184,7 +184,7 @@ it("can't list invitations without team_id or user_id", async ({ expect }) => {
     accessType: "server",
     method: "GET",
   });
-  expect(listInvitationsResponse.status).toBe(500);
+  expect(listInvitationsResponse.status).toBe(400);
 });
 
 
@@ -1000,7 +1000,7 @@ it("cannot specify both team_id and user_id", async ({ expect }) => {
     accessType: "server",
     method: "GET",
   });
-  expect(listResponse.status).toBe(500);
+  expect(listResponse.status).toBe(400);
 });
 
 
@@ -1011,7 +1011,7 @@ it("must specify either team_id or user_id", async ({ expect }) => {
     accessType: "server",
     method: "GET",
   });
-  expect(listResponse.status).toBe(500);
+  expect(listResponse.status).toBe(400);
 });
 
 

@@ -1,11 +1,11 @@
-import { ensureTeamExists, ensureTeamMembershipExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
-import { globalPrismaClient, getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
-import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { VerificationCodeType } from "@/generated/prisma/client";
+import { ensureTeamExists, ensureTeamMembershipExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamInvitationCrud } from "@stackframe/stack-shared/dist/interface/crud/team-invitation";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { teamsCrudHandlers } from "../teams/crud";
 import { teamInvitationCodeHandler } from "./accept/verification-code-handler";
@@ -20,17 +20,19 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
   }),
   onList: async ({ auth, query }) => {
     if (query.team_id != null && query.user_id != null) {
-      throw new StackAssertionError("Cannot specify both team_id and user_id");
+      throw new StatusError(StatusError.BadRequest, "Cannot specify both team_id and user_id");
     }
     if (query.team_id == null && query.user_id == null) {
-      throw new StackAssertionError("Must specify either team_id or user_id");
+      throw new StatusError(StatusError.BadRequest, "Must specify either team_id or user_id");
     }
 
     if (query.user_id != null) {
-      // List invitations sent to the current user's verified emails
-      const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
-      if (auth.type === 'client' && query.user_id !== currentUserId) {
-        throw new KnownErrors.CannotGetOwnUserWithoutUser();
+      // List invitations sent to the user's verified emails
+      if (auth.type === 'client') {
+        const currentUserId = auth.user?.id ?? throwErr(new KnownErrors.CannotGetOwnUserWithoutUser());
+        if (query.user_id !== currentUserId) {
+          throw new KnownErrors.CannotGetOwnUserWithoutUser();
+        }
       }
 
       const targetUserId = query.user_id;
@@ -74,10 +76,15 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
           const team = await teamsCrudHandlers.adminRead({
             tenancy: auth.tenancy,
             team_id: teamId,
+            allowedErrorTypes: [KnownErrors.TeamNotFound],
           });
           teamsMap.set(teamId, team.display_name);
-        } catch {
-          // Team may have been deleted since the invitation was created; skip these invitations
+        } catch (e) {
+          if (KnownErrors.TeamNotFound.isInstance(e)) {
+            // Team may have been deleted since the invitation was created; skip these invitations
+            continue;
+          }
+          throw e;
         }
       }
 
@@ -133,16 +140,11 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
         },
       });
 
-      let teamDisplayName: string;
-      try {
-        const team = await teamsCrudHandlers.adminRead({
-          tenancy: auth.tenancy,
-          team_id: teamId,
-        });
-        teamDisplayName = team.display_name;
-      } catch {
-        teamDisplayName = "";
-      }
+      const team = await teamsCrudHandlers.adminRead({
+        tenancy: auth.tenancy,
+        team_id: teamId,
+      });
+      const teamDisplayName = team.display_name;
 
       return {
         items: allCodes.map(code => ({
@@ -157,7 +159,7 @@ export const teamInvitationsCrudHandlers = createLazyProxy(() => createCrudHandl
     });
   },
   onDelete: async ({ auth, query, params }) => {
-    const teamId = query.team_id ?? throwErr(new StackAssertionError("team_id is required for deleting a team invitation"));
+    const teamId = query.team_id ?? throwErr(new StatusError(StatusError.BadRequest, "team_id is required for deleting a team invitation"));
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     await retryTransaction(prisma, async (tx) => {
       if (auth.type === 'client') {

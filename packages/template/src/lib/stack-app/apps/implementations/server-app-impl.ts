@@ -826,8 +826,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       expiresAt: new Date(crud.expires_at_millis),
       accept: async () => {
         await app._interface.acceptServerTeamInvitationById(crud.id, userId);
-        await app._serverUserTeamInvitationsCache.refresh([userId]);
-        await app._serverTeamsCache.refresh([userId]);
+        await Promise.all([
+          app._serverUserTeamInvitationsCache.refresh([userId]),
+          app._serverTeamsCache.refresh([userId]),
+          app._serverTeamInvitationsCache.refresh([crud.team_id]),
+        ]);
       },
     };
   }
