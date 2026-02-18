@@ -1601,20 +1601,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         await neverResolve();
       },
       async getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
-        // List connected accounts and find the first one for this provider
         const connectedAccounts = Result.orThrow(await app._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
-        const existing = connectedAccounts.find(a => a.provider === provider);
+        const matchingAccounts = connectedAccounts.filter(a => a.provider === provider);
 
-        if (existing) {
-          // Try to get an access token with the requested scopes to verify the connection is still valid
-          const tokenResult = await existing.getAccessToken({ scopes: options?.scopes });
+        for (const account of matchingAccounts) {
+          const tokenResult = await account.getAccessToken({ scopes: options?.scopes });
           if (tokenResult.status === "ok") {
-            return existing;
+            return account;
           }
-          // Token unavailable (refresh token revoked/expired/insufficient scopes) — fall through to link
         }
 
-        // No valid account found or token unavailable — redirect to OAuth flow
+        // No valid account found or all tokens unavailable — redirect to OAuth flow
         await this.linkConnectedAccount(provider, options);
         return await neverResolve();
       },
