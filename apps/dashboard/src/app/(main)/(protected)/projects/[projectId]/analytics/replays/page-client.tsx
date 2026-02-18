@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography } from "@/components/ui";
+import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { useFromNow } from "@/hooks/use-from-now";
 import {
   getDesiredGlobalOffsetFromPlaybackState,
@@ -213,6 +213,7 @@ function Timeline({
   markers?: TimelineMarker[],
 }) {
   const [currentTime, setCurrentTime] = useState(0);
+  const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number>(0);
 
@@ -236,85 +237,98 @@ function Timeline({
     onSeek(timeOffset);
   }, [totalTimeMs, onSeek]);
 
+  const hasMarkers = (markers?.length ?? 0) > 0;
+  const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
+
   return (
-    <TooltipProvider>
-      <div className="border-t border-border/30 bg-background px-3 py-2 flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0"
-          onClick={onTogglePlayPause}
-        >
-          {playerIsPlaying ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
-        </Button>
+    <div className={cn("border-t border-border/30 bg-background px-3 flex items-center gap-3", hasMarkers ? "py-1.5" : "py-2")}>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0"
+        onClick={onTogglePlayPause}
+      >
+        {playerIsPlaying ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />}
+      </Button>
 
-        <span className="text-xs text-muted-foreground tabular-nums w-10 shrink-0 text-right">
-          {formatTimelineMs(currentTime)}
-        </span>
+      <span className="text-xs text-muted-foreground tabular-nums w-10 shrink-0 text-right">
+        {formatTimelineMs(currentTime)}
+      </span>
 
-        <div
-          ref={trackRef}
-          onClick={handleTrackClick}
-          className="flex-1 h-5 flex items-center cursor-pointer group"
-        >
-          <div className="w-full h-1.5 rounded-full bg-muted relative overflow-visible">
-            {/* Progress fill (clipped) */}
-            <div className="absolute inset-0 overflow-hidden rounded-full">
-              <div
-                className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
-                style={{ width: `${progress * 100}%` }}
-              />
-            </div>
-
-            {/* Event markers */}
+      <div className="flex-1 flex flex-col justify-center">
+        {/* Event markers lane */}
+        {hasMarkers && (
+          <div className="relative h-3.5 mb-0.5">
             {markers?.map((marker, i) => {
               const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
               if (left < 0 || left > 100) return null;
               const isClick = marker.eventType === "$click";
               return (
-                <Tooltip key={i}>
-                  <TooltipTrigger asChild>
-                    <div
-                      className={cn(
-                        "absolute top-1/2 -translate-y-1/2 w-[3px] h-3 rounded-sm cursor-pointer z-10",
-                        "transition-colors",
-                        isClick
-                          ? "bg-blue-500/70 hover:bg-blue-400"
-                          : "bg-emerald-500/70 hover:bg-emerald-400",
-                      )}
-                      style={{ left: `${left}%`, marginLeft: "-1.5px" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSeek(marker.timeMs);
-                      }}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs max-w-52">
-                    <div>{marker.label}</div>
-                    <div className="text-[10px] opacity-70">{formatTimelineMs(marker.timeMs)}</div>
-                  </TooltipContent>
-                </Tooltip>
+                <div
+                  key={i}
+                  className={cn(
+                    "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
+                    "transition-colors",
+                    isClick
+                      ? "bg-blue-500/70 hover:bg-blue-400"
+                      : "bg-emerald-500/70 hover:bg-emerald-400",
+                  )}
+                  style={{ left: `${left}%`, marginLeft: "-1.5px" }}
+                  onMouseEnter={() => setHoveredMarkerIndex(i)}
+                  onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
+                  onClick={() => onSeek(marker.timeMs)}
+                />
               );
             })}
+
+            {/* Custom tooltip */}
+            {hoveredMarker && (() => {
+              const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
+              return (
+                <div
+                  className="absolute bottom-full mb-1.5 -translate-x-1/2 pointer-events-none z-50"
+                  style={{ left: `${left}%` }}
+                >
+                  <div className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground whitespace-nowrap max-w-52">
+                    <div className="truncate">{hoveredMarker.label}</div>
+                    <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Progress bar track (clickable) */}
+        <div
+          ref={trackRef}
+          onClick={handleTrackClick}
+          className="h-5 flex items-center cursor-pointer group"
+        >
+          <div className="w-full h-1.5 rounded-full bg-muted relative overflow-hidden">
+            <div
+              className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
+              style={{ width: `${progress * 100}%` }}
+            />
           </div>
         </div>
-
-        <span className="text-xs text-muted-foreground tabular-nums w-10 shrink-0">
-          {formatTimelineMs(totalTimeMs)}
-        </span>
-
-        <select
-          className="h-7 rounded-md border border-border/40 bg-background px-1.5 text-xs"
-          value={playerSpeed}
-          onChange={(e) => onSpeedChange(Number(e.target.value))}
-        >
-          <option value={0.5}>0.5x</option>
-          <option value={1}>1x</option>
-          <option value={2}>2x</option>
-          <option value={4}>4x</option>
-        </select>
       </div>
-    </TooltipProvider>
+
+      <span className="text-xs text-muted-foreground tabular-nums w-10 shrink-0">
+        {formatTimelineMs(totalTimeMs)}
+      </span>
+
+      <select
+        className="h-7 rounded-md border border-border/40 bg-background px-1.5 text-xs"
+        value={playerSpeed}
+        onChange={(e) => onSpeedChange(Number(e.target.value))}
+      >
+        <option value={0.5}>0.5x</option>
+        <option value={1}>1x</option>
+        <option value={2}>2x</option>
+        <option value={4}>4x</option>
+      </select>
+    </div>
   );
 }
 
