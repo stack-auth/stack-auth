@@ -1191,7 +1191,10 @@ typeAssertExtends<_ValidatedToHaveNoConfigOverrideErrorsImpl<{ a: { b: { c: stri
  */
 export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schema: T, incompleteConfig: Config): Promise<Result<null, string>> {
   // every rendered config should also be a config override without errors (regardless of whether it has warnings or not)
-  await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+  const overrideErrors = await getConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+  if (overrideErrors.status === "error") {
+    return overrideErrors;
+  }
 
   // Check for dot-notation keys that would be silently dropped during rendering.
   // We simulate the rendering pipeline: apply all defaults, then normalize with
