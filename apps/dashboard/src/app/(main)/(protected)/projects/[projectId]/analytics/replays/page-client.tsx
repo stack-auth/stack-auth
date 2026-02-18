@@ -1149,7 +1149,7 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout title="Session Replays" fillWidth>
-        <PanelGroup direction="horizontal" className="h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
+        <PanelGroup direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
           <Panel defaultSize={25} minSize={16}>
             <div className="h-full flex flex-col">
               <div className="shrink-0 px-3 py-2 border-b border-border/30 flex items-center h-10">
