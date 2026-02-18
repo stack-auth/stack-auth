@@ -1972,11 +1972,16 @@ export class StackClientInterface {
       customer_type: "user" | "team" | "custom",
       customer_id: string,
       product_id: string,
+      subscription_id?: string,
     },
     session: InternalSession | null,
   ): Promise<void> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      subscription_id: options.subscription_id,
+    }));
+    const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`;
     await this.sendClientRequest(
-      urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`,
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {
         method: "DELETE",
       },
@@ -2023,7 +2028,7 @@ export class StackClientInterface {
   ): Promise<string> {
     const productBody = typeof productIdOrInline === "string" ?
       { product_id: productIdOrInline } :
-      { inline_product: productIdOrInline };
+      { product_inline: productIdOrInline };
     const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
     const response = await sendRequest(
       "/payments/purchases/create-purchase-url",
