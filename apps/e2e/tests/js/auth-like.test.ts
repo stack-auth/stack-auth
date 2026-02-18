@@ -17,11 +17,11 @@ const signIn = async (clientApp: any) => {
 // version tests
 // ============================================
 
-it("clientApp.version should return a valid semver version string", async ({ expect }) => {
+it("clientApp.version should return a valid version string", async ({ expect }) => {
   const { clientApp } = await createApp({});
   expect(clientApp.version).toBeDefined();
   expect(typeof clientApp.version).toBe("string");
-  expect(clientApp.version).toMatch(/^\d+\.\d+\.\d+/);
+  expect(clientApp.version).toMatch(/^js @stackframe\/js@\d+\.\d+\.\d+/);
 });
 
 it("serverApp.version should return the same version as clientApp", async ({ expect }) => {
