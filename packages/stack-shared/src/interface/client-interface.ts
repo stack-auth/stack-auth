@@ -36,6 +36,7 @@ export type ClientInterfaceOptions = {
   clientVersion: string,
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
+  getAnalyticsBaseUrl?: () => string,
   extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
@@ -58,6 +59,10 @@ export class StackClientInterface {
 
   getApiUrl() {
     return this.options.getBaseUrl() + "/api/v1";
+  }
+
+  getAnalyticsApiUrl() {
+    return (this.options.getAnalyticsBaseUrl ?? this.options.getBaseUrl)() + "/api/v1";
   }
 
   public async runNetworkDiagnostics(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
@@ -224,13 +229,14 @@ export class StackClientInterface {
     requestOptions: RequestInit,
     session: InternalSession | null,
     requestType: "client" | "server" | "admin" = "client",
+    apiUrlOverride?: string,
   ) {
     session ??= this.createSession({
       refreshToken: null,
     });
 
     return await this._networkRetry(
-      () => this.sendClientRequestInner(path, requestOptions, session!, requestType),
+      () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride),
       session,
       requestType,
     );
@@ -259,6 +265,32 @@ export class StackClientInterface {
           keepalive: options.keepalive,
         },
         session,
+        "client",
+        this.getAnalyticsApiUrl(),
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
+  async sendAnalyticsEventBatch(
+    body: string,
+    session: InternalSession | null,
+    options: { keepalive: boolean },
+  ): Promise<Result<Response, Error>> {
+    try {
+      const response = await this.sendClientRequest(
+        "/analytics/events/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: options.keepalive,
+        },
+        session,
+        "client",
+        this.getAnalyticsApiUrl(),
       );
       return Result.ok(response);
     } catch (e) {
@@ -297,6 +329,7 @@ export class StackClientInterface {
     options: RequestInit,
     session: InternalSession,
     requestType: "client" | "server" | "admin",
+    apiUrlOverride?: string,
   ): Promise<Result<Response & {
     usedTokens: {
       accessToken: AccessToken,
@@ -331,7 +364,7 @@ export class StackClientInterface {
     // all requests should be dynamic to prevent Next.js caching
     await this.options.prepareRequest?.();
 
-    let url = this.getApiUrl() + path;
+    let url = (apiUrlOverride ?? this.getApiUrl()) + path;
     if (url.endsWith("/")) {
       url = url.slice(0, -1);
     }
@@ -1214,7 +1247,7 @@ export class StackClientInterface {
     session: InternalSession,
   ) {
     await this.sendClientRequest(
-      urlString`/team-invitations/${invitationId}/accept?` + new URLSearchParams({ user_id: 'me' }),
+      urlString`/team-invitations/${invitationId}/accept` + "?" + new URLSearchParams({ user_id: 'me' }),
       { method: "POST" },
       session,
     );

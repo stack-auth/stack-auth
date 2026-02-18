@@ -3,7 +3,7 @@ import { createApp } from "./js-helpers";
 
 
 it("should list team invitations for the current user via the client SDK", async ({ expect }) => {
-  const { clientApp, serverApp } = await createApp();
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create a team via a signed-in user
   await clientApp.signUpWithCredential({
@@ -58,7 +58,7 @@ it("should list team invitations for the current user via the client SDK", async
 
 
 it("should return empty invitations when user has no matching invitations", async ({ expect }) => {
-  const { clientApp } = await createApp();
+  const { clientApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   await clientApp.signUpWithCredential({
     email: "no-invites@test.com",
@@ -77,7 +77,7 @@ it("should return empty invitations when user has no matching invitations", asyn
 
 
 it("should list team invitations for a server user", async ({ expect }) => {
-  const { clientApp, serverApp } = await createApp();
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create team owner and team
   await clientApp.signUpWithCredential({
@@ -117,7 +117,7 @@ it("should list team invitations for a server user", async ({ expect }) => {
 
 
 it("should not return invitations for unverified emails", async ({ expect }) => {
-  const { clientApp, serverApp } = await createApp();
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create team and invite an email
   await clientApp.signUpWithCredential({
@@ -152,7 +152,7 @@ it("should not return invitations for unverified emails", async ({ expect }) => 
 
 
 it("should list invitations from multiple teams", async ({ expect }) => {
-  const { clientApp, serverApp } = await createApp();
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create two teams
   await clientApp.signUpWithCredential({
@@ -199,7 +199,7 @@ it("should list invitations from multiple teams", async ({ expect }) => {
 
 
 it("should accept a team invitation via the client SDK", async ({ expect }) => {
-  const { clientApp, serverApp } = await createApp();
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create a team
   await clientApp.signUpWithCredential({
@@ -257,7 +257,7 @@ it("should accept a team invitation via the client SDK", async ({ expect }) => {
 
 
 it("should accept a team invitation via the server SDK", async ({ expect }) => {
-  const { clientApp, serverApp } = await createApp();
+  const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create team
   await clientApp.signUpWithCredential({

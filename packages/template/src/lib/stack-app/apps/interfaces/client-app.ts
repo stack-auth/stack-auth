@@ -47,6 +47,11 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
   & {
     readonly projectId: ProjectId,
 
+    /**
+     * The version of the Stack Auth SDK.
+     */
+    readonly version: string,
+
     readonly urls: Readonly<HandlerUrls>,
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
@@ -101,6 +106,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
       sendSessionReplayBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
+      sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>
