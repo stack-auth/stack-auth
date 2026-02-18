@@ -164,7 +164,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
   );
-  /** @deprecated Used by legacy getConnectedAccount(providerId) and useOrLinkConnectedAccount — combines token check + redirect */
+  /** @deprecated Used by legacy getConnectedAccount(providerId) — combines token check + redirect */
   private readonly _currentUserOAuthConnectionCache = createCacheBySession<[ProviderType, string, boolean], DeprecatedOAuthConnection | null>(
     async (session, [providerId, scope, redirect]) => {
       return await this._getUserOAuthConnectionCacheFn({
@@ -197,6 +197,32 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
         throw err;
       }
+    }
+  );
+  private readonly _currentUserValidConnectedAccountForProviderCache = createCacheBySession<[string, string], OAuthConnection>(
+    async (session, [provider, scopeString]) => {
+      const connectedAccounts = Result.orThrow(await this._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
+      const matchingAccounts = connectedAccounts.filter(a => a.provider === provider);
+      const scopes = scopeString ? scopeString.split(" ") : undefined;
+
+      for (const account of matchingAccounts) {
+        const tokenResult = await account.getAccessToken({ scopes });
+        if (tokenResult.status === "ok") {
+          return account;
+        }
+      }
+
+      await addNewOAuthProviderOrScope(
+        this._interface,
+        {
+          provider,
+          redirectUrl: this.urls.oauthCallback,
+          errorRedirectUrl: this.urls.error,
+          providerScope: mergeScopeStrings(scopeString, (this._oauthScopesOnSignIn[provider as ProviderType] ?? []).join(" ")),
+        },
+        session,
+      );
+      return await neverResolve();
     }
   );
   private readonly _teamMemberProfilesCache = createCacheBySession<[string], TeamMemberProfilesCrud['Client']['Read'][]>(
@@ -1618,18 +1644,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): OAuthConnection {
         const scopeString = options?.scopes?.join(" ") ?? "";
-        // This reuses the legacy cache which already handles the redirect logic (redirect=true means it always returns a valid connection or redirects)
-        const deprecated = useAsyncCache(app._currentUserOAuthConnectionCache, [session, provider as ProviderType, scopeString, true] as const, "user.useOrLinkConnectedAccount()");
-        if (!deprecated) {
-          // Should never happen with redirect=true, but satisfy the type system
-          throw new StackAssertionError("useOrLinkConnectedAccount: expected a connection but got null — this should never happen because redirect=true");
-        }
-        // Wrap the deprecated connection (which throws) into the new Result-based OAuthConnection
-        const connectedAccounts = useAsyncCache(app._currentUserConnectedAccountsCache, [session] as const, "user.useOrLinkConnectedAccount()");
-        const found = connectedAccounts.find(a => a.provider === provider);
-        // If found in the new list, return the new-style connection (with Result-based getAccessToken)
-        // Otherwise fall back to creating one from the deprecated connection's data
-        return found ?? app._createOAuthConnectionFromCrudItem({ provider: deprecated.provider, provider_account_id: deprecated.providerAccountId }, session);
+        return useAsyncCache(app._currentUserValidConnectedAccountForProviderCache, [session, provider, scopeString] as const, "user.useOrLinkConnectedAccount()");
       },
       // END_PLATFORM
       async getTeam(teamId: string) {
