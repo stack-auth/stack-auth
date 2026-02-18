@@ -1916,6 +1916,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._interface.projectId as ProjectId;
   }
 
+  get version(): string {
+    return clientVersion;
+  }
+
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)

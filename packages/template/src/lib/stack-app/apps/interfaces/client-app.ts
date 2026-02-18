@@ -47,6 +47,11 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
   & {
     readonly projectId: ProjectId,
 
+    /**
+     * The version of the Stack Auth SDK.
+     */
+    readonly version: string,
+
     readonly urls: Readonly<HandlerUrls>,
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
