@@ -5,23 +5,26 @@ import { globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Accept a team invitation by ID",
-    description: "Accepts a team invitation for the current user. The user must have a verified email matching the invitation's recipient email. This marks the invitation as used and adds the user to the team.",
+    description: "Accepts a team invitation for the specified user. The user must have a verified email matching the invitation's recipient email. This marks the invitation as used and adds the user to the team.",
     tags: ["Teams"],
   },
   request: yupObject({
     auth: yupObject({
       type: clientOrHigherAuthTypeSchema,
       tenancy: adaptSchema.defined(),
-      user: adaptSchema.defined(),
+      user: adaptSchema.optional(),
     }).defined(),
     params: yupObject({
       id: yupString().uuid().defined(),
+    }).defined(),
+    query: yupObject({
+      user_id: userIdOrMeSchema.defined(),
     }).defined(),
   }),
   response: yupObject({
@@ -29,11 +32,20 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({}).defined(),
   }),
-  async handler({ auth, params }) {
-    const user = auth.user ?? throwErr(new KnownErrors.UserAuthenticationRequired());
+  async handler({ auth, params, query }) {
+    const userId = query.user_id;
 
-    if (user.restricted_reason) {
-      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    if (auth.type === 'client') {
+      if (!auth.user) {
+        throw new KnownErrors.CannotGetOwnUserWithoutUser();
+      }
+      if (userId !== auth.user.id) {
+        throw new KnownErrors.CannotGetOwnUserWithoutUser();
+      }
+
+      if (auth.user.restricted_reason) {
+        throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(auth.user.restricted_reason);
+      }
     }
 
     // Look up the invitation (verification code) by ID
@@ -57,12 +69,12 @@ export const POST = createSmartRouteHandler({
     const invitationData = code.data as { team_id: string };
     const invitationMethod = code.method as { email: string };
 
-    // Verify that the current user has a verified email matching the invitation's recipient
+    // Verify that the target user has a verified email matching the invitation's recipient
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const matchingChannel = await prisma.contactChannel.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
-        projectUserId: user.id,
+        projectUserId: userId,
         type: 'EMAIL',
         isVerified: true,
         value: invitationMethod.email,
@@ -71,7 +83,7 @@ export const POST = createSmartRouteHandler({
 
     if (!matchingChannel) {
       throw new StackAssertionError(
-        "Cannot accept this invitation: no verified email matching the invitation's recipient email was found on the current user",
+        "Cannot accept this invitation: no verified email matching the invitation's recipient email was found on the target user",
       );
     }
 
@@ -100,7 +112,7 @@ export const POST = createSmartRouteHandler({
         where: {
           tenancyId_projectUserId_teamId: {
             tenancyId: auth.tenancy.id,
-            projectUserId: user.id,
+            projectUserId: userId,
             teamId: invitationData.team_id,
           },
         },
@@ -110,7 +122,7 @@ export const POST = createSmartRouteHandler({
         await teamMembershipsCrudHandlers.adminCreate({
           tenancy: auth.tenancy,
           team_id: invitationData.team_id,
-          user_id: user.id,
+          user_id: userId,
           data: {},
         });
       }

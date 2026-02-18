@@ -1062,7 +1062,7 @@ it("can accept invitation by ID", async ({ expect }) => {
   });
 
   // Accept the invitation by ID
-  const acceptResponse = await niceBackendFetch(`/api/v1/team-invitations/${invitationId}/accept`, {
+  const acceptResponse = await niceBackendFetch(`/api/v1/team-invitations/${invitationId}/accept?user_id=me`, {
     accessType: "client",
     method: "POST",
   });

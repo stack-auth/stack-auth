@@ -446,7 +446,7 @@ export class StackServerInterface extends StackClientInterface {
     userId: string,
   ) {
     await this.sendServerRequest(
-      urlString`/team-invitations/${invitationId}/accept`,
+      urlString`/team-invitations/${invitationId}/accept` + "?" + new URLSearchParams({ user_id: userId }),
       { method: "POST" },
       null,
     );
