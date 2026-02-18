@@ -1197,6 +1197,29 @@ export class StackClientInterface {
     return result.items;
   }
 
+  async listCurrentUserTeamInvitations(
+    session: InternalSession,
+  ): Promise<TeamInvitationCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      "/team-invitations?" + new URLSearchParams({ user_id: 'me' }),
+      {},
+      session,
+    );
+    const result = await response.json() as TeamInvitationCrud['Client']['List'];
+    return result.items;
+  }
+
+  async acceptTeamInvitationById(
+    invitationId: string,
+    session: InternalSession,
+  ) {
+    await this.sendClientRequest(
+      urlString`/team-invitations/${invitationId}/accept?` + new URLSearchParams({ user_id: 'me' }),
+      { method: "POST" },
+      session,
+    );
+  }
+
   async revokeTeamInvitation(
     invitationId: string,
     teamId: string,
