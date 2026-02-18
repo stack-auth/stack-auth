@@ -1264,7 +1264,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             },
             session
           );
-          await app._currentUserOAuthProvidersCache.refresh([session]);
+          await Promise.all([
+            app._currentUserOAuthProvidersCache.refresh([session]),
+            app._currentUserConnectedAccountsCache.refresh([session]),
+          ]);
           return Result.ok(undefined);
         } catch (error) {
           if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
@@ -1276,7 +1279,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async delete() {
         await app._interface.deleteOAuthProvider(crud.user_id, crud.id, session);
-        await app._currentUserOAuthProvidersCache.refresh([session]);
+        await Promise.all([
+          app._currentUserOAuthProvidersCache.refresh([session]),
+          app._currentUserConnectedAccountsCache.refresh([session]),
+        ]);
       },
     };
   }
@@ -2980,7 +2986,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _refreshSession(session: InternalSession) {
-    await this._currentUserCache.refresh([session]);
+    await Promise.all([
+      this._currentUserCache.refresh([session]),
+      this._currentUserConnectedAccountsCache.refresh([session]),
+    ]);
     // Suggest updating the access token so it contains the updated user/session data
     session.suggestAccessTokenExpired();
   }
