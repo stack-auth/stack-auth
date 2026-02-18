@@ -12,7 +12,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 #### Extra commands
 These commands are usually already called by the user, but you can remind them to run it for you if they forgot to.
-- **Build packages**: `pnpm build:packages` (you should never call this yourself)
+- **Build packages**: NEVER DO THIS YOURSELF — ASK THE USER TO DO IT FOR YOU!
 - **Start dependencies**: `pnpm restart-deps` (resets & restarts Docker containers for DB, Inbucket, etc. Usually already called by the user)
 - **Run development**: Already called by the user in the background. You don't need to do this. This will also watch for changes and rebuild packages, codegen, etc. Do NOT call build:packages, dev, codegen, or anything like that yourself, as the dev is already running it.
 - **Run minimal dev**: `pnpm dev:basic` (only backend and dashboard for resource-limited systems)
