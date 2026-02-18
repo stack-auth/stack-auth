@@ -31,6 +31,7 @@
     "start-deps": "POSTGRES_DELAY_MS=${POSTGRES_DELAY_MS:-0} pnpm run start-deps:no-delay",
     "restart-deps": "pnpm pre && pnpm run stop-deps && pnpm run start-deps",
     "restart-deps:no-delay": "pnpm pre && pnpm run stop-deps && pnpm run start-deps:no-delay",
+    "restart-deps:with-tests": "pnpm run restart-deps && pnpm test run auto-migrations/migration-tests",
     "psql": "pnpm pre && pnpm run --filter=@stackframe/stack-backend psql",
     "clickhouse": "pnpm pre && pnpm run --filter=@stackframe/stack-backend clickhouse",
     "explain-query": "pnpm pre && echo 'Paste your query (end with Ctrl-D):' && query=$(cat) && echo 'Connecting to Postgres...' && printf \"EXPLAIN (ANALYZE, COSTS, VERBOSE, BUFFERS, FORMAT JSON)\n$query\" | pnpm run --silent psql -qAt | sed -n '/\\[/,$p' > explained-query.untracked.json && echo 'Explained query saved to explained-query.untracked.json. To analyze it, open it in the query analyzer at https://tatiyants.com/pev/#/plans/new'",

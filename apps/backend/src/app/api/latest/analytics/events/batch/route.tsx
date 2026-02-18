@@ -46,11 +46,7 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth, body }) {
     if (!auth.tenancy.config.apps.installed["analytics"]?.enabled) {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: { inserted: 0 },
-      };
+      throw new KnownErrors.AnalyticsNotEnabled();
     }
     if (!auth.user) {
       throw new KnownErrors.UserAuthenticationRequired();

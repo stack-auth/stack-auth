@@ -52,7 +52,7 @@ it("requires a user token", async ({ expect }) => {
   `);
 });
 
-it("returns 200 no-op when analytics is not enabled", async ({ expect }) => {
+it("throws error when analytics is not enabled", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   // Analytics is disabled by default - do NOT call Project.updateConfig
   await Auth.Otp.signIn();
@@ -64,13 +64,8 @@ it("returns 200 no-op when analytics is not enabled", async ({ expect }) => {
     events: [{ event_type: "$page-view", event_at_ms: Date.now(), data: {} }],
   });
 
-  expect(res).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": { "inserted": 0 },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("ANALYTICS_NOT_ENABLED");
 });
 
 it("accepts valid $page-view events", async ({ expect }) => {
