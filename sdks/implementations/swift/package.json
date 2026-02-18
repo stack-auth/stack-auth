@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/swift-sdk",
-  "version": "2.8.65",
+  "version": "2.8.68",
   "private": true,
   "description": "Stack Auth Swift SDK",
   "scripts": {

@@ -8,6 +8,12 @@ packages:
 
 minimumReleaseAge: 2880
 minimumReleaseAgeExclude:
+- ai
+- '@ai-sdk/openai'
+- '@ai-sdk/react'
+- '@ai-sdk/provider'
+- '@ai-sdk/provider-utils'
+- '@ai-sdk/gateway'
 - next
 - '@next/env'
 - '@next/swc-darwin-arm64'

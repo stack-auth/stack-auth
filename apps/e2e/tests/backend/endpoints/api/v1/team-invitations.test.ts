@@ -168,6 +168,7 @@ it("can list invitations on the server", async ({ expect }) => {
             "expires_at_millis": <stripped field 'expires_at_millis'>,
             "id": "<stripped UUID>",
             "recipient_email": "some-email-test@example.com",
+            "team_display_name": "New Team",
             "team_id": "<stripped UUID>",
           },
         ],
@@ -178,33 +179,12 @@ it("can list invitations on the server", async ({ expect }) => {
 });
 
 
-it("can't list invitations across teams", async ({ expect }) => {
+it("can't list invitations without team_id or user_id", async ({ expect }) => {
   const listInvitationsResponse = await niceBackendFetch(`/api/v1/team-invitations`, {
     accessType: "server",
     method: "GET",
   });
-  expect(listInvitationsResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SCHEMA_ERROR",
-        "details": {
-          "message": deindent\`
-            Request validation failed on GET /api/v1/team-invitations:
-              - query.team_id must be defined
-          \`,
-        },
-        "error": deindent\`
-          Request validation failed on GET /api/v1/team-invitations:
-            - query.team_id must be defined
-        \`,
-      },
-      "headers": Headers {
-        "x-stack-known-error": "SCHEMA_ERROR",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(listInvitationsResponse.status).toBe(400);
 });
 
 
@@ -237,6 +217,7 @@ it("allows team admins to list invitations", async ({ expect }) => {
             "expires_at_millis": <stripped field 'expires_at_millis'>,
             "id": "<stripped UUID>",
             "recipient_email": "some-email-test@example.com",
+            "team_display_name": "New Team",
             "team_id": "<stripped UUID>",
           },
         ],
@@ -863,4 +844,247 @@ it("should allow a restricted user to accept invitation after verifying email", 
     method: "GET",
   });
   expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+});
+
+
+it("can list invitations by user_id on the server", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const { userId: inviter } = await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  await Team.sendInvitation(receiveMailbox.emailAddress, teamId);
+
+  // Create a new user with the invited email as a verified contact channel
+  const { userId: invitedUserId } = await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  // List invitations for the invited user
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=${invitedUserId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "expires_at_millis": <stripped field 'expires_at_millis'>,
+            "id": "<stripped UUID>",
+            "recipient_email": "${receiveMailbox.emailAddress}",
+            "team_display_name": "New Team",
+            "team_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+
+it("can list invitations by user_id=me on the client", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const { userId: inviter } = await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  await Team.sendInvitation(receiveMailbox.emailAddress, teamId);
+
+  // Sign up as the invited user with verified email
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  // List invitations for the current user
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "expires_at_millis": <stripped field 'expires_at_millis'>,
+            "id": "<stripped UUID>",
+            "recipient_email": "${receiveMailbox.emailAddress}",
+            "team_display_name": "New Team",
+            "team_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+
+it("returns empty list when user has no verified emails matching invitations", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+  await Team.sendInvitation("unrelated@example.com", teamId);
+
+  // Sign up as a different user
+  const { userId: otherUserId } = await Auth.fastSignUp({
+    primary_email: "other@example.com",
+    primary_email_verified: true,
+  });
+
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=${otherUserId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+
+it("does not return invitations for unverified emails", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      credential_enabled: true,
+    },
+  });
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  await Team.sendInvitation(receiveMailbox.emailAddress, teamId);
+
+  // Create a user with the same email but NOT verified
+  const { userId: unverifiedUserId } = await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: false,
+  });
+
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=${unverifiedUserId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+
+it("cannot specify both team_id and user_id", async ({ expect }) => {
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?team_id=${teamId}&user_id=me`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(listResponse.status).toBe(400);
+});
+
+
+it("must specify either team_id or user_id", async ({ expect }) => {
+  await Auth.fastSignUp();
+
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(listResponse.status).toBe(400);
+});
+
+
+it("client cannot list invitations for a user_id other than 'me'", async ({ expect }) => {
+  await Project.createAndSwitch();
+  const { userId: otherUserId } = await Auth.fastSignUp({
+    primary_email: "other@example.com",
+    primary_email_verified: true,
+  });
+
+  // Sign in as a different user
+  await Auth.fastSignUp();
+
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=${otherUserId}`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "CANNOT_GET_OWN_USER_WITHOUT_USER",
+        "error": "You have specified 'me' as a userId, but did not provide authentication for a user. Make sure to pass the x-stack-access-token header to authenticate as a user.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "CANNOT_GET_OWN_USER_WITHOUT_USER",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+
+it("can accept invitation by ID", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  const { sendTeamInvitationResponse } = await Team.sendInvitation(receiveMailbox.emailAddress, teamId);
+  const invitationId = sendTeamInvitationResponse.body.id;
+
+  // Sign up as the invited user with the matching verified email
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+
+  // Accept the invitation by ID
+  const acceptResponse = await niceBackendFetch(`/api/v1/team-invitations/${invitationId}/accept?user_id=me`, {
+    accessType: "client",
+    method: "POST",
+  });
+  expect(acceptResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {},
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Verify the user is now a member
+  const teamsResponse = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+
+  // Verify the invitation is consumed (no longer listed)
+  const listResponse = await niceBackendFetch(`/api/v1/team-invitations?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(listResponse.body.items).toHaveLength(0);
 });

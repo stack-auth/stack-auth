@@ -31,7 +31,7 @@ import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
-import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
@@ -67,6 +67,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   });
   private readonly _serverTeamsCache = createCache<[string | undefined], TeamsCrud['Server']['Read'][]>(async ([userId]) => {
     return await this._interface.listServerTeams({ userId });
+  });
+  private readonly _serverUserTeamInvitationsCache = createCache<string[], TeamInvitationCrud['Client']['Read'][]>(async ([userId]) => {
+    return await this._interface.listServerUserTeamInvitations(userId);
   });
   private readonly _serverTeamUserPermissionsCache = createCache<
     [string, string, boolean],
@@ -509,7 +512,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async getActiveSessions() {
         const sessions = await app._interface.listServerSessions(crud.id);
-        return sessions.map((session) => app._clientSessionFromCrud(session));
+        return sessions.items.map((session) => app._clientSessionFromCrud(session));
       },
 
       async revokeSession(sessionId: string) {
@@ -568,6 +571,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
         // TODO: refresh cache
       },
+      async listTeamInvitations() {
+        const invitations = Result.orThrow(await app._serverUserTeamInvitationsCache.getOrWait([crud.id], "write-only"));
+        return invitations.map((inv) => app._serverReceivedTeamInvitationFromCrud(crud.id, inv));
+      },
+      // IF_PLATFORM react-like
+      useTeamInvitations() {
+        const invitations = useAsyncCache(app._serverUserTeamInvitationsCache, [crud.id], "user.useTeamInvitations()");
+        return useMemo(() => invitations.map((inv) => app._serverReceivedTeamInvitationFromCrud(crud.id, inv)), [invitations]);
+      },
+      // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;
@@ -793,7 +806,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return teamUser;
   }
 
-  protected _serverTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): TeamInvitation {
+  protected _serverSentTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): SentTeamInvitation {
     return {
       id: crud.id,
       recipientEmail: crud.recipient_email,
@@ -801,6 +814,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
         await this._serverTeamInvitationsCache.refresh([crud.team_id]);
+      },
+    };
+  }
+
+  protected _serverReceivedTeamInvitationFromCrud(userId: string, crud: TeamInvitationCrud['Client']['Read']): ReceivedTeamInvitation {
+    const app = this;
+    return {
+      id: crud.id,
+      teamId: crud.team_id,
+      teamDisplayName: crud.team_display_name,
+      recipientEmail: crud.recipient_email,
+      expiresAt: new Date(crud.expires_at_millis),
+      accept: async () => {
+        await app._interface.acceptServerTeamInvitationById(crud.id, userId);
+        await Promise.all([
+          app._serverUserTeamInvitationsCache.refresh([userId]),
+          app._serverTeamsCache.refresh([userId]),
+          app._serverTeamInvitationsCache.refresh([crud.team_id]),
+        ]);
       },
     };
   }
@@ -867,12 +899,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async listInvitations() {
         const result = Result.orThrow(await app._serverTeamInvitationsCache.getOrWait([crud.id], "write-only"));
-        return result.map((crud) => app._serverTeamInvitationFromCrud(crud));
+        return result.map((crud) => app._serverSentTeamInvitationFromCrud(crud));
       },
       // IF_PLATFORM react-like
       useInvitations() {
         const result = useAsyncCache(app._serverTeamInvitationsCache, [crud.id] as const, "team.useInvitations()");
-        return useMemo(() => result.map((crud) => app._serverTeamInvitationFromCrud(crud)), [result]);
+        return useMemo(() => result.map((crud) => app._serverSentTeamInvitationFromCrud(crud)), [result]);
       },
       // END_PLATFORM
       // IF_PLATFORM react-like

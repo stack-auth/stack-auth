@@ -20,6 +20,7 @@ const DEFAULT_MAX_DURATION_MS = 3 * 60 * 1000;
 const DIRECT_SYNC_ENV = "STACK_EXTERNAL_DB_SYNC_DIRECT";
 const POLLER_CLAIM_LIMIT_ENV = "STACK_EXTERNAL_DB_SYNC_POLL_CLAIM_LIMIT";
 const DEFAULT_POLL_CLAIM_LIMIT = 1000;
+const STALE_REQUEST_THRESHOLD_MS = 60 * 1000;
 
 function parseMaxDurationMs(value: string | undefined): number {
   if (!value) return DEFAULT_MAX_DURATION_MS;
@@ -28,13 +29,6 @@ function parseMaxDurationMs(value: string | undefined): number {
     throw new StatusError(400, "maxDurationMs must be a positive integer");
   }
   return parsed;
-}
-
-function parseStopWhenIdle(value: string | undefined): boolean {
-  if (!value) return false;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new StatusError(400, "stopWhenIdle must be 'true' or 'false'");
 }
 
 function directSyncEnabled(): boolean {
@@ -53,11 +47,6 @@ function getPollerClaimLimit(): number {
   return parsed;
 }
 
-function getLocalApiBaseUrl(): string {
-  const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-  return `http://localhost:${prefix}02`;
-}
-
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Poll outgoing requests and push to QStash",
@@ -70,11 +59,10 @@ export const GET = createSmartRouteHandler({
     auth: yupObject({}).nullable().optional(),
     method: yupString().oneOf(["GET"]).defined(),
     headers: yupObject({
-      authorization: yupTuple([yupString().defined()]).defined(),
+      authorization: yupTuple([yupString().defined()]).optional(),
     }).defined(),
     query: yupObject({
       maxDurationMs: yupString().optional(),
-      stopWhenIdle: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -85,25 +73,24 @@ export const GET = createSmartRouteHandler({
       requests_processed: yupNumber().defined(),
     }).defined(),
   }),
-  handler: async ({ headers, query }) => {
-    const authHeader = headers.authorization[0];
-    if (authHeader !== `Bearer ${getEnvVariable("CRON_SECRET")}`) {
+  handler: async ({ headers, query, auth }) => {
+    const isAdmin = auth?.type === "admin" && auth.project.id === "internal";
+    const authHeader = headers.authorization?.[0];
+    if (!isAdmin && authHeader !== `Bearer ${getEnvVariable("CRON_SECRET")}`) {
       throw new StatusError(401, "Unauthorized");
     }
+
 
     return await traceSpan("external-db-sync.poller", async (span) => {
       const startTime = performance.now();
       const maxDurationMs = parseMaxDurationMs(query.maxDurationMs);
-      const stopWhenIdle = parseStopWhenIdle(query.stopWhenIdle);
       const pollIntervalMs = 50;
       const staleClaimIntervalMinutes = 5;
       const pollerClaimLimit = getPollerClaimLimit();
 
       span.setAttribute("stack.external-db-sync.max-duration-ms", maxDurationMs);
-      span.setAttribute("stack.external-db-sync.stop-when-idle", stopWhenIdle);
       span.setAttribute("stack.external-db-sync.poll-interval-ms", pollIntervalMs);
       span.setAttribute("stack.external-db-sync.poller-claim-limit", pollerClaimLimit);
-      span.setAttribute("stack.external-db-sync.direct-sync", directSyncEnabled());
       span.setAttribute("stack.external-db-sync.stale-claim-minutes", staleClaimIntervalMinutes);
 
       let totalRequestsProcessed = 0;
@@ -227,6 +214,7 @@ export const GET = createSmartRouteHandler({
             await upstash.batchJSON(batchPayload);
             await deleteOutgoingRequests(requests.map((request) => request.id));
             processSpan.setAttribute("stack.external-db-sync.processed-count", requests.length);
+            console.log(`[Poller] Processed requests: ${requests.length}`);
             return requests.length;
           } catch (error) {
             processSpan.setAttribute("stack.external-db-sync.iteration-error", true);
@@ -238,7 +226,7 @@ export const GET = createSmartRouteHandler({
       }
 
       type PollerIterationResult = {
-        stopReason: "disabled" | "idle" | null,
+        stopReason: "disabled" | null,
         processed: number,
       };
 
@@ -255,12 +243,26 @@ export const GET = createSmartRouteHandler({
             return { stopReason: "disabled", processed: 0 };
           }
 
+          const staleRequests = await globalPrismaClient.$queryRaw<{ id: string, startedFulfillingAt: Date }[]>`
+            SELECT "id", "startedFulfillingAt"
+            FROM "OutgoingRequest"
+            WHERE "startedFulfillingAt" IS NOT NULL
+              AND "startedFulfillingAt" < NOW() - ${STALE_REQUEST_THRESHOLD_MS} * INTERVAL '1 millisecond'
+            LIMIT 10
+          `;
+          iterationSpan.setAttribute("stack.external-db-sync.stale-count", staleRequests.length);
+          if (staleRequests.length > 0) {
+            captureError(
+              "poller-stale-outgoing-requests",
+              new StackAssertionError(
+                `Found ${staleRequests.length} outgoing request(s) with startedFulfillingAt older than ${STALE_REQUEST_THRESHOLD_MS}ms`,
+                { staleRequestIds: staleRequests.map(r => r.id) },
+              ),
+            );
+          }
+
           const pendingRequests = await claimPendingRequests();
           iterationSpan.setAttribute("stack.external-db-sync.pending-count", pendingRequests.length);
-
-          if (stopWhenIdle && pendingRequests.length === 0) {
-            return { stopReason: "idle", processed: 0 };
-          }
 
           const processed = await processRequests(pendingRequests);
           iterationSpan.setAttribute("stack.external-db-sync.processed-count", processed);
