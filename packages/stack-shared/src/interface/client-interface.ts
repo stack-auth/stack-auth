@@ -16,7 +16,7 @@ import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
 import { urlString } from '../utils/urls';
-import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
+import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
@@ -1473,6 +1473,44 @@ export class StackClientInterface {
         },
         body: JSON.stringify({ scope }),
       },
+      session,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Get access token for a specific connected account by provider ID and provider account ID.
+   * This is the preferred method when dealing with multiple accounts of the same provider.
+   */
+  async createProviderAccessTokenByAccount(
+    providerId: string,
+    providerAccountId: string,
+    scope: string,
+    session: InternalSession,
+  ): Promise<ConnectedAccountAccessTokenCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/connected-accounts/me/${encodeURIComponent(providerId)}/${encodeURIComponent(providerAccountId)}/access-token`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ scope }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  /**
+   * List all connected accounts for the current user.
+   */
+  async listConnectedAccounts(
+    session: InternalSession,
+  ): Promise<ConnectedAccountCrud['Client']['List']> {
+    const response = await this.sendClientRequest(
+      `/connected-accounts/me`,
+      { method: "GET" },
       session,
     );
     return await response.json();

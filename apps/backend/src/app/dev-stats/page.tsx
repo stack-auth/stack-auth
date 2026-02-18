@@ -240,56 +240,110 @@ function HealthBadge({ status, label }: { status: HealthStatus, label: string })
 // Mini Sparkline Graph
 // ============================================================================
 
+let _sparklineCounter = 0;
+
 function Sparkline({
   data,
-  width = 200,
-  height = 40,
+  width = 400,
+  height = 80,
   color = "#22d3ee",
   showDots = false,
+  showAxes = false,
+  formatValue = (v: number) => v.toFixed(1),
+  timestamps,
 }: {
   data: number[],
   width?: number,
   height?: number,
   color?: string,
   showDots?: boolean,
+  showAxes?: boolean,
+  formatValue?: (v: number) => string,
+  timestamps?: number[],
 }) {
+  const [gradientId] = useState(() => `sg-${_sparklineCounter++}`);
+
   if (data.length === 0) {
     return (
-      <div style={{ width, height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={{ color: "#64748b", fontSize: "12px" }}>No data</span>
       </div>
     );
   }
 
+  const ml = showAxes ? 52 : 4;
+  const mr = 4;
+  const mt = showAxes ? 8 : 4;
+  const mb = showAxes ? 20 : 4;
+  const cw = width - ml - mr;
+  const ch = height - mt - mb;
+
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
-  const padding = 4;
 
-  const points = data.map((v, i) => {
-    const x = padding + (i / Math.max(data.length - 1, 1)) * (width - padding * 2);
-    const y = height - padding - ((v - min) / range) * (height - padding * 2);
-    return { x, y, v };
-  });
+  const points = data.map((v, i) => ({
+    x: ml + (i / Math.max(data.length - 1, 1)) * cw,
+    y: mt + ch - ((v - min) / range) * ch,
+    v,
+  }));
 
   const pathD = points
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
     .join(" ");
 
+  const yTicks = [
+    { value: max, y: mt },
+    { value: (min + max) / 2, y: mt + ch / 2 },
+    { value: min, y: mt + ch },
+  ];
+
+  const xTicks: { label: string, x: number }[] = [];
+  if (showAxes && timestamps && timestamps.length === data.length && data.length > 1) {
+    const tickCount = Math.min(5, data.length);
+    for (let i = 0; i < tickCount; i++) {
+      const idx = Math.round((i / (tickCount - 1)) * (data.length - 1));
+      const date = new Date(timestamps[idx]);
+      xTicks.push({
+        label: date.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        x: points[idx].x,
+      });
+    }
+  }
+
   return (
-    <svg width={width} height={height} style={{ display: "block" }}>
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ display: "block", width: "100%" }} preserveAspectRatio="xMidYMid meet">
       <defs>
-        <linearGradient id={`sparkline-gradient-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.3" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      {/* Area fill */}
+
+      {showAxes && (
+        <>
+          {yTicks.map((tick, i) => (
+            <g key={`y-${i}`}>
+              <line x1={ml} y1={tick.y} x2={width - mr} y2={tick.y} stroke="rgba(148,163,184,0.12)" strokeWidth="1" strokeDasharray="3,3" />
+              <text x={ml - 6} y={tick.y + 3.5} textAnchor="end" fill="#64748b" fontSize="9" fontFamily="monospace">
+                {formatValue(tick.value)}
+              </text>
+            </g>
+          ))}
+          {xTicks.map((tick, i) => (
+            <text key={`x-${i}`} x={tick.x} y={height - 2} textAnchor="middle" fill="#64748b" fontSize="8" fontFamily="monospace">
+              {tick.label}
+            </text>
+          ))}
+          <line x1={ml} y1={mt} x2={ml} y2={mt + ch} stroke="rgba(148,163,184,0.2)" strokeWidth="1" />
+          <line x1={ml} y1={mt + ch} x2={width - mr} y2={mt + ch} stroke="rgba(148,163,184,0.2)" strokeWidth="1" />
+        </>
+      )}
+
       <path
-        d={`${pathD} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`}
-        fill={`url(#sparkline-gradient-${color.replace("#", "")})`}
+        d={`${pathD} L ${points[points.length - 1].x} ${mt + ch} L ${points[0].x} ${mt + ch} Z`}
+        fill={`url(#${gradientId})`}
       />
-      {/* Line */}
       <path
         d={pathD}
         fill="none"
@@ -298,7 +352,6 @@ function Sparkline({
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Dots */}
       {showDots && points.map((p, i) => (
         <circle key={i} cx={p.x} cy={p.y} r="3" fill={color} />
       ))}
@@ -320,6 +373,8 @@ function PerfMetricCard({
   statusLabel,
   color,
   thresholds,
+  timestamps,
+  formatValue,
 }: {
   title: string,
   description: string,
@@ -330,6 +385,8 @@ function PerfMetricCard({
   statusLabel: string,
   color: string,
   thresholds: { good: string, warning: string, critical: string },
+  timestamps?: number[],
+  formatValue?: (v: number) => string,
 }) {
   const [showThresholds, setShowThresholds] = useState(false);
 
@@ -361,7 +418,7 @@ function PerfMetricCard({
       </div>
 
       <div style={{ marginTop: "4px" }}>
-        <Sparkline data={history} width={280} height={50} color={color} />
+        <Sparkline data={history} color={color} showAxes formatValue={formatValue} timestamps={timestamps} />
       </div>
 
       <button
@@ -515,14 +572,22 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
 }) {
   const [viewMode, setViewMode] = useState<"graphs" | "table">("graphs");
 
-  // Extract time series for graphs
-  const eluHistory = perfHistory.map(s => s.eventLoopUtilization?.utilization ?? 0).slice(-60);
-  const p50History = perfHistory.map(s => s.eventLoopDelay?.p50Ms ?? 0).slice(-60);
-  const p99History = perfHistory.map(s => s.eventLoopDelay?.p99Ms ?? 0).slice(-60);
-  const heapHistory = perfHistory.map(s => s.memory.heapUsedMB).slice(-60);
-  const rssHistory = perfHistory.map(s => s.memory.rssMB).slice(-60);
-  const pgTotalHistory = perfHistory.map(s => s.pgPool?.total ?? 0).slice(-60);
-  const pgWaitingHistory = perfHistory.map(s => s.pgPool?.waiting ?? 0).slice(-60);
+  const sliced = perfHistory.slice(-60);
+  const timestamps = sliced.map(s => s.timestamp);
+
+  const eluHistory = sliced.map(s => s.eventLoopUtilization?.utilization ?? 0);
+  const p50History = sliced.map(s => s.eventLoopDelay?.p50Ms ?? 0);
+  const p99History = sliced.map(s => s.eventLoopDelay?.p99Ms ?? 0);
+  const heapHistory = sliced.map(s => s.memory.heapUsedMB);
+  const heapTotalHistory = sliced.map(s => s.memory.heapTotalMB);
+  const rssHistory = sliced.map(s => s.memory.rssMB);
+  const externalHistory = sliced.map(s => s.memory.externalMB);
+  const arrayBuffersHistory = sliced.map(s => s.memory.arrayBuffersMB);
+  const pgTotalHistory = sliced.map(s => s.pgPool?.total ?? 0);
+  const pgWaitingHistory = sliced.map(s => s.pgPool?.waiting ?? 0);
+
+  const latestEventLoopDelay = perfCurrent.eventLoopDelay ?? sliced[sliced.length - 1]?.eventLoopDelay ?? null;
+  const latestELU = perfCurrent.eventLoopUtilization ?? sliced[sliced.length - 1]?.eventLoopUtilization ?? null;
 
   // Calculate health status for each metric
   function getELUStatus(elu: number | null): { status: HealthStatus, label: string } {
@@ -552,8 +617,8 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
     return { status: "critical", label: "High" };
   }
 
-  const eluStatus = getELUStatus(perfCurrent.eventLoopUtilization?.utilization ?? null);
-  const delayStatus = getEventLoopDelayStatus(perfCurrent.eventLoopDelay?.p99Ms ?? null);
+  const eluStatus = getELUStatus(latestELU?.utilization ?? null);
+  const delayStatus = getEventLoopDelayStatus(latestEventLoopDelay?.p99Ms ?? null);
   const pgStatus = getPgPoolStatus(perfCurrent.pgPool?.waiting ?? 0, perfCurrent.pgPool?.total ?? 0);
   const memStatus = getMemoryStatus(perfCurrent.memory.rssMB);
 
@@ -628,12 +693,14 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
             <PerfMetricCard
               title="Event Loop Utilization"
               description="Ratio of time the event loop is busy (0-1)"
-              value={perfCurrent.eventLoopUtilization?.utilization ?? null}
+              value={latestELU?.utilization ?? null}
               unit=""
               history={eluHistory}
               status={eluStatus.status}
               statusLabel={eluStatus.label}
               color="#22d3ee"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(2)}
               thresholds={{
                 good: "< 0.5 — Plenty of headroom for handling requests",
                 warning: "0.5–0.8 — Getting busy, consider optimizing",
@@ -643,12 +710,14 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
             <PerfMetricCard
               title="Event Loop Delay (p50)"
               description="Median delay between scheduled callbacks"
-              value={perfCurrent.eventLoopDelay?.p50Ms ?? null}
+              value={latestEventLoopDelay?.p50Ms ?? null}
               unit="ms"
               history={p50History}
               status={delayStatus.status}
               statusLabel={delayStatus.label}
               color="#a78bfa"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(1)}
               thresholds={{
                 good: "< 20ms — Callbacks run promptly",
                 warning: "20–100ms — Some blocking occurring",
@@ -658,12 +727,14 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
             <PerfMetricCard
               title="Event Loop Delay (p99)"
               description="99th percentile callback delay"
-              value={perfCurrent.eventLoopDelay?.p99Ms ?? null}
+              value={latestEventLoopDelay?.p99Ms ?? null}
               unit="ms"
               history={p99History}
               status={delayStatus.status}
               statusLabel={delayStatus.label}
               color="#f472b6"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(1)}
               thresholds={{
                 good: "< 50ms — Rare spikes only",
                 warning: "50–200ms — Occasional blocking spikes",
@@ -686,10 +757,29 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
               status={memStatus.status}
               statusLabel={memStatus.label}
               color="#34d399"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(0)}
               thresholds={{
                 good: "< 200 MB — Normal for development",
                 warning: "200–500 MB — Getting large, watch for leaks",
                 critical: "> 500 MB — May cause GC pressure",
+              }}
+            />
+            <PerfMetricCard
+              title="Heap Total"
+              description="Total V8 heap size allocated"
+              value={perfCurrent.memory.heapTotalMB}
+              unit="MB"
+              history={heapTotalHistory}
+              status={memStatus.status}
+              statusLabel={memStatus.label}
+              color="#2dd4bf"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(0)}
+              thresholds={{
+                good: "< 300 MB — Normal allocation",
+                warning: "300–600 MB — Growing, watch for leaks",
+                critical: "> 600 MB — High heap allocation",
               }}
             />
             <PerfMetricCard
@@ -701,10 +791,46 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
               status={memStatus.status}
               statusLabel={memStatus.label}
               color="#fb923c"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(0)}
               thresholds={{
                 good: "< 500 MB — Normal footprint",
                 warning: "500–1000 MB — Getting heavy",
                 critical: "> 1000 MB — Very large, may impact system",
+              }}
+            />
+            <PerfMetricCard
+              title="External"
+              description="Memory used by C++ objects bound to JS (e.g. Buffers)"
+              value={perfCurrent.memory.externalMB}
+              unit="MB"
+              history={externalHistory}
+              status={memStatus.status}
+              statusLabel={memStatus.label}
+              color="#818cf8"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(1)}
+              thresholds={{
+                good: "< 50 MB — Normal",
+                warning: "50–200 MB — Elevated native allocations",
+                critical: "> 200 MB — High native memory usage",
+              }}
+            />
+            <PerfMetricCard
+              title="ArrayBuffers"
+              description="Memory allocated for ArrayBuffers and SharedArrayBuffers"
+              value={perfCurrent.memory.arrayBuffersMB}
+              unit="MB"
+              history={arrayBuffersHistory}
+              status={memStatus.status}
+              statusLabel={memStatus.label}
+              color="#f9a8d4"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(1)}
+              thresholds={{
+                good: "< 20 MB — Normal",
+                warning: "20–100 MB — Elevated buffer usage",
+                critical: "> 100 MB — High buffer allocations",
               }}
             />
           </div>
@@ -723,6 +849,8 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
               status={pgStatus.status}
               statusLabel={pgStatus.label}
               color="#60a5fa"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(0)}
               thresholds={{
                 good: "< 15 — Pool is sized appropriately",
                 warning: "15–23 — Nearing max pool size (25)",
@@ -738,6 +866,8 @@ function PerformanceSection({ perfCurrent, perfHistory, perfAggregate }: {
               status={pgStatus.status}
               statusLabel={pgStatus.label}
               color="#f87171"
+              timestamps={timestamps}
+              formatValue={(v) => v.toFixed(0)}
               thresholds={{
                 good: "0 — No queue, instant connection",
                 warning: "1–5 — Short queue, slight delays",

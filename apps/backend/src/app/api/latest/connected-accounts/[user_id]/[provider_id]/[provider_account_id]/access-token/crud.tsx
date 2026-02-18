@@ -8,12 +8,13 @@ import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { retrieveOrRefreshAccessToken } from "../../../access-token-helpers";
+import { retrieveOrRefreshAccessToken } from "../../../../access-token-helpers";
 
 
-export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => createCrudHandlers(connectedAccountAccessTokenCrud, {
+export const connectedAccountAccessTokenByAccountCrudHandlers = createLazyProxy(() => createCrudHandlers(connectedAccountAccessTokenCrud, {
   paramsSchema: yupObject({
     provider_id: yupString().defined(),
+    provider_account_id: yupString().defined(),
     user_id: userIdOrMeSchema.defined(),
   }),
   async onCreate({ auth, data, params }) {
@@ -33,24 +34,28 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     }
 
     const user = await usersCrudHandlers.adminRead({ tenancy: auth.tenancy, user_id: params.user_id });
-    if (!user.oauth_providers.map(x => x.id).includes(params.provider_id)) {
+
+    const matchingProvider = user.oauth_providers.find(
+      p => p.id === params.provider_id && p.account_id === params.provider_account_id
+    );
+    if (!matchingProvider) {
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
     const providerInstance = await getProvider(provider);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    // Legacy endpoint: search tokens across ALL accounts for this provider and user
-    const oauthAccounts = await prisma.projectUserOAuthAccount.findMany({
+    const oauthAccount = await prisma.projectUserOAuthAccount.findFirst({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
         configOAuthProviderId: params.provider_id,
+        providerAccountId: params.provider_account_id,
+        allowConnectedAccounts: true,
       },
-      select: { id: true },
     });
 
-    if (oauthAccounts.length === 0) {
+    if (!oauthAccount) {
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
@@ -58,11 +63,12 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
       prisma,
       providerInstance,
       tenancyId: auth.tenancy.id,
-      oauthAccountIds: oauthAccounts.map(a => a.id),
+      oauthAccountIds: [oauthAccount.id],
       scope: data.scope,
       errorContext: {
         tenancyId: auth.tenancy.id,
         providerId: params.provider_id,
+        providerAccountId: params.provider_account_id,
         userId: params.user_id,
         scope: data.scope,
       },
