@@ -778,7 +778,7 @@ Implementation:
      - redirect_uri=<redirectUrl - must match getOAuthUrl exactly>
      - code_verifier=<codeVerifier>
      - client_id=<projectId>
-   - client_secret=<publishableClientKey | publishableClientKeyNotNecessarySentinel>
+     - client_secret=<publishableClientKey | publishableClientKeyNotNecessarySentinel>
 
    Response on success:
      { 

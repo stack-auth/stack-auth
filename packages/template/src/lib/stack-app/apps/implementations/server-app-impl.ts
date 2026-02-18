@@ -392,7 +392,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        ...(publishableClientKey ? { publishableClientKey } : {}),
+        ...(publishableClientKey != null ? { publishableClientKey } : {}),
         secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
     });

@@ -6,7 +6,7 @@
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "temp_project_require_publishable_client_key_idx"
 ON /* SCHEMA_NAME_SENTINEL */."Project"
-(("projectConfigOverride" #>> '{project,requirePublishableClientKey}'));
+USING GIN ("projectConfigOverride");
 -- SPLIT_STATEMENT_SENTINEL
 
 -- Set requirePublishableClientKey to true for existing projects when missing
@@ -16,13 +16,13 @@ ON /* SCHEMA_NAME_SENTINEL */."Project"
 WITH to_update AS (
   SELECT "id"
   FROM "Project"
-  WHERE ("projectConfigOverride" #>> '{project,requirePublishableClientKey}') IS NULL
+  WHERE NOT "projectConfigOverride" ? 'project.requirePublishableClientKey'
   LIMIT 10000
 )
 UPDATE "Project" p
 SET "projectConfigOverride" = jsonb_set(
   COALESCE(p."projectConfigOverride", '{}'::jsonb),
-  '{project,requirePublishableClientKey}',
+  '{project.requirePublishableClientKey}',
   'true'::jsonb,
   true
 )

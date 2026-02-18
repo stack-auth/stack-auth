@@ -423,7 +423,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,
-        ...(publishableClientKey ? { publishableClientKey } : {}),
+        ...(publishableClientKey != null ? { publishableClientKey } : {}),
         prepareRequest: async () => {
           await cookies?.(); // THIS_LINE_PLATFORM next
         }
@@ -2870,7 +2870,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return {
           baseUrl: this._options.baseUrl,
           projectId: this.projectId,
-          ...(publishableClientKey ? { publishableClientKey } : {}),
+          ...(publishableClientKey != null ? { publishableClientKey } : {}),
           tokenStore: this._tokenStoreInit,
           urls: this._urlOptions,
           oauthScopesOnSignIn: this._oauthScopesOnSignIn,
