@@ -1325,6 +1325,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       stackable: item.product.stackable,
       type: item.type,
       subscription: item.subscription ? {
+        subscriptionId: item.subscription.subscription_id,
         currentPeriodEnd: item.subscription.current_period_end ? new Date(item.subscription.current_period_end) : null,
         cancelAtPeriodEnd: item.subscription.cancel_at_period_end,
         isCancelable: item.subscription.is_cancelable,
@@ -2032,7 +2033,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return this._customerInvoicesFromResponse(response);
   }
 
-  async cancelSubscription(options: { productId: string } | { productId: string, teamId: string }): Promise<void> {
+  async cancelSubscription(options: { productId: string, subscriptionId?: string } | { productId: string, subscriptionId?: string, teamId: string }): Promise<void> {
     const session = await this._getSession();
     const user = await this.getUser();
     if (!user) {
@@ -2044,6 +2045,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       customer_type: customerType,
       customer_id: customerId,
       product_id: options.productId,
+      subscription_id: options.subscriptionId,
     }, session);
     if (customerType === "user") {
       await this._userProductsCache.invalidateWhere(([cachedSession, userId]) => cachedSession === session && userId === customerId);
