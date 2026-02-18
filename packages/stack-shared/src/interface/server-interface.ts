@@ -431,13 +431,13 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
-  async listServerUserTeamInvitations(userId: string): Promise<TeamInvitationCrud['Client']['Read'][]> {
+  async listServerUserTeamInvitations(userId: string): Promise<TeamInvitationCrud['Server']['Read'][]> {
     const response = await this.sendServerRequest(
       "/team-invitations?" + new URLSearchParams({ user_id: userId }),
       {},
       null,
     );
-    const result = await response.json() as TeamInvitationCrud['Client']['List'];
+    const result = await response.json() as TeamInvitationCrud['Server']['List'];
     return result.items;
   }
 
