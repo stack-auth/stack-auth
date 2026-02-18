@@ -384,7 +384,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             allow_sign_in: data.allowSignIn,
             allow_connected_accounts: data.allowConnectedAccounts,
           });
-          await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+          await Promise.all([
+            app._serverOAuthProvidersCache.refresh([crud.user_id]),
+            app._serverUserConnectedAccountsCache.refresh([crud.user_id]),
+          ]);
           return Result.ok(undefined);
         } catch (error) {
           if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
@@ -396,7 +399,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async delete() {
         await app._interface.deleteServerOAuthProvider(crud.user_id, crud.id);
-        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+        await Promise.all([
+          app._serverOAuthProvidersCache.refresh([crud.user_id]),
+          app._serverUserConnectedAccountsCache.refresh([crud.user_id]),
+        ]);
       },
     };
   }
@@ -1557,6 +1563,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
       this._serverOAuthProvidersCache.refreshWhere(() => true),
+      this._serverUserConnectedAccountsCache.refreshWhere(() => true),
     ]);
   }
 
@@ -1578,7 +1585,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         allow_connected_accounts: options.allowConnectedAccounts,
       });
 
-      await this._serverOAuthProvidersCache.refresh([options.userId]);
+      await Promise.all([
+        this._serverOAuthProvidersCache.refresh([options.userId]),
+        this._serverUserConnectedAccountsCache.refresh([options.userId]),
+      ]);
       return Result.ok(this._serverOAuthProviderFromCrud(crud));
     } catch (error) {
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {

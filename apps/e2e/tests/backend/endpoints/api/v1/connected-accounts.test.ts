@@ -500,7 +500,7 @@ it("should get access token by provider and provider_account_id", async ({ expec
   expect(verifyResponse.status).toBe(200);
 });
 
-it("should return 404 when trying to get access token for non-existent provider_account_id", async ({ expect }) => {
+it("should return 400 when trying to get access token for non-existent provider_account_id", async ({ expect }) => {
   await Auth.OAuth.signIn();
 
   const response = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/non-existent-account-id/access-token", {

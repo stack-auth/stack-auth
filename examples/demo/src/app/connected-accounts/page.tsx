@@ -206,8 +206,6 @@ function LinkNewAccountDemo() {
       await user.linkConnectedAccount(provider, {
         scopes: scopes ? scopes.split(",").map(s => s.trim()) : undefined,
       });
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
     } finally {
       setLoading(false);
     }
