@@ -1,5 +1,6 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
+import { getProductVersion } from "@/lib/product-versions";
 import { getStackStripe, getStripeForAccount, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
@@ -183,7 +184,12 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const product = JSON.parse(metadata.product || "{}");
+
+    const productVersionId = metadata.productVersionId as string | undefined;
+    const product = productVersionId
+      ? (await getProductVersion({ prisma, tenancyId: tenancy.id, productVersionId })).productJson
+      : JSON.parse(metadata.product || "{}");
+
     const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
     const stripePaymentIntentId = paymentIntent.id;
     if (!metadata.customerId || !metadata.customerType) {

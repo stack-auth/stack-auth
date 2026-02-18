@@ -99,8 +99,8 @@ model ExternalDbSyncMetadata {
 
   singleton BooleanTrue @unique @default(TRUE)
 
-  sequencerEnabled  Boolean @default(true)
-  pollerEnabled     Boolean @default(true)
+  sequencerEnabled Boolean @default(true)
+  pollerEnabled    Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1003,6 +1003,16 @@ model Subscription {
   @@unique([tenancyId, stripeSubscriptionId])
 }
 
+model ProductVersion {
+  tenancyId        String   @db.Uuid
+  productVersionId String
+  productId        String?
+  productJson      Json
+  createdAt        DateTime @default(now())
+
+  @@id([tenancyId, productVersionId])
+}
+
 model ItemQuantityChange {
   id           String       @default(uuid()) @db.Uuid
   tenancyId    String       @db.Uuid
@@ -1088,7 +1098,7 @@ model OutgoingRequest {
 
   qstashOptions       Json
   startedFulfillingAt DateTime?
-  deduplicationKey String?
+  deduplicationKey    String?
 
   @@unique([deduplicationKey])
   @@index([startedFulfillingAt, createdAt])

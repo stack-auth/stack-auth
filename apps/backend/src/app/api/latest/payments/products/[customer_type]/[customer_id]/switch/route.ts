@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -169,6 +170,13 @@ export const POST = createSmartRouteHandler({
 
     const stripeProduct = await stripe.products.create({ name: toProduct.displayName || "Subscription" });
 
+    const productVersionId = await upsertProductVersion({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      productId: body.to_product_id,
+      productJson: toProduct,
+    });
+
     if (subscription?.stripeSubscriptionId) {
       const existingStripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
       if (existingStripeSub.items.data.length === 0) {
@@ -194,7 +202,7 @@ export const POST = createSmartRouteHandler({
         }],
         metadata: {
           productId: body.to_product_id,
-          product: JSON.stringify(toProduct),
+          productVersionId,
           priceId: selectedPriceId,
         },
       });
@@ -239,7 +247,7 @@ export const POST = createSmartRouteHandler({
         }],
         metadata: {
           productId: body.to_product_id,
-          product: JSON.stringify(toProduct),
+          productVersionId,
           priceId: selectedPriceId,
         },
       });

@@ -1,4 +1,5 @@
 import { CustomerType } from "@/generated/prisma/client";
+import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { InputJsonValue } from "@prisma/client/runtime/client";
@@ -131,16 +132,30 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
     const item = subscription.items.data[0];
     const sanitizedDates = sanitizeStripePeriodDates(item.current_period_start, item.current_period_end);
     const priceId = subscription.metadata.priceId as string | undefined;
-    // old subscriptions were created with offer metadata instead of product metadata
-    const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
-    if (!productString) {
-      throw new StackAssertionError("Stripe subscription metadata missing product or offer", { subscriptionId: subscription.id });
-    }
+
     let productJson: InputJsonValue;
-    try {
-      productJson = JSON.parse(productString);
-    } catch (error) {
-      throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
+    const productVersionId = subscription.metadata.productVersionId as string | undefined;
+    if (productVersionId) {
+      const version = await getProductVersion({
+        prisma,
+        tenancyId: tenancy.id,
+        productVersionId,
+      });
+      productJson = version.productJson as InputJsonValue;
+    } else {
+      // Backward compat: old subscriptions have product JSON directly in metadata or even older subscriptions were created with offer metadata
+      const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
+      if (!productString) {
+        throw new StackAssertionError("Stripe subscription metadata missing productVersionId, product, or offer", {
+          subscriptionId: subscription.id,
+          tenancyId: tenancy.id,
+        });
+      }
+      try {
+        productJson = JSON.parse(productString);
+      } catch (error) {
+        throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
+      }
     }
 
     await prisma.subscription.upsert({
