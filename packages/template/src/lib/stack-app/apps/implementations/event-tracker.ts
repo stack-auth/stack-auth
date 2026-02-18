@@ -61,14 +61,17 @@ export class EventTracker {
     this._teardown();
   }
 
+  clearBuffer() {
+    this._events = [];
+    this._approxBytes = 0;
+  }
+
   private _pushEvent(event: TrackedEvent) {
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }
-
-
   }
 
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {

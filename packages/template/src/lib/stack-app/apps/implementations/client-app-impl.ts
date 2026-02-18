@@ -2715,6 +2715,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _signOut(session: InternalSession, options?: { redirectUrl?: URL | string }): Promise<void> {
+    // Clear analytics buffers before sign-out to prevent cross-user event leakage
+    this._eventTracker?.clearBuffer();
+    this._sessionRecorder?.clearBuffer();
+
     await storeLock.withWriteLock(async () => {
       await this._interface.signOut(session);
       if (options?.redirectUrl) {

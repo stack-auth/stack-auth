@@ -187,6 +187,11 @@ export class SessionRecorder {
     this._stopCurrentRecording();
   }
 
+  clearBuffer() {
+    this._events = [];
+    this._approxBytes = 0;
+  }
+
   private _persistActivity(nowMs: number): StoredSession {
     const stored = getOrRotateSession({ key: this._storageKey, nowMs });
     if (nowMs - this._lastPersistActivity < 5_000) return stored;
@@ -284,8 +289,6 @@ export class SessionRecorder {
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
           runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
         }
-
-
       },
       maskAllInputs: this._replayOptions.maskAllInputs ?? true,
       ...(this._replayOptions.blockClass !== undefined ? { blockClass: this._replayOptions.blockClass } : {}),
