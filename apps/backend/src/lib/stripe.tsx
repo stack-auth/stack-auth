@@ -1,10 +1,10 @@
-import { CustomerType } from "@/generated/prisma/client";
+import { CustomerType, Prisma } from "@/generated/prisma/client";
+import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { InputJsonValue } from "@prisma/client/runtime/client";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
@@ -21,37 +21,39 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
  * Sanitizes subscription period dates from Stripe.
  *
  * The Stripe mock returns hardcoded fixture dates that are invalid (e.g., start in 2030, end in 2000).
- * This function detects invalid dates and replaces them with sensible defaults.
+ * This function detects when end <= start and replaces with sensible defaults.
+ *
+ * We only check the ordering constraint to avoid interfering with legitimate Stripe dates
+ * (e.g., long trials, future billing anchors).
  *
  * @param startTimestamp - Unix timestamp in seconds for period start
  * @param endTimestamp - Unix timestamp in seconds for period end
- * @param intervalMonths - Billing interval in months (default: 1)
+ * @param context - Optional context for error reporting (subscriptionId, tenancyId)
  * @returns Sanitized Date objects for start and end
  */
 export function sanitizeStripePeriodDates(
   startTimestamp: number,
   endTimestamp: number,
-  intervalMonths: number = 1
+  context?: { subscriptionId?: string, tenancyId?: string },
 ): { start: Date, end: Date } {
-  const now = new Date();
   const startDate = new Date(startTimestamp * 1000);
   const endDate = new Date(endTimestamp * 1000);
 
-  const tenYearsMs = 10 * 365 * 24 * 60 * 60 * 1000;
-  const isStartValid = startDate.getTime() > 0 && Math.abs(startDate.getTime() - now.getTime()) < tenYearsMs;
-  const isEndValid = endDate.getTime() > 0 && Math.abs(endDate.getTime() - now.getTime()) < tenYearsMs;
-  const isOrderValid = startDate < endDate;
-
-  if (isStartValid && isEndValid && isOrderValid) {
+  if (startDate < endDate) {
     return { start: startDate, end: endDate };
   }
 
-  // Dates are invalid (likely from Stripe mock), use sensible defaults
-  const defaultStart = now;
-  const defaultEnd = new Date(now);
-  defaultEnd.setMonth(defaultEnd.getMonth() + intervalMonths);
+  // Dates are invalid (likely from Stripe mock where end <= start), use sensible defaults
+  captureError("sanitize-stripe-period-dates", new StackAssertionError(
+    "Invalid Stripe period dates detected (end <= start), using fallback dates",
+    { startTimestamp, endTimestamp, startDate, endDate, useStripeMock, ...context }
+  ));
 
-  return { start: defaultStart, end: defaultEnd };
+  const now = new Date();
+  const defaultEnd = new Date(now);
+  defaultEnd.setMonth(defaultEnd.getMonth() + 1);
+
+  return { start: now, end: defaultEnd };
 }
 
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
@@ -129,18 +131,36 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       continue;
     }
     const item = subscription.items.data[0];
-    const sanitizedDates = sanitizeStripePeriodDates(item.current_period_start, item.current_period_end);
+    const sanitizedDates = sanitizeStripePeriodDates(
+      item.current_period_start,
+      item.current_period_end,
+      { subscriptionId: subscription.id, tenancyId: tenancy.id }
+    );
     const priceId = subscription.metadata.priceId as string | undefined;
-    // old subscriptions were created with offer metadata instead of product metadata
-    const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
-    if (!productString) {
-      throw new StackAssertionError("Stripe subscription metadata missing product or offer", { subscriptionId: subscription.id });
-    }
-    let productJson: InputJsonValue;
-    try {
-      productJson = JSON.parse(productString);
-    } catch (error) {
-      throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
+
+    let productJson: Prisma.InputJsonValue;
+    const productVersionId = subscription.metadata.productVersionId as string | undefined;
+    if (productVersionId) {
+      const version = await getProductVersion({
+        prisma,
+        tenancyId: tenancy.id,
+        productVersionId,
+      });
+      productJson = version.productJson as Prisma.InputJsonValue;
+    } else {
+      // Backward compat: old subscriptions have product JSON directly in metadata or even older subscriptions were created with offer metadata
+      const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
+      if (!productString) {
+        throw new StackAssertionError("Stripe subscription metadata missing productVersionId, product, or offer", {
+          subscriptionId: subscription.id,
+          tenancyId: tenancy.id,
+        });
+      }
+      try {
+        productJson = JSON.parse(productString);
+      } catch (error) {
+        throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
+      }
     }
 
     await prisma.subscription.upsert({

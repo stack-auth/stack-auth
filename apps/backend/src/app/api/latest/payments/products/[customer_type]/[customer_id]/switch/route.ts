@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -169,6 +170,13 @@ export const POST = createSmartRouteHandler({
 
     const stripeProduct = await stripe.products.create({ name: toProduct.displayName || "Subscription" });
 
+    const productVersionId = await upsertProductVersion({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      productId: body.to_product_id,
+      productJson: toProduct,
+    });
+
     if (subscription?.stripeSubscriptionId) {
       const existingStripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
       if (existingStripeSub.items.data.length === 0) {
@@ -194,12 +202,16 @@ export const POST = createSmartRouteHandler({
         }],
         metadata: {
           productId: body.to_product_id,
-          product: JSON.stringify(toProduct),
+          productVersionId,
           priceId: selectedPriceId,
         },
       });
       const updatedSubscription = updated as Stripe.Subscription;
-      const sanitizedUpdateDates = sanitizeStripePeriodDates(existingItem.current_period_start, existingItem.current_period_end);
+      const sanitizedUpdateDates = sanitizeStripePeriodDates(
+        existingItem.current_period_start,
+        existingItem.current_period_end,
+        { subscriptionId: subscription.stripeSubscriptionId, tenancyId: auth.tenancy.id }
+      );
 
       await prisma.subscription.update({
         where: {
@@ -239,7 +251,7 @@ export const POST = createSmartRouteHandler({
         }],
         metadata: {
           productId: body.to_product_id,
-          product: JSON.stringify(toProduct),
+          productVersionId,
           priceId: selectedPriceId,
         },
       });
@@ -248,7 +260,11 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Stripe subscription has no items", { stripeSubscriptionId: createdSubscription.id });
       }
       const createdItem = createdSubscription.items.data[0];
-      const sanitizedCreateDates = sanitizeStripePeriodDates(createdItem.current_period_start, createdItem.current_period_end);
+      const sanitizedCreateDates = sanitizeStripePeriodDates(
+        createdItem.current_period_start,
+        createdItem.current_period_end,
+        { subscriptionId: createdSubscription.id, tenancyId: auth.tenancy.id }
+      );
 
       await prisma.subscription.create({
         data: {
