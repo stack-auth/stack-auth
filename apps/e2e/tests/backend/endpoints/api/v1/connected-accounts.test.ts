@@ -687,7 +687,7 @@ it("should get access token via server access type using provider_account_id", a
 
 it("should forbid client access to other users' connected accounts", async ({ expect }) => {
   // User 1 signs in with OAuth
-  const user1 = await Auth.OAuth.signIn();
+  await Auth.OAuth.signIn();
 
   // Get user 1's ID
   const user1Response = await niceBackendFetch("/api/v1/users/me", {
