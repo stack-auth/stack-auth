@@ -7,9 +7,6 @@ const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
 const MAX_APPROX_BYTES_PER_BATCH = 64_000;
 
-const MAX_PREAUTH_BUFFER_EVENTS = 500;
-const MAX_PREAUTH_BUFFER_BYTES = 500_000;
-
 export type EventTrackerDeps = {
   projectId: string,
   getAccessToken: () => Promise<string | null>,
@@ -30,7 +27,6 @@ export class EventTracker {
   private _events: TrackedEvent[] = [];
   private _approxBytes = 0;
   private _lastKnownAccessToken: string | null = null;
-  private _wasAuthenticated = false;
   private _lastUrl: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
@@ -72,11 +68,7 @@ export class EventTracker {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }
 
-    // Cap pre-auth buffer
-    if (!this._lastKnownAccessToken && (this._events.length > MAX_PREAUTH_BUFFER_EVENTS || this._approxBytes > MAX_PREAUTH_BUFFER_BYTES)) {
-      this._events = [];
-      this._approxBytes = 0;
-    }
+
   }
 
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {
@@ -266,12 +258,6 @@ export class EventTracker {
     }, { noErrorLogging: true });
 
     const hasAuth = !!this._lastKnownAccessToken;
-    // Clear buffer on logout to prevent cross-user event leakage
-    if (this._wasAuthenticated && !hasAuth) {
-      this._events = [];
-      this._approxBytes = 0;
-    }
-    this._wasAuthenticated = hasAuth;
     if (hasAuth && this._events.length > 0) {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }

@@ -443,14 +443,30 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
+    const getAnalyticsAccessToken = async (): Promise<string | null> => {
+      const session = await this._getSession();
+      const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
+      if (tokens?.accessToken.token) {
+        return tokens.accessToken.token;
+      }
+      // No token — create anonymous user so pre-login events aren't lost
+      if (this._hasPersistentTokenStore()) {
+        try {
+          await this._signUpAnonymously();
+          const retrySession = await this._getSession();
+          const retryTokens = await retrySession.getOrFetchLikelyValidTokens(20_000, 75_000);
+          return retryTokens?.accessToken.token ?? null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
-        getAccessToken: async () => {
-          const session = await this._getSession();
-          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
-          return tokens?.accessToken.token ?? null;
-        },
+        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
         },
@@ -462,11 +478,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isBrowserLike() && this.projectId === "internal") {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
-        getAccessToken: async () => {
-          const session = await this._getSession();
-          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
-          return tokens?.accessToken.token ?? null;
-        },
+        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
         },
@@ -2204,7 +2216,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         case undefined:
         case "anonymous-if-exists[deprecated]":
         case "return-null": {
-          // do nothing
+          crud = null;
+          break;
         }
       }
     }
