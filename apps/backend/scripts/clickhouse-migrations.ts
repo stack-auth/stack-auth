@@ -20,6 +20,8 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
   await client.exec({ query: SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL });
+  // Recreate the events view so SELECT * picks up columns added by EVENTS_ADD_REPLAY_COLUMNS_SQL
+  await client.exec({ query: EVENTS_VIEW_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",

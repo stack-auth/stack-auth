@@ -1749,6 +1749,16 @@ const AnalyticsQueryError = createKnownErrorConstructor(
   (json) => [json.error] as const,
 );
 
+const AnalyticsNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_NOT_ENABLED",
+  () => [
+    400,
+    "Analytics is not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
 const DefaultPaymentMethodRequired = createKnownErrorConstructor(
   KnownError,
   "DEFAULT_PAYMENT_METHOD_REQUIRED",
@@ -1914,6 +1924,7 @@ export const KnownErrors = {
   DataVaultStoreHashedKeyDoesNotExist,
   AnalyticsQueryTimeout,
   AnalyticsQueryError,
+  AnalyticsNotEnabled,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
