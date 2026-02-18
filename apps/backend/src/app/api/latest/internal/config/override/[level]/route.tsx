@@ -183,9 +183,10 @@ async function parseAndValidateConfig(
 }
 
 async function warnOnValidationFailure(
-  levelConfig: typeof levelConfigs["branch" | "environment"],
+  levelConfig: typeof levelConfigs["branch" | "environment" | "project"],
   options: { projectId: string, branchId: string, config: any },
 ) {
+  if (!("validate" in levelConfig)) return;
   try {
     const validationResult = await levelConfig.validate(options);
     if (validationResult.status === "error") {
