@@ -16,8 +16,12 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: EVENTS_VIEW_SQL });
   await client.exec({ query: USERS_TABLE_BASE_SQL });
   await client.exec({ query: USERS_VIEW_SQL });
+  await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
+  await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
   await client.exec({ query: SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL });
+  // Recreate the events view so SELECT * picks up columns added by EVENTS_ADD_REPLAY_COLUMNS_SQL
+  await client.exec({ query: EVENTS_VIEW_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",
@@ -175,6 +179,22 @@ CREATE TABLE IF NOT EXISTS analytics_internal._stack_sync_metadata (
 )
 ENGINE ReplacingMergeTree(updated_at)
 ORDER BY (tenancy_id, mapping_name);
+`;
+
+const EVENTS_ADD_REPLAY_COLUMNS_SQL = `
+ALTER TABLE analytics_internal.events
+  ADD COLUMN IF NOT EXISTS refresh_token_id Nullable(String) AFTER team_id,
+  ADD COLUMN IF NOT EXISTS session_replay_id Nullable(String) AFTER refresh_token_id,
+  ADD COLUMN IF NOT EXISTS session_replay_segment_id Nullable(String) AFTER session_replay_id;
+`;
+
+// Backfill refresh_token_id from data.refresh_token_id for existing $token-refresh rows
+const BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL = `
+ALTER TABLE analytics_internal.events
+UPDATE refresh_token_id = data.refresh_token_id::Nullable(String)
+WHERE event_type = '$token-refresh'
+  AND refresh_token_id IS NULL
+  AND data.refresh_token_id::Nullable(String) IS NOT NULL;
 `;
 
 const EXTERNAL_ANALYTICS_DB_SQL = `

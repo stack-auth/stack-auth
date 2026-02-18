@@ -236,6 +236,12 @@ type NormalizeOptions = {
    * - "empty-object": Set the value to an empty object.
    */
   onDotIntoNull?: "like-non-object" | "throw" | "ignore" | "empty-object",
+  /**
+   * If provided, keys that are silently dropped during normalization (when a dot-notation key
+   * references a parent that doesn't exist or is not an object and the behavior is "ignore")
+   * will be pushed to this array.
+   */
+  droppedKeys?: string[],
 }
 
 export class NormalizationError extends Error {
@@ -283,6 +289,7 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
             throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} doesn't exist on the object (or is null).`);
           }
           case "ignore": {
+            options.droppedKeys?.push(key);
             continue outer;
           }
           case "empty-object": {
@@ -298,6 +305,7 @@ export function normalize(c: Config, options: NormalizeOptions = {}): Normalized
             throw new NormalizationError(`Tried to use dot notation to access ${JSON.stringify(key)}, but ${JSON.stringify(keySegment)} is not an object.`);
           }
           case "ignore": {
+            options.droppedKeys?.push(key);
             continue outer;
           }
         }

@@ -1118,6 +1118,13 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     userEmailToId,
   });
 
+  await seedDummySessionReplays({
+    prisma: dummyPrisma,
+    tenancyId: dummyTenancy.id,
+    userEmailToId,
+    targetSessionReplayCount: 75
+  });
+
   console.log('Seeded dummy project data');
 }
 
@@ -1764,4 +1771,66 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   }
 
   console.log('Finished seeding session activity events');
+}
+
+type SessionReplaySeedOptions = {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  userEmailToId: Map<string, string>,
+  targetSessionReplayCount?: number,
+};
+
+async function seedDummySessionReplays(options: SessionReplaySeedOptions) {
+  const {
+    prisma,
+    tenancyId,
+    userEmailToId,
+    targetSessionReplayCount = 250,
+  } = options;
+
+  const existingCount = await prisma.sessionReplay.count({
+    where: {
+      tenancyId,
+    },
+  });
+
+  if (existingCount >= targetSessionReplayCount) {
+    console.log(`Dummy project already has ${existingCount} session replays, skipping seeding`);
+    return;
+  }
+
+  const toCreate = targetSessionReplayCount - existingCount;
+  const userIds = Array.from(userEmailToId.values());
+  if (userIds.length === 0) {
+    throw new Error('Cannot seed session replays: no dummy project users exist');
+  }
+
+  const now = new Date();
+  const twoWeeksAgo = new Date(now);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  for (let i = 0; i < toCreate; i++) {
+    const startedAt = new Date(
+      twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
+    );
+    const durationMs = 10_000 + Math.floor(Math.random() * (20 * 60 * 1000)); // 10s..20m
+    const lastEventAt = new Date(startedAt.getTime() + durationMs);
+    const projectUserId = userIds[Math.floor(Math.random() * userIds.length)]!;
+
+    seeds.push({
+      tenancyId,
+      refreshTokenId: generateUuid(),
+      projectUserId,
+      id: generateUuid(),
+      startedAt,
+      lastEventAt,
+    });
+  }
+
+  await prisma.sessionReplay.createMany({
+    data: seeds,
+  });
+
+  console.log(`Seeded ${toCreate} session replays`);
 }

@@ -23,7 +23,7 @@ You should ALWAYS add new E2E tests when you change the API or SDK interface. Ge
 - **Run some tests**: `pnpm test run <file-filters>`
 
 ### Database Commands
-- **Generate migration**: `pnpm db:migration-gen`
+- **Generate migration**: `pnpm db:migration-gen` — NOTE: don't forget to create tests for the migrations!
 - **Reset database** (rarely used): `pnpm db:reset`
 - **Seed database** (rarely used): `pnpm db:seed`
 - **Initialize database** (rarely used): `pnpm db:init`
@@ -100,8 +100,12 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
 - Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible.
-- When writing database migration files, assume that we have >1,000,000 rows in every table (unless otherwise specified). This means you may have to use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL to avoid running the migration and things like concurrent index builds; see the existing migrations for examples.
+- When writing database migration files, assume that we have >1,000,000 rows in every table (unless otherwise specified). This means you may have to use CONDITIONALLY_REPEAT_MIGRATION_SENTINEL to avoid running the migration and things like concurrent index builds; see the existing migrations for examples. One common pattern is to add a temporary extra boolean column
+- Each migration file runs in its own transaction with a relatively short timeout. Split long-running operations into separate migration files to avoid timeouts. For example, when adding CHECK constraints, use `NOT VALID` in one migration, then `VALIDATE CONSTRAINT` in a separate migration file.
+- Note that each database migration file is executed in a single transaction. Even with the run-outside-transaction sentinel, the transaction will still continue during the entire migration file. If you want to split things up into multiple transactions, put it into their own migration files.
+- When writing database migration files, ALWAYS ALWAYS add tests for all the potential edge cases! See the folder structure of the other migrations to see how that works.
 - **When building frontend code, always carefully deal with loading and error states.** Be very explicit with these; some components make this easy, eg. the button onClick already takes an async callback for loading state, but make sure this is done everywhere, and make sure errors are NEVER just silently swallowed.
+- Any design components you add or modify in the dashboard, update the Playground page accordingly to showcase the changes.
 - Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
 
 ### Code-related

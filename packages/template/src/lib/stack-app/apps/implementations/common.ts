@@ -144,6 +144,11 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 export const defaultBaseUrl = "https://api.stack-auth.com";
+export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
+
+export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
+  return regularBaseUrl === defaultBaseUrl ? defaultAnalyticsBaseUrl : regularBaseUrl;
+}
 
 export type TokenObject = {
   accessToken: string | null,
