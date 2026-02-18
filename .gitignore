@@ -4,6 +4,8 @@ node-compile-cache/
 .envrc
 
 
+debug.log
+
 *.cpuprofile
 
 
