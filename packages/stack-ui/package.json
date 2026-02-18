@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-ui",
-  "version": "2.8.65",
+  "version": "2.8.68",
   "repository": "https://github.com/stack-auth/stack-auth",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

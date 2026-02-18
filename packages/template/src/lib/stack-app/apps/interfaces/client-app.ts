@@ -6,6 +6,7 @@ import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsL
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _StackClientAppImpl } from "../implementations";
+import { AnalyticsOptions } from "../implementations/session-replay";
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
@@ -24,6 +25,12 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
    */
   noAutomaticPrefetch?: boolean,
+
+  /**
+   * Options for analytics and session recording. Replays are disabled by default;
+   * set `{ replays: { enabled: true } }` to opt in.
+   */
+  analytics?: AnalyticsOptions,
 } & (
   { tokenStore: TokenStoreInit<HasTokenStore> } | { tokenStore?: undefined, inheritsFrom: StackClientApp<HasTokenStore, any> }
 ) & (
@@ -93,6 +100,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       toClientJson(): StackClientAppJson<HasTokenStore, ProjectId>,
       setCurrentUser(userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>): void,
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
+      sendSessionReplayBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

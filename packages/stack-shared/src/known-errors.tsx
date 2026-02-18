@@ -84,7 +84,7 @@ export abstract class KnownError extends StatusError {
       }
     }
 
-    throw new Error(`Unknown KnownError code. You may need to update your version of Stack to see more detailed information. ${json.code}: ${json.message}`);
+    throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
   }
 }
 
@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
+      // @ts-ignore legendary comment, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -528,16 +528,26 @@ const UnparsableAccessToken = createKnownErrorConstructor(
 const AccessTokenExpired = createKnownErrorConstructor(
   InvalidAccessToken,
   "ACCESS_TOKEN_EXPIRED",
-  (expiredAt: Date | undefined) => [
+  (expiredAt: Date | undefined, projectId: string | undefined, userId: string | undefined, refreshTokenId: string | undefined) => [
     401,
     deindent`
-      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}
+      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}${projectId ? ` Project ID: ${projectId}.` : ""}${userId ? ` User ID: ${userId}.` : ""}${refreshTokenId ? ` Refresh token ID: ${refreshTokenId}.` : ""}
 
       Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
     `,
-    { expired_at_millis: expiredAt?.getTime() ?? null },
+    {
+      expired_at_millis: expiredAt?.getTime() ?? null,
+      project_id: projectId ?? null,
+      user_id: userId ?? null,
+      refresh_token_id: refreshTokenId ?? null,
+    },
   ] as const,
-  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
+  (json: any) => [
+    json.expired_at_millis ? new Date(json.expired_at_millis) : undefined,
+    json.project_id ?? undefined,
+    json.user_id ?? undefined,
+    json.refresh_token_id ?? undefined,
+  ] as const,
 );
 
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
@@ -653,7 +663,7 @@ const UserNotFound = createKnownErrorConstructor(
 const RestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
     {
@@ -721,9 +731,9 @@ const SignUpRejected = createKnownErrorConstructor(
   "SIGN_UP_REJECTED",
   (message?: string) => [
     403,
-    message ?? "Your sign up was rejected. Please contact us for more information.",
+    message ?? "Your sign up was rejected by an administrator's sign-up rule.",
     {
-      message: message ?? "Your sign up was rejected. Please contact us for more information.",
+      message: message ?? "Your sign up was rejected by an administrator's sign-up rule.",
     },
   ] as const,
   (json: any) => [json.message] as const,
@@ -1487,7 +1497,6 @@ const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
-
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",

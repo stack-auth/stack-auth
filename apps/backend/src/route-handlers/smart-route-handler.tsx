@@ -105,16 +105,18 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           // request duration warning
           const allowedLongRequestPaths = [
             "/api/latest/internal/email-queue-step",
-            "/api/v1/internal/analytics/query",
             "/api/latest/internal/analytics/query",
             "/health/email",
-            "/api/v1/internal/metrics",
             "/api/latest/internal/metrics",
             "/api/latest/internal/external-db-sync/poller",
             "/api/latest/internal/external-db-sync/sequencer",
             "/api/latest/internal/external-db-sync/sync-engine",
           ];
-          const warnAfterSeconds = allowedLongRequestPaths.includes(req.nextUrl.pathname) ? 180 : 12;
+          const allAllowedLongRequestPaths = [
+            ...allowedLongRequestPaths,
+            ...allowedLongRequestPaths.map(path => path.replace(/^\/api\/latest\//, "/api/v1/")),
+          ];
+          const warnAfterSeconds = allAllowedLongRequestPaths.includes(req.nextUrl.pathname) ? 240 : 12;
           runAsynchronously(async () => {
             await wait(warnAfterSeconds * 1000);
             if (!hasRequestFinished) {

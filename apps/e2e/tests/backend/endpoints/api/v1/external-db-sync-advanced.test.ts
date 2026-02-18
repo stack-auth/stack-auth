@@ -1,3 +1,5 @@
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
@@ -18,6 +20,40 @@ import {
 } from './external-db-sync-utils';
 
 const COMPLEX_SEQUENCE_TIMEOUT = TEST_TIMEOUT * 2 + 30_000;
+
+async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+  return await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body,
+  });
+}
+
+async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
+  // ensure we definitely have project keys that don't expire (unlike an admin access token)
+  await InternalApiKey.createAndSetProjectKeys();
+
+  const timeoutMs = 180_000;
+  const intervalMs = 2_000;
+  const start = performance.now();
+
+  let response;
+  while (performance.now() - start < timeoutMs) {
+    response = await runQueryForCurrentProject({
+      query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
+      params: { email },
+    });
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    if (response.body.result.length === 1 && response.body.result[0].display_name === expectedDisplayName) {
+      return response;
+    }
+    await wait(intervalMs);
+  }
+
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
+}
 
 describe.sequential('External DB Sync - Advanced Tests', () => {
   let dbManager: TestDbManager;
@@ -1126,4 +1162,39 @@ $$;`);
       await internalClient.end();
     }
   }, HIGH_VOLUME_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Configures a project with a bad postgres connection string (simulating postgres being down).
+   * - Creates a user and verifies it still syncs to ClickHouse despite the postgres failure.
+   * - Then configures a separate project with a valid postgres DB and verifies postgres sync works
+   *   even though ClickHouse sync runs independently in the same cycle.
+   *
+   * Why it matters:
+   * - Proves that ClickHouse and postgres sync targets are independent: a failure in one
+   *   does not block the other from completing successfully.
+   */
+  test('Cross-DB resilience: postgres down does not block ClickHouse sync', async () => {
+    const badConnectionString = 'postgresql://invalid:invalid@invalid:5432/invalid';
+
+    // Create a project with only a bad postgres DB — ClickHouse syncs automatically via env var
+    await createProjectWithExternalDb({
+      bad_pg: {
+        type: 'postgres',
+        connectionString: badConnectionString,
+      },
+    });
+
+    const email = 'cross-db-resilience@example.com';
+    const user = await User.create({ primary_email: email });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { display_name: 'Cross DB User' },
+    });
+
+    // ClickHouse should still receive the data even though postgres sync fails
+    await waitForClickhouseUser(email, 'Cross DB User');
+
+  }, TEST_TIMEOUT);
 });

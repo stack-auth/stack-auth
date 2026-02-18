@@ -22,7 +22,7 @@ public struct User: @unchecked Sendable {
     public let oauthProviders: [OAuthProviderInfo]
     
     public struct RestrictedReason: Sendable {
-        public let type: String // "anonymous" | "email_not_verified"
+        public let type: String
     }
     
     public struct OAuthProviderInfo: Sendable {

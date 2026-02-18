@@ -25,7 +25,7 @@ export function SimpleTooltip(props: {
   );
 
   return (
-    <Tooltip open={props.disabled ? false : undefined}>
+    <Tooltip delayDuration={0} open={props.disabled ? false : undefined} disableHoverableContent={false}>
       <TooltipTrigger asChild>
         {props.inline ? (
           <span className={cn(props.className)}>
@@ -38,7 +38,7 @@ export function SimpleTooltip(props: {
         )}
       </TooltipTrigger>
       {props.tooltip && <TooltipPortal>
-        <TooltipContent>
+        <TooltipContent className="pointer-events-auto">
           <div className="max-w-60 text-center text-wrap whitespace-pre-wrap">
             {props.tooltip}
           </div>

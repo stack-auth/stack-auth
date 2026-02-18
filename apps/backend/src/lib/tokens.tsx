@@ -1,18 +1,19 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
+import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { KnownErrors } from '@stackframe/stack-shared';
-import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
-import { SystemEventTypes, getEndUserIpInfoForEvent, logEvent } from './events';
+import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -25,9 +26,7 @@ const accessTokenSchema = yupObject({
   exp: yupNumber().defined(),
   isAnonymous: yupBoolean().defined(),
   isRestricted: yupBoolean().defined(),
-  restrictedReason: yupObject({
-    type: yupString().oneOf(["anonymous", "email_not_verified"] as const).defined(),
-  }).nullable().defined(),
+  restrictedReason: restrictedReasonSchema.nullable().defined(),
 }).defined();
 
 export const oauthCookieSchema = yupObject({
@@ -104,7 +103,14 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
-        return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
+        const error = new KnownErrors.AccessTokenExpired(
+          decoded?.exp ? new Date(decoded.exp * 1000) : undefined,
+          decoded?.aud?.toString().split(":")[0],
+          decoded?.sub ?? undefined,
+          (decoded?.refresh_token_id ?? decoded?.refreshTokenId) as string | undefined,
+        );
+        console.warn(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
+        return Result.error(error);
       } else if (error instanceof JOSEError) {
         console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
         return Result.error(new KnownErrors.UnparsableAccessToken());
@@ -117,7 +123,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
     // Legacy tokens default to non-restricted; also, anonymous users are always restricted
     const isRestricted = (payload.is_restricted as boolean | undefined) ?? isAnonymous;
     // For legacy anonymous tokens, infer restrictedReason as { type: "anonymous" }
-    const restrictedReason = (payload.restricted_reason as { type: "anonymous" | "email_not_verified" } | null | undefined)
+    const restrictedReason = (payload.restricted_reason as RestrictedReason | null | undefined)
       ?? (isAnonymous ? { type: "anonymous" as const } : null);
 
     // Anonymous users must be restricted
@@ -272,7 +278,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
-      teamId: "",
+      teamId: undefined,
     }
   );
 
@@ -284,9 +290,12 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       branchId: options.tenancy.branchId,
       userId: options.refreshTokenObj.projectUserId,
       refreshTokenId: options.refreshTokenObj.id,
-      organizationId: null,
       isAnonymous: user.is_anonymous,
+      teamId: undefined,
       ipInfo,
+    },
+    {
+      refreshTokenId: options.refreshTokenObj.id,
     }
   );
 
@@ -304,6 +313,22 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,
   };
+
+  // Validate the payload matches the accessTokenSchema before signing, to catch inconsistencies early
+  try {
+    await accessTokenSchema.validate({
+      projectId: options.tenancy.project.id,
+      userId: options.refreshTokenObj.projectUserId,
+      branchId: options.tenancy.branchId,
+      refreshTokenId: options.refreshTokenObj.id,
+      exp: 0, // placeholder, actual exp is set by signJWT
+      isAnonymous: user.is_anonymous,
+      isRestricted: user.is_restricted,
+      restrictedReason: user.restricted_reason,
+    });
+  } catch (error) {
+    captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new StackAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
+  }
 
   const userType = getUserType(user.is_anonymous, user.is_restricted);
   return await signJWT({

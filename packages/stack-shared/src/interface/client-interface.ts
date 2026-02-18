@@ -42,7 +42,7 @@ export type ClientInterfaceOptions = {
 } & ({
   publishableClientKey: string,
 } | {
-  projectOwnerSession: InternalSession,
+  projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
 export class StackClientInterface {
@@ -244,6 +244,28 @@ export class StackClientInterface {
     return session;
   }
 
+  async sendSessionReplayBatch(
+    body: string,
+    session: InternalSession | null,
+    options: { keepalive: boolean },
+  ): Promise<Result<Response, Error>> {
+    try {
+      const response = await this.sendClientRequest(
+        "/session-replays/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: options.keepalive,
+        },
+        session,
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
   protected async sendClientRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
     path: string,
     requestOptions: RequestInit,
@@ -286,8 +308,25 @@ export class StackClientInterface {
      */
     let tokenObj = await session.getOrFetchLikelyValidTokens(20_000, null);
 
-    let adminSession = "projectOwnerSession" in this.options ? this.options.projectOwnerSession : null;
-    let adminTokenObj = adminSession ? await adminSession.getOrFetchLikelyValidTokens(20_000, null) : null;
+    let adminSession: InternalSession | null = null;
+    let adminTokenObj: { accessToken: AccessToken, refreshToken: RefreshToken | null } | null = null;
+
+    if ("projectOwnerSession" in this.options) {
+      const projectOwnerSession = this.options.projectOwnerSession;
+
+      if (typeof projectOwnerSession === 'function') {
+        const accessTokenString = await projectOwnerSession();
+        if (accessTokenString) {
+          const accessToken = AccessToken.createIfValid(accessTokenString);
+          if (accessToken) {
+            adminTokenObj = { accessToken, refreshToken: null };
+          }
+        }
+      } else {
+        adminSession = projectOwnerSession;
+        adminTokenObj = await projectOwnerSession.getOrFetchLikelyValidTokens(20_000, null);
+      }
+    }
 
     // all requests should be dynamic to prevent Next.js caching
     await this.options.prepareRequest?.();
@@ -1156,6 +1195,29 @@ export class StackClientInterface {
     );
     const result = await response.json() as TeamInvitationCrud['Client']['List'];
     return result.items;
+  }
+
+  async listCurrentUserTeamInvitations(
+    session: InternalSession,
+  ): Promise<TeamInvitationCrud['Client']['Read'][]> {
+    const response = await this.sendClientRequest(
+      "/team-invitations?" + new URLSearchParams({ user_id: 'me' }),
+      {},
+      session,
+    );
+    const result = await response.json() as TeamInvitationCrud['Client']['List'];
+    return result.items;
+  }
+
+  async acceptTeamInvitationById(
+    invitationId: string,
+    session: InternalSession,
+  ) {
+    await this.sendClientRequest(
+      urlString`/team-invitations/${invitationId}/accept?` + new URLSearchParams({ user_id: 'me' }),
+      { method: "POST" },
+      session,
+    );
   }
 
   async revokeTeamInvitation(
