@@ -148,6 +148,9 @@ export class SessionRecorder {
   private _lastPersistActivity = 0;
   private _recording = false;
   private _rrwebModule: typeof import("rrweb") | null = null;
+  private _lastBrowserSessionId: string | null = null;
+  private _takingSnapshot = false;
+  private _flushInProgress = false;
   private _lastKnownAccessToken: string | null = null;
   private _wasAuthenticated = false;
   private readonly _sessionReplaySegmentId: string;
@@ -188,17 +191,24 @@ export class SessionRecorder {
     this._stopCurrentRecording();
   }
 
-  private _persistActivity(nowMs: number) {
+  private _persistActivity(nowMs: number): StoredSession {
     const stored = getOrRotateSession({ key: this._storageKey, nowMs });
-    if (nowMs - this._lastPersistActivity < 5_000) return;
+    if (nowMs - this._lastPersistActivity < 5_000) return stored;
     this._lastPersistActivity = nowMs;
     const updated: StoredSession = { ...stored, last_activity_ms: nowMs };
     localStorage.setItem(this._storageKey, JSON.stringify(updated));
+    return stored;
   }
 
   private async _flush(options: { keepalive: boolean }) {
     if (!this._lastKnownAccessToken) return;
     if (this._events.length === 0) return;
+    // Prevent concurrent in-flight HTTP requests. When a flush is already
+    // in-flight, a second batch could race on the server (both call
+    // findRecentSessionReplay before either upsert commits) and create
+    // duplicate SessionReplay records. Events stay in _events and will be
+    // picked up by the next tick or batch-size check.
+    if (this._flushInProgress) return;
 
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, nowMs });
@@ -216,18 +226,23 @@ export class SessionRecorder {
     this._events = [];
     this._approxBytes = 0;
 
-    const res = await this._deps.sendBatch(
-      JSON.stringify(payload),
-      { keepalive: options.keepalive },
-    );
+    this._flushInProgress = true;
+    try {
+      const res = await this._deps.sendBatch(
+        JSON.stringify(payload),
+        { keepalive: options.keepalive },
+      );
 
-    if (res.status === "error") {
-      console.warn("SessionRecorder flush failed:", res.error);
-      return;
-    }
+      if (res.status === "error") {
+        console.warn("SessionRecorder flush failed:", res.error);
+        return;
+      }
 
-    if (!res.data.ok) {
-      console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+      if (!res.data.ok) {
+        console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+      }
+    } finally {
+      this._flushInProgress = false;
     }
   }
 
@@ -250,7 +265,23 @@ export class SessionRecorder {
     this._stopRecording = this._rrwebModule.record({
       emit: (event) => {
         const nowMs = Date.now();
-        this._persistActivity(nowMs);
+        const stored = this._persistActivity(nowMs);
+
+        // Detect session rotation: after 3+ minutes idle, getOrRotateSession
+        // creates a new session ID. We need to inject a FullSnapshot so the
+        // new server-side SessionReplay record is playable.
+        if (this._lastBrowserSessionId === null) {
+          this._lastBrowserSessionId = stored.session_id;
+        } else if (stored.session_id !== this._lastBrowserSessionId && !this._takingSnapshot) {
+          this._lastBrowserSessionId = stored.session_id;
+          // Inject a FullSnapshot for the new session (calls emit synchronously)
+          this._takingSnapshot = true;
+          try {
+            this._rrwebModule!.record.takeFullSnapshot();
+          } finally {
+            this._takingSnapshot = false;
+          }
+        }
 
         this._events.push(event);
         this._approxBytes += JSON.stringify(event).length;
