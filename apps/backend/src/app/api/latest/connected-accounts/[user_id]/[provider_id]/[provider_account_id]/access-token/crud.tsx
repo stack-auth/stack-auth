@@ -63,7 +63,7 @@ export const connectedAccountAccessTokenByAccountCrudHandlers = createLazyProxy(
       prisma,
       providerInstance,
       tenancyId: auth.tenancy.id,
-      oauthAccountId: oauthAccount.id,
+      oauthAccountIds: [oauthAccount.id],
       scope: data.scope,
       errorContext: {
         tenancyId: auth.tenancy.id,

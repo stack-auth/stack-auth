@@ -1143,8 +1143,12 @@ const OAuthAccessTokenNotAvailable = createKnownErrorConstructor(
   (provider: string, details: string) => [
     400,
     `Failed to retrieve an OAuth access token for the connected account (provider: ${provider}). ${details}`,
+    {
+      provider,
+      details,
+    } as const,
   ] as const,
-  (json: any) => [json.provider, json.details] as [string, string],
+  (json: any) => [json.provider, json.details] as const,
 );
 
 const OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(

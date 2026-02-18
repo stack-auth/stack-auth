@@ -962,6 +962,186 @@ it("should get access token using the legacy endpoint (by provider only)", async
   expect(response.body.access_token).toBeDefined();
 });
 
+it("should get access token via legacy endpoint when first account has no tokens but second does", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  // Get user ID
+  const userResponse = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "server",
+    method: "GET",
+  });
+  const userId = userResponse.body.id;
+
+  // Add a second spotify account (manually created, has no OAuth tokens)
+  await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: userId,
+      provider_config_id: "spotify",
+      email: "second@example.com",
+      account_id: "second-spotify-no-tokens",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+
+  // Verify user now has 2 spotify accounts
+  const listResponse = await niceBackendFetch("/api/v1/connected-accounts/me", {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(listResponse.body.items.length).toBe(2);
+
+  // Legacy endpoint should still succeed — it searches tokens across ALL accounts
+  // for the provider, so even though the manually-created account has no tokens,
+  // the original OAuth-signed-in account does
+  const response = await niceBackendFetch("/api/v1/connected-accounts/me/spotify/access-token", {
+    accessType: "client",
+    method: "POST",
+    body: { scope: "openid" },
+  });
+  expect(response.status).toBe(201);
+  expect(response.body.access_token).toBeDefined();
+});
+
+it("should show account in oauth-providers but not connected-accounts when allow_connected_accounts is false", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const userResponse = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "server",
+    method: "GET",
+  });
+  const userId = userResponse.body.id;
+
+  // Add an account that allows sign-in but not connected accounts
+  await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: userId,
+      provider_config_id: "spotify",
+      email: "signin-only@example.com",
+      account_id: "signin-only-account",
+      allow_sign_in: false,
+      allow_connected_accounts: false,
+    },
+  });
+
+  // oauth-providers list should include ALL accounts (no filter on allowConnectedAccounts)
+  const oauthResponse = await niceBackendFetch(`/api/v1/oauth-providers?user_id=${userId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(oauthResponse.status).toBe(200);
+  const oauthAccountIds = oauthResponse.body.items.map((i: any) => i.account_id);
+  expect(oauthAccountIds).toContain("signin-only-account");
+
+  // connected-accounts list should NOT include the account with allow_connected_accounts: false
+  const connectedResponse = await niceBackendFetch(`/api/v1/connected-accounts/${userId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  expect(connectedResponse.status).toBe(200);
+  const connectedAccountIds = connectedResponse.body.items.map((i: any) => i.provider_account_id);
+  expect(connectedAccountIds).not.toContain("signin-only-account");
+});
+
+it("should reflect allow_connected_accounts toggle in connected-accounts list after oauth-provider update", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const userResponse = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "server",
+    method: "GET",
+  });
+  const userId = userResponse.body.id;
+
+  // Add an account with allow_connected_accounts: true
+  const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: userId,
+      provider_config_id: "spotify",
+      email: "toggle-test@example.com",
+      account_id: "toggle-test-account",
+      allow_sign_in: false,
+      allow_connected_accounts: true,
+    },
+  });
+  expect(createResponse.status).toBe(201);
+  const providerId = createResponse.body.id;
+
+  // Should appear in connected-accounts
+  let connectedResponse = await niceBackendFetch(`/api/v1/connected-accounts/${userId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  let connectedAccountIds = connectedResponse.body.items.map((i: any) => i.provider_account_id);
+  expect(connectedAccountIds).toContain("toggle-test-account");
+
+  // Toggle allow_connected_accounts to false
+  await niceBackendFetch(`/api/v1/oauth-providers/${userId}/${providerId}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      allow_connected_accounts: false,
+    },
+  });
+
+  // Should no longer appear in connected-accounts
+  connectedResponse = await niceBackendFetch(`/api/v1/connected-accounts/${userId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  connectedAccountIds = connectedResponse.body.items.map((i: any) => i.provider_account_id);
+  expect(connectedAccountIds).not.toContain("toggle-test-account");
+
+  // But should still appear in oauth-providers
+  const oauthResponse = await niceBackendFetch(`/api/v1/oauth-providers?user_id=${userId}`, {
+    accessType: "server",
+    method: "GET",
+  });
+  const oauthAccountIds = oauthResponse.body.items.map((i: any) => i.account_id);
+  expect(oauthAccountIds).toContain("toggle-test-account");
+});
+
+it("should not return access token for account with allow_connected_accounts false via per-account endpoint", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+
+  const userResponse = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "server",
+    method: "GET",
+  });
+  const userId = userResponse.body.id;
+
+  // Add an account with allow_connected_accounts: false
+  await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: userId,
+      provider_config_id: "spotify",
+      email: "no-connected@example.com",
+      account_id: "no-connected-token-account",
+      allow_sign_in: false,
+      allow_connected_accounts: false,
+    },
+  });
+
+  // Trying to get access token via the per-account endpoint should fail
+  const response = await niceBackendFetch(
+    `/api/v1/connected-accounts/${userId}/spotify/no-connected-token-account/access-token`,
+    {
+      accessType: "server",
+      method: "POST",
+      body: { scope: "openid" },
+    }
+  );
+  expect(response.status).toBe(400);
+  expect(response.body.code).toBe("OAUTH_CONNECTION_NOT_CONNECTED_TO_USER");
+});
+
 it("should return correct user_id in listed connected accounts", async ({ expect }) => {
   await Auth.OAuth.signIn();
 

@@ -6,26 +6,30 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 
 /**
- * Retrieves a valid access token for a given OAuth account, or refreshes one if needed.
+ * Retrieves a valid access token for one or more OAuth accounts, or refreshes one if needed.
  *
- * This is the shared core logic used by both the legacy per-provider endpoint
- * and the new per-account endpoint.
+ * When multiple account IDs are provided (legacy per-provider endpoint), tokens are searched
+ * across all accounts. When a single ID is provided (per-account endpoint), only that account
+ * is checked.
  */
 export async function retrieveOrRefreshAccessToken(options: {
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   providerInstance: OAuthBaseProvider,
   tenancyId: string,
-  oauthAccountId: string,
+  oauthAccountIds: string[],
   scope: string | undefined,
   errorContext: Record<string, unknown>,
 }): Promise<{ access_token: string }> {
-  const { prisma, providerInstance, tenancyId, oauthAccountId, scope, errorContext } = options;
+  const { prisma, providerInstance, tenancyId, oauthAccountIds, scope, errorContext } = options;
+  const accountIdFilter = oauthAccountIds.length === 1
+    ? { oauthAccountId: oauthAccountIds[0] }
+    : { oauthAccountId: { in: oauthAccountIds } };
 
   // ====================== retrieve access token if it exists ======================
   const accessTokens = await prisma.oAuthAccessToken.findMany({
     where: {
       tenancyId,
-      oauthAccountId,
+      ...accountIdFilter,
       expiresAt: {
         gt: new Date(Date.now() + 5 * 60 * 1000),
       },
@@ -50,7 +54,7 @@ export async function retrieveOrRefreshAccessToken(options: {
   const refreshTokens = await prisma.oAuthToken.findMany({
     where: {
       tenancyId,
-      oauthAccountId,
+      ...accountIdFilter,
       isValid: true,
     },
   });
@@ -93,7 +97,7 @@ export async function retrieveOrRefreshAccessToken(options: {
         data: {
           tenancyId,
           accessToken: tokenSet.accessToken,
-          oauthAccountId,
+          oauthAccountId: token.oauthAccountId,
           scopes: token.scopes,
           expiresAt: tokenSet.accessTokenExpiredAt,
         },
@@ -108,7 +112,7 @@ export async function retrieveOrRefreshAccessToken(options: {
           data: {
             tenancyId,
             refreshToken: tokenSet.refreshToken,
-            oauthAccountId,
+            oauthAccountId: token.oauthAccountId,
             scopes: token.scopes,
           },
         });

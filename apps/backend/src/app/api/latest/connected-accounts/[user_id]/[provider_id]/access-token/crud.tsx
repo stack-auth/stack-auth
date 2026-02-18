@@ -40,16 +40,17 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     const providerInstance = await getProvider(provider);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    // Legacy endpoint: find any OAuth account for this provider and user
-    const oauthAccount = await prisma.projectUserOAuthAccount.findFirst({
+    // Legacy endpoint: search tokens across ALL accounts for this provider and user
+    const oauthAccounts = await prisma.projectUserOAuthAccount.findMany({
       where: {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
         configOAuthProviderId: params.provider_id,
       },
+      select: { id: true },
     });
 
-    if (!oauthAccount) {
+    if (oauthAccounts.length === 0) {
       throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
@@ -57,7 +58,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
       prisma,
       providerInstance,
       tenancyId: auth.tenancy.id,
-      oauthAccountId: oauthAccount.id,
+      oauthAccountIds: oauthAccounts.map(a => a.id),
       scope: data.scope,
       errorContext: {
         tenancyId: auth.tenancy.id,
