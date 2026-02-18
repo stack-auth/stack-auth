@@ -3,6 +3,7 @@
 import { DashboardRuntimeCodegen } from "@/lib/ai-dashboard/contracts";
 import { getPublicEnvVar } from "@/lib/env";
 import { useUser } from "@stackframe/stack";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import packageJson from "../../../../package.json";
@@ -12,6 +13,10 @@ type DashboardArtifact = {
   projectId: string,
   runtimeCodegen: DashboardRuntimeCodegen,
 };
+
+function html(strings: TemplateStringsArray, ...values: unknown[]): string {
+  return strings.reduce<string>((result, str, i) => result + str + (values[i] ?? ''), '');
+}
 
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): string {
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
@@ -445,11 +450,13 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
         runAsynchronously(async () => {
           const accessToken = await user.getAccessToken();
           if (!accessToken) {
+            const err = new Error('[DashboardSandboxHost] Failed to get access token: access token is null');
+            captureError('dashboard-sandbox-host', err);
             event.source?.postMessage({
               type: 'stack-access-token-response',
               requestId,
               accessToken: null,
-              error: '[DashboardSandboxHost] Failed to get access token: access token is null',
+              error: err.message,
             }, { targetOrigin: '*' });
             return;
           }
