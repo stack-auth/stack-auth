@@ -16,7 +16,8 @@ USING GIN ("projectConfigOverride");
 WITH to_update AS (
   SELECT "id"
   FROM "Project"
-  WHERE NOT "projectConfigOverride" ? 'project.requirePublishableClientKey'
+  WHERE "projectConfigOverride" IS NULL
+     OR NOT "projectConfigOverride" ? 'project.requirePublishableClientKey'
   LIMIT 10000
 )
 UPDATE "Project" p
