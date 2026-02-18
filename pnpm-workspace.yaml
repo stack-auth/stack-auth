@@ -9,6 +9,7 @@ packages:
 minimumReleaseAge: 2880
 minimumReleaseAgeExclude:
 - ai
+- '@ai-sdk/anthropic'
 - '@ai-sdk/openai'
 - '@ai-sdk/react'
 - '@ai-sdk/provider'

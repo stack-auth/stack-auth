@@ -4,12 +4,14 @@
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
-    "clean": "rimraf .next && rimraf node_modules",
+    "clean": "rimraf .next && rimraf node_modules && rimraf src/generated",
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",
-    "dev": "next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
-    "build": "next build",
+    "dev": "concurrently -n \"dev,bundle-type-defs\" -k \"next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01\" \"pnpm run bundle-type-definitions:watch\"",
+    "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
+    "bundle-type-definitions:watch": "tsx watch --clear-screen=false scripts/bundle-type-definitions.ts",
+    "build": "pnpm run bundle-type-definitions && next build",
     "docker-build": "next build --experimental-build-mode compile",
     "analyze-bundle": "next experimental-analyze",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
@@ -17,6 +19,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.41",
     "@ai-sdk/openai": "^3.0.25",
     "@ai-sdk/react": "^3.0.72",
     "@assistant-ui/react": "^0.10.24",
@@ -115,6 +118,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/three": "^0.169.0",
     "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
     "glob": "^10.4.1",
     "import-in-the-middle": "1.14.2",
     "postcss": "^8.4.38",
