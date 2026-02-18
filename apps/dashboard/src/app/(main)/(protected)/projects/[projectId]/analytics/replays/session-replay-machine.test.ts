@@ -557,16 +557,18 @@ describe("session-replay-machine", () => {
 
   describe("TOGGLE_PLAY_PAUSE", () => {
     it("pauses from playing", () => {
-      const state = twoTabReadyState({ playbackMode: "playing" });
+      const state = twoTabReadyState({ playbackMode: "playing", currentGlobalTimeMsForUi: 2500 });
       const { state: s, effects } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
       expect(s.playbackMode).toBe("paused");
+      expect(s.pausedAtGlobalMs).toBe(2500);
       expect(hasEffect(effects, "pause_all")).toBe(true);
     });
 
     it("pauses from gap_fast_forward", () => {
-      const state = twoTabReadyState({ playbackMode: "gap_fast_forward" });
+      const state = twoTabReadyState({ playbackMode: "gap_fast_forward", currentGlobalTimeMsForUi: 3000 });
       const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
       expect(s.playbackMode).toBe("paused");
+      expect(s.pausedAtGlobalMs).toBe(3000);
       expect(s.gapFastForward).toBeNull();
     });
 
@@ -575,9 +577,11 @@ describe("session-replay-machine", () => {
         playbackMode: "buffering",
         bufferingAtGlobalMs: 1000,
         autoResumeAfterBuffering: true,
+        currentGlobalTimeMsForUi: 1500,
       });
       const { state: s } = dispatch(state, { type: "TOGGLE_PLAY_PAUSE", nowMs: 1000 });
       expect(s.playbackMode).toBe("paused");
+      expect(s.pausedAtGlobalMs).toBe(1500);
       expect(s.bufferingAtGlobalMs).toBeNull();
       expect(s.autoResumeAfterBuffering).toBe(false);
     });

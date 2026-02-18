@@ -761,6 +761,7 @@ export function replayReducer(state: ReplayState, action: ReplayAction): Reducer
           state: {
             ...state,
             playbackMode: "paused",
+            pausedAtGlobalMs: state.currentGlobalTimeMsForUi,
             gapFastForward: null,
             bufferingAtGlobalMs: null,
             autoResumeAfterBuffering: false,
