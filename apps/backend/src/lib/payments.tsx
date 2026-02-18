@@ -810,6 +810,7 @@ export type OwnedProduct = {
   createdAt: Date,
   sourceId: string,
   subscription: null | {
+    subscriptionId: string | null,
     currentPeriodEnd: Date | null,
     cancelAtPeriodEnd: boolean,
     isCancelable: boolean,
@@ -862,9 +863,10 @@ export async function getOwnedProductsForCustomer(options: {
       createdAt: subscription.createdAt,
       sourceId,
       subscription: {
+        subscriptionId: subscription.id,
         currentPeriodEnd: subscription.currentPeriodEnd,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-        isCancelable: subscription.id !== null && subscription.productId !== null,
+        isCancelable: subscription.id !== null,
       },
     });
   }
