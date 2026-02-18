@@ -1,4 +1,4 @@
-name: DB migrations are backwards-compatible
+name: DB migration compat
 
 on:
   push:
@@ -48,7 +48,7 @@ jobs:
           fi
 
   backwards-compatibility:
-    name: Test migrations with ${{ needs.check-migrations-changed.outputs.base_branch }} branch code
+    name: Back-compat — Current branch migrations with ${{ needs.check-migrations-changed.outputs.base_branch }} branch code
     needs: check-migrations-changed
     if: needs.check-migrations-changed.outputs.migrations_changed == 'true'
     runs-on: ubicloud-standard-8
@@ -236,7 +236,7 @@ jobs:
         run: docker compose -f docker/dependencies/docker.compose.yaml logs
 
   forward-compatibility:
-    name: Test current branch code with ${{ needs.check-migrations-changed.outputs.base_branch }} branch migrations
+    name: Forward-compat — Current branch code with ${{ needs.check-migrations-changed.outputs.base_branch }} branch migrations
     needs: [check-migrations-changed, backwards-compatibility]
     if: always() && needs.backwards-compatibility.result == 'failure'
     runs-on: ubicloud-standard-8
