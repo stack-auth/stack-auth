@@ -24,7 +24,7 @@ import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentUserOptions } from "../../common";
-import { OAuthConnection } from "../../connected-accounts";
+import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
@@ -83,6 +83,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   >(async ([userId, recursive]) => {
     return await this._interface.listServerProjectPermissions({ userId, recursive }, null);
   });
+  /** @deprecated Used by legacy getConnectedAccount(providerId) — uses old per-provider access token endpoint */
   private readonly _serverUserOAuthConnectionAccessTokensCache = createCache<[string, string, string], { accessToken: string } | null>(
     async ([userId, providerId, scope]) => {
       try {
@@ -96,7 +97,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
   );
-  private readonly _serverUserOAuthConnectionCache = createCache<[string, ProviderType, string, boolean], OAuthConnection | null>(
+  /** @deprecated Used by legacy getConnectedAccount(providerId) — combines token check + redirect */
+  private readonly _serverUserOAuthConnectionCache = createCache<[string, ProviderType, string, boolean], DeprecatedOAuthConnection | null>(
     async ([userId, providerId, scope, redirect]) => {
       return await this._getUserOAuthConnectionCacheFn({
         getUser: async () => Result.orThrow(await this._serverUserCache.getOrWait([userId], "write-only")),
@@ -109,6 +111,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         redirect,
         session: null,
       });
+    }
+  );
+  private readonly _serverUserConnectedAccountsCache = createCache<[string], OAuthConnection[]>(
+    async ([userId]) => {
+      const result = await this._interface.listServerConnectedAccounts(userId);
+      return result.items.map((item) => this._createServerOAuthConnectionFromCrudItem(userId, item));
+    }
+  );
+  private readonly _serverUserOAuthConnectionAccessTokensByAccountCache = createCache<[string, string, string, string], { accessToken: string } | null>(
+    async ([userId, providerId, providerAccountId, scope]) => {
+      try {
+        const result = await this._interface.createServerProviderAccessTokenByAccount(userId, providerId, providerAccountId, scope || "");
+        return { accessToken: result.access_token };
+      } catch (err) {
+        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
+          throw err;
+        }
+      }
+      return null;
     }
   );
   private readonly _serverTeamMemberProfilesCache = createCache<[string], TeamMemberProfilesCrud['Server']['Read'][]>(
@@ -363,7 +384,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             allow_sign_in: data.allowSignIn,
             allow_connected_accounts: data.allowConnectedAccounts,
           });
-          await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+          await Promise.all([
+            app._serverOAuthProvidersCache.refresh([crud.user_id]),
+            app._serverUserConnectedAccountsCache.refresh([crud.user_id]),
+          ]);
           return Result.ok(undefined);
         } catch (error) {
           if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
@@ -375,7 +399,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async delete() {
         await app._interface.deleteServerOAuthProvider(crud.user_id, crud.id);
-        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+        await Promise.all([
+          app._serverOAuthProvidersCache.refresh([crud.user_id]),
+          app._serverUserConnectedAccountsCache.refresh([crud.user_id]),
+        ]);
       },
     };
   }
@@ -423,22 +450,99 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _createServerOAuthConnectionFromCrudItem(
+    userId: string,
+    item: { provider: string, provider_account_id: string },
+  ): OAuthConnection {
+    const app = this;
+    const providerId = item.provider;
+    const providerAccountId = item.provider_account_id;
+    return {
+      id: providerId, // deprecated, for backward compat
+      provider: providerId,
+      providerAccountId,
+      async getAccessToken(options?: { scopes?: string[] }) {
+        const scopeString = options?.scopes?.join(" ") ?? "";
+        const result = Result.orThrow(await app._serverUserOAuthConnectionAccessTokensByAccountCache.getOrWait([userId, providerId, providerAccountId, scopeString], "write-only"));
+        if (!result) {
+          const scopeDetail = scopeString ? `The requested scopes [${scopeString}] are not available on the existing token.` : "The OAuth refresh token has likely been revoked or expired.";
+          return Result.error(new KnownErrors.OAuthAccessTokenNotAvailable(providerId, `${scopeDetail} The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`));
+        }
+        return Result.ok(result);
+      },
+      // IF_PLATFORM react-like
+      useAccessToken(options?: { scopes?: string[] }) {
+        const scopeString = options?.scopes?.join(" ") ?? "";
+        const result = useAsyncCache(app._serverUserOAuthConnectionAccessTokensByAccountCache, [userId, providerId, providerAccountId, scopeString] as const, "connection.useAccessToken()");
+        if (!result) {
+          const scopeDetail = scopeString ? `The requested scopes [${scopeString}] are not available on the existing token.` : "The OAuth refresh token has likely been revoked or expired.";
+          return Result.error(new KnownErrors.OAuthAccessTokenNotAvailable(providerId, `${scopeDetail} The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`));
+        }
+        return Result.ok(result);
+      },
+      // END_PLATFORM
+    };
+  }
+
   protected _serverUserFromCrud(crud: UsersCrud['Server']['Read']): ServerUser {
     const app = this;
 
-    async function getConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): Promise<OAuthConnection | null>;
-    async function getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>;
-    async function getConnectedAccount(id: ProviderType, options?: { or?: 'redirect', scopes?: string[] }): Promise<OAuthConnection | null> {
-      const scopeString = options?.scopes?.join(" ");
-      return Result.orThrow(await app._serverUserOAuthConnectionCache.getOrWait([crud.id, id, scopeString || "", options?.or === 'redirect'], "write-only"));
+    /** @deprecated The string-based overloads are deprecated. Use `getConnectedAccount({ provider, providerAccountId })` for existence check. */
+    async function getConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): Promise<DeprecatedOAuthConnection | null>;
+    async function getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<DeprecatedOAuthConnection>;
+    async function getConnectedAccount(account: { provider: string, providerAccountId: string }): Promise<OAuthConnection | null>;
+    async function getConnectedAccount(
+      idOrAccount: ProviderType | { provider: string, providerAccountId: string },
+      options?: { or?: 'redirect', scopes?: string[] }
+    ): Promise<DeprecatedOAuthConnection | OAuthConnection | null> {
+      const scopeString = options?.scopes?.join(" ") ?? "";
+
+      // Check if it's the new object-based API
+      if (typeof idOrAccount === 'object' && 'provider' in idOrAccount && 'providerAccountId' in idOrAccount) {
+        const { provider, providerAccountId } = idOrAccount;
+        // Check if the account exists in the connected accounts list
+        const connectedAccounts = Result.orThrow(await app._serverUserConnectedAccountsCache.getOrWait([crud.id], "write-only"));
+        const found = connectedAccounts.find(
+          a => a.provider === provider && a.providerAccountId === providerAccountId
+        );
+        if (!found) {
+          return null;
+        }
+        return found;
+      }
+
+      // Original behavior: by provider ID (returns first match)
+      return Result.orThrow(await app._serverUserOAuthConnectionCache.getOrWait([crud.id, idOrAccount, scopeString, options?.or === 'redirect'], "write-only"));
     }
 
     // IF_PLATFORM react-like
-    function useConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): OAuthConnection | null;
-    function useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection;
-    function useConnectedAccount(id: ProviderType, options?: { or?: 'redirect', scopes?: string[] }): OAuthConnection | null {
-      const scopeString = options?.scopes?.join(" ");
-      return useAsyncCache(app._serverUserOAuthConnectionCache, [crud.id, id, scopeString || "", options?.or === 'redirect'] as const, "user.useConnectedAccount()");
+    /** @deprecated The string-based overloads are deprecated. Use `useConnectedAccount({ provider, providerAccountId })` for existence check. */
+    function useConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): DeprecatedOAuthConnection | null;
+    function useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): DeprecatedOAuthConnection;
+    function useConnectedAccount(account: { provider: string, providerAccountId: string }): OAuthConnection | null;
+    function useConnectedAccount(
+      idOrAccount: ProviderType | { provider: string, providerAccountId: string },
+      options?: { or?: 'redirect', scopes?: string[] }
+    ): DeprecatedOAuthConnection | OAuthConnection | null {
+      const scopeString = options?.scopes?.join(" ") ?? "";
+
+      // Check if it's the new object-based API
+      if (typeof idOrAccount === 'object' && 'provider' in idOrAccount && 'providerAccountId' in idOrAccount) {
+        const { provider, providerAccountId } = idOrAccount;
+        // Check if the account exists in the connected accounts list
+        const connectedAccounts = useAsyncCache(
+          app._serverUserConnectedAccountsCache,
+          [crud.id] as const,
+          "user.useConnectedAccount()"
+        );
+        const found = connectedAccounts.find(
+          a => a.provider === provider && a.providerAccountId === providerAccountId
+        );
+        return found ?? null;
+      }
+
+      // Original behavior: by provider ID (returns first match)
+      return useAsyncCache(app._serverUserOAuthConnectionCache, [crud.id, idOrAccount, scopeString, options?.or === 'redirect'] as const, "user.useConnectedAccount()");
     }
     // END_PLATFORM
 
@@ -533,6 +637,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like
+      async listConnectedAccounts() {
+        return Result.orThrow(await app._serverUserConnectedAccountsCache.getOrWait([crud.id], "write-only"));
+      },
+      // IF_PLATFORM react-like
+      useConnectedAccounts() {
+        return useAsyncCache(app._serverUserConnectedAccountsCache, [crud.id] as const, "user.useConnectedAccounts()");
+      },
+      // END_PLATFORM
+      async linkConnectedAccount(): Promise<void> {
+        throw new StackAssertionError("linkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+      },
+      async getOrLinkConnectedAccount(): Promise<OAuthConnection> {
+        throw new StackAssertionError("getOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+      },
+      // IF_PLATFORM react-like
+      useOrLinkConnectedAccount(): OAuthConnection {
+        throw new StackAssertionError("useOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+      },
+      // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
@@ -1440,6 +1563,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
       this._serverOAuthProvidersCache.refreshWhere(() => true),
+      this._serverUserConnectedAccountsCache.refreshWhere(() => true),
     ]);
   }
 
@@ -1461,7 +1585,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         allow_connected_accounts: options.allowConnectedAccounts,
       });
 
-      await this._serverOAuthProvidersCache.refresh([options.userId]);
+      await Promise.all([
+        this._serverOAuthProvidersCache.refresh([options.userId]),
+        this._serverUserConnectedAccountsCache.refresh([options.userId]),
+      ]);
       return Result.ok(this._serverOAuthProviderFromCrud(crud));
     } catch (error) {
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
