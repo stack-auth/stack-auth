@@ -1,4 +1,4 @@
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getClickhouseExternalClient } from "@/lib/clickhouse";
 import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -38,11 +38,11 @@ async function loadClickQualifiedReplayIds(options: {
   branchId: string,
   clickCountMin: number,
 }): Promise<string[]> {
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseExternalClient();
   const result = await clickhouseClient.query({
     query: `
       SELECT session_replay_id
-      FROM analytics_internal.events
+      FROM default.events
       WHERE project_id = {projectId:String}
         AND branch_id = {branchId:String}
         AND event_type = '$click'
@@ -53,6 +53,10 @@ async function loadClickQualifiedReplayIds(options: {
       projectId: options.projectId,
       branchId: options.branchId,
       clickCountMin: options.clickCountMin,
+    },
+    clickhouse_settings: {
+      SQL_project_id: options.projectId,
+      SQL_branch_id: options.branchId,
     },
     format: "JSONEachRow",
   });
