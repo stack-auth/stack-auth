@@ -295,7 +295,8 @@ export function CollapsibleTypesSection({
   type,
   property,
   signature,
-  isReactHook = false
+  isReactHook = false,
+  isDeprecated = false
 }: {
     children: ReactNode,
     className?: string,
@@ -304,6 +305,7 @@ export function CollapsibleTypesSection({
     property: string,
     signature?: string,
     isReactHook?: boolean,
+    isDeprecated?: boolean,
   }) {
   // Generate anchor ID for types (e.g., currentUser.id -> currentuserid)
   const typeName = type.replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -404,6 +406,11 @@ export function CollapsibleTypesSection({
           </div>
 
           <div className="flex items-center gap-2">
+            {isDeprecated && (
+              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 dark:bg-yellow-950/50 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800/50">
+                Deprecated
+              </span>
+            )}
             {isReactHook && (
               <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
                 React

@@ -71,7 +71,22 @@ export type Auth = AuthLike<{}> & {
   readonly _internalSession: InternalSession,
 
   /**
-   * The current user's session.
+   * The current user's session, providing access to authentication tokens.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * // In React components, use the hook for reactive updates
+   * const { accessToken } = user.currentSession.useTokens();
+   * // Or use the async version
+   * const tokens = await user.currentSession.getTokens();
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const { accessToken } = await user.currentSession.getTokens();
+   * ```
    */
   readonly currentSession: {
     getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
@@ -105,85 +120,322 @@ export type Auth = AuthLike<{}> & {
 export type BaseUser = {
   /**
    * The unique identifier of the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * console.log(user.id);
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * console.log(user.id);
+   * ```
    */
   readonly id: string,
 
   /**
    * The display name of the user. The user can modify this value.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * return <div>Hello, {user.displayName ?? 'Guest'}</div>;
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * console.log(`User: ${user.displayName}`);
+   * ```
    */
   readonly displayName: string | null,
 
   /**
    * The user's primary email address.
    *
-   * Note: This might NOT be unique across multiple users, so always use `id` for unique identification.
+   * @note This might NOT be unique across multiple users, so always use `id` for unique identification.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * return <div>Email: {user.primaryEmail ?? 'Not set'}</div>;
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (user.primaryEmail) {
+   *   await sendEmail(user.primaryEmail, 'Welcome!');
+   * }
+   * ```
    */
   readonly primaryEmail: string | null,
 
   /**
    * Whether the primary email of the user is verified.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (!user.primaryEmailVerified) {
+   *   return <div>Please verify your email to continue.</div>;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (!user.primaryEmailVerified) {
+   *   // Send reminder email
+   * }
+   * ```
    */
   readonly primaryEmailVerified: boolean,
 
   /**
    * The profile image URL of the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * return <img src={user.profileImageUrl ?? '/default-avatar.png'} alt="Profile" />;
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const avatarUrl = user.profileImageUrl ?? 'https://example.com/default.png';
+   * ```
    */
   readonly profileImageUrl: string | null,
 
   /**
    * The date and time when the user signed up.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * return <div>Member since {user.signedUpAt.toLocaleDateString()}</div>;
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const daysSinceSignup = Math.floor((Date.now() - user.signedUpAt.getTime()) / 86400000);
+   * ```
    */
   readonly signedUpAt: Date,
 
   /**
    * Custom metadata that can be read and written by the client.
+   *
+   * @note Use this for user preferences or non-sensitive data. For sensitive data, use `serverMetadata` instead.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const theme = user.clientMetadata?.theme ?? 'light';
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const preferences = user.clientMetadata?.preferences ?? {};
+   * ```
    */
   readonly clientMetadata: any,
 
   /**
    * Read-only metadata that can only be set from the server.
+   *
+   * @note Useful for storing data that the client can read but not modify, such as subscription tiers or feature flags.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const isPremium = user.clientReadOnlyMetadata?.tier === 'premium';
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.update({ clientReadOnlyMetadata: { tier: 'premium' } });
+   * ```
    */
   readonly clientReadOnlyMetadata: any,
 
   /**
    * Whether the user has a password set.
+   *
+   * @note Users who signed up via OAuth may not have a password.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (!user.hasPassword) {
+   *   return <button>Set a password</button>;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const authMethods = user.hasPassword ? ['password'] : [];
+   * ```
    */
   readonly hasPassword: boolean,
 
   /**
    * Whether OTP/magic link authentication is enabled for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * return <div>Magic link login: {user.otpAuthEnabled ? 'Enabled' : 'Disabled'}</div>;
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (user.otpAuthEnabled) {
+   *   // User can sign in via magic link
+   * }
+   * ```
    */
   readonly otpAuthEnabled: boolean,
 
   /**
    * Whether passkey authentication is enabled for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * return <div>Passkey login: {user.passkeyAuthEnabled ? 'Enabled' : 'Disabled'}</div>;
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (user.passkeyAuthEnabled) {
+   *   // User can sign in via passkey
+   * }
+   * ```
    */
   readonly passkeyAuthEnabled: boolean,
 
   /**
    * Whether multi-factor authentication is required for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (user.isMultiFactorRequired) {
+   *   return <div>MFA is required for your account.</div>;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const securityLevel = user.isMultiFactorRequired ? 'high' : 'standard';
+   * ```
    */
   readonly isMultiFactorRequired: boolean,
 
   /**
    * Whether the user is an anonymous user.
+   *
+   * @note Anonymous users are temporary and should be prompted to create a full account to persist their data.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (user.isAnonymous) {
+   *   return <button>Create an account to save your progress</button>;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (user.isAnonymous) {
+   *   // Don't send marketing emails to anonymous users
+   * }
+   * ```
    */
   readonly isAnonymous: boolean,
 
   /**
    * Whether the user is in restricted state (signed up but hasn't completed onboarding requirements).
    * For example, if email verification is required but the user hasn't verified their email yet.
+   *
+   * @note Restricted users have limited access. Check `restrictedReason` to determine why and guide the user accordingly.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (user.isRestricted) {
+   *   return <RestrictedUserBanner reason={user.restrictedReason} />;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (user.isRestricted) {
+   *   return new Response('Account restricted', { status: 403 });
+   * }
+   * ```
    */
   readonly isRestricted: boolean,
 
   /**
-   * The reason why the user is restricted, e.g., { type: "email_not_verified" }, { type: "anonymous" }, or { type: "restricted_by_administrator" }.
-   * Null if the user is not restricted.
+   * The reason why the user is restricted.
+   *
+   * Possible values:
+   * - `{ type: "email_not_verified" }` - User needs to verify their email
+   * - `{ type: "anonymous" }` - User is anonymous and needs to create an account
+   * - `{ type: "restricted_by_administrator" }` - Admin has restricted this user
+   *
+   * Returns `null` if the user is not restricted.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (user.restrictedReason?.type === 'email_not_verified') {
+   *   return <div>Please verify your email to continue.</div>;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * if (user.restrictedReason?.type === 'restricted_by_administrator') {
+   *   // Log admin restriction event
+   * }
+   * ```
    */
   readonly restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null,
 
   /**
    * Converts the user object to the format expected by the Stack Auth API.
+   *
+   * @note Useful for serializing user data in API responses or caching.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const json = user.toClientJson();
+   * localStorage.setItem('cachedUser', JSON.stringify(json));
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * return Response.json(user.toClientJson());
+   * ```
    */
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
@@ -202,6 +454,18 @@ export type BaseUser = {
 export type UserExtra = {
   /**
    * Sets the display name of the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.setDisplayName('John Doe');
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.setDisplayName('John Doe');
+   * ```
    */
   setDisplayName(displayName: string | null): Promise<void>,
 
@@ -213,59 +477,241 @@ export type UserExtra = {
 
   /**
    * Sets the client metadata for the user.
+   *
+   * @note This replaces all client metadata. To update specific fields, merge with existing metadata first.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.setClientMetadata({
+   *   ...user.clientMetadata,
+   *   theme: 'dark',
+   *   language: 'en',
+   * });
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.setClientMetadata({ onboardingComplete: true });
+   * ```
    */
   setClientMetadata(metadata: any): Promise<void>,
 
   /**
-   * Updates the user's password.
+   * Updates the user's password. Requires the current password for verification.
+   *
+   * @note Use this when the user knows their current password. For password reset flows, use `setPassword` instead.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const result = await user.updatePassword({
+   *   oldPassword: 'current-password',
+   *   newPassword: 'new-secure-password',
+   * });
+   * if (result instanceof KnownErrors.PasswordConfirmationMismatch) {
+   *   alert('Current password is incorrect');
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.updatePassword({
+   *   oldPassword: 'current-password',
+   *   newPassword: 'new-secure-password',
+   * });
+   * ```
    */
   updatePassword(options: { oldPassword: string, newPassword: string}): Promise<KnownErrors["PasswordConfirmationMismatch"] | KnownErrors["PasswordRequirementsNotMet"] | void>,
 
   /**
-   * Sets a password for the user.
+   * Sets a password for the user without requiring the current password.
+   *
+   * @note Use this for users who signed up via OAuth and don't have a password yet, or after verifying identity through another method (e.g., email reset link).
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const result = await user.setPassword({ password: 'new-secure-password' });
+   * if (result instanceof KnownErrors.PasswordRequirementsNotMet) {
+   *   alert('Password does not meet requirements');
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.setPassword({ password: 'new-secure-password' });
+   * ```
    */
   setPassword(options: { password: string }): Promise<KnownErrors["PasswordRequirementsNotMet"] | void>,
 
   /**
    * Updates multiple fields of the user at once.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.update({
+   *   displayName: 'New Name',
+   *   clientMetadata: { theme: 'dark' },
+   * });
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.update({
+   *   displayName: 'New Name',
+   *   clientMetadata: { theme: 'dark' },
+   * });
+   * ```
    */
   update(update: UserUpdateOptions): Promise<void>,
 
   /**
    * React hook to get all contact channels for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const contactChannels = user.useContactChannels();
+   * return (
+   *   <ul>
+   *     {contactChannels.map(channel => (
+   *       <li key={channel.id}>{channel.value}</li>
+   *     ))}
+   *   </ul>
+   * );
+   * ```
    */
   useContactChannels(): ContactChannel[], // THIS_LINE_PLATFORM react-like
   /**
    * Lists all contact channels for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const channels = await user.listContactChannels();
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const channels = await user.listContactChannels();
+   * ```
    */
   listContactChannels(): Promise<ContactChannel[]>,
   /**
    * Creates a new contact channel for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const channel = await user.createContactChannel({
+   *   type: 'email',
+   *   value: 'backup@example.com',
+   * });
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const channel = await user.createContactChannel({
+   *   type: 'email',
+   *   value: 'backup@example.com',
+   * });
+   * ```
    */
   createContactChannel(data: ContactChannelCreateOptions): Promise<ContactChannel>,
 
   /**
    * React hook to get all notification categories.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const categories = user.useNotificationCategories();
+   * return (
+   *   <ul>
+   *     {categories.map(cat => (
+   *       <li key={cat.id}>{cat.displayName}</li>
+   *     ))}
+   *   </ul>
+   * );
+   * ```
    */
   useNotificationCategories(): NotificationCategory[], // THIS_LINE_PLATFORM react-like
   /**
    * Lists all notification categories.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const categories = await user.listNotificationCategories();
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const categories = await user.listNotificationCategories();
+   * ```
    */
   listNotificationCategories(): Promise<NotificationCategory[]>,
 
   /**
    * Deletes the user account.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.delete();
+   * // User is now signed out and account is deleted
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.delete();
+   * ```
    */
   delete(): Promise<void>,
 
   /**
    * Gets an OAuth connected account for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const googleAccount = await user.getConnectedAccount('google', {
+   *   or: 'redirect',
+   *   scopes: ['https://www.googleapis.com/auth/calendar'],
+   * });
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const googleAccount = await user.getConnectedAccount('google');
+   * ```
    */
   getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
   getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
 
   /**
    * React hook to get an OAuth connected account for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const googleAccount = user.useConnectedAccount('google', {
+   *   or: 'redirect',
+   *   scopes: ['https://www.googleapis.com/auth/calendar'],
+   * });
+   * // Use googleAccount.accessToken to call Google APIs
+   * ```
    */
   // IF_PLATFORM react-like
   useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection,
@@ -274,18 +720,54 @@ export type UserExtra = {
 
   /**
    * Checks if the user has a specific permission.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const canEdit = await user.hasPermission(team, 'edit');
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const canEdit = await user.hasPermission(team, 'edit');
+   * ```
    */
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
   hasPermission(permissionId: string): Promise<boolean>,
 
   /**
    * Gets a specific permission for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const permission = await user.getPermission(team, 'admin');
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const permission = await user.getPermission(team, 'admin');
+   * ```
    */
   getPermission(scope: Team, permissionId: string): Promise<TeamPermission | null>,
   getPermission(permissionId: string): Promise<TeamPermission | null>,
 
   /**
    * Lists all permissions for the user in a given scope.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const permissions = await user.listPermissions(team, { recursive: true });
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const permissions = await user.listPermissions(team);
+   * ```
    */
   listPermissions(scope: Team, options?: { recursive?: boolean }): Promise<TeamPermission[]>,
   listPermissions(options?: { recursive?: boolean }): Promise<TeamPermission[]>,
@@ -293,12 +775,32 @@ export type UserExtra = {
   // IF_PLATFORM react-like
   /**
    * React hook to get all permissions for the user in a given scope.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const permissions = user.usePermissions(team);
+   * return (
+   *   <ul>
+   *     {permissions.map(p => <li key={p.id}>{p.id}</li>)}
+   *   </ul>
+   * );
+   * ```
    */
   usePermissions(scope: Team, options?: { recursive?: boolean }): TeamPermission[],
   usePermissions(options?: { recursive?: boolean }): TeamPermission[],
 
   /**
    * React hook to get a specific permission for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const adminPermission = user.usePermission(team, 'admin');
+   * if (adminPermission) {
+   *   return <AdminPanel />;
+   * }
+   * ```
    */
   usePermission(scope: Team, permissionId: string): TeamPermission | null,
   usePermission(permissionId: string): TeamPermission | null,
@@ -306,65 +808,247 @@ export type UserExtra = {
 
   /**
    * The currently selected team for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * if (user.selectedTeam) {
+   *   return <div>Current team: {user.selectedTeam.displayName}</div>;
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const teamId = user.selectedTeam?.id;
+   * ```
    */
   readonly selectedTeam: Team | null,
 
   /**
    * Sets the selected team for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.setSelectedTeam(team);
+   * // Or by ID
+   * await user.setSelectedTeam('team-id');
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.setSelectedTeam('team-id');
+   * ```
    */
   setSelectedTeam(teamOrId: string | Team | null): Promise<void>,
 
   /**
    * Creates a new team with the user as a member.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const team = await user.createTeam({
+   *   displayName: 'My Team',
+   * });
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const team = await user.createTeam({
+   *   displayName: 'My Team',
+   * });
+   * ```
    */
   createTeam(data: TeamCreateOptions): Promise<Team>,
   /**
    * Removes the user from the specified team.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.leaveTeam(team);
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.leaveTeam(team);
+   * ```
    */
   leaveTeam(team: Team): Promise<void>,
 
   /**
    * Gets all active sessions for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const sessions = await user.getActiveSessions();
+   * return (
+   *   <ul>
+   *     {sessions.map(s => <li key={s.id}>{s.device}</li>)}
+   *   </ul>
+   * );
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const sessions = await user.getActiveSessions();
+   * ```
    */
   getActiveSessions(): Promise<ActiveSession[]>,
   /**
    * Revokes a specific session for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * await user.revokeSession(sessionId);
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.revokeSession(sessionId);
+   * ```
    */
   revokeSession(sessionId: string): Promise<void>,
   /**
    * Gets the user's profile within a specific team.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const profile = await user.getTeamProfile(team);
+   * console.log(profile.displayName);
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const profile = await user.getTeamProfile(team);
+   * ```
    */
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
   /**
    * React hook to get the user's profile within a specific team.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const profile = user.useTeamProfile(team);
+   * return <div>Team name: {profile.displayName}</div>;
+   * ```
    */
   useTeamProfile(team: Team): EditableTeamMemberProfile, // THIS_LINE_PLATFORM react-like
 
   /**
    * Creates a new API key for the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const apiKey = await user.createApiKey({
+   *   description: 'My API key',
+   *   expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+   * });
+   * // Save apiKey.secretApiKey - it won't be shown again
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const apiKey = await user.createApiKey({
+   *   description: 'Server-created key',
+   * });
+   * ```
    */
   createApiKey(options: ApiKeyCreationOptions<"user">): Promise<UserApiKeyFirstView>,
 
   /**
    * React hook to get all OAuth providers connected to the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const providers = user.useOAuthProviders();
+   * return (
+   *   <ul>
+   *     {providers.map(p => <li key={p.id}>{p.type}</li>)}
+   *   </ul>
+   * );
+   * ```
    */
   useOAuthProviders(): OAuthProvider[], // THIS_LINE_PLATFORM react-like
   /**
    * Lists all OAuth providers connected to the user.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const providers = await user.listOAuthProviders();
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const providers = await user.listOAuthProviders();
+   * ```
    */
   listOAuthProviders(): Promise<OAuthProvider[]>,
 
   /**
    * React hook to get a specific OAuth provider by ID.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const googleProvider = user.useOAuthProvider('google');
+   * if (googleProvider) {
+   *   return <div>Connected to Google</div>;
+   * }
+   * ```
    */
   useOAuthProvider(id: string): OAuthProvider | null, // THIS_LINE_PLATFORM react-like
   /**
    * Gets a specific OAuth provider by ID.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const googleProvider = await user.getOAuthProvider('google');
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * const googleProvider = await user.getOAuthProvider('google');
+   * ```
    */
   getOAuthProvider(id: string): Promise<OAuthProvider | null>,
 
   /**
    * Registers a passkey for the user for passwordless authentication.
+   *
+   * @example-client
+   * ```tsx
+   * const user = useUser();
+   * const result = await user.registerPasskey();
+   * if (result.status === 'ok') {
+   *   alert('Passkey registered successfully!');
+   * }
+   * ```
+   *
+   * @example-server
+   * ```ts
+   * const user = await stackServerApp.getUser();
+   * await user.registerPasskey();
+   * ```
    */
   registerPasskey(options?: { hostname?: string }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>,
 }

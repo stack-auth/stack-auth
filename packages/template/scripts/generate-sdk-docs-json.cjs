@@ -477,6 +477,27 @@ function buildMemberEntry(symbol, parentDeclaration, checker) {
   let description = ts.displayPartsToString(symbol.getDocumentationComment(checker));
   let tags = normaliseTags(symbol.getJsDocTags());
   
+  // When a property exists in multiple types of an intersection, TypeScript concatenates
+  // their JSDoc comments. Prefer the description from the selected declaration only.
+  if (description && declaration) {
+    const jsDocNodes = ts.getJSDocCommentsAndTags(declaration);
+    for (const jsDoc of jsDocNodes) {
+      if (ts.isJSDoc(jsDoc) && jsDoc.comment) {
+        let declDescription;
+        if (typeof jsDoc.comment === 'string') {
+          declDescription = jsDoc.comment;
+        } else if (Array.isArray(jsDoc.comment)) {
+          declDescription = jsDoc.comment.map(part => part.text || '').join('');
+        }
+        // If we have a declaration-specific description, use it instead of the merged one
+        if (declDescription && description !== declDescription && description.includes(declDescription)) {
+          description = declDescription;
+        }
+        break;
+      }
+    }
+  }
+  
   if (!description && declaration) {
     const jsDocNodes = ts.getJSDocCommentsAndTags(declaration);
     for (const jsDoc of jsDocNodes) {

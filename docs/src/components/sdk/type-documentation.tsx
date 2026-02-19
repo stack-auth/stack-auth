@@ -3,6 +3,8 @@
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { useEffect, useState } from 'react';
 import { codeToHtml } from 'shiki';
+import { cn } from '../../lib/cn';
+import { Info } from '../mdx/info';
 import { Accordion, ClickableTableOfContents, ParamField } from '../mdx/sdk-components';
 import { AsideSection, CollapsibleTypesSection, MethodAside, MethodContent, MethodLayout } from '../ui/method-layout';
 
@@ -564,6 +566,8 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
     return null;
   }
 
+  const isDeprecated = member.tags?.some(tag => tag.name === 'deprecated') ?? false;
+
   return (
     <CollapsibleTypesSection
       key={memberName}
@@ -574,6 +578,7 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
         : undefined
       }
       isReactHook={isReactHook}
+      isDeprecated={isDeprecated}
       defaultOpen={false}
     >
       <MethodLayout>
@@ -587,6 +592,12 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
                 {member.tags.find(tag => tag.name === 'deprecated')?.text || 'This item is deprecated.'}
               </div>
             </div>
+          )}
+
+          {member.tags?.some(tag => tag.name === 'note') && (
+            <Info type="info" size="small">
+              {member.tags.find(tag => tag.name === 'note')?.text}
+            </Info>
           )}
 
           {isReactHook && (
@@ -781,9 +792,71 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
               </div>
             </div>
           )}
+
+          <ExampleSection tags={member.tags} />
         </MethodAside>
       </MethodLayout>
     </CollapsibleTypesSection>
+  );
+}
+
+// Component to render example code with client/server tabs
+function ExampleSection({ tags }: { tags?: Array<{ name: string, text?: string }> }) {
+  const [activeTab, setActiveTab] = useState<'client' | 'server'>('client');
+  
+  const clientExample = tags?.find(t => t.name === 'example-client')?.text;
+  const serverExample = tags?.find(t => t.name === 'example-server')?.text;
+  
+  if (!clientExample && !serverExample) {
+    return null;
+  }
+  
+  const hasMultipleTabs = clientExample && serverExample;
+  const currentExample = activeTab === 'client' ? clientExample : serverExample;
+  
+  // Extract code from markdown code block if present
+  const extractCode = (text?: string) => {
+    if (!text) return '';
+    const match = text.match(/```(?:tsx?|js)?\n?([\s\S]*?)```/);
+    return match ? match[1].trim() : text.trim();
+  };
+  
+  return (
+    <div className="mt-4 pt-4 border-t border-fd-border">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold text-fd-foreground">Example</span>
+        {hasMultipleTabs && (
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('client')}
+              className={cn(
+                "px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                activeTab === 'client'
+                  ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50"
+                  : "text-fd-muted-foreground hover:text-fd-foreground"
+              )}
+            >
+              Client
+            </button>
+            <button
+              onClick={() => setActiveTab('server')}
+              className={cn(
+                "px-2 py-0.5 rounded text-xs font-medium transition-colors",
+                activeTab === 'server'
+                  ? "bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/50"
+                  : "text-fd-muted-foreground hover:text-fd-foreground"
+              )}
+            >
+              Server
+            </button>
+          </div>
+        )}
+      </div>
+      <SyntaxHighlightedCode
+        code={extractCode(currentExample ?? (clientExample || serverExample))}
+        language="typescript"
+      />
+    </div>
   );
 }
 
