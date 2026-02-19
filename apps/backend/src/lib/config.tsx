@@ -1,10 +1,9 @@
 import { Prisma } from "@/generated/prisma/client";
 import { Config, getInvalidConfigReason, normalize, override, removeKeysFromConfig } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -221,7 +220,10 @@ export async function setProjectConfigOverride(options: {
     throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
   }
 
-  await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
+  const overrideErrors = await getConfigOverrideErrors(projectConfigSchema, newConfig);
+  if (overrideErrors.status === "error") {
+    captureError("setProjectConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId }));
+  }
   await globalPrismaClient.project.update({
     where: {
       id: options.projectId,
@@ -248,7 +250,10 @@ export async function setBranchConfigOverride(options: {
     throw new StackAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is too large.`);
   }
 
-  await assertNoConfigOverrideErrors(branchConfigSchema, newConfig);
+  const overrideErrors = await getConfigOverrideErrors(branchConfigSchema, newConfig);
+  if (overrideErrors.status === "error") {
+    captureError("setBranchConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
+  }
   await globalPrismaClient.branchConfigOverride.upsert({
     where: {
       projectId_branchId: {
@@ -352,7 +357,10 @@ export async function setEnvironmentConfigOverride(options: {
     throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
   }
 
-  await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
+  const overrideErrors = await getConfigOverrideErrors(environmentConfigSchema, newConfig);
+  if (overrideErrors.status === "error") {
+    captureError("setEnvironmentConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
+  }
   await globalPrismaClient.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {
@@ -586,15 +594,9 @@ function makeUnsanitizedIncompleteConfigQuery<T, O>(options: { previous?: RawQue
     async ([prevPromise, overPromise]) => {
       const prev = await prevPromise;
       const over = await overPromise;
-      try {
-        await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
-      } catch (error) {
-        if (getNodeEnvironment().includes("prod")) {
-          // be a bit more resilient in prod... we don't necessarily have to crash here, but this means that something went awfully wrong so go into panic mode regardless
-          captureError("config-override-validation-error", error);
-        } else {
-          throw error;
-        }
+      const overrideErrors = await getConfigOverrideErrors(options.schema, over);
+      if (overrideErrors.status === "error") {
+        captureError("config-override-validation-error", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { extraInfo: options.extraInfo }));
       }
       return override(prev, over);
     },
