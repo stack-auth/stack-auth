@@ -532,14 +532,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
+    const getAnalyticsAccessToken = async (): Promise<string | null> => {
+      this._ensurePersistentTokenStore();
+      return await (await this.getUser({ or: "anonymous" })).getAccessToken();
+    };
+
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
-        getAccessToken: async () => {
-          const session = await this._getSession();
-          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
-          return tokens?.accessToken.token ?? null;
-        },
+        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
         },
@@ -551,11 +552,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isBrowserLike() && this.projectId === "internal") {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
-        getAccessToken: async () => {
-          const session = await this._getSession();
-          const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
-          return tokens?.accessToken.token ?? null;
-        },
+        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
         },
@@ -2392,7 +2389,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         case undefined:
         case "anonymous-if-exists[deprecated]":
         case "return-null": {
-          // do nothing
+          crud = null;
+          break;
         }
       }
     }
@@ -2890,6 +2888,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _signOut(session: InternalSession, options?: { redirectUrl?: URL | string }): Promise<void> {
+    // Clear analytics buffers before sign-out to prevent cross-user event leakage
+    this._eventTracker?.clearBuffer();
+    this._sessionRecorder?.clearBuffer();
+
     await storeLock.withWriteLock(async () => {
       await this._interface.signOut(session);
       if (options?.redirectUrl) {

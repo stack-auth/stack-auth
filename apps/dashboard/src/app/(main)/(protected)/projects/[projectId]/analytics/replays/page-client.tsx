@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ArrowsClockwiseIcon, FastForwardIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon } from "@phosphor-icons/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -113,6 +113,32 @@ function formatTimelineMs(ms: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+type TimelineEvent = {
+  eventType: string,
+  eventAtMs: number,
+  data: Record<string, unknown>,
+};
+
+type TimelineMarker = {
+  timeMs: number,
+  eventType: string,
+  label: string,
+};
+
+function formatEventTooltip(event: TimelineEvent): string {
+  const d = event.data;
+  if (event.eventType === "$click") {
+    const tag = (d.tag_name as string) || "element";
+    return `Clicked ${tag}`;
+  }
+  if (event.eventType === "$page-view") {
+    const path = (d.path as string | undefined) ?? (d.url as string | undefined) ?? "/";
+    const truncated = path.length > 30 ? path.slice(0, 27) + "..." : path;
+    return truncated;
+  }
+  return event.eventType;
+}
+
 function DisplayDate({ date }: { date: Date }) {
   const fromNow = useFromNow(date);
   return <span>{fromNow}</span>;
@@ -175,6 +201,7 @@ function Timeline({
   onSeek,
   playerSpeed,
   onSpeedChange,
+  markers,
 }: {
   getCurrentTimeMs: () => number,
   playerIsPlaying: boolean,
@@ -183,8 +210,10 @@ function Timeline({
   onSeek: (timeOffset: number) => void,
   playerSpeed: number,
   onSpeedChange: (speed: number) => void,
+  markers?: TimelineMarker[],
 }) {
   const [currentTime, setCurrentTime] = useState(0);
+  const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number>(0);
 
@@ -208,8 +237,11 @@ function Timeline({
     onSeek(timeOffset);
   }, [totalTimeMs, onSeek]);
 
+  const hasMarkers = (markers?.length ?? 0) > 0;
+  const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
+
   return (
-    <div className="border-t border-border/30 bg-background px-3 py-2 flex items-center gap-3">
+    <div className={cn("border-t border-border/30 bg-background px-3 flex items-center gap-3", hasMarkers ? "py-1.5" : "py-2")}>
       <Button
         variant="ghost"
         size="icon"
@@ -223,16 +255,62 @@ function Timeline({
         {formatTimelineMs(currentTime)}
       </span>
 
-      <div
-        ref={trackRef}
-        onClick={handleTrackClick}
-        className="flex-1 h-5 flex items-center cursor-pointer group"
-      >
-        <div className="w-full h-1.5 rounded-full bg-muted relative overflow-hidden">
-          <div
-            className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
-            style={{ width: `${progress * 100}%` }}
-          />
+      <div className="flex-1 flex flex-col justify-center">
+        {/* Event markers lane */}
+        {hasMarkers && (
+          <div className="relative h-3.5 mb-0.5">
+            {markers?.map((marker, i) => {
+              const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
+              if (left < 0 || left > 100) return null;
+              const isClick = marker.eventType === "$click";
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
+                    "transition-colors",
+                    isClick
+                      ? "bg-blue-500/70 hover:bg-blue-400"
+                      : "bg-emerald-500/70 hover:bg-emerald-400",
+                  )}
+                  style={{ left: `${left}%`, marginLeft: "-1.5px" }}
+                  onMouseEnter={() => setHoveredMarkerIndex(i)}
+                  onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
+                  onClick={() => onSeek(marker.timeMs)}
+                />
+              );
+            })}
+
+            {/* Custom tooltip */}
+            {hoveredMarker && (() => {
+              const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
+              return (
+                <div
+                  className="absolute bottom-full mb-1.5 -translate-x-1/2 pointer-events-none z-50"
+                  style={{ left: `${left}%` }}
+                >
+                  <div className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground whitespace-nowrap max-w-52">
+                    <div className="truncate">{hoveredMarker.label}</div>
+                    <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Progress bar track (clickable) */}
+        <div
+          ref={trackRef}
+          onClick={handleTrackClick}
+          className="h-5 flex items-center cursor-pointer group"
+        >
+          <div className="w-full h-1.5 rounded-full bg-muted relative overflow-hidden">
+            <div
+              className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
         </div>
       </div>
 
@@ -346,6 +424,8 @@ export default function PageClient() {
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
 
   const listBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -391,6 +471,28 @@ export default function PageClient() {
   useEffect(() => {
     runAsynchronously(() => loadPage(null), { noErrorLogging: true });
   }, [loadPage]);
+
+  useEffect(() => {
+    if (recordings.length === 0) return;
+    const ids = recordings.map(r => r.id);
+    runAsynchronously(async () => {
+      const res = await adminApp.queryAnalytics({
+        query: `SELECT session_replay_id, count() as cnt
+                FROM default.events
+                WHERE event_type = '$click'
+                  AND session_replay_id IN ({ids:Array(String)})
+                GROUP BY session_replay_id`,
+        params: { ids },
+        include_all_branches: false,
+        timeout_ms: 15000,
+      });
+      const map = new Map<string, number>();
+      for (const row of res.result) {
+        map.set(row.session_replay_id as string, Number(row.cnt));
+      }
+      setClickCountsByReplayId(map);
+    }, { noErrorLogging: true });
+  }, [recordings, adminApp]);
 
   const onListScroll = useCallback(() => {
     const el = listBoxRef.current;
@@ -968,6 +1070,41 @@ export default function PageClient() {
   }, [loadChunksAndDownload, selectedRecordingId, selectedRecording]);
 
   useEffect(() => {
+    if (!selectedRecordingId) {
+      setTimelineEvents([]);
+      return;
+    }
+    let cancelled = false;
+    setTimelineEvents([]);
+    runAsynchronously(async () => {
+      const res = await adminApp.queryAnalytics({
+        query: `SELECT event_type,
+                       toUnixTimestamp64Milli(event_at) as event_at_ms,
+                       data
+                FROM default.events
+                WHERE session_replay_id = {id:String}
+                  AND event_type IN ('$click', '$page-view')
+                ORDER BY event_at ASC
+                LIMIT 2000`,
+        params: { id: selectedRecordingId },
+        include_all_branches: false,
+        timeout_ms: 15000,
+      });
+      if (cancelled) return;
+      setTimelineEvents(res.result.map((r: any) => ({
+        eventType: r.event_type as string,
+        eventAtMs: Number(r.event_at_ms),
+        data: typeof r.data === "string"
+          ? JSON.parse(r.data)
+          : (r.data ?? {}),
+      })));
+    }, { noErrorLogging: true });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRecordingId, adminApp]);
+
+  useEffect(() => {
     return () => {
       genCounterRef.current += 1;
       destroyReplayers();
@@ -1144,6 +1281,15 @@ export default function PageClient() {
 
   const showMainTabLabel = renderableStreamCount > 1;
 
+  const timelineMarkers = useMemo(() => {
+    if (timelineEvents.length === 0 || ms.globalTotalMs <= 0) return [];
+    return timelineEvents.map((e): TimelineMarker => ({
+      timeMs: e.eventAtMs - ms.globalStartTs,
+      eventType: e.eventType,
+      label: formatEventTooltip(e),
+    })).filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
+  }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs]);
+
   // ---- Rendering ----
 
   return (
@@ -1208,8 +1354,14 @@ export default function PageClient() {
                               {duration}
                             </span>
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                             <DisplayDate date={r.lastEventAt} />
+                            {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+                                <CursorClickIcon className="h-3 w-3" />
+                                {clickCountsByReplayId.get(r.id)}
+                              </span>
+                            )}
                           </div>
                         </button>
                       );
@@ -1430,6 +1582,7 @@ export default function PageClient() {
                         onSeek={handleSeek}
                         playerSpeed={ms.settings.playerSpeed}
                         onSpeedChange={updateSpeed}
+                        markers={timelineMarkers}
                       />
                     )}
                   </div>
