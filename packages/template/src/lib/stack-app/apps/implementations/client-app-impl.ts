@@ -444,23 +444,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     this._analyticsOptions = resolvedOptions.analytics;
     const getAnalyticsAccessToken = async (): Promise<string | null> => {
-      const session = await this._getSession();
-      const tokens = await session.getOrFetchLikelyValidTokens(20_000, 75_000);
-      if (tokens?.accessToken.token) {
-        return tokens.accessToken.token;
-      }
-      // No token — create anonymous user so pre-login events aren't lost
-      if (this._hasPersistentTokenStore()) {
-        try {
-          await this._signUpAnonymously();
-          const retrySession = await this._getSession();
-          const retryTokens = await retrySession.getOrFetchLikelyValidTokens(20_000, 75_000);
-          return retryTokens?.accessToken.token ?? null;
-        } catch {
-          return null;
-        }
-      }
-      return null;
+      this._ensurePersistentTokenStore();
+      return await (await this.getUser({ or: "anonymous" })).getAccessToken();
     };
 
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
