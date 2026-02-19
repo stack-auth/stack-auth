@@ -213,6 +213,167 @@ describe("with project keys that don't match the project ID", async () => {
   });
 });
 
+describe("with optional publishable client key", () => {
+  it("allows client access without a publishable client key when config is unset", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          
+          Authentication: Client
+            Project: <stripped UUID>
+            User: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("allows client access without a publishable client key when not required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": false,
+    });
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          
+          Authentication: Client
+            Project: <stripped UUID>
+            User: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+
+  it("rejects invalid publishable client keys even when not required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": false,
+    });
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+        publishableClientKey: "invalid-key",
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "INVALID_PUBLISHABLE_CLIENT_KEY",
+          "details": { "project_id": "<stripped UUID>" },
+          "error": "The publishable key is not valid for the project \\"<stripped UUID>\\". Does the project and/or the key exist?",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "INVALID_PUBLISHABLE_CLIENT_KEY",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+});
+
+describe("with required publishable client key", () => {
+  it("rejects missing publishable client key when required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": true,
+    });
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+          "details": { "project_id": "<stripped UUID>" },
+          "error": "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
+  it("allows client access with a valid publishable client key when required", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": true,
+    });
+    const { projectKeys } = await InternalApiKey.create();
+
+    backendContext.set({
+      projectKeys: {
+        projectId,
+        publishableClientKey: projectKeys.publishableClientKey,
+      },
+      userAuth: null,
+    });
+
+    const response = await niceBackendFetch("/api/v1", {
+      accessType: "client",
+    });
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": deindent\`
+          Welcome to the Stack API endpoint! Please refer to the documentation at https://docs.stack-auth.com.
+          
+          Authentication: Client
+            Project: <stripped UUID>
+            User: None
+        \`,
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+  });
+});
+
 describe("with internal project ID", async () => {
   backendContext.set({ projectKeys: InternalProjectKeys });
 

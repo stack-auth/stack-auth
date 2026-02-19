@@ -2,15 +2,15 @@ import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
-import type { AdminGetSessionReplayAllEventsResponse, AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import type { AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
@@ -26,8 +26,8 @@ import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -127,6 +127,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     super(resolvedOptions, {
       ...extraOptions,
@@ -138,7 +139,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         ...resolvedOptions.projectOwnerSession ? {
           projectOwnerSession: resolvedOptions.projectOwnerSession,
         } : {
-          publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+          ...(publishableClientKey ? { publishableClientKey } : {}),
           secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
           superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
         },
@@ -268,9 +269,26 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
-        const updateOptions = adminProjectUpdateOptionsToCrud(update);
-        await app._interface.updateProject(updateOptions);
-        await onRefresh();
+        const { requirePublishableClientKey, ...projectUpdate } = update;
+        const updateOptions = adminProjectUpdateOptionsToCrud(projectUpdate);
+        const hasConfigUpdate = !!updateOptions.config
+          && typedValues(updateOptions.config).some((value) => value !== undefined);
+        const hasProjectUpdate = typedEntries(updateOptions).some(([key, value]) => {
+          if (key === "config") return hasConfigUpdate;
+          return value !== undefined;
+        });
+
+        if (hasProjectUpdate) {
+          await app._interface.updateProject(updateOptions);
+          await onRefresh();
+        }
+
+        if (requirePublishableClientKey !== undefined) {
+          await app._interface.updateConfigOverride("project", {
+            "project.requirePublishableClientKey": requirePublishableClientKey,
+          });
+          await app._refreshProjectConfig();
+        }
       },
       async delete() {
         await app._interface.deleteProject();
