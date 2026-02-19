@@ -1,9 +1,10 @@
 import { getChatAdapter } from "@/lib/ai-chat/adapter-registry";
+import { selectModel } from "@/lib/ai/models";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { createOpenAI } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateText } from "ai";
 import { InferType } from "yup";
 
@@ -26,17 +27,6 @@ const contentSchema = yupArray(yupUnion(textContentSchema, toolCallContentSchema
 const messageSchema = yupObject({
   role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
   content: yupMixed().defined(),
-});
-
-// Mock mode sentinel value - when API key is not configured, we return mock responses
-const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
-const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
-const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
-
-// Only create OpenAI client if not in mock mode
-const openai = isMockMode ? null : createOpenAI({
-  apiKey,
-  baseURL: "https://openrouter.ai/api/v1",
 });
 
 // AI request timeout in milliseconds (2 minutes)
@@ -67,42 +57,33 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, params, auth: { tenancy } }) {
-    // Mock mode: return a simple text response without calling AI
-    if (isMockMode) {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: {
-          content: [{
-            type: "text",
-            text: "This is a mock AI response. Configure a real API key to enable AI features.",
-          }],
-        },
-      };
+    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+    if (apiKey === "" || apiKey === "FORWARD_TO_PRODUCTION") {
+      throw new StatusError(
+        StatusError.InternalServerError,
+        "OpenRouter API key is not configured. Please set STACK_OPENROUTER_API_KEY."
+      );
     }
 
     const adapter = getChatAdapter(body.context_type, tenancy, params.threadId);
-    // Model is configurable via env var; no default to surface missing config errors
-    const modelName = getEnvVariable("STACK_AI_MODEL");
 
-    if (!openai) {
-      // This shouldn't happen since we check isMockMode above, but guard anyway
-      throw new Error("OpenAI client not initialized - STACK_OPENROUTER_API_KEY may be missing");
-    }
+    // Email generation benefits from a smarter, slower model; this route always has
+    // admin auth so isAuthenticated is always true
+    const model = selectModel("smart", "slow", true);
 
-    // Validate messages structure before passing to AI
-    const validatedMessages = body.messages.map(msg => ({
+    // content is typed as yup mixed — cast needed since it does not map to the AI
+    // SDK strict ModelMessage content typing, but the adapter guarantees a valid shape
+    const validatedMessages = body.messages.map((msg) => ({
       role: msg.role,
       content: msg.content,
-    })) as any; // Cast needed: content is a mixed type from yup schema that doesn't map to AI SDK's strict typing
+    })) as any;
 
-    // Create abort controller for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
     try {
       const result = await generateText({
-        model: openai(modelName),
+        model,
         system: adapter.systemPrompt,
         messages: validatedMessages,
         tools: adapter.tools,
@@ -112,18 +93,15 @@ export const POST = createSmartRouteHandler({
       const contentBlocks: InferType<typeof contentSchema> = [];
       result.steps.forEach((step) => {
         if (step.text) {
-          contentBlocks.push({
-            type: "text",
-            text: step.text,
-          });
+          contentBlocks.push({ type: "text", text: step.text });
         }
-        step.toolCalls.forEach(toolCall => {
+        step.toolCalls.forEach((toolCall) => {
           contentBlocks.push({
             type: "tool-call",
             toolName: toolCall.toolName,
             toolCallId: toolCall.toolCallId,
-            args: toolCall.args,
-            argsText: JSON.stringify(toolCall.args),
+            args: toolCall.input,
+            argsText: JSON.stringify(toolCall.input),
             result: "success",
           });
         });

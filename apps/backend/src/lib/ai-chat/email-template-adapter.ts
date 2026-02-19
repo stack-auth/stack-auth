@@ -30,7 +30,7 @@ export const emailTemplateAdapter = (context: ChatAdapterContext) => ({
   tools: {
     createEmailTemplate: tool({
       description: CREATE_EMAIL_TEMPLATE_TOOL_DESCRIPTION(context),
-      parameters: z.object({
+      inputSchema: z.object({
         content: z.string().describe("A react component that renders the email template"),
       }),
     }),

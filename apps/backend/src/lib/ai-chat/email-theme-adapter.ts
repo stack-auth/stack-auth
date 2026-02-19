@@ -25,7 +25,7 @@ TECHNICAL RULES:
   tools: {
     createEmailTheme: tool({
       description: CREATE_EMAIL_THEME_TOOL_DESCRIPTION(context),
-      parameters: z.object({
+      inputSchema: z.object({
         content: z.string().describe("The content of the email theme"),
       }),
     }),
