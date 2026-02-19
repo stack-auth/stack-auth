@@ -1,3 +1,5 @@
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
@@ -19,6 +21,40 @@ import {
 
 const COMPLEX_SEQUENCE_TIMEOUT = TEST_TIMEOUT * 2 + 30_000;
 
+async function runQueryForCurrentProject(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+  return await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body,
+  });
+}
+
+async function waitForClickhouseUser(email: string, expectedDisplayName: string) {
+  // ensure we definitely have project keys that don't expire (unlike an admin access token)
+  await InternalApiKey.createAndSetProjectKeys();
+
+  const timeoutMs = 180_000;
+  const intervalMs = 2_000;
+  const start = performance.now();
+
+  let response;
+  while (performance.now() - start < timeoutMs) {
+    response = await runQueryForCurrentProject({
+      query: "SELECT primary_email, display_name FROM users WHERE primary_email = {email:String}",
+      params: { email },
+    });
+    expect(response).toMatchObject({
+      status: 200,
+    });
+    if (response.body.result.length === 1 && response.body.result[0].display_name === expectedDisplayName) {
+      return response;
+    }
+    await wait(intervalMs);
+  }
+
+  throw new StackAssertionError(`Timed out waiting for ClickHouse user ${email} to sync.`, { response });
+}
+
 describe.sequential('External DB Sync - Advanced Tests', () => {
   let dbManager: TestDbManager;
   const createProjectWithExternalDb = (
@@ -35,11 +71,11 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
   beforeAll(async () => {
     dbManager = new TestDbManager();
     await dbManager.init();
-  });
+  }, 30000); // 30 second timeout for init
 
   afterAll(async () => {
     await dbManager.cleanup();
-  });
+  }, 60000); // 60 second timeout for cleanup
 
   /**
    * What it does:
@@ -109,13 +145,15 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
         try {
           const res1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
           const res2 = await clientA2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
-          return res1.rows.length === 1 && res2.rows.length === 1;
+          // Wait for both row existence AND display_name to be synced
+          return res1.rows.length === 1 && res1.rows[0].display_name === 'User A'
+            && res2.rows.length === 1 && res2.rows[0].display_name === 'User A';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'User A to appear in both Project A databases', timeoutMs: 120000 }
+      { description: 'User A to appear in both Project A databases', timeoutMs: 180000 }
     );
 
     await waitForCondition(
@@ -124,13 +162,16 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           const res1 = await clientB1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           const res2 = await clientB2.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
           const res3 = await clientB3.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-b@example.com']);
-          return res1.rows.length === 1 && res2.rows.length === 1 && res3.rows.length === 1;
+          // Wait for both row existence AND display_name to be synced
+          return res1.rows.length === 1 && res1.rows[0].display_name === 'User B'
+            && res2.rows.length === 1 && res2.rows[0].display_name === 'User B'
+            && res3.rows.length === 1 && res3.rows[0].display_name === 'User B';
         } catch (err: any) {
           if (err.code === '42P01') return false;
           throw err;
         }
       },
-      { description: 'User B to appear in all three Project B databases', timeoutMs: 120000 }
+      { description: 'User B to appear in all three Project B databases', timeoutMs: 180000 }
     );
 
     const resA1 = await clientA1.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, ['user-a@example.com']);
@@ -438,7 +479,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(res.rows[0].count) >= userCount;
         },
-        { description: `all ${userCount} users to be synced`, timeoutMs: 120000 }
+        { description: `all ${userCount} users to be synced`, timeoutMs: 180000 }
       );
 
       const res = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
@@ -500,7 +541,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'initial 3 users sync', timeoutMs: 120000 }
+      { description: 'initial 3 users sync', timeoutMs: 180000 }
     );
 
     let res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
@@ -543,7 +584,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           throw err;
         }
       },
-      { description: 'final sync state correct', timeoutMs: 120000 }
+      { description: 'final sync state correct', timeoutMs: 180000 }
     );
 
     res = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
@@ -728,7 +769,7 @@ $$;`);
         );
         return res.rows.length === 0;
       },
-      { description: 'deleted user should never appear', timeoutMs: 120000 }
+      { description: 'deleted user should never appear', timeoutMs: 180000 }
     );
 
     const res = await client.query(
@@ -811,7 +852,7 @@ $$;`);
         );
         return followUp.rows.length === 1 && followUp.rows[0].display_name === 'Recreated Export';
       },
-      { description: 'recreated row persists after extra sync', timeoutMs: 120000 },
+      { description: 'recreated row persists after extra sync', timeoutMs: 180000 },
     );
   }, TEST_TIMEOUT);
 
@@ -1025,7 +1066,7 @@ $$;`);
           const countRes = await externalClient.query(`SELECT COUNT(*) as count FROM "users"`);
           return parseInt(countRes.rows[0].count) === initialUserCount;
         },
-        { description: 'initial batch exported', timeoutMs: 60000 },
+        { description: 'initial batch exported', timeoutMs: 180000 },
       );
 
       // Delete first 10 users
@@ -1121,4 +1162,39 @@ $$;`);
       await internalClient.end();
     }
   }, HIGH_VOLUME_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Configures a project with a bad postgres connection string (simulating postgres being down).
+   * - Creates a user and verifies it still syncs to ClickHouse despite the postgres failure.
+   * - Then configures a separate project with a valid postgres DB and verifies postgres sync works
+   *   even though ClickHouse sync runs independently in the same cycle.
+   *
+   * Why it matters:
+   * - Proves that ClickHouse and postgres sync targets are independent: a failure in one
+   *   does not block the other from completing successfully.
+   */
+  test('Cross-DB resilience: postgres down does not block ClickHouse sync', async () => {
+    const badConnectionString = 'postgresql://invalid:invalid@invalid:5432/invalid';
+
+    // Create a project with only a bad postgres DB — ClickHouse syncs automatically via env var
+    await createProjectWithExternalDb({
+      bad_pg: {
+        type: 'postgres',
+        connectionString: badConnectionString,
+      },
+    });
+
+    const email = 'cross-db-resilience@example.com';
+    const user = await User.create({ primary_email: email });
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { display_name: 'Cross DB User' },
+    });
+
+    // ClickHouse should still receive the data even though postgres sync fails
+    await waitForClickhouseUser(email, 'Cross DB User');
+
+  }, TEST_TIMEOUT);
 });

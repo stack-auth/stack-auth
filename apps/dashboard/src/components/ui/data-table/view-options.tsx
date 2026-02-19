@@ -1,6 +1,7 @@
 "use client";
 
 import { MixerHorizontalIcon } from "@radix-ui/react-icons";
+import { Table } from "@tanstack/react-table";
 import {
   Button,
 } from "../button";
@@ -12,24 +13,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "../dropdown-menu";
-import { Table } from "@tanstack/react-table";
 
 type DataTableViewOptionsProps<TData> = {
   table: Table<TData>,
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link",
+  className?: string,
+  iconClassName?: string,
 }
 
 export function DataTableViewOptions<TData>({
   table,
+  variant = "secondary",
+  className = "ml-auto hidden h-8 px-3 text-xs gap-1.5 lg:flex rounded-xl bg-foreground/[0.04] hover:bg-foreground/[0.06] dark:bg-foreground/[0.08] dark:hover:bg-foreground/[0.12]",
+  iconClassName = "h-3.5 w-3.5",
 }: DataTableViewOptionsProps<TData>) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant={variant}
           size="sm"
-          className="ml-auto hidden h-8 lg:flex"
+          className={className}
         >
-          <MixerHorizontalIcon className="mr-2 h-4 w-4" />
+          <MixerHorizontalIcon className={iconClassName} />
           View
         </Button>
       </DropdownMenuTrigger>
@@ -40,7 +46,7 @@ export function DataTableViewOptions<TData>({
           .getAllColumns()
           .filter(
             (column) =>
-              typeof column.accessorFn !== "undefined" && column.getCanHide()
+              (typeof column.accessorFn !== "undefined" || "accessorKey" in column.columnDef) && column.getCanHide()
           )
           .map((column) => {
             return (

@@ -1,6 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
@@ -9,13 +10,13 @@ import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty, AuthLike } from "../common";
-import { OAuthConnection } from "../connected-accounts";
+import { DeprecatedOAuthConnection, OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
 import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
-import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
@@ -135,7 +136,7 @@ export type BaseUser = {
    * The reason why the user is restricted, e.g., { type: "email_not_verified" }, { type: "anonymous" }, or { type: "restricted_by_administrator" }.
    * Null if the user is not restricted.
    */
-  readonly restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null,
+  readonly restrictedReason: RestrictedReason | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -170,13 +171,32 @@ export type UserExtra = {
 
   delete(): Promise<void>,
 
-  getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
-  getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
+  /** @deprecated Use `getOrLinkConnectedAccount` for redirect behavior, or `getConnectedAccount({ provider, providerAccountId })` for existence check. */
+  getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<DeprecatedOAuthConnection>,
+  /** @deprecated Use `getConnectedAccount({ provider, providerAccountId })` for existence check, or `getOrLinkConnectedAccount` for redirect behavior. */
+  getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<DeprecatedOAuthConnection | null>,
+  /** Get a specific connected account by provider and providerAccountId. Returns null if not found. */
+  getConnectedAccount(account: { provider: string, providerAccountId: string }): Promise<OAuthConnection | null>,
 
   // IF_PLATFORM react-like
-  useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection,
-  useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): OAuthConnection | null,
+  /** @deprecated Use `useOrLinkConnectedAccount` for redirect behavior, or `useConnectedAccount({ provider, providerAccountId })` for existence check. */
+  useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): DeprecatedOAuthConnection,
+  /** @deprecated Use `useConnectedAccount({ provider, providerAccountId })` for existence check, or `useOrLinkConnectedAccount` for redirect behavior. */
+  useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): DeprecatedOAuthConnection | null,
+  /** Get a specific connected account by provider and providerAccountId. Returns null if not found. */
+  useConnectedAccount(account: { provider: string, providerAccountId: string }): OAuthConnection | null,
   // END_PLATFORM
+
+  /** List all connected accounts for this user (only those with allowConnectedAccounts enabled). */
+  listConnectedAccounts(): Promise<OAuthConnection[]>,
+  /** React hook to list all connected accounts. */
+  useConnectedAccounts(): OAuthConnection[], // THIS_LINE_PLATFORM react-like
+  /** Redirect the user to the OAuth flow to link a new connected account. Always redirects, never returns. */
+  linkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<void>,
+  /** Get a connected account for the given provider, or redirect to link one if none exists or the token/scopes are insufficient. */
+  getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<OAuthConnection>,
+  /** React hook: get a connected account for the given provider, or redirect to link one if none exists or the token/scopes are insufficient. */
+  useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): OAuthConnection, // THIS_LINE_PLATFORM react-like
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
   hasPermission(permissionId: string): Promise<boolean>,
@@ -200,6 +220,31 @@ export type UserExtra = {
   createTeam(data: TeamCreateOptions): Promise<Team>,
   leaveTeam(team: Team): Promise<void>,
 
+  /**
+   * Lists all pending team invitations sent to any of the current user's verified email addresses.
+   *
+   * This allows the user to discover which teams have invited them, even if they haven't
+   * joined those teams yet. Only invitations sent to verified email addresses are included.
+   *
+   * @returns An array of `ReceivedTeamInvitation` objects, each containing the team ID, team
+   * display name, recipient email, and expiration date.
+   *
+   * @example
+   * ```ts
+   * const invitations = await user.listTeamInvitations();
+   * for (const invitation of invitations) {
+   *   console.log(`Invited to ${invitation.teamDisplayName} via ${invitation.recipientEmail}`);
+   * }
+   * ```
+   */
+  listTeamInvitations(): Promise<ReceivedTeamInvitation[]>,
+  /**
+   * Lists all pending team invitations sent to any of the current user's verified email addresses.
+   *
+   * React hook version of `listTeamInvitations()`. Automatically re-renders when invitations change.
+   */
+  useTeamInvitations(): ReceivedTeamInvitation[], // THIS_LINE_PLATFORM react-like
+
   getActiveSessions(): Promise<ActiveSession[]>,
   revokeSession(sessionId: string): Promise<void>,
   getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>,
@@ -218,6 +263,7 @@ export type UserExtra = {
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
+& AsyncStoreProperty<"teamInvitations", [], ReceivedTeamInvitation[], true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { recursive?: boolean }], TeamPermission | null, false>
 & AsyncStoreProperty<"permissions", [scope: Team, options?: { recursive?: boolean }], TeamPermission[], true>;
 

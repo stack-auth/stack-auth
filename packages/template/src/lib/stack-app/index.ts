@@ -56,6 +56,7 @@ export type {
   AdminEmailOutboxRecipient,
   AdminEmailOutboxSimpleStatus,
   AdminEmailOutboxStatus,
+  AdminSendAttemptError,
   AdminSentEmail
 } from "./email";
 
@@ -92,6 +93,8 @@ export type {
   ServerListUsersOptions,
   ServerTeam,
   ServerTeamCreateOptions,
+  ReceivedTeamInvitation,
+  SentTeamInvitation,
   ServerTeamMemberProfile,
   ServerTeamUpdateOptions,
   ServerTeamUser,

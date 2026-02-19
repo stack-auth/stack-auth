@@ -1,8 +1,9 @@
 import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
-import { branchConfigSourceSchema } from "../schema-fields";
+import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
+import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -10,6 +11,14 @@ import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
+import type {
+  AdminGetSessionReplayAllEventsResponse,
+  AdminGetSessionReplayChunkEventsResponse,
+  AdminListSessionReplayChunksOptions,
+  AdminListSessionReplayChunksResponse,
+  AdminListSessionReplaysOptions,
+  AdminListSessionReplaysResponse
+} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -28,7 +37,7 @@ export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
     superSecretAdminKey: string,
   }
   | {
-    projectOwnerSession: InternalSession,
+    projectOwnerSession: InternalSession | (() => Promise<string | null>),
   }
 );
 
@@ -46,24 +55,6 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
   super_secret_admin_key?: string,
 };
 
-export type ClickhouseMigrationRequest = {
-  min_created_at_millis: number,
-  max_created_at_millis: number,
-  cursor?: {
-    created_at_millis: number,
-    id: string,
-  },
-  limit?: number,
-};
-
-export type ClickhouseMigrationResponse = {
-  migrated_events: number,
-  inserted_rows: number,
-  next_cursor: {
-    created_at_millis: number,
-    id: string,
-  } | null,
-};
 
 export class StackAdminInterface extends StackServerInterface {
   constructor(public readonly options: AdminAuthApplicationOptions) {
@@ -216,6 +207,16 @@ export class StackAdminInterface extends StackServerInterface {
           "content-type": "application/json",
         },
         body: JSON.stringify(data),
+      },
+      null,
+    );
+  }
+
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "DELETE",
       },
       null,
     );
@@ -464,7 +465,46 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async applyWysiwygEdit(options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: EditableMetadata,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+  }): Promise<{ updatedSource: string }> {
+    const response = await this.sendAdminRequest(
+      `/internal/wysiwyg-edit`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          source_type: options.sourceType,
+          source_code: options.sourceCode,
+          old_text: options.oldText,
+          new_text: options.newText,
+          metadata: options.metadata,
+          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
+          html_context: options.htmlContext,
+        }),
+      },
+      null,
+    );
+    const result = await response.json();
+    return { updatedSource: result.updated_source };
+  }
+
+  async renderEmailPreview(options: {
+    themeId?: string | null | false,
+    themeTsxSource?: string,
+    templateId?: string,
+    templateTsxSource?: string,
+    editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
+  }): Promise<{ html: string, editable_regions?: Record<string, unknown> }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -475,6 +515,8 @@ export class StackAdminInterface extends StackServerInterface {
         theme_tsx_source: options.themeTsxSource,
         template_id: options.templateId,
         template_tsx_source: options.templateTsxSource,
+        editable_markers: options.editableMarkers,
+        editable_source: options.editableSource,
       }),
     }, null);
     return await response.json();
@@ -522,6 +564,16 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
@@ -546,7 +598,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
+  async getConfigOverride(level: "project" | "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       { method: "GET" },
@@ -555,7 +607,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async setConfigOverride(level: "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+  async setConfigOverride(level: "project" | "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -572,7 +624,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+  async updateConfigOverride(level: "project" | "branch" | "environment", configOverrideOverride: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -603,6 +655,20 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
   }
+
+  async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}/reset-keys`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ keys }),
+      },
+      null,
+    );
+  }
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates`,
@@ -618,6 +684,16 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-templates/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
   }
 
   async setupPayments(): Promise<{ url: string }> {
@@ -707,6 +783,51 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
+  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
+    const qs = new URLSearchParams();
+    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
+    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
   async refundTransaction(options: {
     type: "subscription" | "one-time-purchase",
     id: string,
@@ -734,20 +855,6 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async migrateEventsToClickhouse(options: ClickhouseMigrationRequest): Promise<ClickhouseMigrationResponse> {
-    const response = await this.sendAdminRequest(
-      "/internal/clickhouse/migrate-events",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(options),
-      },
-      null,
-    );
-    return await response.json();
-  }
 
   async previewAffectedUsersByOnboardingChange(
     onboarding: { require_email_verification?: boolean },
@@ -757,7 +864,7 @@ export class StackAdminInterface extends StackServerInterface {
       id: string,
       display_name: string | null,
       primary_email: string | null,
-      restricted_reason: { type: "anonymous" | "email_not_verified" },
+      restricted_reason: RestrictedReason,
     }>,
     total_affected_count: number,
   }> {
@@ -791,11 +898,7 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
 
-    const data = await response.json();
-    return {
-      result: data.result,
-      query_id: data.query_id,
-    };
+    return await response.json();
   }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {

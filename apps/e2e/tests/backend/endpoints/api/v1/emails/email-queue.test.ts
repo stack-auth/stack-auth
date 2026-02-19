@@ -1,49 +1,12 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent, nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import beautify from "js-beautify";
-import { describe } from "vitest";
+import * as net from "net";
+import { afterAll, beforeAll, describe } from "vitest";
 import { it, logIfTestFails } from "../../../../../helpers";
 import { withPortPrefix } from "../../../../../helpers/ports";
-import { Auth, Project, User, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../backend-helpers";
-
-type OutboxEmail = {
-  id: string,
-  subject?: string,
-  status: string,
-  skipped_reason?: string,
-  is_transactional?: boolean,
-  tsx_source?: string,
-};
-
-// Helper to get emails from the outbox, filtered by subject if provided
-async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
-  const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
-    method: "GET",
-    accessType: "server",
-  });
-  if (options?.subject) {
-    return listResponse.body.items.filter((e: any) => e.subject === options.subject);
-  }
-  return listResponse.body.items;
-}
-
-// Helper to poll the outbox until an email with the expected subject and status appears
-async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
-  const maxRetries = 20;
-  let emails: OutboxEmail[] = [];
-  for (let i = 0; i < maxRetries; i++) {
-    emails = await getOutboxEmails({ subject });
-    if (emails.length > 0 && emails[0].status === status) {
-      return emails;
-    }
-    await wait(500);
-  }
-  throw new StackAssertionError(
-    `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
-    { foundEmails: emails }
-  );
-}
+import { Auth, InternalApiKey, OutboxEmail, Project, User, backendContext, bumpEmailAddress, getOutboxEmails, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
 const testEmailConfig = {
   type: "standard",
@@ -136,19 +99,15 @@ describe("email queue edge cases", () => {
     });
     expect(deleteResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(10_000);
+    // Poll until outbox shows SKIPPED with USER_ACCOUNT_DELETED
+    const outboxEmails = await waitForOutboxEmailWithStatus("Slow Render Test Email", "skipped");
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_ACCOUNT_DELETED");
 
     // Verify no email was received (user was deleted)
     const messages = await mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows SKIPPED with USER_ACCOUNT_DELETED
-    const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_ACCOUNT_DELETED");
   });
 
   it("should skip email when user removes primary email after email is queued", async ({ expect }) => {
@@ -207,19 +166,15 @@ describe("email queue edge cases", () => {
     });
     expect(deleteChannelResponse.status).toBe(200);
 
-    // Wait for email processing to complete (rendering + sending)
-    await wait(10_000);
+    // Poll until outbox shows SKIPPED with USER_HAS_NO_PRIMARY_EMAIL
+    const outboxEmails = await waitForOutboxEmailWithStatus("Slow Render Test Email", "skipped");
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
 
     // Verify no email with our subject was received (primary email was removed before sending)
     const messages = await mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows SKIPPED with USER_HAS_NO_PRIMARY_EMAIL
-    const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_HAS_NO_PRIMARY_EMAIL");
   });
 
   it("should skip email when user unsubscribes after email is queued", async ({ expect }) => {
@@ -275,19 +230,15 @@ describe("email queue edge cases", () => {
     );
     expect(unsubscribeResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(10_000);
+    // Poll until outbox shows SKIPPED with USER_UNSUBSCRIBED
+    const outboxEmails = await waitForOutboxEmailWithStatus("Slow Render Test Email", "skipped");
+    expect(outboxEmails.length).toBe(1);
+    expect(outboxEmails[0].skipped_reason).toBe("USER_UNSUBSCRIBED");
 
     // Verify no email with our subject was received (user unsubscribed)
     const messages = await backendContext.value.mailbox.fetchMessages();
     const testEmails = messages.filter(m => m.subject === "Slow Render Test Email");
     expect(testEmails).toHaveLength(0);
-
-    // Verify outbox shows SKIPPED with USER_UNSUBSCRIBED
-    const outboxEmails = await getOutboxEmails({ subject: "Slow Render Test Email" });
-    expect(outboxEmails.length).toBe(1);
-    expect(outboxEmails[0].status).toBe("skipped");
-    expect(outboxEmails[0].skipped_reason).toBe("USER_UNSUBSCRIBED");
   });
 
   it("should NOT skip transactional email even when user unsubscribes from marketing", async ({ expect }) => {
@@ -468,14 +419,17 @@ describe("send email to all users", () => {
           "email_programmatic_call_template_id": null,
           "has_delivered": true,
           "has_rendered": true,
-          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></td></tr></tbody></table><!--7--><!--/$--></body></html>",
+          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);margin:0\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5;margin:0rem;padding:0rem;overflow-x:hidden\\"><div style=\\"padding-bottom:2rem;padding-top:2rem;padding-right:1rem;padding-left:1rem;display:flex;justify-content:center\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:600px;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;box-shadow:0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)),0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));margin-right:auto;margin-left:auto;width:100%\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></div></td></tr></tbody></table><!--7--><!--/$--></body></html>",
           "id": "<stripped UUID>",
           "is_high_priority": false,
           "is_paused": false,
           "is_transactional": true,
+          "next_send_retry_at_millis": null,
           "notification_category_id": "<stripped UUID>",
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
+          "send_attempt_errors": null,
+          "send_retries": 0,
           "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
@@ -508,14 +462,17 @@ describe("send email to all users", () => {
           "email_programmatic_call_template_id": null,
           "has_delivered": true,
           "has_rendered": true,
-          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251)\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></td></tr></tbody></table><!--7--><!--/$--></body></html>",
+          "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);margin:0\\"><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5;margin:0rem;padding:0rem;overflow-x:hidden\\"><div style=\\"padding-bottom:2rem;padding-top:2rem;padding-right:1rem;padding-left:1rem;display:flex;justify-content:center\\"><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:600px;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;box-shadow:0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)),0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));margin-right:auto;margin-left:auto;width:100%\\"><tbody><tr style=\\"width:100%\\"><td><div><p>All users test</p></div></td></tr></tbody></table></div></td></tr></tbody></table><!--7--><!--/$--></body></html>",
           "id": "<stripped UUID>",
           "is_high_priority": false,
           "is_paused": false,
           "is_transactional": true,
+          "next_send_retry_at_millis": null,
           "notification_category_id": "<stripped UUID>",
           "rendered_at_millis": <stripped field 'rendered_at_millis'>,
           "scheduled_at_millis": <stripped field 'scheduled_at_millis'>,
+          "send_attempt_errors": null,
+          "send_retries": 0,
           "simple_status": "ok",
           "skip_deliverability_check": false,
           "started_rendering_at_millis": <stripped field 'started_rendering_at_millis'>,
@@ -950,33 +907,35 @@ describe("template variables", () => {
             <meta name="x-apple-disable-message-reformatting" />
         </head>
         
-        <body style="background-color:rgb(250,251,251)"><!--$-->
+        <body style="background-color:rgb(250,251,251);margin:0"><!--$-->
             <table border="0" width="100%" cellPadding="0" cellSpacing="0" role="presentation" align="center">
                 <tbody>
                     <tr>
-                        <td style="background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5">
-                            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem">
-                                <tbody>
-                                    <tr style="width:100%">
-                                        <td>
-                                            <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em">
-                                                <tbody>
-                                                    <tr style="width:100%">
-                                                        <td>
-                                                            <div data-testid="string">String: <!-- -->hello world</div>
-                                                            <div data-testid="number">Number: <!-- -->42</div>
-                                                            <div data-testid="boolean">Boolean: <!-- -->true</div>
-                                                            <div data-testid="array">Array: <!-- -->apple, banana, cherry</div>
-                                                            <div data-testid="object">Object: <!-- -->deeply nested value</div>
-                                                            <div data-testid="null">Null: <!-- -->is null</div>
-                                                        </td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <td style="background-color:rgb(250,251,251);font-family:ui-sans-serif,system-ui,sans-serif,&quot;Apple Color Emoji&quot;,&quot;Segoe UI Emoji&quot;,&quot;Segoe UI Symbol&quot;,&quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5;margin:0rem;padding:0rem;overflow-x:hidden">
+                            <div style="padding-bottom:2rem;padding-top:2rem;padding-right:1rem;padding-left:1rem;display:flex;justify-content:center">
+                                <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:600px;background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;box-shadow:0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 0 rgb(0,0,0,0),0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)),0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));margin-right:auto;margin-left:auto;width:100%">
+                                    <tbody>
+                                        <tr style="width:100%">
+                                            <td>
+                                                <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em">
+                                                    <tbody>
+                                                        <tr style="width:100%">
+                                                            <td>
+                                                                <div data-testid="string">String: <!-- -->hello world</div>
+                                                                <div data-testid="number">Number: <!-- -->42</div>
+                                                                <div data-testid="boolean">Boolean: <!-- -->true</div>
+                                                                <div data-testid="array">Array: <!-- -->apple, banana, cherry</div>
+                                                                <div data-testid="object">Object: <!-- -->deeply nested value</div>
+                                                                <div data-testid="null">Null: <!-- -->is null</div>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </td>
                     </tr>
                 </tbody>
@@ -1405,10 +1364,7 @@ describe("theme and template deletion after scheduling", () => {
     // For a proper test, we'd need to pause the email, but the send-email endpoint
     // doesn't support is_paused directly.
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -1490,10 +1446,7 @@ describe("theme and template deletion after scheduling", () => {
       }
     }
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Theme Fallback Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -1580,10 +1533,7 @@ describe("theme and template deletion after scheduling", () => {
     // that the architecture is designed to handle template deletion safely
     // because the source is copied to the outbox at scheduling time.
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Template Deletion Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(messages[0].body?.html).toContain("Content from template that will be deleted");
@@ -1670,10 +1620,7 @@ describe("theme and template deletion after scheduling", () => {
     });
     expect(sendResponse.status).toBe(200);
 
-    // Wait for email processing
-    await wait(5_000);
-
-    // Verify the email was sent successfully with the custom theme
+    // Poll until email is received (waitForMessagesWithSubject already does polling)
     const messages = await mailbox.waitForMessagesWithSubject("Custom Theme Baseline Test Email");
     expect(messages.length).toBeGreaterThanOrEqual(1);
 
@@ -1822,7 +1769,7 @@ describe("email outbox pagination", () => {
     expect(response.status).toBe(400);
   });
 
-  it("should order emails with finishedSendingAt first (nulls last)", async ({ expect }) => {
+  it("should order emails by createdAt descending (newest first)", async ({ expect }) => {
     await Project.createAndSwitch({
       display_name: "Test Ordering Project",
       config: {
@@ -1830,16 +1777,9 @@ describe("email outbox pagination", () => {
       },
     });
 
-    // Create a slow-rendering draft (so we have time to pause it)
     const templateSource = deindent`
       import { Container } from "@react-email/components";
-      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
-
-      // Artificial delay to make the email slow to render
-      const startTime = performance.now();
-      while (performance.now() - startTime < 200) {
-        // Busy wait
-      }
+      import { Subject, NotificationCategory } from "@stackframe/emails";
 
       export function EmailTemplate({ user, project }) {
         return (
@@ -1877,8 +1817,8 @@ describe("email outbox pagination", () => {
     expect(createUserResponse.status).toBe(201);
     const userId = createUserResponse.body.id;
 
-    // Send 2 emails to the user and wait for them to be sent
-    for (let i = 0; i < 2; i++) {
+    // Send 3 emails sequentially (need distinct timestamps for ordering test)
+    for (let i = 0; i < 3; i++) {
       const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
         method: "POST",
         accessType: "server",
@@ -1890,35 +1830,373 @@ describe("email outbox pagination", () => {
       expect(sendResponse.status).toBe(200);
     }
 
-    // Wait for email processing - they should be sent
-    await wait(5_000);
+    // Poll until all 3 emails appear in outbox (wait up to 12s, matching waitForOutboxEmailWithStatus)
+    const maxAttempts = 24;
+    const pollInterval = 500;
+    let emails: Array<{ subject?: string, created_at_millis: number }> = [];
 
-    // Verify at least one email was sent
-    const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
-      method: "GET",
-      accessType: "server",
-    });
-    expect(listResponse.status).toBe(200);
-    const emails = listResponse.body.items.filter((e: { subject?: string }) =>
-      e.subject === "Ordering Test Email"
-    );
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(listResponse.status).toBe(200);
 
-    // Check ordering: finished emails should come before non-finished ones
-    // Statuses that have finishedSendingAt set (email has completed processing)
-    const finishedStatuses = new Set(["sent", "opened", "clicked", "marked-as-spam", "server-error", "bounced", "delivery-delayed", "skipped"]);
-    let foundNonFinished = false;
-    for (const email of emails) {
-      const hasFinished = finishedStatuses.has(email.status);
-      if (!hasFinished) {
-        foundNonFinished = true;
-      } else if (foundNonFinished) {
-        // We found a finished email after a non-finished email - wrong ordering
-        expect.fail(`Wrong ordering: found '${email.status}' after non-finished emails`);
-      }
+      emails = listResponse.body.items.filter((e: { subject?: string }) =>
+        e.subject === "Ordering Test Email"
+      );
+
+      if (emails.length >= 3) break;
+      await wait(pollInterval);
     }
-    // We should have at least one finished email
-    const hasSentEmails = emails.some((e: { status: string }) => finishedStatuses.has(e.status));
-    expect(hasSentEmails).toBe(true);
+
+    // Verify we have our emails
+    expect(emails.length).toBeGreaterThanOrEqual(3);
+
+    // Check ordering: emails should be ordered by createdAt descending (newest first)
+    for (let i = 0; i < emails.length - 1; i++) {
+      const current = emails[i];
+      const next = emails[i + 1];
+      expect(current.created_at_millis).toBeGreaterThanOrEqual(next.created_at_millis);
+    }
+  }, 60_000);
+});
+
+// Invalid SMTP config - causes HOST_NOT_FOUND (non-retryable error)
+const brokenSmtpConfig = {
+  type: "standard",
+  host: "this-host-does-not-exist.invalid",
+  port: 25,
+  username: "test",
+  password: "test",
+  sender_name: "Test Project",
+  sender_email: "test@example.com",
+} as const;
+
+// SMTP server that responds with 450 (temporary failure) - retryable and fast
+let tempFailServer: net.Server | null = null;
+let tempFailPort: number | null = null;
+
+async function startTempFailSmtpServer(): Promise<number> {
+  if (tempFailServer) {
+    return tempFailPort ?? throwErr("tempFailServer not initialized");
+  }
+
+  return await new Promise((resolve, reject) => {
+    tempFailServer = net.createServer((socket) => {
+      // Send SMTP greeting
+      socket.write('220 localhost SMTP Test Server\r\n');
+
+      socket.on('data', (data) => {
+        const command = data.toString().trim().toUpperCase();
+        // Respond with 450 (temporary failure) to all commands
+        // This is a retryable error that happens immediately
+        if (command.startsWith('EHLO') || command.startsWith('HELO')) {
+          socket.write('250 localhost Hello\r\n');
+        } else if (command.startsWith('MAIL FROM')) {
+          // Temporary failure - "mailbox unavailable, try again later"
+          socket.write('450 Requested mail action not taken: mailbox unavailable (test)\r\n');
+          socket.end();
+        } else if (command.startsWith('QUIT')) {
+          socket.write('221 Bye\r\n');
+          socket.end();
+        } else {
+          socket.write('450 Temporary failure (test)\r\n');
+        }
+      });
+
+      socket.on('error', () => {
+        // Ignore errors (client may disconnect)
+      });
+    });
+
+    tempFailServer.listen(0, '127.0.0.1', () => {
+      const address = (tempFailServer ?? throwErr("tempFailServer unexpectedly null in listen callback")).address();
+      if (typeof address === 'object' && address !== null) {
+        tempFailPort = address.port;
+        resolve(tempFailPort);
+      } else {
+        reject(new Error('Failed to get server address'));
+      }
+    });
+
+    tempFailServer.on('error', reject);
+  });
+}
+
+function stopTempFailSmtpServer(): void {
+  if (tempFailServer) {
+    tempFailServer.close();
+    tempFailServer = null;
+    tempFailPort = null;
+  }
+}
+
+// Factory function to create temp-fail SMTP config with dynamic port
+function createTempFailSmtpConfig(port: number) {
+  return {
+    type: "standard",
+    host: "127.0.0.1",
+    port: port,
+    username: "test",
+    password: "test",
+    sender_name: "Test Project",
+    sender_email: "test@example.com",
+  } as const;
+}
+
+// Helper type for send attempt error entries
+type SendAttemptErrorEntry = {
+  attempt_number: number,
+  timestamp: string,
+  external_message: string,
+  external_details: Record<string, unknown>,
+  internal_message: string,
+  internal_details: Record<string, unknown>,
+};
+
+// Helper type for email outbox items with retry fields
+type OutboxEmailWithRetryFields = OutboxEmail & {
+  send_retries: number,
+  next_send_retry_at_millis: number | null,
+  send_attempt_errors: SendAttemptErrorEntry[] | null,
+};
+
+// Helper to get detailed email from the outbox
+async function getOutboxEmailById(emailId: string): Promise<OutboxEmailWithRetryFields> {
+  const response = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  if (response.status !== 200) {
+    throw new StackAssertionError(`Failed to get email ${emailId}: status ${response.status}`, { response });
+  }
+  return response.body;
+}
+
+// Helper to poll until an email with the given subject appears in the outbox
+async function waitForOutboxEmail(subject: string, timeoutMs = 30000): Promise<OutboxEmailWithRetryFields> {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
+    const emails = await getOutboxEmails({ subject });
+    if (emails.length > 0) {
+      return await getOutboxEmailById(emails[0].id);
+    }
+    await wait(500);
+  }
+  throw new StackAssertionError(
+    `Timeout waiting for email with subject "${subject}" to appear in outbox`,
+    { subject }
+  );
+}
+
+// Helper to poll until the email has reached a specific send_retries
+// Note: Status may be "queued" or "sending" due to race conditions - that's expected
+async function waitForAttemptCount(emailId: string, attemptCount: number, timeoutMs = 60000): Promise<OutboxEmailWithRetryFields> {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
+    const email = await getOutboxEmailById(emailId);
+    if (email.send_retries >= attemptCount) {
+      return email;
+    }
+    // Terminal state - no more retries will happen
+    if (email.status === "server-error") {
+      return email;
+    }
+    await wait(500);
+  }
+  const finalEmail = await getOutboxEmailById(emailId);
+  throw new StackAssertionError(
+    `Timeout waiting for email ${emailId} to reach send_retries >= ${attemptCount}`,
+    { emailId, attemptCount, finalState: { count: finalEmail.send_retries, status: finalEmail.status } }
+  );
+}
+
+describe("email queue deferred retry logic", () => {
+  it("should immediately mark non-retryable errors as server-error without retrying", async ({ expect }) => {
+    // brokenSmtpConfig causes HOST_NOT_FOUND which has canRetry: false
+    await Project.createAndSwitch({
+      display_name: "Test Non-Retryable Error Project",
+      config: {
+        email_config: brokenSmtpConfig,
+      },
+    });
+
+    const mailbox = backendContext.value.mailbox;
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+    const userId = createUserResponse.body.id;
+
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        html: "Test email for non-retryable error",
+        subject: "Non-Retryable Error Test",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Wait for the email to appear in the outbox and reach server-error state
+    const initialEmail = await waitForOutboxEmail("Non-Retryable Error Test");
+    const emailId = initialEmail.id;
+
+    // Wait for the email to reach server-error status
+    const maxWaitMs = 30000;
+    const startTime = performance.now();
+    let email = initialEmail;
+    while (performance.now() - startTime < maxWaitMs && email.status !== "server-error") {
+      await wait(500);
+      email = await getOutboxEmailById(emailId);
+    }
+
+    // Non-retryable errors should go directly to server-error
+    expect(email.send_retries).toBe(1);
+    expect(email.next_send_retry_at_millis).toBeNull();
+    expect(email.send_attempt_errors).not.toBeNull();
+    expect(email.send_attempt_errors?.length).toBe(1);
+    expect(email.status).toBe("server-error");
+
+    logIfTestFails("Email after non-retryable error", email);
+  });
+
+  describe("retryable errors (using temp-fail SMTP server)", () => {
+    // These tests use a local SMTP server that responds with 450 (temporary failure).
+    // This is fast (immediate response) and produces retryable errors.
+
+    let tempFailSmtpConfig: ReturnType<typeof createTempFailSmtpConfig>;
+
+    beforeAll(async () => {
+      const port = await startTempFailSmtpServer();
+      tempFailSmtpConfig = createTempFailSmtpConfig(port);
+    });
+
+    afterAll(() => {
+      stopTempFailSmtpServer();
+    });
+
+    it("should schedule retry on retryable failure and release email for next iteration", { timeout: 60000 }, async ({ expect }) => {
+      await Project.createAndSwitch({
+        display_name: "Test Deferred Retry Project",
+        config: {
+          email_config: tempFailSmtpConfig,
+        },
+      });
+      // Create API keys that don't expire (JWT admin tokens expire in 60s which is too short for retry tests)
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const mailbox = backendContext.value.mailbox;
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: mailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id;
+
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          html: "Test email for retry logic",
+          subject: "Retry Test Email",
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      // Wait for the email to appear in the outbox
+      const initialEmail = await waitForOutboxEmail("Retry Test Email");
+      const emailId = initialEmail.id;
+
+      // Wait for first send attempt to complete (450 response is immediate)
+      const emailAfterFirstAttempt = await waitForAttemptCount(emailId, 1, 30000);
+
+      // Verify the email was released for a DIFFERENT queue iteration to pick up
+      // - status should NOT be server-error (retries remaining)
+      expect(emailAfterFirstAttempt.send_retries).toBe(1);
+      expect(emailAfterFirstAttempt.send_attempt_errors).not.toBeNull();
+      expect(emailAfterFirstAttempt.send_attempt_errors?.length).toBe(1);
+      expect(emailAfterFirstAttempt.send_attempt_errors?.[0].attempt_number).toBe(1);
+      expect(emailAfterFirstAttempt.send_attempt_errors?.[0].external_message).toContain("450");
+      expect(emailAfterFirstAttempt.status).not.toBe("server-error");
+
+      // Status could be:
+      // - "scheduled": isQueued=false, waiting for nextSendRetryAt to pass
+      // - "queued": queueReadyEmails() ran, isQueued=true, waiting to be claimed
+      // - "sending": next iteration already picked it up
+      expect(["scheduled", "queued", "sending"]).toContain(emailAfterFirstAttempt.status);
+
+      logIfTestFails("Email after first retry attempt", emailAfterFirstAttempt);
+    });
+
+    it("should retry emails until max attempts exhausted, then mark as server-error", { timeout: 150000 }, async ({ expect }) => {
+      await Project.createAndSwitch({
+        display_name: "Test Retry Exhaustion Project",
+        config: {
+          email_config: tempFailSmtpConfig,
+        },
+      });
+      // Create API keys that don't expire (JWT admin tokens expire in 60s which is too short for retry tests)
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const mailbox = backendContext.value.mailbox;
+      const createUserResponse = await niceBackendFetch("/api/v1/users", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          primary_email: mailbox.emailAddress,
+          primary_email_verified: true,
+        },
+      });
+      expect(createUserResponse.status).toBe(201);
+      const userId = createUserResponse.body.id;
+
+      const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+        method: "POST",
+        accessType: "server",
+        body: {
+          user_ids: [userId],
+          html: "Test email for retry exhaustion",
+          subject: "Retry Exhaustion Test",
+        },
+      });
+      expect(sendResponse.status).toBe(200);
+
+      // Wait for the email to appear in the outbox
+      const initialEmail = await waitForOutboxEmail("Retry Exhaustion Test");
+      const emailId = initialEmail.id;
+
+      // Wait for all retries to exhaust (MAX_SEND_ATTEMPTS = 5)
+      // With 450 errors (immediate) + exponential backoff (2s base * 2^attempt), worst case ~90s
+      const maxWaitMs = 120000;
+      const startTime = performance.now();
+      let email = await getOutboxEmailById(emailId);
+      while (performance.now() - startTime < maxWaitMs && email.status !== "server-error") {
+        await wait(1000);
+        email = await getOutboxEmailById(emailId);
+      }
+
+      // Log the email object to help debug undefined status issues
+      logIfTestFails("Email after retry exhaustion loop", email);
+
+      expect(email.status).toBe("server-error");
+      expect(email.send_retries).toBe(5); // MAX_SEND_ATTEMPTS
+      expect(email.send_attempt_errors?.length).toBe(5);
+      // No more retries scheduled
+      expect(email.next_send_retry_at_millis).toBeNull();
+    });
   });
 });
 

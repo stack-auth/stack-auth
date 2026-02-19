@@ -1,13 +1,13 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { experimental_createMCPClient as createMCPClient, streamText } from 'ai';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
-// Create Google AI instance
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_AI_API_KEY,
+// Create OpenRouter AI instance
+const openrouter = createOpenRouter({
+  apiKey: process.env.STACK_OPENROUTER_API_KEY,
 });
 
 // Helper function to get error message
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   try {
     // Use local MCP server in development, production server in production
     const mcpUrl = process.env.NODE_ENV === 'development'
-      ? new URL('/api/internal/mcp', 'https://localhost:8104')
+      ? new URL('/api/internal/mcp', 'http://localhost:8104')
       : new URL('/api/internal/mcp', 'https://mcp.stack-auth.com');
 
     const stackAuthMcp = await createMCPClient({
@@ -105,11 +105,54 @@ When users need personalized support, have complex issues, or ask for help beyon
 ## CODE EXAMPLE GUIDELINES:
 - For API calls, show both the HTTP endpoint AND the SDK method
 - For example, when explaining "get current user":
-  * Show the HTTP API endpoint: GET /users/me
+  * Show the HTTP API endpoint: GET /api/v1/users/me
   * Show the SDK usage: const user = useUser();
   * Include necessary imports and authentication headers
 - Always show complete, runnable code snippets with proper language tags
 - Include context like "HTTP API", "SDK (React)", "SDK (Next.js)" etc.
+
+## STACK AUTH HTTP API HEADERS (CRITICAL):
+Stack Auth does NOT use standard "Authorization: Bearer" headers. When showing HTTP/REST API examples, ALWAYS use these Stack Auth-specific headers:
+
+**For client-side requests (browser/mobile):**
+\`\`\`
+X-Stack-Access-Type: client
+X-Stack-Project-Id: <your-project-id>
+X-Stack-Publishable-Client-Key: <your-publishable-client-key>
+X-Stack-Access-Token: <user-access-token>  // for authenticated requests
+\`\`\`
+
+**For server-side requests (backend):**
+\`\`\`
+X-Stack-Access-Type: server
+X-Stack-Project-Id: <your-project-id>
+X-Stack-Secret-Server-Key: <your-secret-server-key>
+\`\`\`
+
+**Example HTTP request (client-side, authenticated):**
+\`\`\`typescript
+const response = await fetch('https://api.stack-auth.com/api/v1/users/me', {
+  headers: {
+    'X-Stack-Access-Type': 'client',
+    'X-Stack-Project-Id': 'YOUR_PROJECT_ID',
+    'X-Stack-Publishable-Client-Key': 'YOUR_PUBLISHABLE_CLIENT_KEY',
+    'X-Stack-Access-Token': 'USER_ACCESS_TOKEN',
+  },
+});
+\`\`\`
+
+**Example HTTP request (server-side):**
+\`\`\`typescript
+const response = await fetch('https://api.stack-auth.com/api/v1/users/USER_ID', {
+  headers: {
+    'X-Stack-Access-Type': 'server',
+    'X-Stack-Project-Id': 'YOUR_PROJECT_ID',
+    'X-Stack-Secret-Server-Key': 'YOUR_SECRET_SERVER_KEY',
+  },
+});
+\`\`\`
+
+NEVER show "Authorization: Bearer" for Stack Auth API calls - this is incorrect and will not work.
 
 ## WHEN UNSURE:
 - If you're unsure about a Stack Auth feature, say "As an AI, I don't know" or "As an AI, I'm not certain" clearly
@@ -135,14 +178,15 @@ Remember: You're here to help users succeed with Stack Auth. Be helpful but conc
 
   try {
     const result = streamText({
-      model: google('gemini-2.5-flash'),
+      model: openrouter('anthropic/claude-4.5-sonnet'),
       tools: {
         ...tools,
       },
       maxSteps: 50,
       system: systemPrompt,
       messages,
-      temperature: 0.3, // Slightly higher for more natural, detailed responses
+      temperature: 0.3,
+      maxTokens: 4096, // Ensure we have enough tokens for complete responses
     });
 
     return result.toDataStreamResponse({

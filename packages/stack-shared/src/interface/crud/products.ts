@@ -12,6 +12,7 @@ export const customerProductReadSchema = yupObject({
   product: inlineProductSchema.defined(),
   type: yupString().oneOf(["one_time", "subscription"]).defined(),
   subscription: yupObject({
+    subscription_id: yupString().nullable().defined(),
     current_period_end: yupString().nullable().defined(),
     cancel_at_period_end: yupBoolean().defined(),
     is_cancelable: yupBoolean().defined(),

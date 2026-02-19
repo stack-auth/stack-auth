@@ -44,26 +44,29 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
 
-    // For unlinked sources, save directly without showing a dialog
-    if (source.type === "unlinked") {
-      await project.updatePushedConfig(configUpdate as any);
-      return true;
+    let shouldUpdate = true;
+    if (source.type !== "unlinked") {
+      shouldUpdate = await new Promise((resolve) => {
+        setDialogState({
+          isOpen: true,
+          adminApp,
+          configUpdate,
+          resolve,
+          source,
+          isLoadingSource: false,
+          commitMessage: "",
+          // Temporary: 50/50 chance for GitHub dialog
+          showConnectWithGitHub: Math.random() < 0.5,
+        });
+      });
     }
 
-    // Show dialog for other source types
-    return await new Promise((resolve) => {
-      setDialogState({
-        isOpen: true,
-        adminApp,
-        configUpdate,
-        resolve,
-        source,
-        isLoadingSource: false,
-        commitMessage: "",
-        // Temporary: 50/50 chance for GitHub dialog
-        showConnectWithGitHub: Math.random() < 0.5,
-      });
-    });
+    if (shouldUpdate) {
+      await project.updatePushedConfig(configUpdate);
+      await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
+      return true;
+    }
+    return false;
   }, []);
 
   const handleClose = useCallback((result: boolean) => {
@@ -266,9 +269,8 @@ export function useUpdateConfig() {
     } else {
       // Update environment config directly
       const project = await adminApp.getProject();
-      // Cast to any because the strict type guard prevents direct usage
       // eslint-disable-next-line no-restricted-syntax -- this is the hook implementation itself
-      await project.updateConfig(configUpdate as any);
+      await project.updateConfig(configUpdate);
       return true;
     }
   }, [showPushableDialog]);
