@@ -1412,19 +1412,19 @@ export default function PageClient() {
                       className="w-48"
                       onCloseAutoFocus={(e) => e.preventDefault()}
                     >
-                      <DropdownMenuItem onClick={() => requestAnimationFrame(() => openFilterDialog("user"))}>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
                         User
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => requestAnimationFrame(() => openFilterDialog("team"))}>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
                         Team
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => requestAnimationFrame(() => openFilterDialog("duration"))}>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("duration")); }}>
                         Duration
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => requestAnimationFrame(() => openFilterDialog("lastActive"))}>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("lastActive")); }}>
                         Last active
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => requestAnimationFrame(() => openFilterDialog("clicks"))}>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("clicks")); }}>
                         Click count
                       </DropdownMenuItem>
                     </DropdownMenuContent>

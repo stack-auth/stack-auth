@@ -255,8 +255,8 @@ export const GET = createSmartRouteHandler({
             id: row.id,
             project_user: {
               id: row.projectUserId,
-              display_name: row.projectUser?.displayName ?? null,
-              primary_email: row.projectUser?.contactChannels[0]?.value ?? null,
+              display_name: row.projectUser.displayName ?? null,
+              primary_email: row.projectUser.contactChannels[0]?.value ?? null,
             },
             started_at_millis: row.startedAt.getTime(),
             last_event_at_millis: row.lastEventAt.getTime(),
