@@ -1,7 +1,6 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
-import { getProductVersion } from "@/lib/product-versions";
-import { getStackStripe, getStripeForAccount, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
+import { getStackStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
 import { getTenancy, type Tenancy } from "@/lib/tenancies";
@@ -185,10 +184,12 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
 
-    const productVersionId = metadata.productVersionId as string | undefined;
-    const product = productVersionId
-      ? (await getProductVersion({ prisma, tenancyId: tenancy.id, productVersionId })).productJson
-      : JSON.parse(metadata.product || "{}");
+    const product = await resolveProductFromStripeMetadata({
+      prisma,
+      tenancyId: tenancy.id,
+      metadata: metadata as Record<string, string | undefined>,
+      context: { paymentIntentId: paymentIntent.id },
+    });
 
     const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
     const stripePaymentIntentId = paymentIntent.id;
@@ -232,7 +233,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       customerId: metadata.customerId,
     });
     const receiptLink = paymentIntent.charges?.data?.[0]?.receipt_url ?? null;
-    const productName = typeof product?.displayName === "string" ? product.displayName : "Purchase";
+    const productName = product.displayName ?? "Purchase";
     const extraVariables: Record<string, string | number> = {
       productName,
       quantity: qty,
@@ -270,11 +271,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       customerType,
       customerId: metadata.customerId,
     });
-    const productVersionId = metadata.productVersionId as string | undefined;
-    const product = productVersionId
-      ? (await getProductVersion({ prisma, tenancyId: tenancy.id, productVersionId })).productJson
-      : JSON.parse(metadata.product || "{}");
-    const productName = typeof product?.displayName === "string" ? product.displayName : "Purchase";
+    const product = await resolveProductFromStripeMetadata({
+      prisma,
+      tenancyId: tenancy.id,
+      metadata: metadata as Record<string, string | undefined>,
+      context: { paymentIntentId: paymentIntent.id },
+    });
+    const productName = product.displayName ?? "Purchase";
     const failureReason = paymentIntent.last_payment_error?.message;
     const extraVariables: Record<string, string | number> = {
       productName,
