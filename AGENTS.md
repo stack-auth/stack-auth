@@ -107,6 +107,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - **When building frontend code, always carefully deal with loading and error states.** Be very explicit with these; some components make this easy, eg. the button onClick already takes an async callback for loading state, but make sure this is done everywhere, and make sure errors are NEVER just silently swallowed.
 - Any design components you add or modify in the dashboard, update the Playground page accordingly to showcase the changes.
 - Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
+- Ensure **aggressively** that all code has low coupling and high cohesion. This is really important as it makes sure our code remains consistent and maintainable. Eagerly refactor things into better abstractions and look out for them actively.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
