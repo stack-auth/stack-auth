@@ -9,10 +9,21 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const CLICK_FILTER_ID_CAP = 1000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function parseCsvIds(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function parseCsvUuids(name: string, raw: string | undefined): string[] {
+  const values = parseCsvIds(raw);
+  for (const value of values) {
+    if (!UUID_PATTERN.test(value)) {
+      throw new StatusError(StatusError.BadRequest, `${name} must contain valid UUID values`);
+    }
+  }
+  return values;
 }
 
 function parseNonNegativeInt(name: string, raw: string | undefined): number | null {
@@ -115,8 +126,8 @@ export const GET = createSmartRouteHandler({
     const parsedLimit = Number.parseInt(rawLimit, 10);
     const limit = Math.max(1, Math.min(MAX_LIMIT, Number.isFinite(parsedLimit) ? parsedLimit : DEFAULT_LIMIT));
 
-    const userIdsFilter = parseCsvIds(query.user_ids);
-    const teamIdsFilter = parseCsvIds(query.team_ids);
+    const userIdsFilter = parseCsvUuids("user_ids", query.user_ids);
+    const teamIdsFilter = parseCsvUuids("team_ids", query.team_ids);
     const durationMsMin = parseNonNegativeInt("duration_ms_min", query.duration_ms_min);
     const durationMsMax = parseNonNegativeInt("duration_ms_max", query.duration_ms_max);
     const clickCountMin = parseNonNegativeInt("click_count_min", query.click_count_min);
