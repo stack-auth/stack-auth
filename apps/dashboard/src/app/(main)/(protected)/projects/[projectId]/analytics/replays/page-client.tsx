@@ -2,6 +2,7 @@
 
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { StyledLink } from "@/components/link";
 import { useFromNow } from "@/hooks/use-from-now";
 import {
   getDesiredGlobalOffsetFromPlaybackState,
@@ -1741,9 +1742,16 @@ export default function PageClient() {
               )}
 
               <div className="shrink-0 px-3 py-2 border-b border-border/30 flex items-center justify-between gap-3 h-10">
-                <Typography className="text-sm font-medium truncate">
-                  {selectedRecording ? getRecordingTitle(selectedRecording) : ""}
-                </Typography>
+                {selectedRecording ? (
+                  <StyledLink
+                    href={`/projects/${encodeURIComponent(adminApp.projectId)}/users/${encodeURIComponent(selectedRecording.projectUser.id)}`}
+                    className="text-sm font-medium truncate"
+                  >
+                    {getRecordingTitle(selectedRecording)}
+                  </StyledLink>
+                ) : (
+                  <Typography className="text-sm font-medium truncate" />
+                )}
                 <ReplaySettingsButton
                   settings={ms.settings}
                   onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
