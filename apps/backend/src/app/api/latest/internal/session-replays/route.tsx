@@ -1,6 +1,6 @@
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
-import { BooleanTrue, Prisma } from "@/generated/prisma/client";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -8,7 +8,7 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-const DURATION_OVERFETCH_MULTIPLIER = 5;
+const CLICK_FILTER_ID_CAP = 1000;
 
 function parseCsvIds(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -48,11 +48,13 @@ async function loadClickQualifiedReplayIds(options: {
         AND event_type = '$click'
       GROUP BY session_replay_id
       HAVING count() >= {clickCountMin:UInt64}
+      LIMIT {cap:UInt64}
     `,
     query_params: {
       projectId: options.projectId,
       branchId: options.branchId,
       clickCountMin: options.clickCountMin,
+      cap: CLICK_FILTER_ID_CAP,
     },
     clickhouse_settings: {
       SQL_project_id: options.projectId,
@@ -107,6 +109,7 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ auth, query }) {
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    const schema = await getPrismaSchemaForTenancy(auth.tenancy);
 
     const rawLimit = query.limit ?? String(DEFAULT_LIMIT);
     const parsedLimit = Number.parseInt(rawLimit, 10);
@@ -144,92 +147,72 @@ export const GET = createSmartRouteHandler({
       };
     }
 
-    // Build WHERE with all filters that can be pushed to the DB
-    const baseWhere: Prisma.SessionReplayWhereInput = {
-      tenancyId: auth.tenancy.id,
-      ...(userIdsFilter.length > 0 ? { projectUserId: { in: userIdsFilter } } : {}),
-      ...((lastEventAtFrom || lastEventAtTo) ? {
-        lastEventAt: {
-          ...(lastEventAtFrom ? { gte: lastEventAtFrom } : {}),
-          ...(lastEventAtTo ? { lte: lastEventAtTo } : {}),
-        },
-      } : {}),
-      ...(teamIdsFilter.length > 0 ? {
-        projectUser: {
-          teamMembers: {
-            some: {
-              teamId: { in: teamIdsFilter },
-            },
-          },
-        },
-      } : {}),
-      ...(clickQualifiedIds ? { id: { in: clickQualifiedIds } } : {}),
-    };
-
     // Handle cursor-based pagination
     const cursorId = query.cursor;
-    let cursorWhere: Prisma.SessionReplayWhereInput = {};
+    let cursorPivot: { id: string, lastEventAt: Date } | null = null;
     if (cursorId) {
-      const cursorPivot = await prisma.sessionReplay.findUnique({
+      cursorPivot = await prisma.sessionReplay.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: cursorId } },
         select: { id: true, lastEventAt: true },
       });
       if (!cursorPivot) {
         throw new KnownErrors.ItemNotFound(cursorId);
       }
-      cursorWhere = {
-        OR: [
-          { lastEventAt: { lt: cursorPivot.lastEventAt } },
-          { AND: [{ lastEventAt: { equals: cursorPivot.lastEventAt } }, { id: { lt: cursorId } }] },
-        ],
-      };
     }
 
-    const finalWhere: Prisma.SessionReplayWhereInput = cursorId
-      ? { AND: [baseWhere, cursorWhere] }
-      : baseWhere;
+    type ReplayRow = {
+      id: string,
+      projectUserId: string,
+      startedAt: Date,
+      lastEventAt: Date,
+      projectUserDisplayName: string | null,
+      primaryEmail: string | null,
+    };
 
-    // Overfetch when duration filter is active since it must be applied in memory
-    const hasDurationFilter = durationMsMin !== null || durationMsMax !== null;
-    const fetchSize = hasDurationFilter
-      ? Math.min((limit + 1) * DURATION_OVERFETCH_MULTIPLIER, MAX_LIMIT * DURATION_OVERFETCH_MULTIPLIER)
-      : limit + 1;
+    const rows = await prisma.$queryRaw<ReplayRow[]>`
+      SELECT
+        sr."id",
+        sr."projectUserId",
+        sr."startedAt",
+        sr."lastEventAt",
+        pu."displayName" AS "projectUserDisplayName",
+        (
+          SELECT cc."value"
+          FROM ${sqlQuoteIdent(schema)}."ContactChannel" cc
+          WHERE cc."projectUserId" = sr."projectUserId"
+            AND cc."tenancyId" = sr."tenancyId"
+            AND cc."type" = 'EMAIL'
+            AND cc."isPrimary" = 'TRUE'::"BooleanTrue"
+          LIMIT 1
+        ) AS "primaryEmail"
+      FROM ${sqlQuoteIdent(schema)}."SessionReplay" sr
+      JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
+        ON pu."projectUserId" = sr."projectUserId"
+        AND pu."tenancyId" = sr."tenancyId"
+      WHERE sr."tenancyId" = ${auth.tenancy.id}::UUID
+        ${userIdsFilter.length > 0 ? Prisma.sql`AND sr."projectUserId" IN (${Prisma.join(userIdsFilter)})` : Prisma.empty}
+        ${lastEventAtFrom ? Prisma.sql`AND sr."lastEventAt" >= ${lastEventAtFrom}` : Prisma.empty}
+        ${lastEventAtTo ? Prisma.sql`AND sr."lastEventAt" <= ${lastEventAtTo}` : Prisma.empty}
+        ${teamIdsFilter.length > 0 ? Prisma.sql`AND EXISTS (
+          SELECT 1 FROM ${sqlQuoteIdent(schema)}."TeamMember" tm
+          WHERE tm."projectUserId" = sr."projectUserId"
+            AND tm."tenancyId" = sr."tenancyId"
+            AND tm."teamId" IN (${Prisma.join(teamIdsFilter)})
+        )` : Prisma.empty}
+        ${clickQualifiedIds ? Prisma.sql`AND sr."id" IN (${Prisma.join(clickQualifiedIds)})` : Prisma.empty}
+        ${durationMsMin !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 >= ${durationMsMin}` : Prisma.empty}
+        ${durationMsMax !== null ? Prisma.sql`AND EXTRACT(EPOCH FROM (sr."lastEventAt" - sr."startedAt")) * 1000 <= ${durationMsMax}` : Prisma.empty}
+        ${cursorPivot ? Prisma.sql`AND (
+          sr."lastEventAt" < ${cursorPivot.lastEventAt}
+          OR (sr."lastEventAt" = ${cursorPivot.lastEventAt} AND sr."id" < ${cursorId})
+        )` : Prisma.empty}
+      ORDER BY sr."lastEventAt" DESC, sr."id" DESC
+      LIMIT ${limit + 1}
+    `;
 
-    const sessions = await prisma.sessionReplay.findMany({
-      where: finalWhere,
-      orderBy: [{ lastEventAt: "desc" }, { id: "desc" }],
-      take: fetchSize,
-      select: {
-        id: true,
-        projectUserId: true,
-        startedAt: true,
-        lastEventAt: true,
-        projectUser: {
-          select: {
-            displayName: true,
-            contactChannels: {
-              where: { type: "EMAIL", isPrimary: BooleanTrue.TRUE },
-              select: { value: true },
-              take: 1,
-            },
-          },
-        },
-      },
-    });
-
-    // Apply duration filter in memory (only filter that can't be pushed to the DB)
-    const filtered = hasDurationFilter
-      ? sessions.filter((row) => {
-        const durationMs = row.lastEventAt.getTime() - row.startedAt.getTime();
-        if (durationMsMin !== null && durationMs < durationMsMin) return false;
-        if (durationMsMax !== null && durationMs > durationMsMax) return false;
-        return true;
-      })
-      : sessions;
-
-    const hasMore = filtered.length > limit || (hasDurationFilter && sessions.length === fetchSize);
-    const page = filtered.slice(0, limit);
-    const nextCursor = hasMore && page.length > 0 ? page[page.length - 1]!.id : null;
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1]!.id : null;
 
     const sessionIds = page.map((row) => row.id);
     const chunkAggs = sessionIds.length
@@ -259,8 +242,8 @@ export const GET = createSmartRouteHandler({
             id: row.id,
             project_user: {
               id: row.projectUserId,
-              display_name: row.projectUser.displayName ?? null,
-              primary_email: row.projectUser.contactChannels[0]?.value ?? null,
+              display_name: row.projectUserDisplayName ?? null,
+              primary_email: row.primaryEmail ?? null,
             },
             started_at_millis: row.startedAt.getTime(),
             last_event_at_millis: row.lastEventAt.getTime(),
