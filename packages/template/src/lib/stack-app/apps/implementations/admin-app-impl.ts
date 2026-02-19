@@ -1046,6 +1046,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     const response = await this._interface.listSessionReplays({
       cursor: options?.cursor,
       limit: options?.limit,
+      user_ids: options?.userIds,
+      team_ids: options?.teamIds,
+      duration_ms_min: options?.durationMsMin,
+      duration_ms_max: options?.durationMsMax,
+      last_event_at_from_millis: options?.lastEventAtFromMillis,
+      last_event_at_to_millis: options?.lastEventAtToMillis,
+      click_count_min: options?.clickCountMin,
     });
 
     const items: AdminSessionReplay[] = response.items.map((r) => ({
