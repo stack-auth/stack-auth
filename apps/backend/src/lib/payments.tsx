@@ -312,6 +312,10 @@ export function isActiveSubscription(subscription: Subscription): boolean {
   return subscription.status === SubscriptionStatus.active || subscription.status === SubscriptionStatus.trialing;
 }
 
+/**
+ * Returns ALL subscriptions for a customer, including canceled ones.
+ * Use `isActiveSubscription()` to filter if you only need active subscriptions.
+ */
 export async function getSubscriptions(options: {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
