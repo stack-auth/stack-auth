@@ -19,7 +19,7 @@ const DropdownMenu = forwardRefIfNeeded<
   React.ElementRef<typeof DropdownMenuPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>
 >(({ ...props }, ref) => {
-  const [open, setOpen] = React.useState(!!props.open);
+  const [open, setOpen] = React.useState(() => props.open ?? props.defaultOpen ?? false);
 
   return (
     <DropdownMenuContext.Provider value={{
@@ -124,11 +124,11 @@ const DropdownMenuItem = forwardRefIfNeeded<
   const handleItemAction = (event: { preventDefault: () => void, stopPropagation: () => void }) => {
     event.preventDefault();
     event.stopPropagation();
-    const result = props.onClick?.(event as React.MouseEvent<HTMLDivElement, MouseEvent>);
-    if (result && typeof (result as Promise<void>).then === "function") {
+    const result = props.onClick?.(event as unknown as React.MouseEvent<HTMLDivElement, MouseEvent>);
+    if (result instanceof Promise) {
       setIsLoading(true);
       runAsynchronouslyWithAlert(
-        Promise.resolve(result).finally(() => {
+        result.finally(() => {
           setIsLoading(false);
           setOpen(false);
         })
@@ -150,7 +150,6 @@ const DropdownMenuItem = forwardRefIfNeeded<
     {...props}
     disabled={isLoading || props.disabled}
     onSelect={props.onClick ? handleItemAction : undefined}
-    onClick={props.onClick ? handleItemAction : undefined}
   >
     <div style={{ visibility: isLoading ? "visible" : "hidden", position: "absolute", inset: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
       <Spinner />

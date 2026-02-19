@@ -3,11 +3,11 @@
 import { SmartFormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { SettingCard } from "@/components/settings";
+import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignDataTable } from "@/components/design-components";
 import { getPublicEnvVar } from '@/lib/env';
 import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { ActionCell, ActionDialog, Alert, AlertDescription, AlertTitle, Button, Form, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
+import { ActionCell, ActionDialog, Form, Typography } from "@/components/ui";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { SvixProvider, useEndpoints, useSvix } from "svix-react";
@@ -19,6 +19,8 @@ import { getSvixResult } from "./utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useTheme } from "next-themes";
 import { AppPortal } from "svix-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { GlobeHemisphereWestIcon } from "@phosphor-icons/react";
 import "svix-react/style.css";
 
 
@@ -72,6 +74,7 @@ type Endpoint = {
   id: string,
   url: string,
   description?: string,
+  disabled: boolean,
 };
 
 function CreateDialog(props: {
@@ -112,6 +115,7 @@ function CreateDialog(props: {
       id: created.id,
       url: created.url,
       description: created.description,
+      disabled: created.disabled ?? false,
     });
   });
 
@@ -128,9 +132,10 @@ function CreateDialog(props: {
     >
       {createdEndpoint ? (
         <div className="space-y-6">
-          <Alert variant="success">
-            <AlertTitle>Endpoint created</AlertTitle>
-            <AlertDescription>
+          <DesignAlert
+            variant="success"
+            title="Endpoint created"
+            description={<>
               <span className="block">
                 <span className="font-semibold">URL:</span> {createdEndpoint.url}
               </span>
@@ -142,23 +147,23 @@ function CreateDialog(props: {
               <span className="block pt-2">
                 You can now send a test event to verify your integration.
               </span>
-            </AlertDescription>
-          </Alert>
+            </>}
+          />
           <div className="flex justify-end gap-2">
-            <Button
+            <DesignButton
               variant="outline"
               onClick={() => handleOpenChange(false)}
             >
               Close
-            </Button>
-            <Button
+            </DesignButton>
+            <DesignButton
               onClick={() => {
                 props.onTestRequested?.(createdEndpoint);
                 handleOpenChange(false);
               }}
             >
               Test endpoint
-            </Button>
+            </DesignButton>
           </div>
         </div>
       ) : (
@@ -167,9 +172,10 @@ function CreateDialog(props: {
             onSubmit={(e) => runAsynchronously(handleSubmit(e))}
             className="space-y-4"
           >
-            <Alert>
-              Make sure this is a trusted URL that you control.
-            </Alert>
+            <DesignAlert
+              variant="info"
+              description="Make sure this is a trusted URL that you control."
+            />
             <InputField
               label="URL"
               name="url"
@@ -181,24 +187,25 @@ function CreateDialog(props: {
               control={form.control}
             />
             {allowInsecureWarning && (
-              <Alert variant="destructive">
-                Using HTTP endpoints is insecure. This can expose your user data to attackers. Only use HTTP endpoints in development environments.
-              </Alert>
+              <DesignAlert
+                variant="error"
+                description="Using HTTP endpoints is insecure. This can expose your user data to attackers. Only use HTTP endpoints in development environments."
+              />
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <Button
+              <DesignButton
                 variant="outline"
                 type="button"
                 onClick={() => handleOpenChange(false)}
               >
                 Cancel
-              </Button>
-              <Button
+              </DesignButton>
+              <DesignButton
                 type="submit"
                 disabled={!form.formState.isValid}
               >
                 Create
-              </Button>
+              </DesignButton>
             </div>
           </form>
         </Form>
@@ -243,7 +250,7 @@ function DeleteDialog(props: {
     <ActionDialog
       open={props.open}
       onClose={props.onClose}
-      title="Delete domain"
+      title="Delete endpoint"
       danger
       okButton={{
         label: "Delete",
@@ -254,7 +261,7 @@ function DeleteDialog(props: {
       }}
       cancelButton
     >
-      <Typography>
+      <Typography className="text-sm text-foreground/80">
         Do you really want to remove <b>{props.endpoint.url}</b> from the endpoint list? The endpoint will no longer receive events.
       </Typography>
     </ActionDialog>
@@ -312,33 +319,36 @@ function TestEndpointDialog(props: { endpoint: Endpoint, open: boolean, onOpenCh
       cancelButton={status === 'sending' ? false : { label: 'Cancel' }}
     >
       <div className="space-y-4">
-        <Alert>
-          <AlertDescription>
+        <DesignAlert
+          variant="info"
+          description={<>
             We&apos;ll send a simple <code className="rounded bg-muted px-1 py-0.5">stack.test</code> event to <span >{props.endpoint.url}</span> and check if it was delivered successfully.
-          </AlertDescription>
-        </Alert>
+          </>}
+        />
 
         <div>
-          <Typography type='label'>Sample payload</Typography>
+          <Typography type='label' className="text-xs uppercase tracking-wide text-muted-foreground">Sample payload</Typography>
           <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-4 text-xs leading-relaxed">{previewPayload}</pre>
         </div>
 
         {status === 'success' && (
-          <Alert variant='success'>
-            <AlertTitle>Event sent</AlertTitle>
-            <AlertDescription>
+          <DesignAlert
+            variant='success'
+            title="Event sent"
+            description={<>
               Test event was sent successfully.
               <br />
               Your endpoint is properly configured and ready to receive events.
-            </AlertDescription>
-          </Alert>
+            </>}
+          />
         )}
 
         {status === 'error' && errorMessage && (
-          <Alert variant='destructive'>
-            <AlertTitle>Unable to send event</AlertTitle>
-            <AlertDescription>{errorMessage}</AlertDescription>
-          </Alert>
+          <DesignAlert
+            variant='error'
+            title="Unable to send event"
+            description={errorMessage}
+          />
         )}
       </div>
     </ActionDialog>
@@ -385,37 +395,78 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
   if (!endpoints.loaded) {
     return endpoints.rendered;
   } else {
-    return (
-      <>
-        <SettingCard
-          title="Endpoints"
-          description="Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data."
-          actions={<CreateDialog trigger={<Button>Add new endpoint</Button>} updateFn={props.updateFn} onTestRequested={props.onTestRequested} />}
-        >
-          <div className="border rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[600px]">Endpoint URL</TableHead>
-                  <TableHead className="w-[300px]">Description</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {endpoints.data.map(endpoint => (
-                  <TableRow key={endpoint.id}>
-                    <TableCell>{endpoint.url}</TableCell>
-                    <TableCell>{endpoint.description}</TableCell>
-                    <TableCell className="text-right">
-                      <ActionMenu endpoint={endpoint} updateFn={props.updateFn} onTestEndpoint={props.onTestRequested} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+    const columns: ColumnDef<Endpoint>[] = [
+      {
+        accessorKey: "url",
+        header: "Endpoint URL",
+        cell: ({ row }) => (
+          <span className="text-sm font-medium text-foreground">{row.original.url}</span>
+        ),
+      },
+      {
+        accessorKey: "description",
+        header: "Description",
+        cell: ({ row }) => (
+          row.original.description ? (
+            <span className="text-sm text-foreground/80">{row.original.description}</span>
+          ) : (
+            <span className="text-sm text-muted-foreground">-</span>
+          )
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <DesignBadge
+            label={row.original.disabled ? "Disabled" : "Active"}
+            color={row.original.disabled ? "red" : "green"}
+            size="sm"
+          />
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <ActionMenu
+              endpoint={row.original}
+              updateFn={props.updateFn}
+              onTestEndpoint={props.onTestRequested}
+            />
           </div>
-        </SettingCard>
-      </>
+        ),
+      },
+    ];
+
+    const endpointRows: Endpoint[] = endpoints.data.map((endpoint) => ({
+      ...endpoint,
+      description: endpoint.description,
+      disabled: endpoint.disabled ?? false,
+    }));
+
+    return (
+      <DesignCard
+        title="Endpoints"
+        subtitle="Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data."
+        icon={GlobeHemisphereWestIcon}
+        glassmorphic
+        actions={(
+          <CreateDialog
+            trigger={<DesignButton>Add new endpoint</DesignButton>}
+            updateFn={props.updateFn}
+            onTestRequested={props.onTestRequested}
+          />
+        )}
+      >
+        <DesignDataTable
+          data={endpointRows}
+          columns={columns}
+          defaultColumnFilters={[]}
+          defaultSorting={[]}
+        />
+      </DesignCard>
     );
   }
 }

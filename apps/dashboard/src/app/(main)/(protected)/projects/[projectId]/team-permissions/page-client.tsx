@@ -2,7 +2,7 @@
 import { PermissionTable } from "@/components/data-table/permission-table";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { PermissionListField } from "@/components/permission-field";
-import { Button } from "@/components/ui";
+import { DesignButton } from "@/components/design-components";
 import React from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -20,9 +20,9 @@ export default function PageClient() {
       <PageLayout
         title="Team Permissions"
         actions={
-          <Button onClick={() => setCreatePermissionModalOpen(true)}>
+          <DesignButton onClick={() => setCreatePermissionModalOpen(true)}>
             Create Permission
-          </Button>
+          </DesignButton>
         }
       >
         <PermissionTable

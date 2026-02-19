@@ -1,5 +1,6 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { DesignDataTable } from "@/components/design-components/table";
 import { useRouter } from "@/components/router";
 import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
 import { ServerTeam } from '@stackframe/stack';
@@ -131,12 +132,13 @@ export function TeamTable(props: { teams: ServerTeam[] }) {
   const router = useRouter();
   const stackAdminApp = useAdminApp();
 
-  return <DataTable
+  return <DesignDataTable
     data={props.teams}
     columns={columns}
     toolbarRender={toolbarRender}
     defaultColumnFilters={[]}
     defaultSorting={[{ id: 'createdAt', desc: true }]}
+    glassmorphic
     onRowClick={(row) => {
       router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
     }}

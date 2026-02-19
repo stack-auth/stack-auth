@@ -292,6 +292,7 @@ function DataTableBase<TData, TValue>({
 }: DataTableBaseProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultVisibility || {});
+  const calledOnTableReadyRef = React.useRef(false);
 
   const table: TableType<TData> = useReactTable({
     data,
@@ -325,7 +326,10 @@ function DataTableBase<TData, TValue>({
   });
 
   React.useEffect(() => {
-    onTableReady?.(table);
+    if (!calledOnTableReadyRef.current && onTableReady) {
+      onTableReady(table);
+      calledOnTableReadyRef.current = true;
+    }
   }, [table, onTableReady]);
 
   return <TableView

@@ -1,15 +1,22 @@
 "use client";
 import { CopyableText } from "@/components/copyable-text";
-import { InputField } from "@/components/form-fields";
+import { SmartFormDialog } from "@/components/form-dialog";
 import { Link, StyledLink } from "@/components/link";
 import { LogoUpload } from "@/components/logo-upload";
-import { FormSettingCard, SettingCard, SettingCopyableText, SettingSwitch } from "@/components/settings";
-import { ActionDialog, Alert, Avatar, AvatarFallback, AvatarImage, Button, SimpleTooltip, Typography, useToast } from "@/components/ui";
+import {
+  DesignAlert,
+  DesignButton,
+  DesignCard,
+  DesignEditableGrid,
+  type DesignEditableGridItem,
+} from "@/components/design-components";
+import { ActionDialog, Avatar, AvatarFallback, AvatarImage, SimpleTooltip, Switch, useToast } from "@/components/ui";
 import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource } from "@stackframe/stack";
 import { TeamSwitcher, useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { ArrowsLeftRightIcon, BuildingsIcon, GearIcon, GlobeHemisphereWestIcon, ImageIcon, WarningIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
@@ -33,13 +40,11 @@ function TeamMemberItem({ member }: { member: any }) {
         <AvatarFallback>{avatarFallback}</AvatarFallback>
       </Avatar>
       <div className="flex flex-col">
-        <Typography className="font-medium">
-          {displayName}
-        </Typography>
+        <span className="text-sm font-medium text-foreground">{displayName}</span>
         {displayName === "Name not set" && (
-          <Typography variant="secondary" type="footnote">
+          <span className="text-xs text-muted-foreground">
             Display name not set
-          </Typography>
+          </span>
         )}
       </div>
     </li>
@@ -56,6 +61,7 @@ export default function PageClient() {
   const [isTransferring, setIsTransferring] = useState(false);
   const [configSource, setConfigSource] = useState<PushedConfigSource | null>(null);
   const [isLoadingSource, setIsLoadingSource] = useState(true);
+  const [isProjectDetailsDialogOpen, setIsProjectDetailsDialogOpen] = useState(false);
   const { toast } = useToast();
 
   // Fetch config source on mount
@@ -162,159 +168,202 @@ export default function PageClient() {
     await project.update(values);
   }, [project]);
 
+  const projectDetailsDefaultValues = useMemo(() => ({
+    displayName: project.displayName,
+    description: project.description || undefined,
+  }), [project.displayName, project.description]);
+
   // Memoize project delete callback
   const handleProjectDelete = useCallback(async () => {
     await project.delete();
     await stackAdminApp.redirectToHome();
   }, [project, stackAdminApp]);
 
-  return (
-    <PageLayout title="Project Settings" description="Manage your project">
-      <SettingCard
-        title="Project Information"
-      >
-        <SettingCopyableText
-          label="Project ID"
-          value={project.id}
+  const productionModeItems: DesignEditableGridItem[] = [
+    {
+      itemKey: "production-mode",
+      type: "custom",
+      icon: <GearIcon className="h-3.5 w-3.5" />,
+      name: "Enable production mode",
+      children: (
+        <Switch
+          checked={project.isProductionMode}
+          disabled={!project.isProductionMode && productionModeErrors.length > 0}
+          onCheckedChange={(checked) => {
+            runAsynchronouslyWithAlert(handleProductionModeChange(checked));
+          }}
         />
+      ),
+    },
+  ];
 
-        <span className="text-xs text-muted-foreground">
-          NOTE: Looking for project API keys? Head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> page.
-        </span>
-
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Typography type="label" className="text-sm font-medium">
-              JWKS URLs
-            </Typography>
-            <SimpleTooltip type="info" tooltip="Use these URLs to allow other services to verify Stack Auth-issued sessions for this project.">
-              <span className="sr-only">More info about JWKS URLs</span>
-            </SimpleTooltip>
+  return (
+    <PageLayout title="Project Settings" description="Manage your project" allowContentOverflow>
+      <DesignCard
+        title="Project Information"
+        subtitle="Core identifiers and verification URLs for this project."
+        icon={GlobeHemisphereWestIcon}
+        glassmorphic
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Project ID</p>
+            <CopyableText value={project.id} />
           </div>
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 items-center text-sm">
-            <span className="text-muted-foreground whitespace-nowrap">Standard</span>
-            <CopyableText value={jwksUrl} />
+          <DesignAlert
+            variant="info"
+            description={<>
+              Looking for project API keys? Head over to the <StyledLink href={`/projects/${project.id}/project-keys`}>Project Keys</StyledLink> page.
+            </>}
+          />
 
-            <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
-              <span>+ Restricted</span>
-              <SimpleTooltip type="info" tooltip="Includes keys for sessions of restricted users (e.g., unverified emails).">
-                <span className="sr-only">Info about restricted JWKS</span>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium text-foreground">JWKS URLs</p>
+              <SimpleTooltip type="info" tooltip="Use these URLs to allow other services to verify Stack Auth-issued sessions for this project.">
+                <span className="sr-only">More info about JWKS URLs</span>
               </SimpleTooltip>
             </div>
-            <CopyableText value={restrictedJwksUrl} />
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 items-center text-sm">
+              <span className="text-muted-foreground whitespace-nowrap">Standard</span>
+              <CopyableText value={jwksUrl} />
 
-            <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
-              <span>+ Anonymous</span>
-              <SimpleTooltip type="info" tooltip="Includes keys for anonymous sessions.">
-                <span className="sr-only">Info about anonymous JWKS</span>
-              </SimpleTooltip>
+              <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+                <span>+ Restricted</span>
+                <SimpleTooltip type="info" tooltip="Includes keys for sessions of restricted users (e.g., unverified emails).">
+                  <span className="sr-only">Info about restricted JWKS</span>
+                </SimpleTooltip>
+              </div>
+              <CopyableText value={restrictedJwksUrl} />
+
+              <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+                <span>+ Anonymous</span>
+                <SimpleTooltip type="info" tooltip="Includes keys for anonymous sessions.">
+                  <span className="sr-only">Info about anonymous JWKS</span>
+                </SimpleTooltip>
+              </div>
+              <CopyableText value={allJwksUrl} />
             </div>
-            <CopyableText value={allJwksUrl} />
           </div>
         </div>
-      </SettingCard>
-      <FormSettingCard
+      </DesignCard>
+      <DesignCard
         title="Project Details"
-        defaultValues={{
-          displayName: project.displayName,
-          description: project.description || undefined,
-        }}
-        formSchema={projectInformationSchema}
-        onSubmit={handleProjectDetailsSubmit}
-        render={(form) => (
-          <>
-            <InputField
-              label="Display Name"
-              control={form.control}
-              name="displayName"
-              required
-            />
-            <InputField
-              label="Description"
-              control={form.control}
-              name="description"
-            />
-
-            <Typography variant="secondary" type="footnote">
-              The display name and description may be publicly visible to the
-              users of your app.
-            </Typography>
-          </>
+        subtitle="Display metadata shown to your users."
+        icon={BuildingsIcon}
+        glassmorphic
+        actions={(
+          <DesignButton size="sm" variant="secondary" onClick={() => setIsProjectDetailsDialogOpen(true)}>
+            Edit
+          </DesignButton>
         )}
+      >
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Display Name</p>
+            <p className="text-sm text-foreground">{project.displayName}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Description</p>
+            <p className="text-sm text-foreground/80">{project.description || "-"}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The display name and description may be publicly visible to the users of your app.
+          </p>
+        </div>
+      </DesignCard>
+      <SmartFormDialog
+        open={isProjectDetailsDialogOpen}
+        onOpenChange={setIsProjectDetailsDialogOpen}
+        title="Edit Project Details"
+        formSchema={projectInformationSchema}
+        defaultValues={projectDetailsDefaultValues}
+        onSubmit={handleProjectDetailsSubmit}
+        okButton={{ label: "Save" }}
+        cancelButton
       />
 
-      <SettingCard title="Project Logo">
-        <LogoUpload
-          label="Logo"
-          value={project.logoUrl}
-          onValueChange={handleLogoChange}
-          description="Upload a logo for your project. Recommended size: 200x200px"
-          type="logo"
-        />
+      <DesignCard
+        title="Project Logo"
+        subtitle="Configure branding assets for light and dark themes."
+        icon={ImageIcon}
+        glassmorphic
+      >
+        <div className="space-y-4">
+          <LogoUpload
+            label="Logo"
+            value={project.logoUrl}
+            onValueChange={handleLogoChange}
+            description="Upload a logo for your project. Recommended size: 200x200px"
+            type="logo"
+          />
 
-        <LogoUpload
-          label="Full Logo"
-          value={project.logoFullUrl}
-          onValueChange={handleFullLogoChange}
-          description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
-          type="full-logo"
-        />
+          <LogoUpload
+            label="Full Logo"
+            value={project.logoFullUrl}
+            onValueChange={handleFullLogoChange}
+            description="Upload a full logo with text. Recommended size: At least 100px tall, landscape format"
+            type="full-logo"
+          />
 
-        <LogoUpload
-          label="Logo (Dark Mode)"
-          value={project.logoDarkModeUrl}
-          onValueChange={async (logoDarkModeUrl) => {
-            await project.update({ logoDarkModeUrl });
-          }}
-          description="Upload a dark mode version of your logo. Recommended size: 200x200px"
-          type="logo"
-        />
+          <LogoUpload
+            label="Logo (Dark Mode)"
+            value={project.logoDarkModeUrl}
+            onValueChange={async (logoDarkModeUrl) => {
+              await project.update({ logoDarkModeUrl });
+            }}
+            description="Upload a dark mode version of your logo. Recommended size: 200x200px"
+            type="logo"
+          />
 
-        <LogoUpload
-          label="Full Logo (Dark Mode)"
-          value={project.logoFullDarkModeUrl}
-          onValueChange={async (logoFullDarkModeUrl) => {
-            await project.update({ logoFullDarkModeUrl });
-          }}
-          description="Upload a dark mode version of your full logo. Recommended size: At least 100px tall, landscape format"
-          type="full-logo"
-        />
+          <LogoUpload
+            label="Full Logo (Dark Mode)"
+            value={project.logoFullDarkModeUrl}
+            onValueChange={async (logoFullDarkModeUrl) => {
+              await project.update({ logoFullDarkModeUrl });
+            }}
+            description="Upload a dark mode version of your full logo. Recommended size: At least 100px tall, landscape format"
+            type="full-logo"
+          />
 
-        <Typography variant="secondary" type="footnote">
-          Logo images will be displayed in your application (e.g. login page) and emails. The logo should be a square image, while the full logo can include text and be wider.
-        </Typography>
-      </SettingCard>
+          <p className="text-xs text-muted-foreground">
+            Logo images will be displayed in your application (e.g. login page) and emails. The logo should be a square image, while the full logo can include text and be wider.
+          </p>
+        </div>
+      </DesignCard>
 
-      <SettingCard
+      <DesignCard
         title="Project Access"
-        description="See who can manage this project and transfer ownership if needed."
+        subtitle="See who can manage this project and transfer ownership if needed."
+        icon={ArrowsLeftRightIcon}
+        glassmorphic
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <Typography className="text-base font-semibold">
+            <p className="text-base font-semibold text-foreground">
               {currentOwnerTeam.displayName || "Unnamed team"}
-            </Typography>
-            <Typography variant="secondary" type="footnote">
+            </p>
+            <p className="text-xs text-muted-foreground">
               Everyone in this team can access and manage the project.
-            </Typography>
+            </p>
           </div>
 
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <Typography variant="secondary">
+              <p className="text-sm text-muted-foreground">
                 Team members
-              </Typography>
-              <Button asChild variant="secondary" size="sm">
+              </p>
+              <DesignButton asChild variant="secondary" size="sm">
                 <Link href={teamSettingsPath}>
                   Manage team members
                 </Link>
-              </Button>
+              </DesignButton>
             </div>
             {currentTeamMembers.length === 0 ? (
               <div className="rounded-lg border border-border/50 bg-muted/40 p-4">
-                <Typography variant="secondary" type="footnote">
+                <p className="text-xs text-muted-foreground">
                   This team has no members yet.
-                </Typography>
+                </p>
               </div>
             ) : (
               <div className="rounded-lg border border-border bg-card">
@@ -325,19 +374,19 @@ export default function PageClient() {
                 </ul>
               </div>
             )}
-            <Typography variant="secondary" type="footnote">
+            <p className="text-xs text-muted-foreground">
               Invite new people or adjust roles in the team settings page.
-            </Typography>
+            </p>
           </div>
 
           <div className="flex flex-col gap-3">
-            <Typography variant="secondary">
+            <p className="text-sm text-muted-foreground">
               Transfer to a different team
-            </Typography>
+            </p>
             {!hasAdminPermissionForCurrentTeam ? (
-              <Alert variant="destructive">
+              <DesignAlert variant="error">
                 {`You need to be a team admin of "${currentOwnerTeam.displayName || 'the current team'}" to transfer this project.`}
-              </Alert>
+              </DesignAlert>
             ) : (
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-2">
                 <TeamSwitcher
@@ -347,7 +396,7 @@ export default function PageClient() {
                 />
                 <ActionDialog
                   trigger={
-                    <Button
+                    <DesignButton
                       variant="secondary"
                       disabled={
                         !selectedTeam ||
@@ -356,7 +405,7 @@ export default function PageClient() {
                       }
                     >
                       Transfer
-                    </Button>
+                    </DesignButton>
                   }
                   title="Transfer Project"
                   okButton={{
@@ -365,76 +414,76 @@ export default function PageClient() {
                   }}
                   cancelButton
                 >
-                  <Typography>
+                  <p className="text-sm text-foreground">
                     {`Are you sure you want to transfer "${project.displayName}" to ${selectedTeam?.displayName}?`}
-                  </Typography>
-                  <Typography className="mt-2" variant="secondary">
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
                     This will change the ownership of the project. Only team admins of the new team will be able to manage project settings.
-                  </Typography>
+                  </p>
                 </ActionDialog>
               </div>
             )}
           </div>
         </div>
-      </SettingCard>
+      </DesignCard>
 
-      <SettingCard
+      <DesignCard
         title="Production mode"
-        description="Production mode disallows certain configuration options that are useful for development but deemed unsafe for production usage. To prevent accidental misconfigurations, it is strongly recommended to enable production mode on your production environments."
+        subtitle="Production mode disallows development shortcuts considered unsafe for production."
+        icon={GearIcon}
+        glassmorphic
       >
-        <SettingSwitch
-          label="Enable production mode"
-          checked={project.isProductionMode}
-          disabled={
-            !project.isProductionMode && productionModeErrors.length > 0
-          }
-          onCheckedChange={handleProductionModeChange}
-        />
+        <div className="space-y-4">
+          <DesignEditableGrid
+            items={productionModeItems}
+            columns={1}
+            deferredSave={false}
+          />
 
-        {productionModeErrors.length === 0 ? (
-          <Alert>
-            Your configuration is ready for production and production mode can
-            be enabled. Good job!
-          </Alert>
-        ) : (
-          <Alert variant="destructive">
-            Your configuration is not ready for production mode. Please fix the
-            following issues:
-            <ul className="mt-2 list-disc pl-5">
-              {productionModeErrors.map((error) => (
-                <li key={error.message}>
-                  {error.message} (<StyledLink href={error.relativeFixUrl}>show configuration</StyledLink>)
-                </li>
-              ))}
-            </ul>
-          </Alert>
-        )}
-      </SettingCard>
+          {productionModeErrors.length === 0 ? (
+            <DesignAlert
+              variant="success"
+              description="Your configuration is ready for production and production mode can be enabled."
+            />
+          ) : (
+            <DesignAlert variant="error" title="Configuration not ready for production">
+              <p className="text-sm text-foreground/80">
+                Please fix the following issues:
+              </p>
+              <ul className="mt-2 list-disc pl-5">
+                {productionModeErrors.map((error) => (
+                  <li key={error.message}>
+                    {error.message} (<StyledLink href={error.relativeFixUrl}>show configuration</StyledLink>)
+                  </li>
+                ))}
+              </ul>
+            </DesignAlert>
+          )}
+        </div>
+      </DesignCard>
 
-      <SettingCard
+      <DesignCard
         title="Configuration Source"
-        description="Manage where your project configuration is managed from."
+        subtitle="Manage where your project configuration is managed from."
+        icon={GlobeHemisphereWestIcon}
+        glassmorphic
       >
         {isLoadingSource ? (
-          <Typography variant="secondary">Loading...</Typography>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         ) : configSource?.type === "unlinked" ? (
           <div className="flex flex-col gap-2">
-            <Typography>
-              <strong>Dashboard</strong>
-            </Typography>
-            <Typography variant="secondary" type="footnote">
+            <p className="text-sm font-semibold text-foreground">Dashboard</p>
+            <p className="text-xs text-muted-foreground">
               Your configuration is managed directly on this dashboard. Changes take effect immediately when saved.
-            </Typography>
+            </p>
           </div>
         ) : configSource?.type === "pushed-from-github" ? (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Typography>
-                <strong>GitHub</strong>
-              </Typography>
-              <Typography variant="secondary" type="footnote">
+              <p className="text-sm font-semibold text-foreground">GitHub</p>
+              <p className="text-xs text-muted-foreground">
                 Your configuration is managed via GitHub. Changes made on this dashboard will be overwritten when you push from GitHub again.
-              </Typography>
+              </p>
               <div className="mt-2 p-3 bg-muted rounded-md text-sm space-y-1">
                 <div><strong>Repository:</strong> {configSource.owner}/{configSource.repo}</div>
                 <div><strong>Branch:</strong> {configSource.branch}</div>
@@ -445,9 +494,9 @@ export default function PageClient() {
             <div>
               <ActionDialog
                 trigger={
-                  <Button variant="secondary" size="sm">
+                  <DesignButton variant="secondary" size="sm">
                     Unlink from GitHub
-                  </Button>
+                  </DesignButton>
                 }
                 title="Unlink Configuration Source"
                 okButton={{
@@ -456,31 +505,29 @@ export default function PageClient() {
                 }}
                 cancelButton
               >
-                <Typography>
+                <p className="text-sm text-foreground">
                   Are you sure you want to unlink your configuration from GitHub?
-                </Typography>
-                <Typography className="mt-2" variant="secondary">
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
                   After unlinking, you can edit the configuration directly on this dashboard. However, pushing from GitHub will no longer update your configuration until you reconnect.
-                </Typography>
+                </p>
               </ActionDialog>
             </div>
           </div>
         ) : configSource?.type === "pushed-from-unknown" ? (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Typography>
-                <strong>CLI</strong>
-              </Typography>
-              <Typography variant="secondary" type="footnote">
+              <p className="text-sm font-semibold text-foreground">CLI</p>
+              <p className="text-xs text-muted-foreground">
                 Your configuration was pushed via the Stack Auth CLI. Changes made on this dashboard will be overwritten when you push from the CLI again.
-              </Typography>
+              </p>
             </div>
             <div>
               <ActionDialog
                 trigger={
-                  <Button variant="secondary" size="sm">
+                  <DesignButton variant="secondary" size="sm">
                     Unlink from CLI
-                  </Button>
+                  </DesignButton>
                 }
                 title="Unlink Configuration Source"
                 okButton={{
@@ -489,35 +536,37 @@ export default function PageClient() {
                 }}
                 cancelButton
               >
-                <Typography>
+                <p className="text-sm text-foreground">
                   Are you sure you want to unlink your configuration from the CLI?
-                </Typography>
-                <Typography className="mt-2" variant="secondary">
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
                   After unlinking, you can edit the configuration directly on this dashboard. However, pushing from the CLI will no longer update your configuration until you reconnect.
-                </Typography>
+                </p>
               </ActionDialog>
             </div>
           </div>
         ) : (
-          <Typography variant="secondary">Unknown configuration source</Typography>
+          <p className="text-sm text-muted-foreground">Unknown configuration source</p>
         )}
-      </SettingCard>
+      </DesignCard>
 
-      <SettingCard
+      <DesignCard
         title="Danger Zone"
-        description="Irreversible and destructive actions"
-        className="border-destructive"
+        subtitle="Irreversible and destructive actions."
+        icon={WarningIcon}
+        className="border-destructive/40 ring-1 ring-destructive/20"
+        glassmorphic
       >
         <div className="flex flex-col gap-4">
           <div>
-            <Typography variant="secondary" className="mb-2">
+            <p className="mb-2 text-sm text-muted-foreground">
               Once you delete a project, there is no going back. All data will be permanently removed.
-            </Typography>
+            </p>
             <ActionDialog
               trigger={
-                <Button variant="destructive" size="sm">
+                <DesignButton variant="destructive" size="sm">
                   Delete Project
-                </Button>
+                </DesignButton>
               }
               title="Delete Project"
               danger
@@ -528,12 +577,12 @@ export default function PageClient() {
               cancelButton
               confirmText="I understand this action is IRREVERSIBLE and will delete ALL associated data."
             >
-              <Typography>
+              <p className="text-sm text-foreground">
                 {`Are you sure that you want to delete the project with name "${project.displayName}" and ID "${project.id}"?`}
-              </Typography>
-              <Typography className="mt-2">
+              </p>
+              <p className="mt-2 text-sm text-foreground">
                 This action is <strong>irreversible</strong> and will permanently delete:
-              </Typography>
+              </p>
               <ul className="mt-2 list-disc pl-5">
                 <li>All users and their data</li>
                 <li>All teams and team memberships</li>
@@ -544,7 +593,7 @@ export default function PageClient() {
             </ActionDialog>
           </div>
         </div>
-      </SettingCard>
+      </DesignCard>
     </PageLayout>
   );
 }

@@ -28,10 +28,12 @@ export default function PageClient() {
       await stackAdminApp.deleteEmailTemplate(templateId);
       toast({ title: "Template deleted successfully", variant: "success" });
       setDeleteDialogOpen(null);
+      return;
     } catch (error) {
       console.error("Failed to delete email template:", error);
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred while deleting the template";
       setDeleteError(errorMessage);
+      return "prevent-close" as const;
     }
   };
 

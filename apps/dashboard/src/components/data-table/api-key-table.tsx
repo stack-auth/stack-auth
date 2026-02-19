@@ -1,6 +1,7 @@
 'use client';
 import { InternalApiKey } from '@stackframe/stack';
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@/components/ui";
+import { DesignDataTable } from "@/components/design-components";
+import { ActionCell, ActionDialog, BadgeCell, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@/components/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
@@ -15,10 +16,11 @@ function toolbarRender<TData>(table: Table<TData>) {
       <DataTableFacetedFilter
         column={table.getColumn("status")}
         title="Status"
-        options={['valid', 'expired', 'revoked'].map((provider) => ({
-          value: provider,
-          label: provider,
-        }))}
+        options={[
+          { value: "valid", label: "Valid" },
+          { value: "expired", label: "Expired" },
+          { value: "revoked", label: "Revoked" },
+        ]}
       />
     </>
   );
@@ -116,11 +118,12 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[] }) {
     });
   }, [props.apiKeys]);
 
-  return <DataTable
+  return <DesignDataTable
     data={extendedApiKeys}
     columns={columns}
     toolbarRender={toolbarRender}
     defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
     defaultSorting={[]}
+    glassmorphic
   />;
 }
