@@ -86,9 +86,6 @@ const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
 
-const MAX_PREAUTH_BUFFER_EVENTS = 10_000;
-const MAX_PREAUTH_BUFFER_BYTES = 5_000_000;
-
 export type StoredSession = {
   session_id: string,
   created_at_ms: number,
@@ -152,7 +149,6 @@ export class SessionRecorder {
   private _takingSnapshot = false;
   private _flushInProgress = false;
   private _lastKnownAccessToken: string | null = null;
-  private _wasAuthenticated = false;
   private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   private readonly _deps: SessionRecorderDeps;
@@ -189,6 +185,11 @@ export class SessionRecorder {
     // Flush remaining events before cleanup
     runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
     this._stopCurrentRecording();
+  }
+
+  clearBuffer() {
+    this._events = [];
+    this._approxBytes = 0;
   }
 
   private _persistActivity(nowMs: number): StoredSession {
@@ -288,12 +289,6 @@ export class SessionRecorder {
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
           runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
         }
-
-        // Cap pre-auth buffer to prevent unbounded memory growth
-        if (!this._lastKnownAccessToken && (this._events.length > MAX_PREAUTH_BUFFER_EVENTS || this._approxBytes > MAX_PREAUTH_BUFFER_BYTES)) {
-          this._events = [];
-          this._approxBytes = 0;
-        }
       },
       maskAllInputs: this._replayOptions.maskAllInputs ?? true,
       ...(this._replayOptions.blockClass !== undefined ? { blockClass: this._replayOptions.blockClass } : {}),
@@ -336,12 +331,6 @@ export class SessionRecorder {
     }, { noErrorLogging: true });
 
     const hasAuth = !!this._lastKnownAccessToken;
-    // Clear buffer on logout to prevent cross-user event leakage
-    if (this._wasAuthenticated && !hasAuth) {
-      this._events = [];
-      this._approxBytes = 0;
-    }
-    this._wasAuthenticated = hasAuth;
     if (hasAuth && this._events.length > 0) {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }
