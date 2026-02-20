@@ -5,11 +5,11 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const CLICK_FILTER_ID_CAP = 1000;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function parseCsvIds(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -19,7 +19,7 @@ function parseCsvIds(raw: string | undefined): string[] {
 function parseCsvUuids(name: string, raw: string | undefined): string[] {
   const values = parseCsvIds(raw);
   for (const value of values) {
-    if (!UUID_PATTERN.test(value)) {
+    if (!isUuid(value)) {
       throw new StatusError(StatusError.BadRequest, `${name} must contain valid UUID values`);
     }
   }
