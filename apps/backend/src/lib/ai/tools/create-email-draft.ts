@@ -14,75 +14,38 @@ import { z } from "zod";
  */
 export function createEmailDraftTool(auth: SmartRequestAuth | null) {
   return tool({
-    description: `Create a new email draft for Stack Auth.
-
-**What is an Email Draft?**
-An email draft is a simpler version of an email template, without variable schemas. It's used for one-off emails or quick email creation.
-
-**Requirements:**
-- Must use @react-email/components for email components
-- Can import from @stackframe/emails for Stack Auth-specific utilities
-- Must export ONE thing: \`EmailTemplate\` function component
-- Must include Subject and NotificationCategory components
-- Uses Tailwind classes for all styling
-- Can access user and project data via Props
-
-**Differences from Email Templates:**
-- No variablesSchema required
-- No custom variables (only user and project data)
-- No PreviewVariables needed
-- Simpler for one-off or standard emails
-
-**Structure:**
-1. Import required components
-2. Define EmailTemplate function component using Props type
-3. Include Subject (can use user data)
-4. Include NotificationCategory
-5. Add email content using react-email components
-
-**Example Valid Email Draft:**
+    description: `
+Create a new email draft.
+The email draft is a tsx file that is used to render the email content.
+It must use react-email components.
+It must export one thing:
+- EmailTemplate: A function that renders the email draft
+It must not import from any package besides "@react-email/components", "@stackframe/emails", and "arktype".
+It uses tailwind classes for all styling.
+The email must include <Html>, <Head />, <Preview />, <Tailwind>, <Body>, and <Container> in the correct hierarchy.
+Do not use any Tailwind classes that require style injection (e.g., hover:, focus:, active:, group-hover:, media queries, dark:, etc.). Only use inlineable Tailwind utilities.
+The <Head /> component must be rendered inside <Tailwind> to support Tailwind style injection
+Here is an example of a valid email draft:
 \`\`\`tsx
-import { Container, Text, Button } from "@react-email/components";
+import { Container } from "@react-email/components";
 import { Subject, NotificationCategory, Props } from "@stackframe/emails";
 
 export function EmailTemplate({ user, project }: Props) {
   return (
     <Container>
-      <Subject value={\`Welcome to \${project.displayName}, \${user.displayName}!\`} />
+      <Subject value={\`Hello \${user.displayName}!\`} />
       <NotificationCategory value="Transactional" />
-      
-      <Text className="text-2xl font-bold">
-        Welcome, {user.displayName}!
-      </Text>
-      
-      <Text>
-        Thank you for joining {project.displayName}. We're excited to have you here.
-      </Text>
-      
-      <Text>
-        Get started by visiting your dashboard and exploring the features.
-      </Text>
-      
-      <Button href="https://example.com/dashboard" className="bg-blue-600 text-white px-4 py-2 rounded">
-        Go to Dashboard
-      </Button>
+      <div className="font-bold">Hi {user.displayName}!</div>
+      <br />
     </Container>
   );
 }
 \`\`\`
 
-**Guidelines:**
-- Keep content clear and focused
-- Use appropriate tone
-- Personalize with user and project data
-- Include clear call-to-actions when needed
-- Make it mobile-responsive
-- Use email-safe styling
-
-**Output:**
-Return the COMPLETE draft code including all imports and component definition.`,
+The user's current email draft can be found in the conversation messages.
+`,
     inputSchema: z.object({
-      content: z.string().describe("The complete email draft code as a TypeScript React component"),
+      content: z.string().describe("A react component that renders the email template"),
     }),
     // No execute function - the tool call is returned to the caller
   });

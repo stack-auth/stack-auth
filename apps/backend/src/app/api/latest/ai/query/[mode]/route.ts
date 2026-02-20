@@ -30,7 +30,7 @@ export const POST = createSmartRouteHandler({
     }
 
     if (!validateToolNames(body.tools)) {
-      throw new StatusError(StatusError.BadRequest, `Invalid tool names in request. Valid tools: docs, sql-query, create-email-theme, create-email-template, create-email-draft, create-dashboard`);
+      throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
     }
 
     const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");

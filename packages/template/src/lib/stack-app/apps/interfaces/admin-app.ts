@@ -1,4 +1,3 @@
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -95,13 +94,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailTheme(displayName: string): Promise<{ id: string }>,
     updateEmailTheme(id: string, tsxSource: string): Promise<void>,
     deleteEmailTheme(id: string): Promise<void>,
-
-    sendChatMessage(
-      threadId: string,
-      contextType: "email-theme" | "email-template" | "email-draft",
-      messages: Array<{ role: string, content: any }>,
-      abortSignal?: AbortSignal,
-    ): Promise<{ content: ChatContent }>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
     applyWysiwygEdit(options: {

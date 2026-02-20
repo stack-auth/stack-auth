@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   }
 
   const user = await stackServerApp.getUser({ or: "redirect" });
-  const { accessToken } = await user.getAuthJson();
+  const accessToken = await user.getAccessToken();
 
   // Check if the user has admin access to the requested project
   let hasProjectAccess = false;

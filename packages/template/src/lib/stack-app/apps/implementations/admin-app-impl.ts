@@ -25,7 +25,6 @@ import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, 
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import * as yup from "yup";
@@ -629,16 +628,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
     await this._adminEmailDraftsCache.refresh([]);
   }
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    return await this._interface.sendChatMessage(threadId, contextType, messages, abortSignal);
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this._interface.saveChatMessage(threadId, message);
   }

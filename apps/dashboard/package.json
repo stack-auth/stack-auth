@@ -17,7 +17,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.25",
     "@ai-sdk/react": "^3.0.72",
     "@assistant-ui/react": "^0.10.24",
     "@assistant-ui/react-ai-sdk": "^0.10.14",

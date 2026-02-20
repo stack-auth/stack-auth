@@ -12,83 +12,51 @@ import { z } from "zod";
  */
 export function createEmailTemplateTool(auth: SmartRequestAuth | null) {
   return tool({
-    description: `Create a new email template for Stack Auth.
+    description: `
+Create a new email template.
+The email template is a tsx file that is used to render the email content.
+It must use react-email components.
+It must export two things:
+- variablesSchema: An arktype schema for the email template props
+- EmailTemplate: A function that renders the email template. You must set the PreviewVariables property to an object that satisfies the variablesSchema by doing EmailTemplate.PreviewVariables = { ...
+It must not import from any package besides "@react-email/components", "@stackframe/emails", and "arktype".
+It uses tailwind classes for all styling.
+The user's current email template will be provided in the conversation messages.
+The email must include <Html>, <Head />, <Preview />, <Tailwind>, <Body>, and <Container> in the correct hierarchy.
+Do not use any Tailwind classes that require style injection (e.g., hover:, focus:, active:, group-hover:, media queries, dark:, etc.). Only use inlineable Tailwind utilities.
+The <Head /> component must be rendered inside <Tailwind> to support Tailwind style injection
 
-**What is an Email Template?**
-An email template is a complete email with content, variables, and metadata. It defines the structure and content of a specific type of email (e.g., welcome email, password reset, notification).
-
-**Requirements:**
-- Must use @react-email/components for email components
-- Can import from @stackframe/emails for Stack Auth-specific utilities
-- Can import from arktype for schema validation
-- Must export TWO things:
-  1. \`variablesSchema\`: An arktype schema defining template variables
-  2. \`EmailTemplate\`: A function component that renders the email
-- EmailTemplate must set PreviewVariables property with sample data
-- Must use Props<typeof variablesSchema.infer> as the component props type
-- Must include Subject and NotificationCategory components
-- Uses Tailwind classes for all styling
-
-**Structure:**
-1. Import required components and types
-2. Define variablesSchema using arktype
-3. Define EmailTemplate function component
-4. Include Subject (dynamic or static)
-5. Include NotificationCategory (e.g., "Transactional", "Marketing")
-6. Add email content using react-email components
-7. Set EmailTemplate.PreviewVariables
-
-**Example Valid Email Template:**
+Here is an example of a valid email template:
 \`\`\`tsx
 import { type } from "arktype"
-import { Container, Text, Button } from "@react-email/components";
+import { Container } from "@react-email/components";
 import { Subject, NotificationCategory, Props } from "@stackframe/emails";
 
 export const variablesSchema = type({
-  actionUrl: "string",
-  expiresInHours: "number"
+  count: "number"
 });
 
 export function EmailTemplate({ user, variables }: Props<typeof variablesSchema.infer>) {
   return (
     <Container>
-      <Subject value={\`Action Required, \${user.displayName}!\`} />
+      <Subject value={\`Hello \${user.displayName}!\`} />
       <NotificationCategory value="Transactional" />
-      
-      <Text className="text-lg font-bold">
-        Hi {user.displayName}!
-      </Text>
-      
-      <Text>
-        Please complete your action within {variables.expiresInHours} hours.
-      </Text>
-      
-      <Button href={variables.actionUrl} className="bg-blue-600 text-white px-4 py-2 rounded">
-        Take Action
-      </Button>
+      <div className="font-bold">Hi {user.displayName}!</div>
+      <br />
+      count is {variables.count}
     </Container>
   );
 }
 
 EmailTemplate.PreviewVariables = {
-  actionUrl: "https://example.com/action",
-  expiresInHours: 24
-} satisfies typeof variablesSchema.infer;
+  count: 10
+} satisfies typeof variablesSchema.infer
 \`\`\`
 
-**Guidelines:**
-- Make content clear, concise, and actionable
-- Use appropriate tone for the email type
-- Include all necessary information
-- Add clear call-to-action buttons when needed
-- Use user data (user.displayName, user.primaryEmail, etc.) to personalize
-- Make it mobile-responsive
-- Use email-safe styling
-
-**Output:**
-Return the COMPLETE template code including all imports, schema, component, and PreviewVariables.`,
+The user's current email template can be found in the conversation messages.
+`,
     inputSchema: z.object({
-      content: z.string().describe("The complete email template code as a TypeScript React component with schema"),
+      content: z.string().describe("A react component that renders the email template"),
     }),
     // No execute function - the tool call is returned to the caller
   });

@@ -12,55 +12,60 @@ import { z } from "zod";
  */
 export function createEmailThemeTool(auth: SmartRequestAuth | null) {
   return tool({
-    description: `Create a new email theme for Stack Auth emails.
+    description: `
+Create a new email theme.
 
-**What is an Email Theme?**
-An email theme is a React component that wraps all email content, providing consistent structure, layout, and styling across all emails.
+The email theme is a React component that wraps all emails with a consistent layout.
 
-**Requirements:**
-- Must use @react-email/components (no other imports allowed)
-- Must be exported as a function named "EmailTheme"
-- Must accept one prop: children (React.ReactNode)
-- Must use Tailwind classes inside <Tailwind> tag
-- Must include Html, Head, and appropriate container elements
-- Should be responsive and compatible with major email clients
-
-**Structure:**
-1. Html wrapper
-2. Head (for meta tags)
-3. Tailwind wrapper (for styling)
-4. Container/layout elements
-5. {children} placeholder for email content
-
-**Example Valid Email Theme:**
+EXACT PROP SIGNATURE (do not change or add props):
 \`\`\`tsx
-import { Container, Head, Html, Tailwind } from '@react-email/components'
+type EmailThemeProps = {
+  children: React.ReactNode,    // required — the email body
+  unsubscribeLink?: string,     // optional URL string — use as href={unsubscribeLink}, NOT as a function call
+}
+\`\`\`
 
-export function EmailTheme({ children }: { children: React.ReactNode }) {
+Other requirements:
+- Must include \`<Html>\`, \`<Head>\`, and a \`<Tailwind>\` wrapper (the theme owns the full document)
+- Import ONLY from \`@react-email/components\` — no other packages
+- Use standard Tailwind utility classes in \`className\` props — do NOT pass a \`config\` prop to \`<Tailwind>\`
+- EVERY component used in JSX must be explicitly imported
+- JavaScript object literals use COMMAS between properties, never semicolons
+
+The user's current email theme can be found in the conversation messages.
+
+Here is an example of a valid email theme:
+\`\`\`tsx
+import { Body, Container, Head, Hr, Html, Link, Section, Text, Tailwind } from '@react-email/components'
+
+export function EmailTheme({ children, unsubscribeLink }: { children: React.ReactNode, unsubscribeLink?: string }) {
   return (
     <Html>
       <Head />
       <Tailwind>
-        <Container className="bg-white p-8 rounded-lg">
-          {children}
-        </Container>
+        <Body className="bg-gray-50 font-sans">
+          <Container className="mx-auto max-w-[600px] py-8 px-4">
+            <Section className="bg-white rounded-lg shadow-sm p-8">
+              {children}
+            </Section>
+            <Section className="mt-6 text-center">
+              <Hr className="border-gray-200 mb-4" />
+              {unsubscribeLink && (
+                <Text className="text-xs text-gray-400">
+                  <Link href={unsubscribeLink} className="text-gray-400 underline">Unsubscribe</Link>
+                </Text>
+              )}
+            </Section>
+          </Container>
+        </Body>
       </Tailwind>
     </Html>
   )
 }
 \`\`\`
-
-**Guidelines:**
-- Keep it simple and focused on layout/structure
-- Use neutral, professional styling that works for various email types
-- Ensure good spacing and readability
-- Make it mobile-responsive
-- Test compatibility with email clients (use email-safe CSS)
-
-**Output:**
-Return the COMPLETE theme code as a TypeScript React component. Include all imports and the full component definition.`,
+`,
     inputSchema: z.object({
-      content: z.string().describe("The complete email theme code as a TypeScript React component"),
+      content: z.string().describe("The content of the email theme"),
     }),
     // No execute function - the tool call is returned to the caller
   });
