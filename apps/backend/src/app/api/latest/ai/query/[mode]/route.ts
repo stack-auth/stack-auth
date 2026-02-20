@@ -9,7 +9,7 @@ import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/sc
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { ModelMessage, generateText, streamText } from "ai";
+import { ModelMessage, generateText, stepCountIs, streamText } from "ai";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -57,6 +57,9 @@ export const POST = createSmartRouteHandler({
     const tools = await getTools(body.tools as ToolName[], { auth: fullReq.auth });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const messages = body.messages as ModelMessage[];
+    const promptId = body.systemPrompt as SystemPromptId;
+    const isDocsOrSearch = promptId === "docs-ask-ai" || promptId === "command-center-ask-ai";
+    const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
 
     if (mode === "stream") {
       const result = streamText({
@@ -64,6 +67,7 @@ export const POST = createSmartRouteHandler({
         system: systemPrompt,
         messages,
         tools: toolsArg,
+        stopWhen: stepCountIs(stepLimit),
       });
       return {
         statusCode: 200,
@@ -76,6 +80,7 @@ export const POST = createSmartRouteHandler({
         system: systemPrompt,
         messages,
         tools: toolsArg,
+        stopWhen: stepCountIs(stepLimit),
       });
 
       const contentBlocks: Array<
