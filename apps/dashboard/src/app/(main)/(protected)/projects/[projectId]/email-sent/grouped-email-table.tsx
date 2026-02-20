@@ -1,7 +1,8 @@
 "use client";
 
+import { DesignDataTable } from "@/components/design-components/table";
 import { useRouter } from "@/components/router";
-import { DataTable, Spinner, Typography } from "@/components/ui";
+import { Spinner, Typography } from "@/components/ui";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
@@ -222,7 +223,7 @@ export function GroupedEmailTable() {
   }
 
   return (
-    <DataTable
+    <DesignDataTable
       data={groupedRows}
       defaultColumnFilters={[]}
       columns={groupedTableColumns}

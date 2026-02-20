@@ -1,7 +1,10 @@
 "use client";
 
-import { Button, SimpleTooltip, Typography } from "@/components/ui";
+import { DesignButton } from "@/components/design-components/button";
+import { DesignCard } from "@/components/design-components/card";
+import { SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { Gauge } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useEffect, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
@@ -94,8 +97,8 @@ function BoostCountdownTimer({ expiresAt, onExpire }: { expiresAt: Date, onExpir
   return (
     <div className="flex justify-center mt-3">
       <div className="boost-timer-wrapper relative rounded-lg">
-        <div className="relative z-10 bg-zinc-900 rounded-md px-6 py-3 border border-zinc-700">
-          <Typography className="text-slate-200 font-mono text-lg font-bold">
+        <div className="relative z-10 bg-zinc-900 rounded-md px-3 py-2 border border-zinc-700 min-w-[200px] flex items-center justify-center">
+          <Typography className="text-slate-200 font-mono text-sm font-bold">
             {timeRemaining}
           </Typography>
         </div>
@@ -191,15 +194,15 @@ export function DomainReputationCard() {
   );
 
   return (
-    <div className="rounded-3xl border border-border p-6 min-h-[400px] w-72 flex flex-col">
-      <Typography type="h3" className="font-semibold">
-        Domain Reputation
-      </Typography>
-      <Typography variant="secondary" className="text-xs mt-2">
-        Warming up a domain & email server takes time, so Stack Auth automatically buffers your emails over time.
-      </Typography>
-
-      <div className="flex-1 flex flex-col justify-center gap-6 mt-6">
+    <DesignCard
+      title="Domain Reputation"
+      subtitle="Warming up a domain & email server takes time, so Stack Auth automatically buffers your emails over time."
+      icon={Gauge}
+      gradient="default"
+      glassmorphic
+      className="min-h-[400px] w-72"
+    >
+      <div className="flex flex-col gap-6">
         {/* Email Capacity */}
         <div>
           <Typography className="text-base font-medium mb-2">Email Capacity</Typography>
@@ -217,12 +220,14 @@ export function DomainReputationCard() {
             />
           ) : (
             <div className="flex justify-center mt-3">
-              <Button
-                className="bg-black hover:bg-zinc-700 text-zinc-400 font-medium px-4 py-2 text-sm transition-colors"
+              <DesignButton
+                variant="default"
+                size="sm"
+                className="min-w-[200px]"
                 onClick={handleActivateBoost}
               >
                 Temporarily increase capacity
-              </Button>
+              </DesignButton>
             </div>
           )}
         </div>
@@ -261,6 +266,6 @@ export function DomainReputationCard() {
           />
         </div>
       </div>
-    </div>
+    </DesignCard>
   );
 }

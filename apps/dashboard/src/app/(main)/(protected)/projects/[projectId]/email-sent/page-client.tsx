@@ -1,9 +1,13 @@
 "use client";
 
+import { DesignBadge, DesignBadgeColor } from "@/components/design-components/badge";
+import { DesignButton } from "@/components/design-components/button";
+import { DesignCard } from "@/components/design-components/card";
+import { DesignPillToggle } from "@/components/design-components/pill-toggle";
+import { DesignDataTable } from "@/components/design-components/table";
 import { useRouter } from "@/components/router";
-import { SettingCard } from "@/components/settings";
-import { Badge, Button, DataTable, Spinner, Switch, Typography } from "@/components/ui";
-import { XIcon } from "@phosphor-icons/react";
+import { Spinner, Typography } from "@/components/ui";
+import { Envelope, X } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
@@ -34,32 +38,20 @@ const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
   "marked-as-spam": "Marked as Spam",
 };
 
-// Badge variants matching schema colors:
-// 🟢 sent → green (success)
-// 🔵 opened → blue (info)
+// Badge colors matching schema colors:
+// 🟢 sent → green
+// 🔵 opened → blue
 // 🟣 clicked → purple
-// 🟡 marked-as-spam → yellow (warning)
-// 🔴 bounced, server-error, render-error → red (destructive)
-// ⚪ paused, preparing, rendering, scheduled, queued, sending, delivery-delayed, skipped → gray/neutral
-function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
+// 🟡 marked-as-spam → orange (warning)
+// 🔴 bounced, server-error, render-error → red
+// 🔵 paused, preparing, rendering, scheduled, queued, sending, delivery-delayed, skipped → cyan (neutral/in-progress)
+function getStatusBadgeColor(status: AdminEmailOutboxStatus): DesignBadgeColor {
   switch (status) {
-    case "paused":
-    case "skipped": {
-      return "outline";
-    }
-    case "preparing":
-    case "rendering":
-    case "scheduled":
-    case "queued":
-    case "sending":
-    case "delivery-delayed": {
-      return "secondary";
-    }
     case "sent": {
-      return "success";
+      return "green";
     }
     case "opened": {
-      return "info";
+      return "blue";
     }
     case "clicked": {
       return "purple";
@@ -67,13 +59,21 @@ function getStatusBadgeVariant(status: AdminEmailOutboxStatus): "default" | "sec
     case "bounced":
     case "server-error":
     case "render-error": {
-      return "destructive";
+      return "red";
     }
     case "marked-as-spam": {
-      return "warning";
+      return "orange";
     }
+    case "paused":
+    case "skipped":
+    case "preparing":
+    case "rendering":
+    case "scheduled":
+    case "queued":
+    case "sending":
+    case "delivery-delayed":
     default: {
-      return "default";
+      return "cyan";
     }
   }
 }
@@ -108,26 +108,10 @@ function getTimeDisplay(email: AdminEmailOutbox): string {
 
 type ViewMode = "grouped" | "list";
 
-function ViewModeToggle({
-  mode,
-  onModeChange,
-}: {
-  mode: ViewMode,
-  onModeChange: (mode: ViewMode) => void,
-}) {
-  const isListMode = mode === "list";
-
-  return (
-    <div className="flex items-center gap-2">
-      <Typography className="text-sm">Group by template/draft</Typography>
-      <Switch
-        checked={isListMode}
-        onCheckedChange={(checked) => onModeChange(checked ? "list" : "grouped")}
-      />
-      <Typography className="text-sm">List all</Typography>
-    </div>
-  );
-}
+const VIEW_MODE_OPTIONS = [
+  { id: "grouped", label: "Group by template/draft" },
+  { id: "list", label: "List all" },
+] as const;
 
 const emailTableColumns: ColumnDef<AdminEmailOutbox>[] = [
   {
@@ -151,9 +135,11 @@ const emailTableColumns: ColumnDef<AdminEmailOutbox>[] = [
     cell: ({ row }) => {
       const status = row.original.status;
       return (
-        <Badge variant={getStatusBadgeVariant(status)}>
-          {STATUS_LABELS[status]}
-        </Badge>
+        <DesignBadge
+          label={STATUS_LABELS[status]}
+          color={getStatusBadgeColor(status)}
+          size="sm"
+        />
       );
     },
   },
@@ -217,7 +203,7 @@ function EmailSendDataTable({ filter }: { filter?: EmailFilter }) {
   }
 
   return (
-    <DataTable
+    <DesignDataTable
       data={filteredEmails}
       defaultColumnFilters={[]}
       columns={emailTableColumns}
@@ -286,21 +272,30 @@ export default function PageClient() {
                   <Typography className="text-sm text-muted-foreground">
                     Filtering by: <span className="font-medium text-foreground">{filterDisplayName}</span>
                   </Typography>
-                  <Button variant="ghost" size="sm" onClick={clearFilter}>
-                    <XIcon className="h-4 w-4" />
-                  </Button>
+                  <DesignButton variant="ghost" size="sm" onClick={clearFilter}>
+                    <X className="h-4 w-4" />
+                  </DesignButton>
                 </div>
               ) : (
-                <div /> // Spacer
+                <div />
               )}
               {/* Toggle - only show when not filtering */}
               {!hasFilter && (
-                <ViewModeToggle mode={viewMode} onModeChange={setViewMode} />
+                <DesignPillToggle
+                  options={[...VIEW_MODE_OPTIONS]}
+                  selected={viewMode}
+                  onSelect={(id) => setViewMode(id as ViewMode)}
+                  size="sm"
+                  gradient="default"
+                />
               )}
             </div>
-            <SettingCard
+            <DesignCard
               title="Email Log"
-              description={hasFilter ? `Emails from ${filterDisplayName}` : "Manage email sending history"}
+              subtitle={hasFilter ? `Emails from ${filterDisplayName}` : "Manage email sending history"}
+              icon={Envelope}
+              gradient="default"
+              glassmorphic
             >
               {/* Show list view if filtering OR if viewMode is list, otherwise show grouped */}
               {hasFilter || viewMode === "list" ? (
@@ -308,7 +303,7 @@ export default function PageClient() {
               ) : (
                 <GroupedEmailTable />
               )}
-            </SettingCard>
+            </DesignCard>
           </div>
 
           {/* Right side: Domain Reputation */}
