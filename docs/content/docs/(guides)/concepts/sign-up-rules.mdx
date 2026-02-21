@@ -1,0 +1,129 @@
+---
+title: Sign-up Rules
+description: Control who can sign up for your application with customizable rules.
+icon: ShieldCheck
+---
+
+Sign-up rules let you control who can sign up for your application. You can create rules that evaluate sign-up attempts based on conditions like email domain or authentication method, then allow, reject, or restrict users accordingly.
+
+Rules are evaluated during sign-up for all authentication methods (password, magic link, OAuth, passkey). When a user attempts to sign up, Stack evaluates each rule in priority order—the first matching rule determines the outcome. If no rules match, the default action is used.
+
+## Creating rules
+
+Navigate to **Sign-up Rules** in your project dashboard to create and manage rules.
+
+To add a rule:
+
+1. Click **Add Rule**
+2. Enter a name for your rule (e.g., "Block disposable emails")
+3. Configure the conditions using the visual builder
+4. Select an action (Allow, Reject, Restrict, or Log)
+5. Click **Create rule**
+
+### Available conditions
+
+When building rule conditions, you have access to these context variables:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `email` | string | The user's email address (normalized to lowercase) |
+| `emailDomain` | string | The domain part of the email (after @) |
+| `authMethod` | string | The authentication method: `password`, `otp`, `oauth`, or `passkey` |
+| `oauthProvider` | string | The OAuth provider ID if using OAuth (e.g., `google`, `github`), empty string otherwise |
+
+The condition builder supports these operations on string values:
+
+- `contains("substring")` - Check if value contains a substring
+- `startsWith("prefix")` - Check if value starts with a prefix
+- `endsWith("suffix")` - Check if value ends with a suffix
+- `matches("regex")` - Check if value matches a regular expression
+- `==` and `!=` - Exact equality comparisons
+
+You can combine multiple conditions using AND/OR logic.
+
+## Actions
+
+### Allow
+
+The user signs up normally. Use this to explicitly allow certain users when your default action is set to reject.
+
+### Reject
+
+Blocks the sign-up and shows the user: "Your sign up was rejected by an administrator's sign-up rule." You can optionally add an internal message for logging (not shown to users).
+
+### Restrict
+
+The user signs up, but their account is marked as restricted. Restricted users have limited access and can be reviewed by admins before gaining full access. See [JWT Tokens](/docs/concepts/jwt) for how restricted status appears in tokens.
+
+### Log
+
+The rule is triggered and logged for analytics, but no action is taken. Use this to monitor patterns before implementing blocking rules.
+
+## Priority and default action
+
+Rules are evaluated in priority order (highest first). You can reorder rules by dragging them in the dashboard. Only the first matching rule's action is applied, so place your allow rules before reject rules if you want to allow specific users while blocking others.
+
+The default action applies when no rules match:
+
+- **Allow** (default): Sign-ups are allowed unless a rule explicitly rejects them
+- **Reject**: Sign-ups are blocked unless a rule explicitly allows them
+
+Set the default to "Reject" when you want to only allow sign-ups from specific domains.
+
+## Common use cases
+
+### Block disposable email domains
+
+Block users signing up with temporary email addresses:
+
+- Condition: `emailDomain.matches("(tempmail|throwaway|guerrillamail)\\..*")`
+- Action: Reject
+
+### Allow only corporate domains
+
+1. Set default action to **Reject**
+2. Create an allow rule with condition: `emailDomain == "company1.com" || emailDomain == "company2.com"`
+
+### Restrict non-verified auth methods
+
+Require manual review for users who sign up without email verification:
+
+- Condition: `authMethod == "oauth" && oauthProvider != "google"`
+- Action: Restrict
+
+### Different rules for different auth methods
+
+Allow password sign-ups from any domain, but restrict OAuth sign-ups:
+
+1. Rule 1: `authMethod == "password"` → Allow
+2. Rule 2: `authMethod == "oauth"` → Restrict
+3. Default: Allow
+
+## Analytics
+
+The dashboard shows analytics for each rule, including how many times it's been triggered over the past 48 hours. Use this to understand your sign-up patterns and tune your rules.
+
+## Testing rules
+
+You can test your sign-up rules using the built-in rule tester. It simulates sign-up requests and shows which rules would trigger and what the outcome would be—without affecting real users.
+
+To open the tester, scroll to the bottom of the Sign-up Rules page and click **Open tester**.
+
+### Test inputs
+
+Enter the following to simulate a sign-up attempt:
+
+- **Email**: The email address to test (e.g., `user@company.com`)
+- **Auth method**: The authentication method (`Password`, `OTP`, `OAuth`, or `Passkey`)
+- **OAuth provider**: The OAuth provider ID (only used when auth method is OAuth)
+
+Click **Run test** to see the results.
+
+### Understanding the results
+
+The tester displays:
+
+- **Outcome**: Whether the sign-up would be allowed or rejected, and whether the decision came from a specific rule or the default action.
+- **Triggered rules**: All rules that matched the test input, showing each rule's name, condition, action type, and whether it was the deciding rule.
+- **Evaluation trace**: A detailed view of how every rule was evaluated—which matched, which didn't, which were disabled, and any errors.
+- **Normalized context**: How the test input was parsed, including the extracted email domain. Useful for debugging conditions that reference `email`, `emailDomain`, `authMethod`, or `oauthProvider`.
