@@ -10,7 +10,7 @@ import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty, AuthLike } from "../common";
-import { OAuthConnection } from "../connected-accounts";
+import { DeprecatedOAuthConnection, OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
 import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
@@ -171,13 +171,32 @@ export type UserExtra = {
 
   delete(): Promise<void>,
 
-  getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
-  getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
+  /** @deprecated Use `getOrLinkConnectedAccount` for redirect behavior, or `getConnectedAccount({ provider, providerAccountId })` for existence check. */
+  getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<DeprecatedOAuthConnection>,
+  /** @deprecated Use `getConnectedAccount({ provider, providerAccountId })` for existence check, or `getOrLinkConnectedAccount` for redirect behavior. */
+  getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<DeprecatedOAuthConnection | null>,
+  /** Get a specific connected account by provider and providerAccountId. Returns null if not found. */
+  getConnectedAccount(account: { provider: string, providerAccountId: string }): Promise<OAuthConnection | null>,
 
   // IF_PLATFORM react-like
-  useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection,
-  useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): OAuthConnection | null,
+  /** @deprecated Use `useOrLinkConnectedAccount` for redirect behavior, or `useConnectedAccount({ provider, providerAccountId })` for existence check. */
+  useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): DeprecatedOAuthConnection,
+  /** @deprecated Use `useConnectedAccount({ provider, providerAccountId })` for existence check, or `useOrLinkConnectedAccount` for redirect behavior. */
+  useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): DeprecatedOAuthConnection | null,
+  /** Get a specific connected account by provider and providerAccountId. Returns null if not found. */
+  useConnectedAccount(account: { provider: string, providerAccountId: string }): OAuthConnection | null,
   // END_PLATFORM
+
+  /** List all connected accounts for this user (only those with allowConnectedAccounts enabled). */
+  listConnectedAccounts(): Promise<OAuthConnection[]>,
+  /** React hook to list all connected accounts. */
+  useConnectedAccounts(): OAuthConnection[], // THIS_LINE_PLATFORM react-like
+  /** Redirect the user to the OAuth flow to link a new connected account. Always redirects, never returns. */
+  linkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<void>,
+  /** Get a connected account for the given provider, or redirect to link one if none exists or the token/scopes are insufficient. */
+  getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<OAuthConnection>,
+  /** React hook: get a connected account for the given provider, or redirect to link one if none exists or the token/scopes are insufficient. */
+  useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): OAuthConnection, // THIS_LINE_PLATFORM react-like
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
   hasPermission(permissionId: string): Promise<boolean>,

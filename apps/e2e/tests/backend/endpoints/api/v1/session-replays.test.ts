@@ -46,7 +46,7 @@ it("requires a user token", async ({ expect }) => {
   expect(res.status).toBeLessThan(500);
 });
 
-it("returns 200 no-op when analytics is not enabled", async ({ expect }) => {
+it("throws error when analytics is not enabled", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   // Analytics is disabled by default - do NOT call Project.updateConfig
   await Auth.Otp.signIn();
@@ -64,9 +64,8 @@ it("returns 200 no-op when analytics is not enabled", async ({ expect }) => {
     },
   });
 
-  expect(res.status).toBe(200);
-  expect(res.body?.session_replay_id).toBe("");
-  expect(res.body?.s3_key).toBe("");
+  expect(res.status).toBe(400);
+  expect(res.body?.code).toBe("ANALYTICS_NOT_ENABLED");
 });
 
 it("stores session replay batch metadata and dedupes by (session_replay_id, batch_id)", async ({ expect }) => {

@@ -84,8 +84,26 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.VerificationCodeNotFound();
     }
 
+    // Atomically mark the invitation as used before creating the membership.
+    // This uses globalPrismaClient (not a tenancy transaction), so it must happen
+    // outside retryTransaction to avoid being re-executed on retry after already committing.
+    const updated = await globalPrismaClient.verificationCode.updateMany({
+      where: {
+        projectId: auth.tenancy.project.id,
+        branchId: auth.tenancy.branchId,
+        id: params.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    if (updated.count === 0) {
+      throw new KnownErrors.VerificationCodeNotFound();
+    }
+
     await retryTransaction(prisma, async (tx) => {
-      // Internal project payment checks (same as in the verification code handler)
       if (auth.tenancy.project.id === "internal") {
         const currentMemberCount = await tx.teamMember.count({
           where: {
@@ -122,23 +140,6 @@ export const POST = createSmartRouteHandler({
           user_id: userId,
           data: {},
         });
-      }
-
-      // Mark the invitation as used inside the transaction to prevent race conditions
-      const updated = await globalPrismaClient.verificationCode.updateMany({
-        where: {
-          projectId: auth.tenancy.project.id,
-          branchId: auth.tenancy.branchId,
-          id: params.id,
-          usedAt: null,
-        },
-        data: {
-          usedAt: new Date(),
-        },
-      });
-
-      if (updated.count === 0) {
-        throw new KnownErrors.VerificationCodeNotFound();
       }
     });
 

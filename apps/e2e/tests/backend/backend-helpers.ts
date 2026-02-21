@@ -1,7 +1,9 @@
+import type { ProjectConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
@@ -110,12 +112,13 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   accessType?: null | "client" | "server" | "admin",
   body?: unknown,
   headers?: Record<string, string | undefined>,
+  omitPublishableClientKey?: boolean,
   userAuth?: {
     accessToken?: string,
     refreshToken?: string,
   },
 }): Promise<NiceResponse> {
-  const { body, headers, accessType, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
+  const { body, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }
@@ -132,7 +135,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       "x-stack-access-type": accessType ?? undefined,
       ...projectKeys !== "no-project" && accessType ? {
         "x-stack-project-id": projectKeys.projectId,
-        "x-stack-publishable-client-key": projectKeys.publishableClientKey,
+        "x-stack-publishable-client-key": omitPublishableClientKey ? undefined : projectKeys.publishableClientKey,
         "x-stack-secret-server-key": projectKeys.secretServerKey,
         "x-stack-super-secret-admin-key": projectKeys.superSecretAdminKey,
         'x-stack-admin-access-token': projectKeys.adminAccessToken,
@@ -703,15 +706,19 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery(options: { forceBranchId?: string } = {}) {
+    export async function getAuthorizeQuery(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
       const userAuth = backendContext.value.userAuth;
+      const includeClientSecret = options.includeClientSecret ?? true;
+      const clientSecret = includeClientSecret
+        ? (projectKeys.publishableClientKey ?? publishableClientKeyNotNecessarySentinel)
+        : publishableClientKeyNotNecessarySentinel;
 
       return filterUndefined({
         client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
-        client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
+        client_secret: clientSecret,
         redirect_uri: localRedirectUrl,
         scope: "legacy",
         response_type: "code",
@@ -723,7 +730,7 @@ export namespace Auth {
       });
     }
 
-    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string } = {}) {
+    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
@@ -749,7 +756,7 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
       const authLocation = new URL(authorizeResponse.headers.get("location")!);
@@ -830,7 +837,7 @@ export namespace Auth {
       };
     }
 
-    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -854,7 +861,7 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
@@ -876,23 +883,27 @@ export namespace Auth {
       };
     }
 
-    export async function signIn(options: { forceBranchId?: string } = {}) {
-      const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
+    export async function signIn(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+      const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode(options);
 
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
+      const includeClientSecret = options.includeClientSecret ?? true;
+      const clientSecret = includeClientSecret
+        ? (projectKeys.publishableClientKey ?? publishableClientKeyNotNecessarySentinel)
+        : publishableClientKeyNotNecessarySentinel;
 
       const tokenResponse = await niceBackendFetch("/api/v1/auth/oauth/token", {
         method: "POST",
         accessType: "client",
-        body: {
+        body: filterUndefined({
           client_id: projectKeys.projectId,
-          client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
+          client_secret: clientSecret,
           code: getAuthorizationCodeResult.authorizationCode,
           redirect_uri: localRedirectUrl,
           code_verifier: "some-code-challenge",
           grant_type: "authorization_code",
-        },
+        }),
       });
       expect(tokenResponse).toMatchObject({
         status: 200,
@@ -1267,6 +1278,16 @@ export namespace Project {
 
   export async function updateConfig(config: any) {
     const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  export async function updateProjectConfig(config: ProjectConfigOverride) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/project`, {
       accessType: "admin",
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },

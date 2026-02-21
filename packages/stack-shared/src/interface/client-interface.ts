@@ -9,13 +9,14 @@ import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
+import { publishableClientKeyNotNecessarySentinel } from '../utils/oauth';
 import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
 import { urlString } from '../utils/urls';
-import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
+import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
@@ -36,11 +37,12 @@ export type ClientInterfaceOptions = {
   clientVersion: string,
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
+  getAnalyticsBaseUrl?: () => string,
   extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
 } & ({
-  publishableClientKey: string,
+  publishableClientKey?: string,
 } | {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
@@ -58,6 +60,10 @@ export class StackClientInterface {
 
   getApiUrl() {
     return this.options.getBaseUrl() + "/api/v1";
+  }
+
+  getAnalyticsApiUrl() {
+    return (this.options.getAnalyticsBaseUrl ?? this.options.getBaseUrl)() + "/api/v1";
   }
 
   public async runNetworkDiagnostics(session?: InternalSession | null, requestType?: "client" | "server" | "admin") {
@@ -149,11 +155,12 @@ export class StackClientInterface {
   }
 
   public async fetchNewAccessToken(refreshToken: RefreshToken) {
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO support it
       throw new Error("Admin session token is currently not supported for fetching new access token. Did you try to log in on a StackApp initiated with the admin session?");
     }
 
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
     const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
@@ -162,10 +169,10 @@ export class StackClientInterface {
     };
     const client: oauth.Client = {
       client_id: this.projectId,
-      client_secret: this.options.publishableClientKey,
+      client_secret: clientSecret,
     };
 
-    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const clientAuthentication = oauth.ClientSecretPost(clientSecret);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = tokenEndpoint.startsWith('http://');
 
@@ -224,13 +231,14 @@ export class StackClientInterface {
     requestOptions: RequestInit,
     session: InternalSession | null,
     requestType: "client" | "server" | "admin" = "client",
+    apiUrlOverride?: string,
   ) {
     session ??= this.createSession({
       refreshToken: null,
     });
 
     return await this._networkRetry(
-      () => this.sendClientRequestInner(path, requestOptions, session!, requestType),
+      () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride),
       session,
       requestType,
     );
@@ -259,6 +267,32 @@ export class StackClientInterface {
           keepalive: options.keepalive,
         },
         session,
+        "client",
+        this.getAnalyticsApiUrl(),
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
+  async sendAnalyticsEventBatch(
+    body: string,
+    session: InternalSession | null,
+    options: { keepalive: boolean },
+  ): Promise<Result<Response, Error>> {
+    try {
+      const response = await this.sendClientRequest(
+        "/analytics/events/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: options.keepalive,
+        },
+        session,
+        "client",
+        this.getAnalyticsApiUrl(),
       );
       return Result.ok(response);
     } catch (e) {
@@ -297,6 +331,7 @@ export class StackClientInterface {
     options: RequestInit,
     session: InternalSession,
     requestType: "client" | "server" | "admin",
+    apiUrlOverride?: string,
   ): Promise<Result<Response & {
     usedTokens: {
       accessToken: AccessToken,
@@ -331,7 +366,7 @@ export class StackClientInterface {
     // all requests should be dynamic to prevent Next.js caching
     await this.options.prepareRequest?.();
 
-    let url = this.getApiUrl() + path;
+    let url = (apiUrlOverride ?? this.getApiUrl()) + path;
     if (url.endsWith("/")) {
       url = url.slice(0, -1);
     }
@@ -362,7 +397,7 @@ export class StackClientInterface {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
         "X-Stack-Allow-Anonymous-User": "true",
-        ...('publishableClientKey' in this.options ? {
+        ...("publishableClientKey" in this.options && this.options.publishableClientKey ? {
           "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
         ...(adminTokenObj ? {
@@ -1025,13 +1060,14 @@ export class StackClientInterface {
       updatedRedirectUrl.searchParams.delete(key);
     }
 
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
     const url = new URL(this.getApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
     url.searchParams.set("client_id", this.projectId);
-    url.searchParams.set("client_secret", this.options.publishableClientKey);
+    url.searchParams.set("client_secret", clientSecret);
     url.searchParams.set("redirect_uri", updatedRedirectUrl.toString());
     url.searchParams.set("scope", "legacy");
     url.searchParams.set("state", options.state);
@@ -1065,10 +1101,11 @@ export class StackClientInterface {
     codeVerifier: string,
     state: string,
   }): Promise<{ newUser: boolean, afterCallbackRedirectUrl?: string, accessToken: string, refreshToken: string }> {
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
     const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
@@ -1077,9 +1114,9 @@ export class StackClientInterface {
     };
     const client: oauth.Client = {
       client_id: this.projectId,
-      client_secret: this.options.publishableClientKey,
+      client_secret: clientSecret,
     };
-    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const clientAuthentication = oauth.ClientSecretPost(clientSecret);
     // Allow insecure HTTP requests only in test environment (for localhost testing)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = tokenEndpoint.startsWith('http://');
@@ -1214,7 +1251,7 @@ export class StackClientInterface {
     session: InternalSession,
   ) {
     await this.sendClientRequest(
-      urlString`/team-invitations/${invitationId}/accept?` + new URLSearchParams({ user_id: 'me' }),
+      urlString`/team-invitations/${invitationId}/accept` + "?" + new URLSearchParams({ user_id: 'me' }),
       { method: "POST" },
       session,
     );
@@ -1436,6 +1473,44 @@ export class StackClientInterface {
         },
         body: JSON.stringify({ scope }),
       },
+      session,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Get access token for a specific connected account by provider ID and provider account ID.
+   * This is the preferred method when dealing with multiple accounts of the same provider.
+   */
+  async createProviderAccessTokenByAccount(
+    providerId: string,
+    providerAccountId: string,
+    scope: string,
+    session: InternalSession,
+  ): Promise<ConnectedAccountAccessTokenCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/connected-accounts/me/${encodeURIComponent(providerId)}/${encodeURIComponent(providerAccountId)}/access-token`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ scope }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  /**
+   * List all connected accounts for the current user.
+   */
+  async listConnectedAccounts(
+    session: InternalSession,
+  ): Promise<ConnectedAccountCrud['Client']['List']> {
+    const response = await this.sendClientRequest(
+      `/connected-accounts/me`,
+      { method: "GET" },
       session,
     );
     return await response.json();
@@ -1935,11 +2010,16 @@ export class StackClientInterface {
       customer_type: "user" | "team" | "custom",
       customer_id: string,
       product_id: string,
+      subscription_id?: string,
     },
     session: InternalSession | null,
   ): Promise<void> {
+    const queryParams = new URLSearchParams(filterUndefined({
+      subscription_id: options.subscription_id,
+    }));
+    const path = urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`;
     await this.sendClientRequest(
-      urlString`/payments/products/${options.customer_type}/${options.customer_id}/${options.product_id}`,
+      `${path}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
       {
         method: "DELETE",
       },
@@ -1986,7 +2066,7 @@ export class StackClientInterface {
   ): Promise<string> {
     const productBody = typeof productIdOrInline === "string" ?
       { product_id: productIdOrInline } :
-      { inline_product: productIdOrInline };
+      { product_inline: productIdOrInline };
     const sendRequest = (requestType === "client" ? this.sendClientRequest : (this as any).sendServerRequest as never).bind(this);
     const response = await sendRequest(
       "/payments/purchases/create-purchase-url",
