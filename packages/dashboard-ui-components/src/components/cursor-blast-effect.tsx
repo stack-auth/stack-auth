@@ -161,7 +161,6 @@ export function CursorBlastEffect({
       }
       timeoutIds.clear();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- containerRef identity is stable; config is read from ref
   }, [containerRef]);
 
   if (!mounted) {
@@ -203,7 +202,7 @@ export function CursorBlastEffect({
           })}
         </div>
       ))}
-      <style jsx>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         .cursor-blast-ring {
           position: absolute;
           inset: 0;
@@ -290,7 +289,7 @@ export function CursorBlastEffect({
             animation-duration: 1ms;
           }
         }
-      `}</style>
+      ` }} />
     </>
   );
 

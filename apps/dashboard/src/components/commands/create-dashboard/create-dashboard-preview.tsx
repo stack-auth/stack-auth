@@ -1,13 +1,17 @@
 "use client";
 
-import { useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import {
   CreateDashboardResponse,
   CreateDashboardResponseSchema,
 } from "@/lib/ai-dashboard/contracts";
+import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
+import { FloppyDiskIcon } from "@phosphor-icons/react";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { memo, useCallback, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
@@ -23,11 +27,15 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
   query,
 }: CmdKPreviewProps) {
   const projectId = useProjectId();
+  const adminApp = useAdminApp(projectId);
+  const updateConfig = useUpdateConfig();
+  const router = useRouter();
   const prompt = query.trim();
 
   const [state, setState] = useState<GenerationState>("idle");
   const [errorText, setErrorText] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<CreateDashboardResponse | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const generateDashboard = useCallback(async () => {
     if (!projectId || !prompt) {
@@ -65,6 +73,27 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     setState("ready");
   }, [projectId, prompt]);
 
+  const handleSave = useCallback(async () => {
+    if (!artifact) return;
+    setIsSaving(true);
+    try {
+      const id = generateUuid();
+      await updateConfig({
+        adminApp,
+        configUpdate: {
+          [`customDashboards.${id}`]: {
+            displayName: artifact.runtimeCodegen.title,
+            tsxSource: artifact.runtimeCodegen.uiRuntimeSourceCode,
+          },
+        },
+        pushable: false,
+      });
+      router.push(`/projects/${projectId}/dashboards/${id}`);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [artifact, adminApp, updateConfig, router, projectId]);
+
   useDebouncedAction({
     action: generateDashboard,
     delayMs: 500,
@@ -88,14 +117,27 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
             <div className="text-[12px] font-medium text-foreground">Create Dashboard</div>
             <div className="text-[10px] text-muted-foreground truncate">{prompt}</div>
           </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={state === "generating"}
-            onClick={() => runAsynchronouslyWithAlert(generateDashboard())}
-          >
-            {state === "generating" ? "Generating..." : "Regenerate"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {state === "ready" && artifact && (
+              <Button
+                size="sm"
+                disabled={isSaving}
+                onClick={() => runAsynchronouslyWithAlert(handleSave)}
+                className="gap-1.5"
+              >
+                <FloppyDiskIcon className="h-3.5 w-3.5" />
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={state === "generating"}
+              onClick={() => runAsynchronouslyWithAlert(generateDashboard())}
+            >
+              {state === "generating" ? "Generating..." : "Regenerate"}
+            </Button>
+          </div>
         </div>
         {state === "error" && errorText && (
           <div className={cn("rounded-md border px-2 py-1.5 text-[10px]", "border-red-500/30 bg-red-500/10 text-red-200")}>

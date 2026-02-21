@@ -5,7 +5,8 @@ import { getPublicEnvVar } from "@/lib/env";
 import { useUser } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "next-themes";
+import { memo, useEffect, useMemo, useRef } from "react";
 import packageJson from "../../../../package.json";
 
 type DashboardArtifact = {
@@ -18,11 +19,37 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   return strings.reduce<string>((result, str, i) => result + str + (values[i] ?? ''), '');
 }
 
-function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): string {
+function getDependencyScripts(esmVersion: string): string {
+  return html`
+    <script type="module">
+      import React from 'https://esm.sh/react@18';
+      import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
+      import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
+      import * as DashboardUIComponents from 'https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@18,react-dom@18';
+      import * as StackSDK from 'https://esm.sh/@stackframe/js@${esmVersion}';
+      import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${esmVersion}/dist/utils/uuids';
+      
+      window.React = React;
+      window.ReactDOM = ReactDOMClient;
+      window.Recharts = Recharts;
+      window.DashboardUI = DashboardUIComponents;
+      window.StackAdminApp = StackSDK.StackAdminApp;
+      window.StackServerApp = StackSDK.StackServerApp;
+      window.StackSDK = StackSDK;
+      window.generateUuid = generateUuid;
+      
+      window.__depsReady = true;
+      window.dispatchEvent(new Event('deps-ready'));
+    </script>`;
+}
+
+function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
+  const darkClass = initialTheme === "dark" ? "dark" : "";
+  const esmVersion = packageJson.version;
 
   return html`<!doctype html>
-<html>
+<html class="${darkClass}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -36,34 +63,34 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
         theme: {
           extend: {
             colors: {
-              border: 'hsl(240 3.7% 15.9%)',
-              input: 'hsl(240 3.7% 15.9%)',
-              ring: 'hsl(240 4.9% 83.9%)',
-              background: 'hsl(240 10% 3.9%)',
-              foreground: 'hsl(0 0% 98%)',
+              border: 'hsl(var(--border))',
+              input: 'hsl(var(--input))',
+              ring: 'hsl(var(--ring))',
+              background: 'hsl(var(--background))',
+              foreground: 'hsl(var(--foreground))',
               primary: {
-                DEFAULT: 'hsl(0 0% 98%)',
-                foreground: 'hsl(240 5.9% 10%)',
+                DEFAULT: 'hsl(var(--primary))',
+                foreground: 'hsl(var(--primary-foreground))',
               },
               secondary: {
-                DEFAULT: 'hsl(240 3.7% 15.9%)',
-                foreground: 'hsl(0 0% 98%)',
+                DEFAULT: 'hsl(var(--secondary))',
+                foreground: 'hsl(var(--secondary-foreground))',
               },
               destructive: {
-                DEFAULT: 'hsl(0 62.8% 30.6%)',
-                foreground: 'hsl(0 0% 98%)',
+                DEFAULT: 'hsl(var(--destructive))',
+                foreground: 'hsl(var(--destructive-foreground))',
               },
               muted: {
-                DEFAULT: 'hsl(240 3.7% 15.9%)',
-                foreground: 'hsl(240 5% 64.9%)',
+                DEFAULT: 'hsl(var(--muted))',
+                foreground: 'hsl(var(--muted-foreground))',
               },
               accent: {
-                DEFAULT: 'hsl(240 3.7% 15.9%)',
-                foreground: 'hsl(0 0% 98%)',
+                DEFAULT: 'hsl(var(--accent))',
+                foreground: 'hsl(var(--accent-foreground))',
               },
               card: {
-                DEFAULT: 'hsl(240 10% 3.9%)',
-                foreground: 'hsl(0 0% 98%)',
+                DEFAULT: 'hsl(var(--card))',
+                foreground: 'hsl(var(--card-foreground))',
               },
             },
           }
@@ -72,56 +99,127 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
     </script>
     
     <style>
-      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow-x: hidden; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; background: #0b0b0f; color: #f3f4f6; }
+      :root {
+        --background: 230 45% 86%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 240 10% 3.9%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 245 30% 90%;
+        --secondary-foreground: 240 5.9% 10%;
+        --muted: 250 35% 92%;
+        --muted-foreground: 232 12% 38%;
+        --accent: 248 32% 91%;
+        --accent-foreground: 240 5.9% 10%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 230 25% 78%;
+        --input: 230 20% 72%;
+        --ring: 240 10% 3.9%;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 9.4%;
+        --card-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --secondary: 240 3.7% 15.9%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --accent: 240 3.7% 15.9%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 50%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 3.7% 35.9%;
+        --input: 240 3.7% 25.9%;
+        --ring: 240 4.9% 83.9%;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow-x: hidden;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+      }
       #root { width: 100%; height: 100%; overflow-x: hidden; }
       * { box-sizing: border-box; }
+      .dark { color-scheme: dark; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+      ::-webkit-scrollbar-corner { background: transparent; }
     </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="dashboard-controls" style="display:none;">
+      <button id="ctrl-back" class="fixed top-4 left-4 z-50 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70 transition-colors duration-150 hover:transition-none cursor-pointer text-sm font-medium" onclick="window.parent.postMessage({type:'dashboard-back'},'*')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"/></svg>
+        Back
+      </button>
+      <button id="ctrl-edit" class="fixed top-4 right-6 z-50 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70 transition-colors duration-150 hover:transition-none cursor-pointer text-sm font-medium" onclick="window.parent.postMessage({type:'dashboard-edit'},'*')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120Z"/></svg>
+        Edit
+      </button>
+    </div>
     
-    <!-- React, ReactDOM, and Babel -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-is@18/umd/react-is.production.min.js"></script>
+    <script>
+      ${showControls ? `
+        document.getElementById('dashboard-controls').style.display = 'block';
+        ${initialChatOpen ? `
+          document.getElementById('ctrl-back').style.display = 'none';
+          document.getElementById('ctrl-edit').style.display = 'none';
+        ` : ''}
+      ` : ''}
+    </script>
+    
+    <!-- Babel (for JSX transpilation) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Recharts (via CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.15.4/umd/Recharts.js"></script>
-    
-    <!-- Stack SDK (via esm.sh CDN) -->
-    <script type="module">
-      import * as StackSDK from 'https://esm.sh/@stackframe/js@${packageJson.version}';
-      
-      // Expose Stack SDK globally for the Babel-transpiled code
-      window.StackAdminApp = StackSDK.StackAdminApp;
-      window.StackServerApp = StackSDK.StackServerApp;
-      window.StackSDK = StackSDK;
-      
-      // Signal that SDK is loaded
-      window.__stackSdkReady = true;
-      window.dispatchEvent(new Event('stack-sdk-ready'));
-    </script>
-    
-    <!-- UUID utility (via esm.sh CDN) -->
-    <script type="module">
-      import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${packageJson.version}/dist/utils/uuids';
-      window.generateUuid = generateUuid;
-    </script>
+    ${getDependencyScripts(esmVersion)}
     
     <script type="text/babel">
-      // Stack Server App config (no embedded token - fetched via postMessage)
+      // Theme syncing from parent window
+      window.addEventListener('message', (event) => {
+        if (event.data?.type === 'stack-theme-change') {
+          const theme = event.data.theme;
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        }
+        if (event.data?.type === 'dashboard-controls-update') {
+          var backBtn = document.getElementById('ctrl-back');
+          if (backBtn) {
+            backBtn.style.display = event.data.hideBack ? 'none' : '';
+          }
+          var editBtn = document.getElementById('ctrl-edit');
+          if (editBtn) {
+            editBtn.style.display = event.data.hideEdit ? 'none' : '';
+          }
+        }
+      });
+
       const STACK_CONFIG = {
         baseUrl: ${JSON.stringify(baseUrl)},
         projectId: ${JSON.stringify(artifact.projectId)},
       };
-
-      const Recharts = window.Recharts;
-      if (!Recharts) {
-        throw new Error("Recharts failed to load in sandbox. Check CDN dependencies.");
-      }
       
+      async function waitForDeps() {
+        if (window.__depsReady) return;
+        await new Promise(resolve => {
+          window.addEventListener('deps-ready', resolve, { once: true });
+        });
+      }
+
       async function requestAccessToken() {
         return new Promise((resolve, reject) => {
           const requestId = window.generateUuid();
@@ -152,11 +250,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
       }
       
       async function initializeStackApp() {
-        if (!window.__stackSdkReady) {
-          await new Promise(resolve => {
-            window.addEventListener('stack-sdk-ready', resolve, { once: true });
-          });
-        }
+        await waitForDeps();
         
         if (!window.StackAdminApp) {
           throw new Error("Stack SDK failed to load. The SDK should expose window.StackAdminApp.");
@@ -170,137 +264,10 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
           },
         });
         
-        // Make it globally available for AI-generated code
-        // Note: Variable name remains stackServerApp as we may change StackAdminApp in the future while StackServerApp is stable, even though it's a StackAdminApp instance
         window.stackServerApp = stackServerApp;
         
         return stackServerApp;
       }
-      
-      // Shadcn-style components
-      const Card = ({ children, className = "", ...props }) => (
-        <div className={\`rounded-lg border bg-card text-card-foreground shadow-sm \${className}\`} {...props}>
-          {children}
-        </div>
-      );
-      
-      const CardHeader = ({ children, className = "", ...props }) => (
-        <div className={\`flex flex-col space-y-1.5 p-6 \${className}\`} {...props}>
-          {children}
-        </div>
-      );
-      
-      const CardTitle = ({ children, className = "", ...props }) => (
-        <h3 className={\`text-2xl font-semibold leading-none tracking-tight \${className}\`} {...props}>
-          {children}
-        </h3>
-      );
-      
-      const CardDescription = ({ children, className = "", ...props }) => (
-        <p className={\`text-sm text-muted-foreground \${className}\`} {...props}>
-          {children}
-        </p>
-      );
-      
-      const CardContent = ({ children, className = "", ...props }) => (
-        <div className={\`p-6 pt-0 \${className}\`} {...props}>
-          {children}
-        </div>
-      );
-      
-      const CardFooter = ({ children, className = "", ...props }) => (
-        <div className={\`flex items-center p-6 pt-0 \${className}\`} {...props}>
-          {children}
-        </div>
-      );
-      
-      const Button = ({ children, className = "", variant = "default", size = "default", ...props }) => {
-        const variants = {
-          default: "bg-primary text-primary-foreground hover:bg-primary/90",
-          destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-          outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-          secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-          ghost: "hover:bg-accent hover:text-accent-foreground",
-          link: "text-primary underline-offset-4 hover:underline",
-        };
-        const sizes = {
-          default: "h-10 px-4 py-2",
-          sm: "h-9 rounded-md px-3",
-          lg: "h-11 rounded-md px-8",
-          icon: "h-10 w-10",
-        };
-        return (
-          <button
-            className={\`inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 \${variants[variant]} \${sizes[size]} \${className}\`}
-            {...props}
-          >
-            {children}
-          </button>
-        );
-      };
-      
-      const Table = ({ children, className = "", ...props }) => (
-        <div className="relative w-full overflow-auto">
-          <table className={\`w-full caption-bottom text-sm \${className}\`} {...props}>
-            {children}
-          </table>
-        </div>
-      );
-      
-      const TableHeader = ({ children, className = "", ...props }) => (
-        <thead className={\`[&_tr]:border-b \${className}\`} {...props}>
-          {children}
-        </thead>
-      );
-      
-      const TableBody = ({ children, className = "", ...props }) => (
-        <tbody className={\`[&_tr:last-child]:border-0 \${className}\`} {...props}>
-          {children}
-        </tbody>
-      );
-      
-      const TableRow = ({ children, className = "", ...props }) => (
-        <tr className={\`border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted \${className}\`} {...props}>
-          {children}
-        </tr>
-      );
-      
-      const TableHead = ({ children, className = "", ...props }) => (
-        <th className={\`h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 \${className}\`} {...props}>
-          {children}
-        </th>
-      );
-      
-      const TableCell = ({ children, className = "", ...props }) => (
-        <td className={\`p-4 align-middle [&:has([role=checkbox])]:pr-0 \${className}\`} {...props}>
-          {children}
-        </td>
-      );
-      
-      const Badge = ({ children, className = "", variant = "default", ...props }) => {
-        const variants = {
-          default: "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
-          secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-          destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-          outline: "text-foreground",
-        };
-        return (
-          <div className={\`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 \${variants[variant]} \${className}\`} {...props}>
-            {children}
-          </div>
-        );
-      };
-      
-      const Skeleton = ({ className = "", ...props }) => (
-        <div className={\`animate-pulse rounded-md bg-muted \${className}\`} {...props} />
-      );
-      
-      const Separator = ({ className = "", orientation = "horizontal", ...props }) => (
-        <div
-          className={\`shrink-0 bg-border \${orientation === "horizontal" ? "h-[1px] w-full" : "h-full w-[1px]"} \${className}\`}
-          {...props}
-        />
-      );
       
       // Error Boundary Component
       class ErrorBoundary extends React.Component {
@@ -336,11 +303,6 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
           return this.props.children;
         }
       }
-        
-      window.Dashboard = (() => {
-        ${sourceCode}
-        return Dashboard;
-      })();
       
       // Boot the dashboard
       const rootElement = document.getElementById('root');
@@ -348,54 +310,48 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
         throw new Error('Root element not found');
       }
       
-      const root = ReactDOM.createRoot(rootElement);
-      
-      // Initialize Stack SDK and boot the dashboard
+      // Initialize deps and boot the dashboard
       initializeStackApp().then(() => {
-        try {
-          // Dashboard should be defined by the AI-generated code
-          const Dashboard = window.Dashboard;
-          if (typeof Dashboard !== 'function') {
-            throw new Error('Dashboard component not found in generated code');
-          }
-          
-          root.render(
-            <ErrorBoundary>
-              <Dashboard />
-            </ErrorBoundary>
-          );
-          
-          // Notify parent that sandbox is ready
-          parent.postMessage({ type: "stack-ai-dashboard-ready" }, "*");
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Unknown sandbox error";
-          parent.postMessage({
-            type: "stack-ai-dashboard-error",
-            message: message,
-            stack: error instanceof Error ? error.stack : undefined,
-          }, "*");
-          
-          // Render error in UI
-          root.render(
-            <div className="p-6 text-red-500">
-              <h2 className="text-xl font-bold mb-2">Failed to load dashboard</h2>
-              <pre className="text-sm bg-red-950/20 p-4 rounded">
-                {message}
-              </pre>
-            </div>
-          );
+        const DashboardUI = window.DashboardUI;
+        const Recharts = window.Recharts;
+        
+        if (!DashboardUI) {
+          throw new Error("Dashboard UI components failed to load in sandbox.");
         }
+        if (!Recharts) {
+          throw new Error("Recharts failed to load in sandbox.");
+        }
+        
+        // Execute AI-generated code with DashboardUI and Recharts in scope
+        const Dashboard = (() => {
+          ${sourceCode}
+          return Dashboard;
+        })();
+        
+        if (typeof Dashboard !== 'function') {
+          throw new Error('Dashboard component not found in generated code');
+        }
+        
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+          <ErrorBoundary>
+            <Dashboard />
+          </ErrorBoundary>
+        );
+        
+        parent.postMessage({ type: "stack-ai-dashboard-ready" }, "*");
       }).catch(error => {
-        const message = error instanceof Error ? error.message : "Failed to initialize Stack SDK";
+        const message = error instanceof Error ? error.message : "Failed to initialize dashboard";
         parent.postMessage({
           type: "stack-ai-dashboard-error",
           message: message,
           stack: error instanceof Error ? error.stack : undefined,
         }, "*");
         
+        const root = ReactDOM.createRoot(rootElement);
         root.render(
           <div className="p-6 text-red-500">
-            <h2 className="text-xl font-bold mb-2">Failed to initialize SDK</h2>
+            <h2 className="text-xl font-bold mb-2">Failed to load dashboard</h2>
             <pre className="text-sm bg-red-950/20 p-4 rounded">
               {message}
             </pre>
@@ -409,27 +365,51 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string): strin
 
 export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   artifact,
+  onBack,
+  onEditToggle,
+  isChatOpen,
 }: {
   artifact: DashboardArtifact,
+  onBack?: () => void,
+  onEditToggle?: () => void,
+  isChatOpen?: boolean,
 }) {
+  const showControls = onBack != null || onEditToggle != null;
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [sandboxMessage, setSandboxMessage] = useState<string>("Waiting for sandbox...");
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  const onEditToggleRef = useRef(onEditToggle);
+  onEditToggleRef.current = onEditToggle;
   const user = useUser({ or: "redirect" });
+  const { resolvedTheme } = useTheme();
 
-  // Get base URL from environment (same as used by stackServerApp)
   const baseUrl = useMemo(() => {
     return getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? 'http://localhost:8102';
   }, []);
 
-  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl), [artifact, baseUrl]);
+  const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
+  const initialChatOpenRef = useRef(!!isChatOpen);
+  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, initialThemeRef.current, showControls, initialChatOpenRef.current), [artifact, baseUrl, showControls]);
+
+  // Send theme changes to iframe dynamically (without full reload)
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow && resolvedTheme) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'stack-theme-change',
+        theme: resolvedTheme,
+      }, '*');
+    }
+  }, [resolvedTheme]);
 
   useEffect(() => {
-    setSandboxMessage("Waiting for sandbox...");
-    const timeoutId = setTimeout(() => {
-      setSandboxMessage("Sandbox loading...");
-    }, 10000);
-    return () => clearTimeout(timeoutId);
-  }, [artifact.prompt]);
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'dashboard-controls-update',
+        hideBack: !!isChatOpen,
+        hideEdit: !!isChatOpen,
+      }, '*');
+    }
+  }, [isChatOpen]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -470,15 +450,17 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
         return;
       }
 
-      // Handle sandbox ready/error messages
-      if (type === "stack-ai-dashboard-ready") {
-        setSandboxMessage("Sandbox ready");
+      if (type === "dashboard-back") {
+        onBackRef.current?.();
         return;
       }
 
-      if (type === "stack-ai-dashboard-error") {
-        const message = typeof event.data.message === "string" ? event.data.message : "Unknown sandbox error";
-        setSandboxMessage(`Sandbox error: ${message}`);
+      if (type === "dashboard-edit") {
+        onEditToggleRef.current?.();
+        return;
+      }
+
+      if (type === "stack-ai-dashboard-ready" || type === "stack-ai-dashboard-error") {
         return;
       }
     };
@@ -490,15 +472,12 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   }, [user]);
 
   return (
-    <div className="flex flex-col h-full w-full gap-2">
-      <div className="text-[10px] text-muted-foreground/70">{sandboxMessage}</div>
-      <iframe
-        ref={iframeRef}
-        title="AI Dashboard Preview"
-        sandbox="allow-scripts"
-        srcDoc={srcDoc}
-        className="h-full w-full rounded-lg border border-foreground/[0.08] bg-[#0b0b0f]"
-      />
-    </div>
+    <iframe
+      ref={iframeRef}
+      title="AI Dashboard Preview"
+      sandbox="allow-scripts"
+      srcDoc={srcDoc}
+      className="h-full w-full bg-background"
+    />
   );
 });

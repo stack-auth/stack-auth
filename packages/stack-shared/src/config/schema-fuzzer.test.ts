@@ -257,6 +257,12 @@ const environmentSchemaFuzzerConfig = [{
       }],
     }],
   }],
+  customDashboards: [{
+    "12345678-1234-4234-9234-123456789012": [{
+      displayName: ["My Dashboard", "User Growth Dashboard"],
+      tsxSource: ["", "function Dashboard() { return <div>Hello</div>; }"],
+    }],
+  }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 
 const organizationSchemaFuzzerConfig = environmentSchemaFuzzerConfig satisfies FuzzerConfig<OrganizationConfigNormalizedOverride>;

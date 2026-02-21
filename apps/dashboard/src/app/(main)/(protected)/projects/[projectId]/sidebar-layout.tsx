@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
   CaretRightIcon,
+  ChartBarIcon,
   CubeIcon,
   GearIcon,
   GlobeIcon,
@@ -98,6 +99,14 @@ const overviewItem: Item = {
   regex: /^\/projects\/[^\/]+\/?$/,
   icon: GlobeIcon,
   type: 'item'
+};
+
+const dashboardsItem: Item = {
+  name: "Dashboards",
+  href: "/dashboards",
+  regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
+  icon: ChartBarIcon,
+  type: 'item',
 };
 
 function NavItem({
@@ -447,6 +456,12 @@ function SidebarContent({
             item={overviewItem}
             onClick={onNavigate}
             href={`/projects/${projectId}${overviewItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={dashboardsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${dashboardsItem.href}`}
             isCollapsed={isCollapsed}
           />
         </div>

@@ -3,10 +3,9 @@ import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import React from "react";
 
-import { cn } from "@/lib/utils";
+import { cn, Spinner } from "@stackframe/stack-ui";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Spinner } from "@/components/ui/spinner";
 
 const designButtonVariants = cva(
   "stack-scope inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
@@ -89,4 +88,3 @@ export const DesignButton = forwardRefIfNeeded<HTMLButtonElement, DesignButtonPr
   }
 );
 DesignButton.displayName = "DesignButton";
-

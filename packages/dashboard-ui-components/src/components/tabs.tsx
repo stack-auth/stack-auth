@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, Spinner } from "@stackframe/stack-ui";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Spinner } from "@/components/ui/spinner";
 import { useGlassmorphicDefault } from "./card";
 
 type DesignTabsSize = "sm" | "md";

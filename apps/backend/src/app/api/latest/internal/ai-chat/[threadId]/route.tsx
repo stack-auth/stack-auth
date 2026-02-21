@@ -55,7 +55,7 @@ export const POST = createSmartRouteHandler({
       threadId: yupString().defined(),
     }),
     body: yupObject({
-      context_type: yupString().oneOf(["email-theme", "email-template", "email-draft"]).defined(),
+      context_type: yupString().oneOf(["email-theme", "email-template", "email-draft", "custom-dashboard"]).defined(),
       messages: yupArray(messageSchema).defined().min(1),
     }),
   }),

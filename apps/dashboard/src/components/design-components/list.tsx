@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { DesignButton } from "./button";
+import { DesignButton } from "@stackframe/dashboard-ui-components";
 import { DesignMenu, type DesignMenuActionItem } from "./menu";
 
 // ─── Button action types ──────────────────────────────────────────────────

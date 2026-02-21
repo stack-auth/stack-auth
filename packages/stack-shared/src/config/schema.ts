@@ -335,6 +335,7 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   })),
 
   analytics: environmentAnalyticsSchema,
+  customDashboards: schemaFields.customDashboardsSchema,
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
@@ -698,6 +699,11 @@ const organizationConfigDefaults = {
       }),
     }),
   },
+
+  customDashboards: typedAssign((key: string) => ({
+    displayName: "Unnamed Dashboard",
+    tsxSource: "Error: Dashboard config is missing source code.",
+  }), {}),
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (

@@ -632,7 +632,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async sendChatMessage(
     threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
+    contextType: "email-theme" | "email-template" | "email-draft" | "custom-dashboard",
     messages: Array<{ role: string, content: any }>,
     abortSignal?: AbortSignal,
   ): Promise<{ content: ChatContent }> {

@@ -15,7 +15,7 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
 export function createChatAdapter(
   adminApp: StackAdminApp,
   threadId: string,
-  contextType: "email-theme" | "email-template" | "email-draft",
+  contextType: "email-theme" | "email-template" | "email-draft" | "custom-dashboard",
   onToolCall: (toolCall: ToolCallContent) => void
 ): ChatModelAdapter {
   return {
@@ -57,6 +57,70 @@ export function createChatAdapter(
         return {
           content: response.content,
         };
+      } catch (error) {
+        if (abortSignal.aborted) {
+          return {};
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+export function createDashboardChatAdapter(
+  currentSource: string,
+  onToolCall: (toolCall: ToolCallContent) => void
+): ChatModelAdapter {
+  return {
+    async run({ messages, abortSignal }) {
+      try {
+        const formattedMessages = [];
+        for (const msg of messages) {
+          const toolCalls = msg.content.filter(isToolCall);
+
+          formattedMessages.push({
+            role: msg.role,
+            content: msg.content,
+          });
+
+          if (toolCalls.length > 0) {
+            formattedMessages.push({
+              role: "tool",
+              content: toolCalls.map(tc => ({
+                type: "tool-result",
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                result: tc.result,
+              })),
+            });
+          }
+        }
+
+        const response = await fetch("/api/dashboard-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: formattedMessages,
+            currentSource,
+          }),
+          signal: abortSignal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Dashboard chat request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const content = data.content as ChatContent;
+
+        if (content.some(isToolCall)) {
+          const toolCall = content.find(isToolCall);
+          if (toolCall) {
+            onToolCall(toolCall);
+          }
+        }
+
+        return { content };
       } catch (error) {
         if (abortSignal.aborted) {
           return {};
