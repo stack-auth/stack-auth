@@ -420,28 +420,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ context_type: contextType, messages }),
-        signal: abortSignal,
-      },
-      null,
-    );
-    return await response.json();
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/ai-chat/${threadId}`,

@@ -647,16 +647,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
     await this._adminEmailDraftsCache.refresh([]);
   }
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    return await this._interface.sendChatMessage(threadId, contextType, messages, abortSignal);
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this._interface.saveChatMessage(threadId, message);
   }

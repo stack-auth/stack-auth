@@ -180,7 +180,7 @@ const ToolInvocationCard = memo(function ToolInvocationCard({
 
   // Format the tool name for display
   const getToolDisplay = () => {
-    if (toolName === "queryAnalytics") {
+    if (toolName === "sql-query" || toolName === "queryAnalytics") {
       return { label: "Analytics Query", icon: DatabaseIcon };
     }
     return { label: toolName, icon: DatabaseIcon };
