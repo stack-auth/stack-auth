@@ -1,4 +1,4 @@
-import { getSubscriptions, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
+import { getPurchaseContext, productToInlineProduct } from "@/lib/payments/index";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -59,36 +59,23 @@ export const POST = createSmartRouteHandler({
     }
     const product = verificationCode.data.product;
 
-    // Compute purchase context info
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const subscriptions = await getSubscriptions({
+    const { alreadyOwnsProduct, conflictingProducts } = await getPurchaseContext({
       prisma,
       tenancy,
       customerType: product.customerType,
       customerId: verificationCode.data.customerId,
+      product,
+      productId: verificationCode.data.productId,
     });
 
-    const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.productId === verificationCode.data.productId) && product.stackable !== true);
-
-    const productLines = tenancy.config.payments.productLines;
-    const productLineId = Object.keys(productLines).find((g) => product.productLineId === g);
-    let conflictingProductLineProducts: { product_id: string, display_name: string }[] = [];
-    if (productLineId) {
-      const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
-      if (isSubscribable) {
-        const conflicts = subscriptions.filter((subscription) => (
-          subscription.productId &&
-          subscription.product.productLineId === productLineId &&
-          isActiveSubscription(subscription) &&
-          subscription.product.prices !== "include-by-default" &&
-          (!product.isAddOnTo || !Object.keys(product.isAddOnTo).includes(subscription.productId))
-        ));
-        conflictingProductLineProducts = conflicts.map((s) => ({
-          product_id: s.productId!,
-          display_name: s.product.displayName ?? s.productId!,
-        }));
-      }
-    }
+    const alreadyBoughtNonStackable = product.stackable !== true && alreadyOwnsProduct;
+    const conflictingProductLineProducts = conflictingProducts
+      .filter((owned) => owned.id)
+      .map((owned) => ({
+        product_id: owned.id!,
+        display_name: owned.product.displayName ?? owned.id!,
+      }));
 
     return {
       statusCode: 200,

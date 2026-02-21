@@ -1,5 +1,5 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
+import { getClientSecretFromStripeSubscription, type OwnedProduct, validatePurchaseSession } from "@/lib/payments/index";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -27,7 +27,7 @@ export const POST = createSmartRouteHandler({
       }),
       price_id: yupString().defined().meta({
         openapiField: {
-          description: "The Stack auth price ID to purchase",
+          description: "The Stack Auth price ID to purchase",
           exampleValue: "price_1234567890abcdef"
         }
       }),
@@ -63,7 +63,7 @@ export const POST = createSmartRouteHandler({
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const { selectedPrice, conflictingProductLineSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, purchaseContext } = await validatePurchaseSession({
       prisma,
       tenancy,
       codeData: data,
@@ -81,14 +81,18 @@ export const POST = createSmartRouteHandler({
       productJson: data.product,
     });
 
-    if (conflictingProductLineSubscriptions.length > 0) {
-      const conflicting = conflictingProductLineSubscriptions[0];
-      if (conflicting.stripeSubscriptionId) {
-        const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
+    const conflictingSubscriptions = purchaseContext.conflictingProducts.filter(
+      (p): p is OwnedProduct & { subscription: NonNullable<OwnedProduct["subscription"]> } =>
+        p.type === "subscription" && p.subscription !== null
+    );
+    if (conflictingSubscriptions.length > 0) {
+      const conflicting = conflictingSubscriptions[0];
+      if (conflicting.subscription.stripeSubscriptionId) {
+        const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.subscription.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
-          const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
+          const updated = await stripe.subscriptions.update(conflicting.subscription.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.confirmation_secret'],
@@ -118,18 +122,19 @@ export const POST = createSmartRouteHandler({
           }
           return { statusCode: 200, bodyType: "json", body: { client_secret: clientSecretUpdated } };
         } else {
-          await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
+          await stripe.subscriptions.cancel(conflicting.subscription.stripeSubscriptionId);
         }
-      } else if (conflicting.id) {
+      } else {
         await prisma.subscription.update({
           where: {
             tenancyId_id: {
               tenancyId: tenancy.id,
-              id: conflicting.id,
+              id: conflicting.sourceId,
             },
           },
           data: {
             status: SubscriptionStatus.canceled,
+            endedAt: new Date(),
           },
         });
       }

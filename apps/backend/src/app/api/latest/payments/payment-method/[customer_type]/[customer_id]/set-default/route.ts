@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureStripeCustomerForCustomer, getDefaultCardPaymentMethodSummary } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureStripeCustomerForCustomer, getDefaultCardPaymentMethodSummary } from "@/lib/payments/index";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";

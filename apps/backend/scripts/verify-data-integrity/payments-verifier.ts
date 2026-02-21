@@ -1,6 +1,6 @@
-import type { Tenancy } from "@/lib/tenancies";
-import { getItemQuantityForCustomer } from "@/lib/payments";
 import { SubscriptionStatus } from "@/generated/prisma/client";
+import { getItemQuantityForCustomer } from "@/lib/payments/implementation";
+import type { Tenancy } from "@/lib/tenancies";
 import type { getPrismaClientForTenancy } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -368,8 +368,15 @@ function buildExpectedOwnedProductsForCustomer(options: {
       if (!subscription) {
         continue;
       }
-      if (subscription.status !== SubscriptionStatus.active && subscription.status !== SubscriptionStatus.trialing) {
-        continue;
+      const isActive = subscription.status === SubscriptionStatus.active || subscription.status === SubscriptionStatus.trialing;
+      if (!isActive) {
+        const now = new Date();
+        const endedAt = subscription.endedAt;
+        const periodEnd = subscription.currentPeriodEnd;
+        const stillProviding = endedAt ? endedAt > now : periodEnd ? periodEnd > now : false;
+        if (!stillProviding) {
+          continue;
+        }
       }
       expected.push({
         id: entry.product_id ?? null,

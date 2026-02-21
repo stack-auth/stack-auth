@@ -1,10 +1,11 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { getOwnedProductsForCustomer } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, grantProductToCustomer, productToInlineProduct } from "@/lib/payments/index";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({

@@ -7,6 +7,7 @@ import {
   yupBoolean,
   yupNumber,
   yupObject,
+  yupRecord,
   yupString,
   yupUnion,
 } from "../../schema-fields";
@@ -47,6 +48,16 @@ const transactionEntryItemQuantityChangeSchema = yupObject({
   quantity: yupNumber().defined(),
 }).defined();
 
+const transactionEntryItemQuantityExpireSchema = yupObject({
+  type: yupString().oneOf(["item_quantity_expire"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  item_id: yupString().defined(),
+  quantity: yupNumber().defined(),
+}).defined();
+
 const transactionEntryProductGrantSchema = yupObject({
   type: yupString().oneOf(["product_grant"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
@@ -57,6 +68,7 @@ const transactionEntryProductGrantSchema = yupObject({
   product: inlineProductSchema.defined(),
   price_id: yupString().nullable().defined(),
   quantity: yupNumber().defined(),
+  cycle_anchor: yupNumber().defined(),
   subscription_id: yupString().optional(),
   one_time_purchase_id: yupString().optional(),
 }).test(
@@ -76,6 +88,8 @@ const transactionEntryProductRevocationSchema = yupObject({
   type: yupString().oneOf(["product_revocation"]).defined(),
   adjusted_transaction_id: yupString().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
   quantity: yupNumber().defined(),
 }).defined();
 
@@ -86,23 +100,75 @@ const transactionEntryProductRevocationReversalSchema = yupObject({
   quantity: yupNumber().defined(),
 }).defined();
 
+const transactionEntryActiveSubscriptionStartSchema = yupObject({
+  type: yupString().oneOf(["active_subscription_start"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  subscription_id: yupString().defined(),
+  product_id: yupString().nullable().defined(),
+  product: inlineProductSchema.defined(),
+}).defined();
+
+const transactionEntryActiveSubscriptionStopSchema = yupObject({
+  type: yupString().oneOf(["active_subscription_stop"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  subscription_id: yupString().defined(),
+}).defined();
+
+const transactionEntryActiveSubscriptionChangeSchema = yupObject({
+  type: yupString().oneOf(["active_subscription_change"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  customer_type: customerTypeSchema.defined(),
+  customer_id: yupString().defined(),
+  subscription_id: yupString().defined(),
+  change_type: yupString().oneOf(["cancel", "reactivate", "switch"]).defined(),
+  product_id: yupString().nullable().optional(),
+  product: inlineProductSchema.optional(),
+}).defined();
+
+const transactionEntryDefaultProductsChangeSchema = yupObject({
+  type: yupString().oneOf(["default_products_change"]).defined(),
+  snapshot: yupRecord(
+    yupString(),
+    inlineProductSchema,
+  ).defined(),
+}).defined();
+
 export const transactionEntrySchema = yupUnion(
   transactionEntryMoneyTransferSchema,
   transactionEntryItemQuantityChangeSchema,
+  transactionEntryItemQuantityExpireSchema,
   transactionEntryProductGrantSchema,
   transactionEntryProductRevocationSchema,
   transactionEntryProductRevocationReversalSchema,
+  transactionEntryActiveSubscriptionStartSchema,
+  transactionEntryActiveSubscriptionStopSchema,
+  transactionEntryActiveSubscriptionChangeSchema,
+  transactionEntryDefaultProductsChangeSchema,
 ).defined();
 
 export type TransactionEntry = InferType<typeof transactionEntrySchema>;
 
 export const TRANSACTION_TYPES = [
-  "purchase",
-  "subscription-cancellation",
+  "subscription-start",
   "subscription-renewal",
+  "one-time-purchase",
+  "subscription-end",
+  "purchase-refund",
   "manual-item-quantity-change",
-  "chargeback", // todo
-  "product-change", // todo
+  "subscription-cancel",
+  "subscription-reactivation",
+  "subscription-change",
+  "chargeback",
+  "product-version-change",
+  "item-grant-renewal",
+  "default-products-change",
 ] as const;
 
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
