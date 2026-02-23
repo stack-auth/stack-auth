@@ -1,9 +1,9 @@
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, DataTableColumnHeader, DataTableManualPagination, DateCell, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Button, DateCell, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CaretLeftIcon, CaretRightIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
@@ -11,10 +11,14 @@ import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/curren
 import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
 import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
-import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
-import React, { useCallback } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from '../link';
+import { useCursorPaginationCache } from "./common/cursor-pagination";
+import { PaginationControls } from "./common/pagination";
+import { TableContent, type ColumnLayout, type ColumnMeta } from "./common/table";
+import { TableSkeleton } from "./common/table-skeleton";
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
 
@@ -73,11 +77,19 @@ function getRefundTarget(transaction: Transaction): RefundTarget | null {
 }
 
 function deriveSourceType(transaction: Transaction): SourceType {
-  if (transaction.entries.some(isItemQuantityChangeEntry)) return 'item_quantity_change';
+  if (transaction.entries.some(isItemQuantityChangeEntry)) {
+    return 'item_quantity_change';
+  }
   const productGrant = transaction.entries.find(isProductGrantEntry);
-  if (productGrant?.subscription_id) return 'subscription';
-  if (productGrant?.one_time_purchase_id) return 'one_time';
-  if (productGrant) return 'other';
+  if (productGrant?.subscription_id) {
+    return 'subscription';
+  }
+  if (productGrant?.one_time_purchase_id) {
+    return 'one_time';
+  }
+  if (productGrant) {
+    return 'other';
+  }
   return 'other';
 }
 
@@ -102,7 +114,7 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
       return { label: 'Product Change', Icon: ShuffleIcon };
     }
     default: {
-      return { label: (transactionType as any) ?? '—', Icon: QuestionIcon };
+      return { label: '—', Icon: QuestionIcon };
     }
   }
 }
@@ -147,12 +159,13 @@ function TeamAvatarCell({ teamId }: { teamId: string }) {
 }
 
 function pickChargedAmountDisplay(entry: MoneyTransferEntry | undefined): string {
-  if (!entry) return '—';
+  if (!entry) {
+    return '—';
+  }
   const chargedAmount = entry.charged_amount as Record<string, string | undefined>;
   if ("USD" in chargedAmount) {
     return `$${chargedAmount.USD}`;
   }
-  // TODO: Handle other currencies
   return 'Non USD amount';
 }
 
@@ -168,9 +181,13 @@ function getProductDisplayName(entry: ProductGrantEntry): string {
 }
 
 function getUsdUnitPrice(entry: ProductGrantEntry): MoneyAmount | null {
-  if (!entry.price_id) return null;
+  if (!entry.price_id) {
+    return null;
+  }
   const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> | "include-by-default" } | null | undefined;
-  if (!product || !product.prices || product.prices === "include-by-default") return null;
+  if (!product || !product.prices || product.prices === "include-by-default") {
+    return null;
+  }
   const price = product.prices[entry.price_id];
   const usd = price?.USD;
   return typeof usd === 'string' ? (usd as MoneyAmount) : null;
@@ -216,17 +233,17 @@ function getTransactionSummary(transaction: Transaction): TransactionSummary {
 
 function RefundActionCell({ transaction, refundTarget }: { transaction: Transaction, refundTarget: RefundTarget | null }) {
   const app = useAdminApp();
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [refundSelections, setRefundSelections] = React.useState<RefundEntrySelection[]>([]);
-  const [refundAmountUsd, setRefundAmountUsd] = React.useState<string>('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [refundSelections, setRefundSelections] = useState<RefundEntrySelection[]>([]);
+  const [refundAmountUsd, setRefundAmountUsd] = useState<string>('');
   const target = transaction.type === 'purchase' ? refundTarget : null;
   const alreadyRefunded = transaction.adjusted_by.length > 0;
-  const productEntries = React.useMemo(() => getRefundableProductEntries(transaction), [transaction]);
+  const productEntries = useMemo(() => getRefundableProductEntries(transaction), [transaction]);
   const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntries.length > 0;
   const moneyTransferEntry = transaction.entries.find(isMoneyTransferEntry);
   const chargedAmountUsd = moneyTransferEntry ? (moneyTransferEntry.charged_amount.USD ?? null) : null;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDialogOpen) {
       setRefundSelections(productEntries.map(({ entryIndex, entry }) => ({
         entryIndex,
@@ -236,7 +253,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     }
   }, [chargedAmountUsd, isDialogOpen, productEntries]);
 
-  const refundCandidates = React.useMemo(() => {
+  const refundCandidates = useMemo(() => {
     return productEntries.map(({ entryIndex, entry }) => ({
       entryIndex,
       entry,
@@ -246,7 +263,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     }));
   }, [productEntries]);
 
-  const selectionByIndex = React.useMemo(() => {
+  const selectionByIndex = useMemo(() => {
     return new Map(refundSelections.map((selection) => [selection.entryIndex, selection.quantity]));
   }, [refundSelections]);
 
@@ -257,7 +274,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   });
   const totalSelectedQuantity = selectedEntries.reduce((sum, entry) => sum + entry.selectedQuantity, 0);
 
-  const refundValidation = React.useMemo(() => {
+  const refundValidation = useMemo(() => {
     if (!chargedAmountUsd || !USD_CURRENCY) {
       return { canSubmit: false, error: "Refund amounts are only supported for USD charges.", refundEntries: undefined };
     }
@@ -284,7 +301,9 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
     }
     const maxUnits = maxChargedUnits;
     const selectedUnits = selectedEntries.reduce((sum, entry) => {
-      if (!entry.unitPriceUsd) return sum;
+      if (!entry.unitPriceUsd) {
+        return sum;
+      }
       const entryUnits = moneyAmountToStripeUnits(entry.unitPriceUsd, USD_CURRENCY) * entry.selectedQuantity;
       return sum + entryUnits;
     }, 0);
@@ -403,7 +422,9 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
           disabled: !canRefund,
           disabledTooltip: "This transaction cannot be refunded",
           onClick: () => {
-            if (!target) return;
+            if (!target) {
+              return;
+            }
             setIsDialogOpen(true);
           },
         }]}
@@ -412,27 +433,161 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   );
 }
 
-type Filters = {
+type QueryState = {
+  page: number,
+  pageSize: number,
   cursor?: string,
-  limit?: number,
   type?: TransactionType,
   customerType?: 'user' | 'team' | 'custom',
 };
 
-export function TransactionTable() {
-  const app = useAdminApp();
-  const [filters, setFilters] = React.useState<Filters>({ limit: 10 });
-  const { transactions, nextCursor } = app.useTransactions(filters);
+const DEFAULT_PAGE_SIZE = 10;
 
-  const summaryById = React.useMemo(() => {
+type ColumnKey = "type" | "customer" | "amount" | "detail" | "created" | "actions";
+
+const COLUMN_LAYOUT: ColumnLayout<ColumnKey> = {
+  type: { size: 60, minWidth: 50, maxWidth: 70, width: "60px", headerClassName: "text-center", cellClassName: "text-center" },
+  customer: { size: 180, minWidth: 120, maxWidth: 200, width: "clamp(120px, 20vw, 200px)" },
+  amount: { size: 100, minWidth: 80, maxWidth: 120, width: "clamp(80px, 15vw, 120px)" },
+  detail: { size: 180, minWidth: 120, maxWidth: 220, width: "clamp(120px, 20vw, 220px)" },
+  created: { size: 120, minWidth: 100, maxWidth: 140, width: "clamp(100px, 15vw, 140px)" },
+  actions: { size: 60, minWidth: 50, maxWidth: 70, width: "60px", headerClassName: "text-right", cellClassName: "text-right" },
+};
+
+export function TransactionTable() {
+  const [query, setQuery] = useState<QueryState>({ page: 1, pageSize: DEFAULT_PAGE_SIZE });
+  const cursorPaginationCache = useCursorPaginationCache();
+
+  useEffect(() => {
+    cursorPaginationCache.resetCache();
+  }, [cursorPaginationCache, query.type, query.customerType, query.pageSize]);
+
+  return (
+    <div className="space-y-2">
+      <TransactionTableHeader
+        type={query.type}
+        onTypeChange={(type) => setQuery((prev) => ({ ...prev, type, page: 1, cursor: undefined }))}
+        customerType={query.customerType}
+        onCustomerTypeChange={(customerType) => setQuery((prev) => ({ ...prev, customerType, page: 1, cursor: undefined }))}
+      />
+      <div className="overflow-clip rounded-md border border-border bg-card">
+        <Suspense fallback={<TransactionTableSkeleton pageSize={query.pageSize} />}>
+          <TransactionTableBody
+            query={query}
+            setQuery={setQuery}
+            cursorPaginationCache={cursorPaginationCache}
+          />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function TransactionTableHeader(props: {
+  type?: TransactionType,
+  onTypeChange: (type: TransactionType | undefined) => void,
+  customerType?: 'user' | 'team' | 'custom',
+  onCustomerTypeChange: (customerType: 'user' | 'team' | 'custom' | undefined) => void,
+}) {
+  const { type, onTypeChange, customerType, onCustomerTypeChange } = props;
+
+  return (
+    <div className="flex items-center gap-2">
+      <Select
+        value={type ?? ''}
+        onValueChange={(v) => onTypeChange(v === '__clear' ? undefined : v as TransactionType)}
+      >
+        <SelectTrigger className="h-8 w-[200px] overflow-x-clip">
+          <div className="flex items-center gap-2">
+            <SelectValue placeholder="Filter by type" />
+          </div>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__clear">All types</SelectItem>
+          {TRANSACTION_TYPES.map((transactionType) => {
+            const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
+            return (
+              <SelectItem key={transactionType} value={transactionType}>
+                <div className="flex items-center gap-2">
+                  <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  <span className="truncate">{label}</span>
+                </div>
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+      <Select
+        value={customerType ?? ''}
+        onValueChange={(v) => onCustomerTypeChange(v === '__clear' ? undefined : v as 'user' | 'team' | 'custom')}
+      >
+        <SelectTrigger className="h-8 w-[180px]">
+          <SelectValue placeholder="Customer type" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__clear">All customers</SelectItem>
+          <SelectItem value="user">User</SelectItem>
+          <SelectItem value="team">Team</SelectItem>
+          <SelectItem value="custom">Custom</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function TransactionTableBody(props: {
+  query: QueryState,
+  setQuery: React.Dispatch<React.SetStateAction<QueryState>>,
+  cursorPaginationCache: ReturnType<typeof useCursorPaginationCache>,
+}) {
+  const app = useAdminApp();
+  const { query, setQuery } = props;
+  const {
+    readCursorForPage,
+    recordPageCursor,
+    recordNextCursor,
+  } = props.cursorPaginationCache;
+
+  const storedCursor = readCursorForPage(query.page);
+  const cursorToUse = useMemo(() => {
+    if (query.page === 1) {
+      return undefined;
+    }
+    if (storedCursor && storedCursor.length > 0) {
+      return storedCursor;
+    }
+    return storedCursor === null ? undefined : query.cursor;
+  }, [query.page, query.cursor, storedCursor]);
+
+  const listOptions = useMemo(
+    () => ({
+      limit: query.pageSize,
+      cursor: cursorToUse,
+      type: query.type,
+      customerType: query.customerType,
+    }),
+    [query.pageSize, cursorToUse, query.type, query.customerType],
+  );
+
+  const { transactions, nextCursor } = app.useTransactions(listOptions);
+
+  useEffect(() => {
+    recordPageCursor(query.page, query.page === 1 ? null : cursorToUse ?? null);
+  }, [query.page, cursorToUse, recordPageCursor]);
+
+  useEffect(() => {
+    recordNextCursor(query.page, nextCursor);
+  }, [query.page, nextCursor, recordNextCursor]);
+
+  const summaryById = useMemo(() => {
     return new Map(transactions.map((transaction) => [transaction.id, getTransactionSummary(transaction)]));
   }, [transactions]);
 
-  const columns = React.useMemo<ColumnDef<Transaction>[]>(() => [
+  const columns = useMemo((): ColumnDef<Transaction>[] => [
     {
-      id: 'source_type',
+      id: 'type',
       accessorFn: (transaction) => summaryById.get(transaction.id)?.sourceType ?? 'other',
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Type" />,
+      header: () => <span className="text-xs font-medium">Type</span>,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
         const displayType = summary?.displayType;
@@ -453,12 +608,12 @@ export function TransactionTable() {
           </TextCell>
         );
       },
-      enableSorting: false,
+      meta: { columnKey: "type" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'customer',
       accessorFn: (transaction) => summaryById.get(transaction.id)?.customerType ?? '',
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Customer" />,
+      header: () => <span className="text-xs font-medium">Customer</span>,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
         if (summary?.customerType === 'user' && summary.customerId) {
@@ -476,20 +631,20 @@ export function TransactionTable() {
           </TextCell>
         );
       },
-      enableSorting: false,
+      meta: { columnKey: "customer" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'amount',
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Amount" />,
+      header: () => <span className="text-xs font-medium">Amount</span>,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
         return <TextCell size={80}>{summary?.amountDisplay ?? '—'}</TextCell>;
       },
-      enableSorting: false,
+      meta: { columnKey: "amount" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'detail',
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Details" />,
+      header: () => <span className="text-xs font-medium">Details</span>,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
         return (
@@ -505,19 +660,20 @@ export function TransactionTable() {
           </TextCell>
         );
       },
-      enableSorting: false,
+      meta: { columnKey: "detail" } satisfies ColumnMeta<ColumnKey>,
     },
     {
-      id: 'created_at_millis',
+      id: 'created',
       accessorFn: (transaction) => transaction.created_at_millis,
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created" />,
+      header: () => <span className="text-xs font-medium">Created</span>,
       cell: ({ row }) => (
         <DateCell date={new Date(row.original.created_at_millis)} />
       ),
-      enableSorting: false,
+      meta: { columnKey: "created" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'actions',
+      header: () => null,
       cell: ({ row }) => {
         const summary = summaryById.get(row.original.id);
         return (
@@ -527,97 +683,138 @@ export function TransactionTable() {
           />
         );
       },
-      enableSorting: false,
+      meta: { columnKey: "actions" } satisfies ColumnMeta<ColumnKey>,
     },
   ], [summaryById]);
 
-  const onUpdate = useCallback(async (options: {
-    cursor: string,
-    limit: number,
-    sorting: SortingState,
-    columnFilters: ColumnFiltersState,
-    globalFilters: any,
-  }) => {
-    const newFilters: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' } = {
-      cursor: options.cursor,
-      limit: options.limit,
-      type: options.columnFilters.find(f => f.id === 'source_type')?.value as any,
-      customerType: options.columnFilters.find(f => f.id === 'customer')?.value as any,
-    };
-    if (deepPlainEquals(newFilters, filters, { ignoreUndefinedValues: true })) {
-      return { nextCursor: nextCursor ?? null };
-    }
+  const table = useReactTable({
+    data: transactions,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
 
-    setFilters(newFilters);
-    const res = await app.listTransactions(newFilters);
-    return { nextCursor: res.nextCursor };
-  }, [app, filters, nextCursor]);
-
+  const hasNextPage = nextCursor !== null;
+  const hasPreviousPage = query.page > 1;
 
   return (
-    <DataTableManualPagination
-      columns={columns}
-      data={transactions}
-      onUpdate={onUpdate}
-      defaultVisibility={{
-        source_type: true,
-        customer: true,
-        amount: true,
-        detail: true,
-        created_at_millis: true,
-        actions: true,
-      }}
-      defaultColumnFilters={[
-        { id: 'source_type', value: undefined },
-        { id: 'customer', value: undefined },
-      ]}
-      defaultSorting={[]}
-      toolbarRender={(table) => {
-        const selectedType = table.getColumn('source_type')?.getFilterValue() as TransactionType | undefined;
+    <div className="flex flex-col">
+      <TableContent
+        table={table}
+        columnLayout={COLUMN_LAYOUT}
+        renderEmptyState={() => (
+          <div className="text-center py-8">
+            <p className="text-sm text-muted-foreground">No transactions found</p>
+          </div>
+        )}
+        rowHeightPx={56}
+      />
+      <PaginationControls
+        page={query.page}
+        pageSize={query.pageSize}
+        hasNextPage={hasNextPage}
+        hasPreviousPage={hasPreviousPage}
+        onPageSizeChange={(value) =>
+          setQuery((prev) => ({ ...prev, pageSize: value, page: 1, cursor: undefined }))
+        }
+        onPreviousPage={() => {
+          if (!hasPreviousPage) {
+            return;
+          }
+          const previousPage = query.page - 1;
+          const previousCursor = readCursorForPage(previousPage);
+          setQuery((prev) => ({
+            ...prev,
+            page: previousPage,
+            cursor: previousPage === 1 ? undefined : previousCursor ?? undefined,
+          }));
+        }}
+        onNextPage={() => {
+          if (!hasNextPage || !nextCursor) {
+            return;
+          }
+          setQuery((prev) => ({
+            ...prev,
+            page: query.page + 1,
+            cursor: nextCursor,
+          }));
+        }}
+        className="border-t border-border/70"
+      />
+    </div>
+  );
+}
 
+function TransactionTableSkeleton(props: { pageSize: number }) {
+  const columnOrder: ColumnKey[] = ["type", "customer", "amount", "detail", "created", "actions"];
+  const skeletonHeaders: Record<ColumnKey, string | null> = {
+    type: "Type",
+    customer: "Customer",
+    amount: "Amount",
+    detail: "Details",
+    created: "Created",
+    actions: null,
+  };
+
+  const renderSkeletonCell = (columnKey: ColumnKey): JSX.Element => {
+    switch (columnKey) {
+      case "type": {
+        return <Skeleton className="h-6 w-6 rounded-md mx-auto" />;
+      }
+      case "customer": {
         return (
-          <div className="flex items-center gap-2 ">
-            <Select
-              value={selectedType ?? ''}
-              onValueChange={(v) => table.getColumn('source_type')?.setFilterValue(v === '__clear' ? undefined : v)}
-            >
-              <SelectTrigger className="h-8 w-[200px] overflow-x-clip">
-                <div className="flex items-center gap-2">
-                  <SelectValue placeholder="Filter by type" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__clear">All types</SelectItem>
-                {TRANSACTION_TYPES.map((type) => {
-                  const { Icon: TypeIcon, label } = formatTransactionTypeLabel(type);
-                  return (
-                    <SelectItem key={type} value={type}>
-                      <div className="flex items-center gap-2">
-                        <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
-                        <span className="truncate">{label}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            <Select
-              value={(table.getColumn('customer')?.getFilterValue() as string | undefined) ?? ''}
-              onValueChange={(v) => table.getColumn('customer')?.setFilterValue(v === '__clear' ? undefined : v)}
-            >
-              <SelectTrigger className="h-8 w-[180px]">
-                <SelectValue placeholder="Customer type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__clear">All customers</SelectItem>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="team">Team</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <Skeleton className="h-3 w-24" />
           </div>
         );
-      }}
-    />
+      }
+      case "amount": {
+        return <Skeleton className="h-3 w-16" />;
+      }
+      case "detail": {
+        return <Skeleton className="h-3 w-28" />;
+      }
+      case "created": {
+        return <Skeleton className="h-3 w-20" />;
+      }
+      case "actions": {
+        return <Skeleton className="h-4 w-4 ml-auto" />;
+      }
+      default: {
+        return <Skeleton className="h-3 w-20" />;
+      }
+    }
+  };
+
+  return (
+    <div className="flex flex-col">
+      <TableSkeleton
+        columnOrder={columnOrder}
+        columnLayout={COLUMN_LAYOUT}
+        headerLabels={skeletonHeaders}
+        rowCount={props.pageSize}
+        renderCellSkeleton={renderSkeletonCell}
+        rowHeightPx={56}
+      />
+      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <span>Rows per page</span>
+          <Skeleton className="h-8 w-16" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" disabled>
+            <CaretLeftIcon className="mr-1 h-4 w-4" />
+            Previous
+          </Button>
+          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium">
+            Page …
+          </span>
+          <Button variant="ghost" size="sm" disabled>
+            Next
+            <CaretRightIcon className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

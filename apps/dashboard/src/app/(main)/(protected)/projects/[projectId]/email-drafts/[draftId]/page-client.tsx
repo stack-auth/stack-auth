@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { DesignBadge, DesignBadgeColor } from "@/components/design-components/badge";
@@ -17,7 +17,7 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 import { DomainReputationCard } from "../../email-sent/domain-reputation-card";
@@ -278,7 +278,7 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
   const handleClearSelection = () => {
     updateRecipients({ selectedUsers: [] });
   };
- 
+
   const canProceed = scope === "all" || selectedUsers.length > 0;
 
   const getUserDisplayLabel = (user: { displayName: string | null, primaryEmail: string | null }) => {
@@ -347,20 +347,18 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
                 )}
 
                 {/* Search Table */}
-                <Suspense fallback={<Skeleton className="h-64" />}>
-                  <TeamMemberSearchTable
-                    action={(user) => (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={selectedUserIds.includes(user.id) ? "default" : "outline"}
-                        onClick={() => handleToggleUser(user)}
-                      >
-                        {selectedUserIds.includes(user.id) ? "Selected" : "Add"}
-                      </Button>
-                    )}
-                  />
-                </Suspense>
+                <TeamMemberSearchTable
+                  action={(user) => (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedUserIds.includes(user.id) ? "default" : "outline"}
+                      onClick={() => handleToggleUser(user)}
+                    >
+                      {selectedUserIds.includes(user.id) ? "Selected" : "Add"}
+                    </Button>
+                  )}
+                />
               </div>
             )}
           </div>
