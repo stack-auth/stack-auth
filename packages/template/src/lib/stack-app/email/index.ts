@@ -229,6 +229,7 @@ type SendEmailOptionsBase = {
   themeId?: string | null | false,
   subject?: string,
   notificationCategoryName?: string,
+  scheduledAt?: Date,
 }
 
 

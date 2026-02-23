@@ -917,6 +917,7 @@ export class StackServerInterface extends StackClientInterface {
     templateId?: string,
     variables?: Record<string, any>,
     draftId?: string,
+    scheduledAt?: Date,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequest(
       "/emails/send-email",
@@ -935,6 +936,7 @@ export class StackServerInterface extends StackClientInterface {
           template_id: options.templateId,
           variables: options.variables,
           draft_id: options.draftId,
+          scheduled_at_millis: options.scheduledAt?.getTime(),
         }),
       },
       null,

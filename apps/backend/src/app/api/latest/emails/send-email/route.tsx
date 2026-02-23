@@ -25,6 +25,9 @@ const bodyBase = yupObject({
   is_high_priority: yupBoolean().optional().meta({
     openapiField: { description: "Marks the email as high priority so it jumps the queue." }
   }),
+  scheduled_at_millis: yupNumber().optional().meta({
+    openapiField: { description: "When to send the email. If not specified, the email will be sent immediately." }
+  }),
 });
 
 export const POST = createSmartRouteHandler({
@@ -159,6 +162,8 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    const scheduledAt = body.scheduled_at_millis ? new Date(body.scheduled_at_millis) : new Date();
+
     await sendEmailToMany({
       createdWith: createdWith,
       tenancy: auth.tenancy,
@@ -168,7 +173,7 @@ export const POST = createSmartRouteHandler({
       themeId: selectedThemeId === null ? null : (selectedThemeId === undefined ? auth.tenancy.config.emails.selectedThemeId : selectedThemeId),
       isHighPriority: isHighPriority,
       shouldSkipDeliverabilityCheck: false,
-      scheduledAt: new Date(),
+      scheduledAt: scheduledAt,
       overrideSubject: overrideSubject,
       overrideNotificationCategoryId: overrideNotificationCategoryId,
     });

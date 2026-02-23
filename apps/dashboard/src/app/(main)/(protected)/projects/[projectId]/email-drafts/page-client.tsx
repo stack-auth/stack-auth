@@ -3,12 +3,12 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Typography } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Spinner, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { DotsThreeVertical, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
+import { CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -170,8 +170,107 @@ function DraftCard({
   );
 }
 
+// History draft card component (for sent drafts)
+function HistoryDraftCard({
+  draft,
+  onOpen,
+  onDelete,
+}: {
+  draft: { id: string, displayName: string, sentAt: Date },
+  onOpen: () => void,
+  onDelete: () => void,
+}) {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  return (
+    <>
+      <div
+        className={cn(
+          "group/card relative flex items-center justify-between gap-4 p-4 rounded-xl",
+          "bg-gray-50/50 dark:bg-foreground/[0.02]",
+          "border border-border/20 dark:border-foreground/[0.04]",
+          "hover:bg-gray-100/50 dark:hover:bg-foreground/[0.03]",
+          "transition-all duration-150 hover:transition-none cursor-pointer"
+        )}
+        onClick={onOpen}
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="p-2 rounded-lg bg-foreground/[0.03] shrink-0">
+            <PaperPlaneTilt className="h-4 w-4 text-muted-foreground/70" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Typography className="font-medium text-sm truncate text-muted-foreground">
+              {draft.displayName}
+            </Typography>
+            <Typography variant="secondary" className="text-xs truncate">
+              Sent {draft.sentAt.toLocaleDateString()}
+            </Typography>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Typography variant="secondary" className="text-xs opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
+            View results
+          </Typography>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center rounded-lg",
+                  "text-muted-foreground hover:text-foreground",
+                  "hover:bg-foreground/[0.05]",
+                  "transition-colors duration-150 hover:transition-none",
+                  "opacity-0 group-hover/card:opacity-100"
+                )}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <DotsThreeVertical className="h-4 w-4" weight="bold" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteDialog(true);
+                }}
+              >
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <ActionDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Sent Draft"
+        danger
+        okButton={{
+          label: "Delete",
+          onClick: async () => {
+            onDelete();
+            setShowDeleteDialog(false);
+          }
+        }}
+        cancelButton
+      >
+        Are you sure you want to delete &ldquo;{draft.displayName}&rdquo;? This will remove the draft record but not the sent emails.
+      </ActionDialog>
+    </>
+  );
+}
+
 // Empty state component
-function EmptyState({ onCreateNew }: { onCreateNew: () => void }) {
+function EmptyState({
+  onCreateFromScratch,
+  onCreateFromTemplate,
+}: {
+  onCreateFromScratch: () => void,
+  onCreateFromTemplate: () => void,
+}) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="p-4 rounded-2xl bg-foreground/[0.04] mb-4">
@@ -183,10 +282,10 @@ function EmptyState({ onCreateNew }: { onCreateNew: () => void }) {
       <Typography variant="secondary" className="text-sm mb-4 max-w-xs">
         Create your first email draft to start composing messages
       </Typography>
-      <Button onClick={onCreateNew} className="gap-2">
-        <Plus className="h-4 w-4" />
-        New Draft
-      </Button>
+      <NewDraftDropdown
+        onCreateFromScratch={onCreateFromScratch}
+        onCreateFromTemplate={onCreateFromTemplate}
+      />
     </div>
   );
 }
@@ -200,6 +299,21 @@ export default function PageClient() {
   const drafts = stackAdminApp.useEmailDrafts();
   const [sharedSmtpWarningDialogOpen, setSharedSmtpWarningDialogOpen] = useState<string | null>(null);
   const [newDraftDialogOpen, setNewDraftDialogOpen] = useState(false);
+  const [templateSelectDialogOpen, setTemplateSelectDialogOpen] = useState(false);
+
+  // Split drafts into active (not sent) and history (sent)
+  const { activeDrafts, historyDrafts } = useMemo(() => {
+    const active: typeof drafts = [];
+    const history: typeof drafts = [];
+    for (const draft of drafts) {
+      if (draft.sentAt) {
+        history.push(draft);
+      } else {
+        active.push(draft);
+      }
+    }
+    return { activeDrafts: active, historyDrafts: history };
+  }, [drafts]);
 
   const handleOpenDraft = (draftId: string) => {
     if (emailConfig.isShared) {
@@ -207,6 +321,10 @@ export default function PageClient() {
     } else {
       router.push(urlString`email-drafts/${draftId}`);
     }
+  };
+
+  const handleOpenHistoryDraft = (draftId: string) => {
+    router.push(urlString`email-drafts/${draftId}?stage=sent`);
   };
 
   const handleDeleteDraft = async (draftId: string) => {
@@ -219,12 +337,13 @@ export default function PageClient() {
         title="Email Drafts"
         description="Create, edit, and send email drafts"
         actions={
-          <Button onClick={() => setNewDraftDialogOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Draft
-          </Button>
+          <NewDraftDropdown
+            onCreateFromScratch={() => setNewDraftDialogOpen(true)}
+            onCreateFromTemplate={() => setTemplateSelectDialogOpen(true)}
+          />
         }
       >
+        {/* Active Drafts Section */}
         <GlassCard gradientColor="slate" className="overflow-hidden">
           <div className="p-5">
             <div className="flex items-start justify-between gap-4">
@@ -234,9 +353,9 @@ export default function PageClient() {
                   Compose and manage your email drafts
                 </Typography>
               </div>
-              {drafts.length > 0 && (
+              {activeDrafts.length > 0 && (
                 <div className="text-xs text-muted-foreground tabular-nums">
-                  {drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}
+                  {activeDrafts.length} {activeDrafts.length === 1 ? 'draft' : 'drafts'}
                 </div>
               )}
             </div>
@@ -255,13 +374,16 @@ export default function PageClient() {
             </div>
           )}
 
-          {/* Drafts List */}
+          {/* Active Drafts List */}
           <div className="border-t border-foreground/[0.05]">
-            {drafts.length === 0 ? (
-              <EmptyState onCreateNew={() => setNewDraftDialogOpen(true)} />
+            {activeDrafts.length === 0 ? (
+              <EmptyState
+                onCreateFromScratch={() => setNewDraftDialogOpen(true)}
+                onCreateFromTemplate={() => setTemplateSelectDialogOpen(true)}
+              />
             ) : (
               <div className="p-4 space-y-2">
-                {drafts.map((draft) => (
+                {activeDrafts.map((draft) => (
                   <DraftCard
                     key={draft.id}
                     draft={draft}
@@ -273,26 +395,50 @@ export default function PageClient() {
             )}
           </div>
 
-          {/* Add New Draft Button (when drafts exist) */}
-          {drafts.length > 0 && (
+          {/* Add New Draft Button (when active drafts exist) */}
+          {activeDrafts.length > 0 && (
             <div className="border-t border-foreground/[0.05] p-4">
-              <button
-                onClick={() => setNewDraftDialogOpen(true)}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 py-3 rounded-xl",
-                  "border border-dashed border-foreground/[0.1]",
-                  "bg-background/40 hover:bg-foreground/[0.03]",
-                  "text-muted-foreground hover:text-foreground",
-                  "text-sm font-medium",
-                  "transition-all duration-150 hover:transition-none"
-                )}
-              >
-                <Plus className="h-4 w-4" />
-                Create new draft
-              </button>
+              <NewDraftDropdown
+                onCreateFromScratch={() => setNewDraftDialogOpen(true)}
+                onCreateFromTemplate={() => setTemplateSelectDialogOpen(true)}
+                variant="dashed"
+              />
             </div>
           )}
         </GlassCard>
+
+        {/* Draft History Section (only show if there are sent drafts) */}
+        {historyDrafts.length > 0 && (
+          <GlassCard gradientColor="slate" className="overflow-hidden mt-6">
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <SectionHeader icon={ClockCounterClockwise} title="Draft History" />
+                  <Typography variant="secondary" className="text-sm mt-1">
+                    Previously sent drafts
+                  </Typography>
+                </div>
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  {historyDrafts.length} sent
+                </div>
+              </div>
+            </div>
+
+            {/* History Drafts List */}
+            <div className="border-t border-foreground/[0.05]">
+              <div className="p-4 space-y-2">
+                {historyDrafts.map((draft) => (
+                  <HistoryDraftCard
+                    key={draft.id}
+                    draft={draft as typeof draft & { sentAt: Date }}
+                    onOpen={() => handleOpenHistoryDraft(draft.id)}
+                    onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
+                  />
+                ))}
+              </div>
+            </div>
+          </GlassCard>
+        )}
 
         {/* Shared SMTP Warning Dialog */}
         <ActionDialog
@@ -317,13 +463,84 @@ export default function PageClient() {
           </Alert>
         </ActionDialog>
 
-        {/* New Draft Dialog */}
+        {/* New Draft Dialog (from scratch) */}
         <NewDraftDialog
           open={newDraftDialogOpen}
           onOpenChange={setNewDraftDialogOpen}
         />
+
+        {/* Template Select Dialog */}
+        <TemplateSelectDialog
+          open={templateSelectDialogOpen}
+          onOpenChange={setTemplateSelectDialogOpen}
+        />
       </PageLayout>
     </AppEnabledGuard>
+  );
+}
+
+function NewDraftDropdown({
+  onCreateFromScratch,
+  onCreateFromTemplate,
+  variant = "default",
+}: {
+  onCreateFromScratch: () => void,
+  onCreateFromTemplate: () => void,
+  variant?: "default" | "dashed",
+}) {
+  if (variant === "dashed") {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className={cn(
+              "w-full flex items-center justify-center gap-2 py-3 rounded-xl",
+              "border border-dashed border-foreground/[0.1]",
+              "bg-background/40 hover:bg-foreground/[0.03]",
+              "text-muted-foreground hover:text-foreground",
+              "text-sm font-medium",
+              "transition-all duration-150 hover:transition-none"
+            )}
+          >
+            <Plus className="h-4 w-4" />
+            Create new draft
+            <CaretDown className="h-3 w-3 ml-1" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center">
+          <DropdownMenuItem onClick={onCreateFromScratch} className="gap-2">
+            <FileText className="h-4 w-4" />
+            Create from scratch
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onCreateFromTemplate} className="gap-2">
+            <Copy className="h-4 w-4" />
+            Create from template
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button className="gap-2">
+          <Plus className="h-4 w-4" />
+          New Draft
+          <CaretDown className="h-3 w-3 ml-1" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onCreateFromScratch} className="gap-2">
+          <FileText className="h-4 w-4" />
+          Create from scratch
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onCreateFromTemplate} className="gap-2">
+          <Copy className="h-4 w-4" />
+          Create from template
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -363,5 +580,92 @@ function NewDraftDialog({
         />
       )}
     />
+  );
+}
+
+function TemplateSelectDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+}) {
+  const stackAdminApp = useAdminApp();
+  const router = useRouter();
+  const templates = stackAdminApp.useEmailTemplates();
+  const [loadingTemplateId, setLoadingTemplateId] = useState<string | null>(null);
+
+  const handleSelectTemplate = async (template: { id: string, displayName: string, tsxSource: string }) => {
+    setLoadingTemplateId(template.id);
+    try {
+      const draft = await stackAdminApp.createEmailDraft({
+        displayName: `Copy of ${template.displayName}`,
+        tsxSource: template.tsxSource,
+      });
+      onOpenChange(false);
+      router.push(urlString`email-drafts/${draft.id}`);
+    } finally {
+      setLoadingTemplateId(null);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Create from Template</DialogTitle>
+        </DialogHeader>
+        <div className="mt-4">
+          {templates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="p-3 rounded-xl bg-foreground/[0.04] mb-3">
+                <FileCode className="h-6 w-6 text-muted-foreground/50" />
+              </div>
+              <Typography className="text-sm font-medium text-foreground mb-1">
+                No templates available
+              </Typography>
+              <Typography variant="secondary" className="text-sm max-w-xs">
+                Create templates first to use them as a starting point for drafts
+              </Typography>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {templates.map((template) => (
+                <button
+                  type="button"
+                  key={template.id}
+                  disabled={loadingTemplateId !== null}
+                  onClick={() => runAsynchronouslyWithAlert(() => handleSelectTemplate(template))}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-lg text-left",
+                    "bg-gray-100/50 dark:bg-foreground/[0.03]",
+                    "border border-border/30 dark:border-foreground/[0.06]",
+                    "hover:bg-gray-100 dark:hover:bg-foreground/[0.05]",
+                    "transition-all duration-150 hover:transition-none",
+                    loadingTemplateId !== null && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <div className="p-2 rounded-lg bg-foreground/[0.04] shrink-0">
+                    {loadingTemplateId === template.id ? (
+                      <Spinner className="h-4 w-4" />
+                    ) : (
+                      <FileCode className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Typography className="font-medium text-sm truncate">
+                      {template.displayName}
+                    </Typography>
+                    <Typography variant="secondary" className="text-xs truncate">
+                      {loadingTemplateId === template.id ? "Creating draft..." : "Use as starting point"}
+                    </Typography>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
