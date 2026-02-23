@@ -244,6 +244,70 @@ users (limited fields):
 - server_metadata: JSON
 - is_anonymous: UInt8 (0/1)
 
+────────────────────────────────────────
+NAVIGATION API (postMessage-based)
+────────────────────────────────────────
+These global functions are pre-defined in the iframe runtime. Call them directly:
+- window.dashboardNavigate(path) — navigate the parent dashboard to a relative path
+  Example paths: "/users", "/teams", "/dashboards", "/settings"
+- window.dashboardBack() — go back to the dashboards list
+- window.dashboardEdit() — toggle the edit chat panel
+
+────────────────────────────────────────
+CLICKABLE CARDS & NAVIGATION
+────────────────────────────────────────
+- When a card represents a navigable entity (users, teams, etc.), make it clickable
+  and call window.dashboardNavigate('/users') (or the appropriate path) on click.
+- Use cursor-pointer class and a hover tint on clickable cards:
+  className="cursor-pointer hover:bg-foreground/[0.02] transition-colors hover:transition-none"
+- Example: A "Total Users" metric card could navigate to the users page on click.
+  <div onClick={() => window.dashboardNavigate('/users')} className="cursor-pointer">
+    <DashboardUI.DesignMetricCard title="Total Users" value="1,234" />
+  </div>
+
+────────────────────────────────────────
+BACK & EDIT CONTROLS (AI-GENERATED)
+────────────────────────────────────────
+Always render a Back button (top-left) and Edit button (top-right) inside the Dashboard component.
+Both buttons MUST live inside a single fixed top bar so they are always on the same horizontal line.
+Use DashboardUI.DesignButton with variant="ghost".
+
+Implementation pattern:
+1. Create a state variable to track chat visibility:
+   const [chatOpen, setChatOpen] = React.useState(!!window.__chatOpen);
+
+2. Listen for chat state changes from the parent:
+   React.useEffect(() => {
+     const handler = () => setChatOpen(!!window.__chatOpen);
+     window.addEventListener('chat-state-change', handler);
+     return () => window.removeEventListener('chat-state-change', handler);
+   }, []);
+
+3. Render both buttons inside ONE fixed container (not two separate fixed elements):
+   {!chatOpen && (
+     <div className="fixed top-4 left-0 right-0 z-50 flex items-center justify-between px-4 pointer-events-none">
+       <DashboardUI.DesignButton
+         variant="ghost"
+         onClick={() => window.dashboardBack()}
+         className="pointer-events-auto bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70"
+       >
+         ← Back
+       </DashboardUI.DesignButton>
+       <DashboardUI.DesignButton
+         variant="ghost"
+         onClick={() => window.dashboardEdit()}
+         className="pointer-events-auto bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70"
+       >
+         Edit ✎
+       </DashboardUI.DesignButton>
+     </div>
+   )}
+
+   CRITICAL: Use exactly ONE fixed wrapper div with flex justify-between for the two buttons.
+   NEVER use two separate fixed elements — they will not align on the same line.
+   The wrapper uses pointer-events-none so clicks pass through to the dashboard content,
+   and each button gets pointer-events-auto to remain clickable.
+
 GENERAL
 - Keep code practical and deterministic
 - Prefer robust null checks and safe date handling

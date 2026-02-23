@@ -26,6 +26,8 @@ export type CmdKPreviewProps = {
   registerNestedCommands: (commands: CmdKCommand[]) => void,
   /** Navigate into the nested column (call after registering commands) */
   navigateToNested: () => void,
+  /** Close the command center dialog */
+  onClose: () => void,
   /** Current nesting depth (0 = first preview) */
   depth: number,
   /** Current pathname for checking active state */

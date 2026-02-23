@@ -100,6 +100,8 @@ export async function POST(req: Request) {
     }
 
     return Response.json({ content: contentBlocks });
+  } catch (err: any) {
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }

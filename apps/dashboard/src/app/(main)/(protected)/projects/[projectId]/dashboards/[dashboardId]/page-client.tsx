@@ -3,7 +3,6 @@
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
 import { Input } from "@/components/ui/input";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { DashboardSandboxHost } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
 import {
   AssistantChat,
@@ -21,8 +20,8 @@ import {
 } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { notFound, usePathname } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 
@@ -43,8 +42,15 @@ export default function PageClient() {
   const dashboardId = useDashboardId();
 
   const dashboard = config.customDashboards[dashboardId];
+
+  useEffect(() => {
+    if (!dashboard) {
+      router.replace(`/projects/${projectId}/dashboards`);
+    }
+  }, [dashboard, router, projectId]);
+
   if (!dashboard) {
-    return notFound();
+    return null;
   }
 
   return (
@@ -103,6 +109,10 @@ function DashboardDetailContent({
     setIsChatOpen(prev => !prev);
   }, []);
 
+  const handleNavigate = useCallback((path: string) => {
+    router.push(`/projects/${projectId}${path}`);
+  }, [router, projectId]);
+
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
     const newCode = toolCall.args.content;
     setCurrentTsxSource(newCode);
@@ -147,69 +157,84 @@ function DashboardDetailContent({
 
   const currentHasSource = currentTsxSource.length > 0;
 
+  const dashboardPreview = currentHasSource ? (
+    <DashboardSandboxHost
+      artifact={artifact}
+      onBack={handleBack}
+      onEditToggle={handleEditToggle}
+      onNavigate={handleNavigate}
+      isChatOpen={isChatOpen}
+    />
+  ) : (
+    <div className="flex h-full items-center justify-center">
+      <div className="text-center space-y-3">
+        <div className="mx-auto h-12 w-12 rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" className="text-muted-foreground/60" fill="currentColor">
+            <path d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM32,192V64H224V192ZM48,136a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,136Zm0-32a8,8,0,0,1,8-8h72a8,8,0,0,1,0,16H56A8,8,0,0,1,48,104Zm0,64a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,168Z"/>
+          </svg>
+        </div>
+        <Typography className="font-semibold text-foreground">No dashboard yet</Typography>
+        <Typography variant="secondary" className="text-sm max-w-[240px]">
+          Describe what you&apos;d like to see in the chat to generate your dashboard.
+        </Typography>
+      </div>
+    </div>
+  );
+
   return (
     <PageLayout fillWidth noPadding>
-      <div className="flex flex-col h-full">
-        <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0">
-          <ResizablePanel defaultSize={isChatOpen ? 65 : 100} minSize={40}>
-            {currentHasSource ? (
-              <DashboardSandboxHost
-                artifact={artifact}
-                onBack={handleBack}
-                onEditToggle={handleEditToggle}
-                isChatOpen={isChatOpen}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <div className="text-center space-y-3">
-                  <div className="mx-auto h-12 w-12 rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" className="text-muted-foreground/60" fill="currentColor">
-                      <path d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM32,192V64H224V192ZM48,136a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,136Zm0-32a8,8,0,0,1,8-8h72a8,8,0,0,1,0,16H56A8,8,0,0,1,48,104Zm0,64a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,168Z"/>
-                    </svg>
-                  </div>
-                  <Typography className="font-semibold text-foreground">No dashboard yet</Typography>
-                  <Typography variant="secondary" className="text-sm max-w-[240px]">
-                    Describe what you&apos;d like to see in the chat to generate your dashboard.
-                  </Typography>
-                </div>
-              </div>
-            )}
-          </ResizablePanel>
+      {/* Both panels are always in the DOM so the iframe never unmounts/reloads.
+          The chat panel animates its width; the dashboard panel adjusts via flex-1. */}
+      <div {...(isChatOpen ? { "data-full-bleed": true } : {})} className="flex h-full">
+        {/* Dashboard iframe panel */}
+        <div className={cn(
+          "flex-1 min-w-0 flex flex-col transition-all duration-300 ease-in-out",
+          isChatOpen ? "pl-6 pr-2 py-6" : "",
+        )}>
+          <div className={cn(
+            "flex-1 overflow-hidden transition-all duration-300 ease-in-out",
+            isChatOpen ? "rounded-2xl shadow-xl ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl bg-slate-50/90" : "",
+          )}>
+            {dashboardPreview}
+          </div>
+        </div>
 
-          {isChatOpen && (
-            <>
-              <ResizableHandle className="w-px bg-border/10 dark:bg-foreground/[0.06] hover:bg-blue-500/30 hover:w-1 transition-all duration-150 hover:transition-none" />
-              <ResizablePanel defaultSize={35} minSize={20} maxSize={50}>
-                <div className="flex flex-col h-full">
-                  <ChatPanelHeader
-                    displayName={displayName}
-                    isEditingName={isEditingName}
-                    editedName={editedName}
-                    onStartEditName={() => {
-                      setEditedName(displayName);
-                      setIsEditingName(true);
-                    }}
-                    onEditedNameChange={setEditedName}
-                    onSaveName={handleSaveName}
-                    onCancelEditName={() => {
-                      setEditedName(displayName);
-                      setIsEditingName(false);
-                    }}
-                    onDelete={() => setDeleteDialogOpen(true)}
-                    onClose={() => setIsChatOpen(false)}
-                  />
-                  <div className="flex-1 min-h-0">
-                    <AssistantChat
-                      chatAdapter={createDashboardChatAdapter(currentTsxSource, handleCodeUpdate)}
-                      historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
-                      toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
-                    />
-                  </div>
-                </div>
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
+        {/* Chat panel — slides in from the right. min-w on the inner card prevents content
+            squishing during the width animation (overflow-hidden clips the excess). */}
+        <div className={cn(
+          "shrink-0 flex flex-col overflow-hidden transition-all duration-300 ease-in-out",
+          isChatOpen ? "w-[480px] pr-6 pl-2 py-6" : "w-0",
+        )}>
+          <div className="w-full min-w-[448px] flex-1 overflow-hidden rounded-2xl shadow-xl ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl bg-slate-50/90">
+            <div className="flex flex-col h-full">
+              <ChatPanelHeader
+                displayName={displayName}
+                isEditingName={isEditingName}
+                editedName={editedName}
+                onStartEditName={() => {
+                  setEditedName(displayName);
+                  setIsEditingName(true);
+                }}
+                onEditedNameChange={setEditedName}
+                onSaveName={handleSaveName}
+                onCancelEditName={() => {
+                  setEditedName(displayName);
+                  setIsEditingName(false);
+                }}
+                onDelete={() => setDeleteDialogOpen(true)}
+                onClose={() => setIsChatOpen(false)}
+              />
+              <div className="flex-1 min-h-0">
+                <AssistantChat
+                  chatAdapter={createDashboardChatAdapter(currentTsxSource, handleCodeUpdate)}
+                  historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
+                  toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
+                  useOffWhiteLightMode
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <ActionDialog

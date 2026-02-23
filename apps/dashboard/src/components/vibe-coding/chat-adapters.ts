@@ -74,6 +74,10 @@ export function createDashboardChatAdapter(
   return {
     async run({ messages, abortSignal }) {
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7841/ingest/aa26d43e-f389-4800-9dd3-007c998e5125',{ method: 'POST',headers: { 'Content-Type': 'application/json','X-Debug-Session-Id': '9b8b82' },body: JSON.stringify({ sessionId: '9b8b82',location: 'chat-adapters.ts:run-entry',message: 'adapter run called',data: { messageCount: messages.length,roles: messages.map(m=>m.role),toolCallsPerMsg: messages.map(m=>m.content.filter(isToolCall).map(tc=>({ toolName: tc.toolName,toolCallId: tc.toolCallId,hasResult: tc.result!==undefined,result: tc.result }))),hypothesisId: 'H-A,H-D' },timestamp: Date.now() }) }).catch(()=>{});
+        // #endregion
+
         const formattedMessages = [];
         for (const msg of messages) {
           const toolCalls = msg.content.filter(isToolCall);
@@ -96,6 +100,10 @@ export function createDashboardChatAdapter(
           }
         }
 
+        // #region agent log
+        fetch('http://127.0.0.1:7841/ingest/aa26d43e-f389-4800-9dd3-007c998e5125',{ method: 'POST',headers: { 'Content-Type': 'application/json','X-Debug-Session-Id': '9b8b82' },body: JSON.stringify({ sessionId: '9b8b82',location: 'chat-adapters.ts:pre-fetch',message: 'formatted messages to send',data: { formattedCount: formattedMessages.length,formattedRoles: formattedMessages.map(m=>m.role),formattedContent: formattedMessages.map(m=>JSON.stringify(m.content).slice(0,300)),hypothesisId: 'H-B,H-C' },timestamp: Date.now() }) }).catch(()=>{});
+        // #endregion
+
         const response = await fetch("/api/dashboard-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,7 +114,15 @@ export function createDashboardChatAdapter(
           signal: abortSignal,
         });
 
+        // #region agent log
+        fetch('http://127.0.0.1:7841/ingest/aa26d43e-f389-4800-9dd3-007c998e5125',{ method: 'POST',headers: { 'Content-Type': 'application/json','X-Debug-Session-Id': '9b8b82' },body: JSON.stringify({ sessionId: '9b8b82',location: 'chat-adapters.ts:post-fetch',message: 'API response status',data: { status: response.status,ok: response.ok,statusText: response.statusText,hypothesisId: 'H-C' },timestamp: Date.now() }) }).catch(()=>{});
+        // #endregion
+
         if (!response.ok) {
+          const errorText = await response.text().catch(() => "(could not read body)");
+          // #region agent log
+          fetch('http://127.0.0.1:7841/ingest/aa26d43e-f389-4800-9dd3-007c998e5125',{ method: 'POST',headers: { 'Content-Type': 'application/json','X-Debug-Session-Id': '9b8b82' },body: JSON.stringify({ sessionId: '9b8b82',location: 'chat-adapters.ts:error-body',message: 'API error response body',data: { status: response.status,errorText: errorText.slice(0,1000),hypothesisId: 'H-C' },timestamp: Date.now() }) }).catch(()=>{});
+          // #endregion
           throw new Error(`Dashboard chat request failed: ${response.status} ${response.statusText}`);
         }
 

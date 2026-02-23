@@ -25,6 +25,7 @@ export function CreateDashboardPreview({ query, ...rest }: CmdKPreviewProps) {
 
 const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
   query,
+  onClose,
 }: CmdKPreviewProps) {
   const projectId = useProjectId();
   const adminApp = useAdminApp(projectId);
@@ -88,11 +89,12 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
         },
         pushable: false,
       });
+      onClose();
       router.push(`/projects/${projectId}/dashboards/${id}`);
     } finally {
       setIsSaving(false);
     }
-  }, [artifact, adminApp, updateConfig, router, projectId]);
+  }, [artifact, adminApp, updateConfig, router, projectId, onClose]);
 
   useDebouncedAction({
     action: generateDashboard,
