@@ -78,6 +78,60 @@ export function createChatAdapter(
   };
 }
 
+export function createDashboardChatAdapter(
+  projectId: string,
+  currentSource: string,
+  onToolCall: (toolCall: ToolCallContent) => void,
+): ChatModelAdapter {
+  return {
+    async run({ messages, abortSignal }) {
+      try {
+        const formattedMessages = [];
+        for (const msg of messages) {
+          const textContent = msg.content.filter(c => !isToolCall(c));
+          if (textContent.length > 0) {
+            formattedMessages.push({ role: msg.role, content: textContent });
+          }
+        }
+
+        const systemPrompt = currentSource.length > 0 ? "edit-dashboard" : "create-dashboard";
+
+        const response = await fetch("/api/dashboard-ai", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            systemPrompt,
+            tools: ["update-dashboard"],
+            messages: formattedMessages,
+            currentSource,
+          }),
+          signal: abortSignal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`AI request failed: ${response.status}`);
+        }
+
+        const result: { content: ChatContent } = await response.json();
+
+        if (result.content.some(isToolCall)) {
+          const toolCall = result.content.find(isToolCall);
+          if (toolCall) {
+            onToolCall(toolCall);
+          }
+        }
+        return { content: result.content };
+      } catch (error) {
+        if (abortSignal.aborted) {
+          return {};
+        }
+        throw error;
+      }
+    },
+  };
+}
+
 export function createHistoryAdapter(
   adminApp: StackAdminApp,
   threadId: string,

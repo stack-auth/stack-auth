@@ -1,6 +1,6 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { ToolSet } from "ai";
-import { createDashboardTool } from "./create-dashboard";
+import { updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";
 import { createEmailTemplateTool } from "./create-email-template";
 import { createEmailThemeTool } from "./create-email-theme";
@@ -13,7 +13,7 @@ export type ToolName =
   | "create-email-theme"
   | "create-email-template"
   | "create-email-draft"
-  | "create-dashboard";
+  | "update-dashboard";
 
 export type ToolContext = {
   auth: SmartRequestAuth | null,
@@ -63,8 +63,8 @@ export async function getTools(
         break;
       }
 
-      case "create-dashboard": {
-        tools["createDashboard"] = createDashboardTool(context.auth);
+      case "update-dashboard": {
+        tools["updateDashboard"] = updateDashboardTool(context.auth);
         break;
       }
 
@@ -94,7 +94,7 @@ export function validateToolNames(toolNames: unknown): toolNames is ToolName[] {
     "create-email-theme",
     "create-email-template",
     "create-email-draft",
-    "create-dashboard",
+    "update-dashboard",
   ];
 
   return toolNames.every((name) => validToolNames.includes(name as ToolName));

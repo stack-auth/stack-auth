@@ -226,7 +226,7 @@ function DashboardDetailContent({
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(currentTsxSource, handleCodeUpdate)}
+                  chatAdapter={createDashboardChatAdapter(projectId, currentTsxSource, handleCodeUpdate)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
                   useOffWhiteLightMode

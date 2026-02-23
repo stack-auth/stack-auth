@@ -1,12 +1,4 @@
 import { BUNDLED_DASHBOARD_UI_TYPES, BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { generateText, Output } from "ai";
-import { FileSelectionResponseSchema } from "./contracts";
-
-export const anthropic = createAnthropic({
-  apiKey: getEnvVariable("STACK_ANTHROPIC_API_KEY", "MISSING_ANTHROPIC_API_KEY"),
-});
 
 export const DASHBOARD_SHARED_RULES = `
 ────────────────────────────────────────
@@ -315,12 +307,18 @@ GENERAL
 - Use semantic HTML and ARIA where appropriate
 `;
 
-export async function selectRelevantFiles(prompt: string): Promise<string[]> {
+export type AiEndpointConfig = {
+  backendBaseUrl: string,
+  headers: Record<string, string>,
+};
+
+export async function selectRelevantFiles(
+  prompt: string,
+  aiConfig: AiEndpointConfig,
+): Promise<string[]> {
   const availableFiles = BUNDLED_TYPE_DEFINITIONS.map((f: { path: string }) => f.path);
 
-  const result = await generateText({
-    model: anthropic("claude-haiku-4-5"),
-    system: `You are a code assistant helping to generate dashboard code for Stack Auth.
+  const systemPromptText = `You are a code assistant helping to generate dashboard code for Stack Auth.
 
 Your task is to select which Stack SDK type definition files you'll need to generate the requested dashboard.
 
@@ -328,21 +326,58 @@ IMPORTANT GUIDELINES:
 - DO NOT be conservative in file selection - when in doubt, INCLUDE the file
 - If a file might be relevant to the dashboard, SELECT IT
 - For user/team dashboards: select users and/or teams files
-- For project info: select projects files  
+- For project info: select projects files
 - Always select server-app.ts as it contains the main SDK interface
 - It's better to include extra files than to miss necessary types
 
 Available files:
-${availableFiles.map(f => `- ${f}`).join('\n')}`,
-    prompt: `Dashboard request: "${prompt}"
+${availableFiles.map(f => `- ${f}`).join('\n')}
 
-Which type definition files do you need? When uncertain, err on the side of INCLUDING more files rather than fewer.`,
-    output: Output.object({
-      schema: FileSelectionResponseSchema,
-    }),
-  });
+Respond with ONLY a JSON object: { "selectedFiles": ["file1.ts", "file2.ts"] }
+No markdown, no explanation — just the JSON.`;
 
-  return result.output.selectedFiles;
+  const response = await fetch(
+    `${aiConfig.backendBaseUrl}/api/latest/ai/query/generate`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...aiConfig.headers,
+      },
+      body: JSON.stringify({
+        quality: "dumb",
+        speed: "fast",
+        systemPrompt: "command-center-ask-ai",
+        tools: [],
+        messages: [{
+          role: "user",
+          content: `${systemPromptText}\n\nDashboard request: "${prompt}"\n\nWhich type definition files do you need? When uncertain, err on the side of INCLUDING more files rather than fewer.`,
+        }],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    return availableFiles;
+  }
+
+  const result = await response.json() as { content: Array<{ type: string, text?: string }> };
+  const textBlock = result.content.find((b) => b.type === "text" && b.text);
+  if (!textBlock?.text) {
+    return availableFiles;
+  }
+
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*"selectedFiles"[\s\S]*\}/);
+  if (!jsonMatch) {
+    return availableFiles;
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]) as { selectedFiles?: string[] };
+  if (!Array.isArray(parsed.selectedFiles) || parsed.selectedFiles.length === 0) {
+    return availableFiles;
+  }
+
+  return parsed.selectedFiles.filter((f) => availableFiles.includes(f));
 }
 
 export function loadSelectedTypeDefinitions(selectedFiles: string[]): string {

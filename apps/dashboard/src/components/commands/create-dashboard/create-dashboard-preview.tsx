@@ -4,10 +4,6 @@ import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[pr
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
-import {
-  CreateDashboardResponse,
-  CreateDashboardResponseSchema,
-} from "@/lib/ai-dashboard/contracts";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
@@ -18,6 +14,16 @@ import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
 
 type GenerationState = "idle" | "generating" | "ready" | "error";
+
+type DashboardArtifact = {
+  prompt: string,
+  projectId: string,
+  runtimeCodegen: {
+    title: string,
+    description: string,
+    uiRuntimeSourceCode: string,
+  },
+};
 
 export function CreateDashboardPreview({ query, ...rest }: CmdKPreviewProps) {
   return <CreateDashboardPreviewInner key={query} query={query} {...rest} />;
@@ -35,7 +41,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
   const [state, setState] = useState<GenerationState>("idle");
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [artifact, setArtifact] = useState<CreateDashboardResponse | null>(null);
+  const [artifact, setArtifact] = useState<DashboardArtifact | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const generateDashboard = useCallback(async () => {
@@ -46,14 +52,16 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     setErrorText(null);
     setArtifact(null);
 
-    const response = await fetch("/api/create-dashboard", {
+    const response = await fetch("/api/dashboard-ai", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "content-type": "application/json",
       },
       body: JSON.stringify({
         projectId,
-        prompt,
+        systemPrompt: "create-dashboard",
+        tools: ["update-dashboard"],
+        messages: [{ role: "user", content: prompt }],
       }),
     });
     if (!response.ok) {
@@ -63,14 +71,26 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
       return;
     }
 
-    const json = await response.json();
-    const parsed = CreateDashboardResponseSchema.safeParse(json);
-    if (!parsed.success) {
+    const result = await response.json() as { content: Array<{ type: string, toolName?: string, args?: { content?: string }, [key: string]: unknown }> };
+    const toolCall = result.content.find(
+      (block) => block.type === "tool-call" && block.toolName === "updateDashboard"
+    );
+
+    if (!toolCall?.args?.content) {
       setState("error");
-      setErrorText(`Failed to parse generation response: ${parsed.error.issues[0]?.message ?? "Unknown error"}`);
+      setErrorText("AI did not return dashboard code");
       return;
     }
-    setArtifact(parsed.data);
+
+    setArtifact({
+      prompt,
+      projectId,
+      runtimeCodegen: {
+        title: prompt.slice(0, 120),
+        description: "",
+        uiRuntimeSourceCode: toolCall.args.content,
+      },
+    });
     setState("ready");
   }, [projectId, prompt]);
 

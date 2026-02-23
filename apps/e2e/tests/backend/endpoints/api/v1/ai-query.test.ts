@@ -254,6 +254,7 @@ describe("AI Query Endpoint - System Prompts", () => {
     "email-assistant-theme",
     "email-assistant-draft",
     "create-dashboard",
+    "edit-dashboard",
     "run-query",
   ];
 
@@ -284,7 +285,7 @@ describe("AI Query Endpoint - Tools", () => {
     "create-email-theme",
     "create-email-template",
     "create-email-draft",
-    "create-dashboard",
+    "update-dashboard",
   ];
 
   for (const tool of validTools) {
@@ -313,7 +314,7 @@ describe("AI Query Endpoint - Tools", () => {
       body: {
         quality: "dumb",
         speed: "fast",
-        tools: ["docs", "create-email-theme", "create-dashboard"],
+        tools: ["docs", "create-email-theme", "update-dashboard"],
         systemPrompt: "command-center-ask-ai",
         messages: [{ role: "user", content: "test" }],
       },
