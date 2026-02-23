@@ -19,6 +19,7 @@ import { useCursorPaginationCache } from "./common/cursor-pagination";
 import { PaginationControls } from "./common/pagination";
 import { TableContent, type ColumnLayout, type ColumnMeta } from "./common/table";
 import { TableSkeleton } from "./common/table-skeleton";
+import { createSimpleFingerprint, usePaginatedData } from "./common/use-paginated-data";
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
 
@@ -542,42 +543,23 @@ function TransactionTableBody(props: {
 }) {
   const app = useAdminApp();
   const { query, setQuery } = props;
-  const {
-    readCursorForPage,
-    recordPageCursor,
-    recordNextCursor,
-  } = props.cursorPaginationCache;
 
-  const storedCursor = readCursorForPage(query.page);
-  const cursorToUse = useMemo(() => {
-    if (query.page === 1) {
-      return undefined;
-    }
-    if (storedCursor && storedCursor.length > 0) {
-      return storedCursor;
-    }
-    return storedCursor === null ? undefined : query.cursor;
-  }, [query.page, query.cursor, storedCursor]);
+  const { transactions: rawTransactions, nextCursor: rawNextCursor } = app.useTransactions({
+    limit: query.pageSize,
+    cursor: query.cursor,
+    type: query.type,
+    customerType: query.customerType,
+  });
 
-  const listOptions = useMemo(
-    () => ({
-      limit: query.pageSize,
-      cursor: cursorToUse,
-      type: query.type,
-      customerType: query.customerType,
-    }),
-    [query.pageSize, cursorToUse, query.type, query.customerType],
+  const { data: transactions, nextCursor, hasNextPage, hasPreviousPage, cursorForPage } = usePaginatedData(
+    {
+      data: rawTransactions,
+      nextCursor: rawNextCursor,
+      query,
+      getFingerprint: createSimpleFingerprint,
+    },
+    props.cursorPaginationCache,
   );
-
-  const { transactions, nextCursor } = app.useTransactions(listOptions);
-
-  useEffect(() => {
-    recordPageCursor(query.page, query.page === 1 ? null : cursorToUse ?? null);
-  }, [query.page, cursorToUse, recordPageCursor]);
-
-  useEffect(() => {
-    recordNextCursor(query.page, nextCursor);
-  }, [query.page, nextCursor, recordNextCursor]);
 
   const summaryById = useMemo(() => {
     return new Map(transactions.map((transaction) => [transaction.id, getTransactionSummary(transaction)]));
@@ -693,9 +675,6 @@ function TransactionTableBody(props: {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const hasNextPage = nextCursor !== null;
-  const hasPreviousPage = query.page > 1;
-
   return (
     <div className="flex flex-col">
       <TableContent
@@ -721,7 +700,7 @@ function TransactionTableBody(props: {
             return;
           }
           const previousPage = query.page - 1;
-          const previousCursor = readCursorForPage(previousPage);
+          const previousCursor = cursorForPage(previousPage);
           setQuery((prev) => ({
             ...prev,
             page: previousPage,

@@ -12,9 +12,9 @@ import {
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCursorPaginationCache } from "./common/cursor-pagination";
 import { PaginationControls } from "./common/pagination";
-import { useStableValue } from "./common/stable-value";
 import { TableContent, type ColumnLayout, type ColumnMeta } from "./common/table";
 import { TableSkeleton } from "./common/table-skeleton";
+import { createSimpleFingerprint, usePaginatedData } from "./common/use-paginated-data";
 import { extendUsers } from "./user-table";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -115,11 +115,6 @@ function TeamMemberSearchHeader(props: {
   );
 }
 
-function getUsersFingerprint(users: ServerUser[] & { nextCursor: string | null }) {
-  const ids = users.map(u => u.id).join(",");
-  return `${ids}|${users.nextCursor ?? "null"}`;
-}
-
 function TeamMemberSearchBody(props: {
   query: QueryState,
   setQuery: React.Dispatch<React.SetStateAction<QueryState>>,
@@ -128,49 +123,27 @@ function TeamMemberSearchBody(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const { query, setQuery } = props;
-  const {
-    readCursorForPage,
-    recordPageCursor,
-    recordNextCursor,
-  } = props.cursorPaginationCache;
 
   // Use ref for action to avoid invalidating columns memoization
   const actionRef = useRef(props.action);
   actionRef.current = props.action;
 
-  const storedCursor = readCursorForPage(query.page);
-  const cursorToUse = useMemo(() => {
-    if (query.page === 1) {
-      return undefined;
-    }
-    if (storedCursor && storedCursor.length > 0) {
-      return storedCursor;
-    }
-    return storedCursor === null ? undefined : query.cursor;
-  }, [query.page, query.cursor, storedCursor]);
+  const rawUsers = stackAdminApp.useUsers({
+    limit: query.pageSize,
+    query: query.search,
+    cursor: query.cursor,
+  });
 
-  const listOptions = useMemo(
-    () => ({
-      limit: query.pageSize,
-      query: query.search,
-      cursor: cursorToUse,
-    }),
-    [query.pageSize, query.search, cursorToUse],
+  const { data: users, nextCursor, hasNextPage, hasPreviousPage, cursorForPage } = usePaginatedData(
+    {
+      data: rawUsers,
+      nextCursor: rawUsers.nextCursor,
+      query,
+      getFingerprint: createSimpleFingerprint,
+      extend: extendUsers,
+    },
+    props.cursorPaginationCache,
   );
-
-  // Stabilize the users data to prevent unnecessary re-renders
-  const rawUsers = stackAdminApp.useUsers(listOptions);
-  const usersFingerprint = useMemo(() => getUsersFingerprint(rawUsers), [rawUsers]);
-  const stableRawUsers = useStableValue(rawUsers, usersFingerprint);
-  const users = useMemo(() => extendUsers(stableRawUsers), [stableRawUsers]);
-
-  useEffect(() => {
-    recordPageCursor(query.page, query.page === 1 ? null : cursorToUse ?? null);
-  }, [query.page, cursorToUse, recordPageCursor]);
-
-  useEffect(() => {
-    recordNextCursor(query.page, users.nextCursor);
-  }, [query.page, users.nextCursor, recordNextCursor]);
 
   // Columns are memoized with empty deps since action is accessed via ref
   const columns = useMemo((): ColumnDef<ServerUser>[] => [
@@ -224,9 +197,6 @@ function TeamMemberSearchBody(props: {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const hasNextPage = users.nextCursor !== null;
-  const hasPreviousPage = query.page > 1;
-
   return (
     <div className="flex flex-col">
       <TableContent
@@ -250,7 +220,7 @@ function TeamMemberSearchBody(props: {
         onPreviousPage={() => {
           if (!hasPreviousPage) return;
           const previousPage = query.page - 1;
-          const previousCursor = readCursorForPage(previousPage);
+          const previousCursor = cursorForPage(previousPage);
           setQuery((prev) => ({
             ...prev,
             page: previousPage,
@@ -258,11 +228,11 @@ function TeamMemberSearchBody(props: {
           }));
         }}
         onNextPage={() => {
-          if (!hasNextPage) return;
+          if (!hasNextPage || !nextCursor) return;
           setQuery((prev) => ({
             ...prev,
             page: query.page + 1,
-            cursor: users.nextCursor ?? undefined,
+            cursor: nextCursor,
           }));
         }}
         className="border-t border-border/70"

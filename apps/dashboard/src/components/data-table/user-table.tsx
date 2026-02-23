@@ -41,13 +41,13 @@ import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
 import { useCursorPaginationCache } from "./common/cursor-pagination";
 import { PaginationControls } from "./common/pagination";
-import { useStableValue } from "./common/stable-value";
 import {
   TableContent,
   type ColumnLayout,
   type ColumnMeta,
 } from "./common/table";
 import { TableSkeleton } from "./common/table-skeleton";
+import { usePaginatedData } from "./common/use-paginated-data";
 import { useUrlQueryState } from "./common/url-query-state";
 
 type QueryState = {
@@ -333,13 +333,7 @@ function UserTableBody(props: {
 }) {
   const stackAdminApp = useAdminApp();
   const { query, setQuery } = props;
-  const {
-    readCursorForPage,
-    recordPageCursor,
-    recordNextCursor,
-    prefetchCursor,
-    resetCache,
-  } = props.cursorPaginationCache;
+  const { resetCache } = props.cursorPaginationCache;
 
   const baseOptions = useMemo(
     () => ({
@@ -353,48 +347,29 @@ function UserTableBody(props: {
     [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.signedUpOrder],
   );
 
-  const storedCursor = readCursorForPage(query.page);
-  const cursorToUse = useMemo(() => {
-    if (query.page === 1) {
-      return undefined;
-    }
-    if (storedCursor && storedCursor.length > 0) {
-      return storedCursor;
-    }
-    return storedCursor === null ? undefined : query.cursor;
-  }, [query.page, query.cursor, storedCursor]);
+  const rawUsers = stackAdminApp.useUsers({
+    ...baseOptions,
+    cursor: query.cursor,
+  });
 
-  const listOptions = useMemo(
-    () => ({
-      ...baseOptions,
-      cursor: cursorToUse,
-    }),
-    [baseOptions, cursorToUse],
+  const { data: users, nextCursor, hasNextPage, hasPreviousPage, cursorForPage } = usePaginatedData(
+    {
+      data: rawUsers,
+      nextCursor: rawUsers.nextCursor,
+      query,
+      getFingerprint: getUsersFingerprint,
+      extend: extendUsers,
+      onPrefetch: (nextCursor) => {
+        runAsynchronously(
+          stackAdminApp.listUsers({
+            ...baseOptions,
+            cursor: nextCursor,
+          }),
+        );
+      },
+    },
+    props.cursorPaginationCache,
   );
-
-  const rawUsers = stackAdminApp.useUsers(listOptions);
-  const usersFingerprint = useMemo(() => getUsersFingerprint(rawUsers), [rawUsers]);
-  const stableRawUsers = useStableValue(rawUsers, usersFingerprint);
-  const users = useMemo(() => extendUsers(stableRawUsers), [stableRawUsers]);
-
-  useEffect(() => {
-    recordPageCursor(query.page, query.page === 1 ? null : cursorToUse ?? null);
-  }, [query.page, cursorToUse, recordPageCursor]);
-
-  useEffect(() => {
-    recordNextCursor(query.page, users.nextCursor);
-  }, [query.page, users.nextCursor, recordNextCursor]);
-
-  useEffect(() => {
-    prefetchCursor(users.nextCursor, () =>
-      runAsynchronously(
-        stackAdminApp.listUsers({
-          ...baseOptions,
-          cursor: users.nextCursor ?? undefined,
-        }),
-      ),
-    );
-  }, [users.nextCursor, stackAdminApp, baseOptions, prefetchCursor]);
 
   const columns = useMemo<ColumnDef<ExtendedServerUser>[]>(
     () => createUserColumns(setQuery, query.signedUpOrder === "desc"),
@@ -406,9 +381,6 @@ function UserTableBody(props: {
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
-
-  const hasNextPage = users.nextCursor !== null;
-  const hasPreviousPage = query.page > 1;
 
   return (
     <div className="flex flex-col">
@@ -450,14 +422,14 @@ function UserTableBody(props: {
             return;
           }
           const previousPage = query.page - 1;
-          const previousCursor = readCursorForPage(previousPage);
+          const previousCursor = cursorForPage(previousPage);
           setQuery({ page: previousPage, cursor: previousPage === 1 ? undefined : previousCursor ?? undefined });
         }}
         onNextPage={() => {
-          if (!hasNextPage) {
+          if (!hasNextPage || !nextCursor) {
             return;
           }
-          setQuery({ page: query.page + 1, cursor: users.nextCursor ?? undefined });
+          setQuery({ page: query.page + 1, cursor: nextCursor });
         }}
       />
     </div>
@@ -683,7 +655,7 @@ function UserActions(props: { user: ExtendedServerUser }) {
   );
 }
 
-function getUsersFingerprint(users: ServerUser[] & { nextCursor: string | null }) {
+function getUsersFingerprint(users: ServerUser[], nextCursor: string | null) {
   const userSegments = users
     .map((user) => [
       user.id,
@@ -700,7 +672,7 @@ function getUsersFingerprint(users: ServerUser[] & { nextCursor: string | null }
       user.oauthProviders.map((provider) => provider.id).sort().join(","),
     ].join("~"))
     .join("||");
-  return `${users.nextCursor ?? ""}::${userSegments}`;
+  return `${nextCursor ?? ""}::${userSegments}`;
 }
 
 function normalizeDateValue(value: Date | string | null | undefined) {
