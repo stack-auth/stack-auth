@@ -86,9 +86,6 @@ const FLUSH_INTERVAL_MS = 5_000;
 const MAX_EVENTS_PER_BATCH = 200;
 const MAX_APPROX_BYTES_PER_BATCH = 512_000;
 
-const MAX_PREAUTH_BUFFER_EVENTS = 10_000;
-const MAX_PREAUTH_BUFFER_BYTES = 5_000_000;
-
 export type StoredSession = {
   session_id: string,
   created_at_ms: number,
@@ -148,8 +145,10 @@ export class SessionRecorder {
   private _lastPersistActivity = 0;
   private _recording = false;
   private _rrwebModule: typeof import("rrweb") | null = null;
+  private _lastBrowserSessionId: string | null = null;
+  private _takingSnapshot = false;
+  private _flushInProgress = false;
   private _lastKnownAccessToken: string | null = null;
-  private _wasAuthenticated = false;
   private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   private readonly _deps: SessionRecorderDeps;
@@ -188,17 +187,29 @@ export class SessionRecorder {
     this._stopCurrentRecording();
   }
 
-  private _persistActivity(nowMs: number) {
+  clearBuffer() {
+    this._events = [];
+    this._approxBytes = 0;
+  }
+
+  private _persistActivity(nowMs: number): StoredSession {
     const stored = getOrRotateSession({ key: this._storageKey, nowMs });
-    if (nowMs - this._lastPersistActivity < 5_000) return;
+    if (nowMs - this._lastPersistActivity < 5_000) return stored;
     this._lastPersistActivity = nowMs;
     const updated: StoredSession = { ...stored, last_activity_ms: nowMs };
     localStorage.setItem(this._storageKey, JSON.stringify(updated));
+    return stored;
   }
 
   private async _flush(options: { keepalive: boolean }) {
     if (!this._lastKnownAccessToken) return;
     if (this._events.length === 0) return;
+    // Prevent concurrent in-flight HTTP requests. When a flush is already
+    // in-flight, a second batch could race on the server (both call
+    // findRecentSessionReplay before either upsert commits) and create
+    // duplicate SessionReplay records. Events stay in _events and will be
+    // picked up by the next tick or batch-size check.
+    if (this._flushInProgress) return;
 
     const nowMs = Date.now();
     const stored = getOrRotateSession({ key: this._storageKey, nowMs });
@@ -216,18 +227,23 @@ export class SessionRecorder {
     this._events = [];
     this._approxBytes = 0;
 
-    const res = await this._deps.sendBatch(
-      JSON.stringify(payload),
-      { keepalive: options.keepalive },
-    );
+    this._flushInProgress = true;
+    try {
+      const res = await this._deps.sendBatch(
+        JSON.stringify(payload),
+        { keepalive: options.keepalive },
+      );
 
-    if (res.status === "error") {
-      console.warn("SessionRecorder flush failed:", res.error);
-      return;
-    }
+      if (res.status === "error") {
+        console.warn("SessionRecorder flush failed:", res.error);
+        return;
+      }
 
-    if (!res.data.ok) {
-      console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+      if (!res.data.ok) {
+        console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+      }
+    } finally {
+      this._flushInProgress = false;
     }
   }
 
@@ -250,18 +266,28 @@ export class SessionRecorder {
     this._stopRecording = this._rrwebModule.record({
       emit: (event) => {
         const nowMs = Date.now();
-        this._persistActivity(nowMs);
+        const stored = this._persistActivity(nowMs);
+
+        // Detect session rotation: after 3+ minutes idle, getOrRotateSession
+        // creates a new session ID. We need to inject a FullSnapshot so the
+        // new server-side SessionReplay record is playable.
+        if (this._lastBrowserSessionId === null) {
+          this._lastBrowserSessionId = stored.session_id;
+        } else if (stored.session_id !== this._lastBrowserSessionId && !this._takingSnapshot) {
+          this._lastBrowserSessionId = stored.session_id;
+          // Inject a FullSnapshot for the new session (calls emit synchronously)
+          this._takingSnapshot = true;
+          try {
+            this._rrwebModule!.record.takeFullSnapshot();
+          } finally {
+            this._takingSnapshot = false;
+          }
+        }
 
         this._events.push(event);
         this._approxBytes += JSON.stringify(event).length;
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
           runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
-        }
-
-        // Cap pre-auth buffer to prevent unbounded memory growth
-        if (!this._lastKnownAccessToken && (this._events.length > MAX_PREAUTH_BUFFER_EVENTS || this._approxBytes > MAX_PREAUTH_BUFFER_BYTES)) {
-          this._events = [];
-          this._approxBytes = 0;
         }
       },
       maskAllInputs: this._replayOptions.maskAllInputs ?? true,
@@ -305,12 +331,6 @@ export class SessionRecorder {
     }, { noErrorLogging: true });
 
     const hasAuth = !!this._lastKnownAccessToken;
-    // Clear buffer on logout to prevent cross-user event leakage
-    if (this._wasAuthenticated && !hasAuth) {
-      this._events = [];
-      this._approxBytes = 0;
-    }
-    this._wasAuthenticated = hasAuth;
     if (hasAuth && this._events.length > 0) {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }

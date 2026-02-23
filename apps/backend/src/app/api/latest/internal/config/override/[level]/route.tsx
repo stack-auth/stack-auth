@@ -1,15 +1,27 @@
-import { getBranchConfigOverrideQuery, getEnvironmentConfigOverrideQuery, overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverride, setBranchConfigOverrideSource, setEnvironmentConfigOverride, validateBranchConfigOverride, validateEnvironmentConfigOverride } from "@/lib/config";
+import {
+  getBranchConfigOverrideQuery,
+  getEnvironmentConfigOverrideQuery,
+  getProjectConfigOverrideQuery,
+  overrideBranchConfigOverride,
+  overrideEnvironmentConfigOverride,
+  overrideProjectConfigOverride,
+  setBranchConfigOverride,
+  setBranchConfigOverrideSource,
+  setEnvironmentConfigOverride,
+  setProjectConfigOverride,
+  validateBranchConfigOverride,
+  validateEnvironmentConfigOverride,
+} from "@/lib/config";
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
+import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
-
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
-const levelSchema = yupString().oneOf(["branch", "environment"]).defined();
+const levelSchema = yupString().oneOf(["project", "branch", "environment"]).defined();
 
 function shouldEnqueueExternalDbSync(config: unknown): boolean {
   if (!config || typeof config !== "object") return false;
@@ -25,6 +37,24 @@ function shouldEnqueueExternalDbSync(config: unknown): boolean {
 }
 
 const levelConfigs = {
+  project: {
+    schema: projectConfigSchema,
+    migrate: (config: any) => migrateConfigOverride("project", config),
+    get: (options: { projectId: string, branchId: string }) =>
+      rawQuery(globalPrismaClient, getProjectConfigOverrideQuery({ projectId: options.projectId })),
+    set: async (options: { projectId: string, branchId: string, config: any, source?: BranchConfigSourceApi }) => {
+      await setProjectConfigOverride({
+        projectId: options.projectId,
+        projectConfigOverride: options.config,
+      });
+    },
+    override: (options: { projectId: string, branchId: string, config: any }) =>
+      overrideProjectConfigOverride({
+        projectId: options.projectId,
+        projectConfigOverrideOverride: options.config,
+      }),
+    requiresSource: false,
+  },
   branch: {
     schema: branchConfigSchema,
     migrate: (config: any) => migrateConfigOverride("branch", config),
@@ -131,7 +161,7 @@ const writeResponseSchema = yupObject({
 
 async function parseAndValidateConfig(
   configString: string,
-  levelConfig: typeof levelConfigs["branch" | "environment"]
+  levelConfig: typeof levelConfigs["branch" | "environment" | "project"]
 ) {
   let parsedConfig;
   try {
@@ -153,9 +183,10 @@ async function parseAndValidateConfig(
 }
 
 async function warnOnValidationFailure(
-  levelConfig: typeof levelConfigs["branch" | "environment"],
+  levelConfig: typeof levelConfigs[keyof typeof levelConfigs],
   options: { projectId: string, branchId: string, config: any },
 ) {
+  if (!("validate" in levelConfig)) return;
   try {
     const validationResult = await levelConfig.validate(options);
     if (validationResult.status === "error") {

@@ -9,13 +9,14 @@ import { StackAssertionError, throwErr } from '../utils/errors';
 import { globalVar } from '../utils/globals';
 import { HTTP_METHODS, HttpMethod } from '../utils/http';
 import { ReadonlyJson } from '../utils/json';
+import { publishableClientKeyNotNecessarySentinel } from '../utils/oauth';
 import { filterUndefined, filterUndefinedOrNull } from '../utils/objects';
 import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from '../utils/passkey';
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
 import { urlString } from '../utils/urls';
-import { ConnectedAccountAccessTokenCrud } from './crud/connected-accounts';
+import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
 import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
@@ -41,7 +42,7 @@ export type ClientInterfaceOptions = {
   projectId: string,
   prepareRequest?: () => Promise<void>,
 } & ({
-  publishableClientKey: string,
+  publishableClientKey?: string,
 } | {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
@@ -154,11 +155,12 @@ export class StackClientInterface {
   }
 
   public async fetchNewAccessToken(refreshToken: RefreshToken) {
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO support it
       throw new Error("Admin session token is currently not supported for fetching new access token. Did you try to log in on a StackApp initiated with the admin session?");
     }
 
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
     const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
@@ -167,10 +169,10 @@ export class StackClientInterface {
     };
     const client: oauth.Client = {
       client_id: this.projectId,
-      client_secret: this.options.publishableClientKey,
+      client_secret: clientSecret,
     };
 
-    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const clientAuthentication = oauth.ClientSecretPost(clientSecret);
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = tokenEndpoint.startsWith('http://');
 
@@ -395,7 +397,7 @@ export class StackClientInterface {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
         "X-Stack-Allow-Anonymous-User": "true",
-        ...('publishableClientKey' in this.options ? {
+        ...("publishableClientKey" in this.options && this.options.publishableClientKey ? {
           "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
         ...(adminTokenObj ? {
@@ -1058,13 +1060,14 @@ export class StackClientInterface {
       updatedRedirectUrl.searchParams.delete(key);
     }
 
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
     const url = new URL(this.getApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
     url.searchParams.set("client_id", this.projectId);
-    url.searchParams.set("client_secret", this.options.publishableClientKey);
+    url.searchParams.set("client_secret", clientSecret);
     url.searchParams.set("redirect_uri", updatedRedirectUrl.toString());
     url.searchParams.set("scope", "legacy");
     url.searchParams.set("state", options.state);
@@ -1098,10 +1101,11 @@ export class StackClientInterface {
     codeVerifier: string,
     state: string,
   }): Promise<{ newUser: boolean, afterCallbackRedirectUrl?: string, accessToken: string, refreshToken: string }> {
-    if (!('publishableClientKey' in this.options)) {
+    if ("projectOwnerSession" in this.options) {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
     const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
@@ -1110,9 +1114,9 @@ export class StackClientInterface {
     };
     const client: oauth.Client = {
       client_id: this.projectId,
-      client_secret: this.options.publishableClientKey,
+      client_secret: clientSecret,
     };
-    const clientAuthentication = oauth.ClientSecretPost(this.options.publishableClientKey);
+    const clientAuthentication = oauth.ClientSecretPost(clientSecret);
     // Allow insecure HTTP requests only in test environment (for localhost testing)
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const allowInsecure = tokenEndpoint.startsWith('http://');
@@ -1469,6 +1473,44 @@ export class StackClientInterface {
         },
         body: JSON.stringify({ scope }),
       },
+      session,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Get access token for a specific connected account by provider ID and provider account ID.
+   * This is the preferred method when dealing with multiple accounts of the same provider.
+   */
+  async createProviderAccessTokenByAccount(
+    providerId: string,
+    providerAccountId: string,
+    scope: string,
+    session: InternalSession,
+  ): Promise<ConnectedAccountAccessTokenCrud['Client']['Read']> {
+    const response = await this.sendClientRequest(
+      `/connected-accounts/me/${encodeURIComponent(providerId)}/${encodeURIComponent(providerAccountId)}/access-token`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ scope }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  /**
+   * List all connected accounts for the current user.
+   */
+  async listConnectedAccounts(
+    session: InternalSession,
+  ): Promise<ConnectedAccountCrud['Client']['List']> {
+    const response = await this.sendClientRequest(
+      `/connected-accounts/me`,
+      { method: "GET" },
       session,
     );
     return await response.json();

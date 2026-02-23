@@ -419,6 +419,19 @@ const ClientAuthenticationRequired = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PublishableClientKeyRequiredForProject = createKnownErrorConstructor(
+  ProjectAuthenticationRequired,
+  "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+  (projectId?: string) => [
+    401,
+    "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+    {
+      project_id: projectId ?? null,
+    },
+  ] as const,
+  (json: any) => [json.project_id ?? undefined] as const,
+);
+
 /**
  * @deprecated Use InsufficientAccessType instead
  */
@@ -1137,6 +1150,20 @@ const OAuthConnectionDoesNotHaveRequiredScope = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const OAuthAccessTokenNotAvailable = createKnownErrorConstructor(
+  KnownError,
+  "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+  (provider: string, details: string) => [
+    400,
+    `Failed to retrieve an OAuth access token for the connected account (provider: ${provider}). ${details}`,
+    {
+      provider,
+      details,
+    } as const,
+  ] as const,
+  (json: any) => [json.provider, json.details] as const,
+);
+
 const OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(
   KnownError,
   "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
@@ -1802,6 +1829,7 @@ export const KnownErrors = {
   AdminAccessTokenIsNotAdmin,
   ProjectAuthenticationRequired,
   ClientAuthenticationRequired,
+  PublishableClientKeyRequiredForProject,
   ServerAuthenticationRequired,
   ClientOrServerAuthenticationRequired,
   ClientOrAdminAuthenticationRequired,
@@ -1861,6 +1889,7 @@ export const KnownErrors = {
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
   OAuthConnectionDoesNotHaveRequiredScope,
+  OAuthAccessTokenNotAvailable,
   OAuthExtraScopeNotAvailableWithSharedOAuthKeys,
   OAuthAccessTokenNotAvailableWithSharedOAuthKeys,
   InvalidOAuthClientIdOrSecret,

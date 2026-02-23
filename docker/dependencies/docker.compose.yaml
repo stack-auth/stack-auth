@@ -163,12 +163,24 @@ services:
       POSTGRES_DB: svix
     volumes:
       - svix-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -p 5432 -d svix"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     
   svix-redis:
     image: docker.io/redis:7-alpine
     command: --save 60 500 --appendonly yes --appendfsync everysec --requirepass PASSWORD-PLACEHOLDER--oVn8GSD6b9
     volumes:
       - svix-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   svix-server:
     image: svix/svix-server
@@ -183,8 +195,10 @@ services:
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}13:8071"
     depends_on:
-    - svix-redis
-    - svix-db
+      svix-redis:
+        condition: service_healthy
+      svix-db:
+        condition: service_healthy
 
   # ================= Adobe S3 Mock =================
   

@@ -18,6 +18,9 @@ const projectSchemaFuzzerConfig = [{
       "123-some-branch-id": ["", "THIS IS A CONNECTION STRING OR SO"],
     }],
   }],
+  project: [{
+    requirePublishableClientKey: [true, false],
+  }],
 }] satisfies FuzzerConfig<ProjectConfigNormalizedOverride>;
 
 const branchSchemaFuzzerConfig = [{

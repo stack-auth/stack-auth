@@ -146,6 +146,32 @@ describe("basic config operations", () => {
     expect(updatedConfig.teams.createPersonalTeamOnSignUp).toBe(true);
   });
 
+  it("updates project-level config override", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    const updateResponse = await niceBackendFetch("/api/v1/internal/config/override/project", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          "project.requirePublishableClientKey": true,
+        }),
+      },
+    });
+    expect(updateResponse.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(updateResponse.status).toBe(200);
+
+    const verifyResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    expect(verifyResponse.status).toBe(200);
+    const updatedConfig = JSON.parse(verifyResponse.body.config_string);
+    expect(updatedConfig.project.requirePublishableClientKey).toBe(true);
+  });
+
   it("returns an error when config override contains non-existent fields", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
@@ -848,7 +874,7 @@ describe("branch and environment levels", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("SCHEMA_ERROR");
-    expect(response.body.error).toContain("params.level must be one of the following values: branch, environment");
+    expect(response.body.error).toContain("params.level must be one of the following values: project, branch, environment");
   });
 });
 

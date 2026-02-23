@@ -1,22 +1,8 @@
+import { selectModel } from "@/lib/ai/models";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { createOpenAI } from "@ai-sdk/openai";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateText } from "ai";
-
-// Mock mode sentinel value - when API key is not configured, we return mock responses
-const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
-const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
-const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
-
-// Only create OpenAI client if not in mock mode
-const openai = isMockMode ? null : createOpenAI({
-  apiKey,
-  baseURL: "https://openrouter.ai/api/v1",
-});
-
-// AI request timeout in milliseconds (2 minutes)
-const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 const WYSIWYG_SYSTEM_PROMPT = `You are an expert at editing React/JSX code. Your task is to update a specific text string in the source code.
 
@@ -102,7 +88,7 @@ export const POST = createSmartRouteHandler({
       updated_source: yupString().defined(),
     }).defined(),
   }),
-  async handler({ body }) {
+  async handler({ body }, fullReq) {
     const {
       source_code,
       old_text,
@@ -121,8 +107,10 @@ export const POST = createSmartRouteHandler({
       };
     }
 
-    // Mock mode: perform string replacement at the correct occurrence index without calling AI
-    if (isMockMode) {
+    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+
+    // Mock mode: no API key configured — perform a simple string replacement without calling AI
+    if (apiKey === "") { //TODO have a special env variable for this
       let replacedSource: string;
 
       // Handle edge case: empty old_text can't be meaningfully replaced
@@ -197,29 +185,15 @@ ${html_context.slice(0, 500)}
 Please update the source code to change "${old_text}" to "${new_text}" at the specified location. Return ONLY the complete updated source code.
 `;
 
-    // Model is configurable via env var; no default to surface missing config errors
-    const modelName = getEnvVariable("STACK_AI_MODEL");
+    // This route requires admin auth, so the caller is always authenticated.
+    // "smart" + "fast" is appropriate for surgical text-node replacement.
+    const model = selectModel("smart", "fast", /* isAuthenticated= */ true);
 
-    if (!openai) {
-      // This shouldn't happen since we check isMockMode above, but guard anyway
-      throw new Error("OpenAI client not initialized - STACK_OPENROUTER_API_KEY may be missing");
-    }
-
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
-
-    let result;
-    try {
-      result = await generateText({
-        model: openai(modelName),
-        system: WYSIWYG_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-        abortSignal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const result = await generateText({
+      model,
+      system: WYSIWYG_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userPrompt }],
+    });
 
     // Extract the updated source code from the response
     let updatedSource = result.text.trim();

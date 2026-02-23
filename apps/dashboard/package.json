@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-dashboard",
-  "version": "2.8.68",
+  "version": "2.8.70",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
@@ -19,8 +19,6 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.41",
-    "@ai-sdk/openai": "^3.0.25",
     "@ai-sdk/react": "^3.0.72",
     "@assistant-ui/react": "^0.10.24",
     "@assistant-ui/react-ai-sdk": "^0.10.14",
