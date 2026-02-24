@@ -574,6 +574,9 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const projectId = useProjectId();
+  const pathname = usePathname();
+  // Custom dashboard detail pages have a transparent iframe background; the companion should match.
+  const isCustomDashboardPage = /\/dashboards\/[^/]+/.test(pathname);
 
   const toggleCollapsed = useCallback(() => {
     setIsCollapsed(prev => !prev);
@@ -697,7 +700,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
           {/* Stack Companion - overlay with reserved content gutter */}
           <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
-            <StackCompanion className="pointer-events-auto" />
+            <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
           </div>
         </div>
       </div>

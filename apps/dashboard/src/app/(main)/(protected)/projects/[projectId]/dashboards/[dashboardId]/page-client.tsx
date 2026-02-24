@@ -14,6 +14,7 @@ import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import {
+  FloppyDiskIcon,
   PencilSimpleIcon,
   TrashIcon,
   XIcon,
@@ -40,14 +41,21 @@ export default function PageClient() {
   const updateConfig = useUpdateConfig();
   const router = useRouter();
   const dashboardId = useDashboardId();
+  const [hasEverExisted, setHasEverExisted] = useState(false);
 
   const dashboard = config.customDashboards[dashboardId];
 
   useEffect(() => {
-    if (!dashboard) {
+    if (dashboard) {
+      setHasEverExisted(true);
+    }
+  }, [dashboard]);
+
+  useEffect(() => {
+    if (hasEverExisted && !dashboard) {
       router.replace(`/projects/${projectId}/dashboards`);
     }
-  }, [dashboard, router, projectId]);
+  }, [hasEverExisted, dashboard, router, projectId]);
 
   if (!dashboard) {
     return null;
@@ -87,6 +95,8 @@ function DashboardDetailContent({
   const [isChatOpen, setIsChatOpen] = useState(!hasSource);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [currentTsxSource, setCurrentTsxSource] = useState(tsxSource);
+  const [savedTsxSource, setSavedTsxSource] = useState(tsxSource);
+  const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(displayName);
@@ -105,27 +115,31 @@ function DashboardDetailContent({
     router.push(`/projects/${projectId}/dashboards`);
   }, [router, projectId]);
 
+  const currentHasSource = currentTsxSource.length > 0;
+
   const handleEditToggle = useCallback(() => {
+    if (!currentHasSource) return;
     setIsChatOpen(prev => !prev);
-  }, []);
+  }, [currentHasSource]);
 
   const handleNavigate = useCallback((path: string) => {
     router.push(`/projects/${projectId}${path}`);
   }, [router, projectId]);
 
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
-    const newCode = toolCall.args.content;
-    setCurrentTsxSource(newCode);
-    runAsynchronouslyWithAlert(async () => {
-      await updateConfig({
-        adminApp,
-        configUpdate: {
-          [`customDashboards.${dashboardId}.tsxSource`]: newCode,
-        },
-        pushable: false,
-      });
+    setCurrentTsxSource(toolCall.args.content);
+  }, []);
+
+  const handleSaveDashboard = useCallback(async () => {
+    await updateConfig({
+      adminApp,
+      configUpdate: {
+        [`customDashboards.${dashboardId}.tsxSource`]: currentTsxSource,
+      },
+      pushable: false,
     });
-  }, [updateConfig, adminApp, dashboardId]);
+    setSavedTsxSource(currentTsxSource);
+  }, [updateConfig, adminApp, dashboardId, currentTsxSource]);
 
   const handleSaveName = async () => {
     const trimmed = editedName.trim();
@@ -155,8 +169,6 @@ function DashboardDetailContent({
     router.replace(`/projects/${projectId}/dashboards`);
   };
 
-  const currentHasSource = currentTsxSource.length > 0;
-
   const dashboardPreview = currentHasSource ? (
     <DashboardSandboxHost
       artifact={artifact}
@@ -185,7 +197,7 @@ function DashboardDetailContent({
     <PageLayout fillWidth noPadding>
       {/* Both panels are always in the DOM so the iframe never unmounts/reloads.
           The chat panel animates its width; the dashboard panel adjusts via flex-1. */}
-      <div {...(isChatOpen ? { "data-full-bleed": true } : {})} className="flex h-full">
+      <div data-full-bleed className="flex h-full">
         {/* Dashboard iframe panel */}
         <div className={cn(
           "flex-1 min-w-0 flex flex-col transition-all duration-300 ease-in-out",
@@ -193,7 +205,8 @@ function DashboardDetailContent({
         )}>
           <div className={cn(
             "flex-1 overflow-hidden transition-all duration-300 ease-in-out",
-            isChatOpen ? "rounded-2xl shadow-xl ring-1 ring-foreground/[0.06] dark:bg-background/40 backdrop-blur-xl bg-slate-50/90" : "",
+            isChatOpen ? "bg-slate-50/90 backdrop-blur-xl dark:bg-background/40" : "bg-transparent",
+            isChatOpen ? "rounded-2xl shadow-xl ring-1 ring-foreground/[0.06]" : "",
           )}>
             {dashboardPreview}
           </div>
@@ -222,7 +235,9 @@ function DashboardDetailContent({
                   setIsEditingName(false);
                 }}
                 onDelete={() => setDeleteDialogOpen(true)}
-                onClose={() => setIsChatOpen(false)}
+                onClose={currentHasSource ? () => setIsChatOpen(false) : undefined}
+                hasUnsavedChanges={hasUnsavedChanges}
+                onSaveDashboard={handleSaveDashboard}
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
@@ -266,6 +281,8 @@ function ChatPanelHeader({
   onCancelEditName,
   onDelete,
   onClose,
+  hasUnsavedChanges,
+  onSaveDashboard,
 }: {
   displayName: string,
   isEditingName: boolean,
@@ -275,7 +292,9 @@ function ChatPanelHeader({
   onSaveName: () => Promise<void>,
   onCancelEditName: () => void,
   onDelete: () => void,
-  onClose: () => void,
+  onClose?: () => void,
+  hasUnsavedChanges: boolean,
+  onSaveDashboard: () => Promise<void>,
 }) {
   return (
     <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30 dark:border-foreground/[0.06] shrink-0">
@@ -312,6 +331,18 @@ function ChatPanelHeader({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        {hasUnsavedChanges && (
+          <Button
+            size="sm"
+            className="h-7 gap-1.5 text-xs min-w-[60px]"
+            onClick={onSaveDashboard}
+          >
+            <span className="flex items-center gap-1.5">
+              <FloppyDiskIcon className="h-3.5 w-3.5" />
+              Save
+            </span>
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -320,14 +351,16 @@ function ChatPanelHeader({
         >
           <TrashIcon className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          onClick={onClose}
-        >
-          <XIcon className="h-3.5 w-3.5" />
-        </Button>
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={onClose}
+          >
+            <XIcon className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     </div>
   );

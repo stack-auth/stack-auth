@@ -602,8 +602,7 @@ BACK & EDIT CONTROLS (conditional)
 ────────────────────────────────────────
 The host sets window.__showControls (boolean) and window.__chatOpen (boolean) at runtime.
 Only render Back/Edit buttons when __showControls is true (it is false in the cmd+K preview).
-Both buttons MUST live inside a single fixed top bar on the same horizontal line.
-Use DashboardUI.DesignButton with variant="ghost".
+Use DashboardUI.DesignButton with variant="ghost" and size="sm".
 
 Implementation pattern:
 1. Create state variables:
@@ -617,13 +616,13 @@ Implementation pattern:
      return () => window.removeEventListener('chat-state-change', handler);
    }, []);
 
-3. Render both buttons inside ONE fixed container (only when controls are enabled and chat is closed):
+3. Render the buttons as the FIRST CHILD inside the outer <div> (normal flow, not sticky or fixed):
    {showControls && !chatOpen && (
-     <div className="fixed top-4 left-0 right-0 z-50 flex items-center justify-between px-4 pointer-events-none">
-       <DashboardUI.DesignButton variant="ghost" onClick={() => window.dashboardBack()} className="pointer-events-auto bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+     <div className="flex items-center justify-between">
+       <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
          ← Back
        </DashboardUI.DesignButton>
-       <DashboardUI.DesignButton variant="ghost" onClick={() => window.dashboardEdit()} className="pointer-events-auto bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+       <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
          Edit ✎
        </DashboardUI.DesignButton>
      </div>

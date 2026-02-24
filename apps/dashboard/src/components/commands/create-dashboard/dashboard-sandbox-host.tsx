@@ -472,7 +472,8 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       title="AI Dashboard Preview"
       sandbox="allow-scripts"
       srcDoc={srcDoc}
-      className="h-full w-full bg-background"
+      className="h-full w-full bg-transparent"
+      allowTransparency
     />
   );
 });

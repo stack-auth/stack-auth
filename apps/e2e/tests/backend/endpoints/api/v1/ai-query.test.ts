@@ -263,7 +263,6 @@ describeWithAi("AI Query Endpoint - System Prompts", () => {
     "email-assistant-theme",
     "email-assistant-draft",
     "create-dashboard",
-    "edit-dashboard",
     "run-query",
   ];
 
