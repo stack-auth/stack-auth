@@ -445,7 +445,7 @@ it("rejects oversized payloads", async ({ expect }) => {
   expect(res).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 413,
-      "body": "Request body too large (max 5000000 bytes)",
+      "body": "Request body too large (max 1000000 bytes)",
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
