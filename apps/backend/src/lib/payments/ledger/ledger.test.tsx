@@ -800,6 +800,45 @@ describe('getOwnedProductsForCustomer - include-by-default', () => {
     expect(owned[0].type).toBe('include-by-default');
     vi.useRealTimers();
   });
+
+  it('restores ungrouped default items after paid product with same ID is revoked', async () => {
+    vi.setSystemTime(new Date('2025-02-10'));
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'bonus',
+        product: {
+          displayName: 'Bonus Paid', customerType: 'custom',
+          includedItems: { tokens: { quantity: 10 } },
+          prices: { monthly: { USD: '10' } }, isAddOnTo: false,
+        },
+        createdAt: new Date('2025-01-10'), billingCycleAnchor: new Date('2025-01-10'),
+        status: 'canceled', endedAt: new Date('2025-01-20'), updatedAt: new Date('2025-01-20'),
+      })],
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: {
+          bonus: {
+            display_name: 'Bonus Default', customer_type: 'custom',
+            included_items: { tokens: { quantity: 3 } },
+            prices: {}, server_only: false, stackable: false,
+            client_metadata: null, client_read_only_metadata: null, server_metadata: null,
+          },
+        },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        bonus: { displayName: 'Bonus Default', customerType: 'custom', includedItems: { tokens: { quantity: 3 } }, prices: 'include-by-default', isAddOnTo: false } as any,
+      },
+      productLines: {},
+    });
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'tokens', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(13);
+    vi.useRealTimers();
+  });
 });
 
 describe('getItemQuantityForCustomer - include-by-default items', () => {

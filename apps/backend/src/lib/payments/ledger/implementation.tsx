@@ -3,7 +3,7 @@ import { Tenancy } from "@/lib/tenancies";
 import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { deepPlainEquals, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { ensureCustomerExists, OwnedProduct } from "../implementation";
 import { computeLedgerBalanceAtNow, type LedgerTransaction } from "./algo";
 import { getTransactionsPaginatedList } from "./transactions";
@@ -28,10 +28,8 @@ async function ensureDefaultProductsSnapshotUpToDate(prisma: PrismaClientTransac
   });
 
   const latestSnapshotData = latestSnapshot?.snapshot as Record<string, unknown> | null;
-  const currentJson = JSON.stringify(currentDefaults);
-  const latestJson = latestSnapshotData ? JSON.stringify(latestSnapshotData) : null;
 
-  if (currentJson !== latestJson) {
+  if (!deepPlainEquals(currentDefaults, latestSnapshotData)) {
     await prisma.defaultProductsSnapshot.create({
       data: {
         tenancyId: tenancy.id,
@@ -246,7 +244,7 @@ export async function getItemQuantityForCustomer(options: {
   const ledgerItemGrantMapByTxIdAndEntryIndex = new Map<string, Map<number, LedgerTransaction>>();
 
 
-  const paidGrantsByTx = new Map<string, { product: any, quantity: number }>();
+  const paidGrantsByTx = new Map<string, { productId: string | null, product: any, quantity: number }>();
   const activePaidQuantityByProductId = new Map<string, number>();
   const activePaidQuantityByProductLine = new Map<string, number>();
   const activeDefaultLedgerGrantsByProductId = new Map<string, LedgerTransaction[]>();
@@ -314,7 +312,7 @@ export async function getItemQuantityForCustomer(options: {
       const entry = tx.entries[ei];
       const typedEntry = entry as any;
       if (typedEntry.type === "product-grant") {
-        paidGrantsByTx.set(tx.id, { product: typedEntry.product, quantity: typedEntry.quantity });
+        paidGrantsByTx.set(tx.id, { productId: typedEntry.product_id ?? null, product: typedEntry.product, quantity: typedEntry.quantity });
         if (typedEntry.product_id) {
           activePaidQuantityByProductId.set(typedEntry.product_id, (activePaidQuantityByProductId.get(typedEntry.product_id) ?? 0) + typedEntry.quantity);
         }
@@ -330,7 +328,7 @@ export async function getItemQuantityForCustomer(options: {
       } else if (typedEntry.type === "product-revocation") {
         const adjusted = paidGrantsByTx.get(typedEntry.adjusted_transaction_id);
         if (!adjusted) continue;
-        const productId = adjusted.product?.id;
+        const productId = adjusted.productId;
         if (typeof productId === "string") {
           activePaidQuantityByProductId.set(productId, (activePaidQuantityByProductId.get(productId) ?? 0) - typedEntry.quantity);
         }
