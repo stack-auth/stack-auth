@@ -6,12 +6,10 @@
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "scripts": {
-    "build": "rimraf dist && tsup-node && pnpm run build-iife && pnpm run copy-iife",
+    "build": "rimraf dist && tsup-node",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsup-node --watch --onSuccess 'pnpm run build-iife && pnpm run copy-iife'",
-    "build-iife": "tsx scripts/build-iife.ts",
-    "copy-iife": "tsx scripts/copy-iife.ts",
+    "dev": "tsup-node --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -60,7 +58,6 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "esbuild": "^0.24.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^2.14.1",
