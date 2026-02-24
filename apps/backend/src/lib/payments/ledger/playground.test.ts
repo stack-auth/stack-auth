@@ -1,3 +1,4 @@
+/* eslint-disable max-statements-per-line */
 import { describe, expect, it, vi } from 'vitest';
 import type { Tenancy } from '../../tenancies';
 import { productToInlineProduct } from '@/lib/payments/index';
@@ -114,8 +115,8 @@ describe('playground - pre-defined scenario: ended subscription with default fal
     expect(owned.find((p) => p.id === 'free')?.type).toBe('include-by-default');
 
     const seats = await getItemQuantityForCustomer({ prisma: _mockPrisma, tenancy, itemId: 'seats', customerId: 'cust-1', customerType: 'custom' });
-    // Default: +1 for gap before sub, +1 for gap after sub ended
-    expect(seats).toBe(2);
+    // Default item quantity reflects active ownership at query time.
+    expect(seats).toBe(1);
   });
 });
 
@@ -409,9 +410,9 @@ describe('playground - regression: stackable sub-end with multiple subscriptions
 
     // Verify the revocation entries point to correct transaction IDs
     for (const tx of subEndTxs) {
-      const revocation = tx.entries.find((e) => e.type === 'product_revocation');
+      const revocation = tx.entries.find((e) => (e as any).type === 'product-revocation') as any;
       expect(revocation).toBeDefined();
-      if (revocation && revocation.type === 'product_revocation') {
+      if (revocation) {
         // The adjusted_transaction_id should be the subscription ID (without :end)
         expect(revocation.adjusted_transaction_id).toBe(tx.id.replace(':end', ''));
       }
@@ -511,5 +512,89 @@ describe('playground - regression: default product not granted while same-line p
     });
     expect(ownedAfter.some((p) => p.id === 'default-1')).toBe(true);
     expect(ownedAfter.some((p) => p.id === 'prod-1')).toBe(false);
+  });
+
+  it('does not apply defaults from legacy productLineId snapshots while paid product in same line is owned', async () => {
+    setupMock({
+      subscriptions: [{
+        id: 'sub-active', tenancyId: 'tenancy-1', customerId: 'cust-1', customerType: 'CUSTOM',
+        productId: 'prod-1', priceId: 'default', product: {
+          displayName: 'Product 1', customerType: 'custom', productLineId: 'line-1',
+          includedItems: {
+            seats: { quantity: 2, repeat: [1, 'week'], expires: 'when-repeated' },
+            credits: { quantity: 3, repeat: [1, 'week'], expires: 'never' },
+          },
+          prices: { default: { USD: '73', serverOnly: false, interval: [1, 'month'] } },
+          isAddOnTo: false, serverOnly: false, stackable: false,
+        }, quantity: 2,
+        stripeSubscriptionId: 'stripe-1', status: 'active',
+        currentPeriodStart: new Date('2025-11-18T14:54:58.500Z'), currentPeriodEnd: new Date('2025-12-18T14:54:58.500Z'),
+        cancelAtPeriodEnd: false, endedAt: null, refundedAt: null,
+        billingCycleAnchor: new Date('2025-11-18T14:54:58.500Z'), creationSource: 'PURCHASE_PAGE',
+        createdAt: new Date('2025-11-18T14:54:58.500Z'), updatedAt: new Date('2025-11-18T14:54:58.500Z'),
+      }],
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: {
+          'default-1': {
+            display_name: 'Default 1', customer_type: 'custom', productLineId: 'line-1',
+            included_items: { seats: { quantity: 3, repeat: [1, 'day'] } }, prices: {},
+            server_only: false, stackable: false, client_metadata: null, client_read_only_metadata: null, server_metadata: null,
+          },
+          'default-2': {
+            display_name: 'Default 2', customer_type: 'custom', productLineId: 'line-1',
+            included_items: { credits: { quantity: 2 } }, prices: {},
+            server_only: false, stackable: false, client_metadata: null, client_read_only_metadata: null, server_metadata: null,
+          },
+        },
+        createdAt: new Date('2025-11-09T22:05:00.000Z'),
+      }],
+    });
+
+    const tenancy = makeTenancy({
+      products: {
+        'prod-1': {
+          displayName: 'Product 1', customerType: 'custom', productLineId: 'line-1',
+          includedItems: {
+            seats: { quantity: 2, repeat: [1, 'week'], expires: 'when-repeated' },
+            credits: { quantity: 3, repeat: [1, 'week'], expires: 'never' },
+          },
+          prices: { default: { USD: '73', serverOnly: false, interval: [1, 'month'] } },
+          isAddOnTo: false, serverOnly: false, stackable: false,
+        },
+        'default-1': {
+          displayName: 'Default 1', customerType: 'custom', productLineId: 'line-1',
+          includedItems: { seats: { quantity: 3, repeat: [1, 'day'] } },
+          prices: 'include-by-default', isAddOnTo: false, serverOnly: false, stackable: false,
+        },
+        'default-2': {
+          displayName: 'Default 2', customerType: 'custom', productLineId: 'line-1',
+          includedItems: { credits: { quantity: 2 } },
+          prices: 'include-by-default', isAddOnTo: false, serverOnly: false, stackable: false,
+        },
+      },
+      productLines: { 'line-1': { displayName: 'line-1', customerType: 'custom' } },
+      items: {
+        seats: { displayName: 'seats', customerType: 'custom' },
+        credits: { displayName: 'credits', customerType: 'custom' },
+      },
+    });
+
+    const now = new Date('2025-11-20T00:00:00.000Z');
+    const owned = await getOwnedProductsForCustomer({
+      prisma: _mockPrisma, tenancy, customerType: 'custom', customerId: 'cust-1', now,
+    });
+    expect(owned.some((p) => p.id === 'prod-1')).toBe(true);
+    expect(owned.some((p) => p.id === 'default-1')).toBe(false);
+    expect(owned.some((p) => p.id === 'default-2')).toBe(false);
+
+    const seats = await getItemQuantityForCustomer({
+      prisma: _mockPrisma, tenancy, itemId: 'seats', customerId: 'cust-1', customerType: 'custom', now,
+    });
+    const credits = await getItemQuantityForCustomer({
+      prisma: _mockPrisma, tenancy, itemId: 'credits', customerId: 'cust-1', customerType: 'custom', now,
+    });
+    expect(seats).toBe(4);
+    expect(credits).toBe(6);
   });
 });

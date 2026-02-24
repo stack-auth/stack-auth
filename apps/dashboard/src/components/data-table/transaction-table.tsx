@@ -16,7 +16,7 @@ import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/reac
 import React, { useCallback } from 'react';
 import { Link } from '../link';
 
-type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
+type SourceType = 'subscription' | 'one_time' | 'item-quantity-change' | 'other';
 
 type TransactionTypeDisplay = {
   label: string,
@@ -35,9 +35,9 @@ type TransactionSummary = {
 };
 
 type EntryWithCustomer = Extract<TransactionEntry, { customer_type: string, customer_id: string }>;
-type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money_transfer' }>;
-type ProductGrantEntry = Extract<TransactionEntry, { type: 'product_grant' }>;
-type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item_quantity_change' }>;
+type MoneyTransferEntry = Extract<TransactionEntry, { type: 'money-transfer' }>;
+type ProductGrantEntry = Extract<TransactionEntry, { type: 'product-grant' }>;
+type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: 'item-quantity-change' }>;
 type RefundTarget = { type: 'subscription' | 'one-time-purchase', id: string };
 type RefundEntrySelection = { entryIndex: number, quantity: number };
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === 'USD');
@@ -47,19 +47,19 @@ function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustome
 }
 
 function isMoneyTransferEntry(entry: TransactionEntry): entry is MoneyTransferEntry {
-  return entry.type === 'money_transfer';
+  return entry.type === 'money-transfer';
 }
 
 function isProductGrantEntry(entry: TransactionEntry): entry is ProductGrantEntry {
-  return entry.type === 'product_grant';
+  return entry.type === 'product-grant';
 }
 
 function isItemQuantityChangeEntry(entry: TransactionEntry): entry is ItemQuantityChangeEntry {
-  return entry.type === 'item_quantity_change';
+  return entry.type === 'item-quantity-change';
 }
 
 function getRefundTarget(transaction: Transaction): RefundTarget | null {
-  if (transaction.type !== 'purchase') {
+  if (transaction.type !== 'subscription-start' && transaction.type !== 'one-time-purchase') {
     return null;
   }
   const productGrant = transaction.entries.find(isProductGrantEntry);
@@ -73,7 +73,7 @@ function getRefundTarget(transaction: Transaction): RefundTarget | null {
 }
 
 function deriveSourceType(transaction: Transaction): SourceType {
-  if (transaction.entries.some(isItemQuantityChangeEntry)) return 'item_quantity_change';
+  if (transaction.entries.some(isItemQuantityChangeEntry)) return 'item-quantity-change';
   const productGrant = transaction.entries.find(isProductGrantEntry);
   if (productGrant?.subscription_id) return 'subscription';
   if (productGrant?.one_time_purchase_id) return 'one_time';
@@ -83,13 +83,14 @@ function deriveSourceType(transaction: Transaction): SourceType {
 
 function formatTransactionTypeLabel(transactionType: TransactionType | null): TransactionTypeDisplay {
   switch (transactionType) {
-    case 'purchase': {
+    case 'subscription-start':
+    case 'one-time-purchase': {
       return { label: 'Purchase', Icon: ShoppingCartIcon };
     }
     case 'subscription-renewal': {
       return { label: 'Subscription Renewal', Icon: ArrowClockwiseIcon };
     }
-    case 'subscription-cancellation': {
+    case 'subscription-cancel': {
       return { label: 'Subscription Cancellation', Icon: ProhibitIcon };
     }
     case 'chargeback': {
@@ -98,7 +99,8 @@ function formatTransactionTypeLabel(transactionType: TransactionType | null): Tr
     case 'manual-item-quantity-change': {
       return { label: 'Manual Item Quantity Change', Icon: GearIcon };
     }
-    case 'product-change': {
+    case 'subscription-change':
+    case 'product-version-change': {
       return { label: 'Product Change', Icon: ShuffleIcon };
     }
     default: {
@@ -189,7 +191,7 @@ function describeDetail(transaction: Transaction, sourceType: SourceType): strin
     const deltaLabel = delta > 0 ? `+${delta}` : `${delta}`;
     return `${itemChange.item_id} (${deltaLabel})`;
   }
-  if (sourceType === 'item_quantity_change') {
+  if (sourceType === 'item-quantity-change') {
     return 'Item quantity change';
   }
   return '-';
@@ -219,7 +221,7 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [refundSelections, setRefundSelections] = React.useState<RefundEntrySelection[]>([]);
   const [refundAmountUsd, setRefundAmountUsd] = React.useState<string>('');
-  const target = transaction.type === 'purchase' ? refundTarget : null;
+  const target = refundTarget;
   const alreadyRefunded = transaction.adjusted_by.length > 0;
   const productEntries = React.useMemo(() => getRefundableProductEntries(transaction), [transaction]);
   const canRefund = !!target && !transaction.test_mode && !alreadyRefunded && productEntries.length > 0;

@@ -240,7 +240,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
               },
               "product_id": "otp-product",
               "quantity": 1,
-              "type": "product_grant",
+              "type": "product-grant",
             },
             {
               "adjusted_entry_index": null,
@@ -670,7 +670,7 @@ it("returns SCHEMA_ERROR when refund_entries quantity is not an integer", async 
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
 });
 
-it("returns SCHEMA_ERROR when refund_entries references non-product_grant entries", async () => {
+it("returns SCHEMA_ERROR when refund_entries references non-product-grant entries", async () => {
   const { purchaseTransaction } = await createLiveModeOneTimePurchaseTransaction();
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {

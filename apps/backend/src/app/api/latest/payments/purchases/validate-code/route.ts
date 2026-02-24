@@ -74,7 +74,7 @@ export const POST = createSmartRouteHandler({
       .filter((owned) => owned.id)
       .map((owned) => ({
         product_id: owned.id!,
-        display_name: owned.product.displayName ?? owned.id!,
+        display_name: owned.product.display_name,
       }));
 
     return {

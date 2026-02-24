@@ -60,7 +60,7 @@ export const POST = createSmartRouteHandler({
         let startingAfter: string | undefined = undefined;
 
         while (hasMore) {
-          const customers = await stripe.customers.list({
+          const customers: { data: Array<{ id: string }>, has_more: boolean } = await stripe.customers.list({
             limit: 100,
             ...(startingAfter ? { starting_after: startingAfter } : {}),
           });

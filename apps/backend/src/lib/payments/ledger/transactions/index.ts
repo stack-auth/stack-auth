@@ -1,44 +1,9 @@
 import { PrismaClientTransaction } from "@/prisma-client";
-import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
-import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
-import type { TransactionFilter, TransactionOrderBy } from "./helpers";
-import { getChargebackTransactions } from "./types/chargeback";
-import { getDefaultProductsChangeTransactions } from "./types/default-products-change";
-import { getItemGrantRenewalTransactions } from "./types/item-grant-renewal";
-import { getManualItemQuantityChangeTransactions } from "./types/manual-item-quantity-change";
-import { getOneTimePurchaseTransactions } from "./types/one-time-purchase";
-import { getProductVersionChangeTransactions } from "./types/product-version-change";
-import { getPurchaseRefundTransactions } from "./types/purchase-refund";
-import { getSubscriptionCancelTransactions } from "./types/subscription-cancel";
-import { getSubscriptionChangeTransactions } from "./types/subscription-change";
-import { getSubscriptionEndTransactions } from "./types/subscription-end";
-import { getSubscriptionReactivationTransactions } from "./types/subscription-reactivation";
-import { getSubscriptionRenewalTransactions } from "./types/subscription-renewal";
-import { getSubscriptionStartTransactions } from "./types/subscription-start";
+import { refundTransaction } from "../refund";
+import { BuiltTransactionsList } from "./list";
 
-export { refundTransaction } from "./refund";
+export { refundTransaction };
 
-type FullTransactionFilter = TransactionFilter & {
-  type?: Transaction["type"],
-};
-
-export function getTransactionsPaginatedList(prisma: PrismaClientTransaction, tenancyId: string): PaginatedList<Transaction, string, FullTransactionFilter, TransactionOrderBy> {
-  return PaginatedList.merge(
-    getSubscriptionStartTransactions(prisma, tenancyId),
-    getOneTimePurchaseTransactions(prisma, tenancyId),
-    getSubscriptionRenewalTransactions(prisma, tenancyId),
-    getSubscriptionEndTransactions(prisma, tenancyId),
-    getSubscriptionCancelTransactions(prisma, tenancyId),
-    getSubscriptionReactivationTransactions(prisma, tenancyId),
-    getPurchaseRefundTransactions(prisma, tenancyId),
-    getManualItemQuantityChangeTransactions(prisma, tenancyId),
-    getItemGrantRenewalTransactions(prisma, tenancyId),
-    getDefaultProductsChangeTransactions(prisma, tenancyId),
-    getChargebackTransactions(prisma, tenancyId),
-    getProductVersionChangeTransactions(prisma, tenancyId),
-    getSubscriptionChangeTransactions(prisma, tenancyId),
-  ).addFilter({
-    filter: (item, f) => !f.type || item.type === f.type,
-    estimateItemsToFetch: ({ limit }) => limit * 2,
-  });
+export function getTransactionsPaginatedList(prisma: PrismaClientTransaction, tenancyId: string) {
+  return new BuiltTransactionsList(prisma, tenancyId);
 }

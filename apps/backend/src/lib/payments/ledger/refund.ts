@@ -7,7 +7,7 @@ import { moneyAmountToStripeUnits } from "@stackframe/stack-shared/dist/utils/cu
 import { SUPPORTED_CURRENCIES, type MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { InferType } from "yup";
-import { resolveSelectedPriceFromProduct } from "./helpers";
+import { resolveSelectedPriceFromProduct } from "./transaction-helpers";
 
 const USD_CURRENCY = SUPPORTED_CURRENCIES.find((currency) => currency.code === "USD")
   ?? throwErr("USD currency configuration missing in SUPPORTED_CURRENCIES");
@@ -32,9 +32,7 @@ function getTotalUsdStripeUnits(product: InferType<typeof productSchema>, priceI
 
 function getRefundedQuantity(refundEntries: RefundEntrySelection[]) {
   let total = 0;
-  for (const entry of refundEntries) {
-    total += entry.quantity;
-  }
+  for (const entry of refundEntries) total += entry.quantity;
   return total;
 }
 
@@ -81,12 +79,11 @@ export async function refundTransaction(options: {
   refundEntries: RefundEntrySelection[],
 }): Promise<void> {
   const prisma = await getPrismaClientForTenancy(options.tenancy);
-
   if (options.type === "subscription") {
     await refundSubscription(prisma, options.tenancy, options.id, options.refundEntries);
-  } else {
-    await refundOneTimePurchase(prisma, options.tenancy, options.id, options.refundEntries);
+    return;
   }
+  await refundOneTimePurchase(prisma, options.tenancy, options.id, options.refundEntries);
 }
 
 async function refundSubscription(
@@ -98,12 +95,8 @@ async function refundSubscription(
   const subscription = await prisma.subscription.findUnique({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: subscriptionId } },
   });
-  if (!subscription) {
-    throw new KnownErrors.SubscriptionInvoiceNotFound(subscriptionId);
-  }
-  if (subscription.refundedAt) {
-    throw new KnownErrors.SubscriptionAlreadyRefunded(subscriptionId);
-  }
+  if (!subscription) throw new KnownErrors.SubscriptionInvoiceNotFound(subscriptionId);
+  if (subscription.refundedAt) throw new KnownErrors.SubscriptionAlreadyRefunded(subscriptionId);
 
   validateRefundEntries(refundEntries, subscription.quantity);
 
@@ -114,9 +107,7 @@ async function refundSubscription(
       subscription: { tenancyId: tenancy.id, id: subscriptionId },
     },
   });
-  if (subscriptionInvoices.length === 0) {
-    throw new KnownErrors.SubscriptionInvoiceNotFound(subscriptionId);
-  }
+  if (subscriptionInvoices.length === 0) throw new KnownErrors.SubscriptionInvoiceNotFound(subscriptionId);
   if (subscriptionInvoices.length > 1) {
     throw new StackAssertionError("Multiple subscription creation invoices found for subscription", { subscriptionId });
   }
@@ -140,7 +131,6 @@ async function refundSubscription(
   const totalStripeUnits = getTotalUsdStripeUnits(product, subscription.priceId ?? null, subscription.quantity);
   const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
   validateRefundAmount(refundAmountStripeUnits, totalStripeUnits);
-
   await stripe.refunds.create({ payment_intent: paymentIntentId, amount: refundAmountStripeUnits });
 
   const refundedQuantity = getRefundedQuantity(refundEntries);
@@ -176,12 +166,13 @@ async function refundSubscription(
       where: { tenancyId_id: { tenancyId: tenancy.id, id: subscriptionId } },
       data: { cancelAtPeriodEnd: newQuantity === 0, refundedAt: new Date() },
     });
-  } else {
-    await prisma.subscription.update({
-      where: { tenancyId_id: { tenancyId: tenancy.id, id: subscriptionId } },
-      data: { refundedAt: new Date() },
-    });
+    return;
   }
+
+  await prisma.subscription.update({
+    where: { tenancyId_id: { tenancyId: tenancy.id, id: subscriptionId } },
+    data: { refundedAt: new Date() },
+  });
 }
 
 async function refundOneTimePurchase(
@@ -193,21 +184,12 @@ async function refundOneTimePurchase(
   const purchase = await prisma.oneTimePurchase.findUnique({
     where: { tenancyId_id: { tenancyId: tenancy.id, id: purchaseId } },
   });
-  if (!purchase) {
-    throw new KnownErrors.OneTimePurchaseNotFound(purchaseId);
-  }
-  if (purchase.refundedAt) {
-    throw new KnownErrors.OneTimePurchaseAlreadyRefunded(purchaseId);
-  }
-  if (purchase.creationSource === "TEST_MODE") {
-    throw new KnownErrors.TestModePurchaseNonRefundable();
-  }
-  if (!purchase.stripePaymentIntentId) {
-    throw new KnownErrors.OneTimePurchaseNotFound(purchaseId);
-  }
+  if (!purchase) throw new KnownErrors.OneTimePurchaseNotFound(purchaseId);
+  if (purchase.refundedAt) throw new KnownErrors.OneTimePurchaseAlreadyRefunded(purchaseId);
+  if (purchase.creationSource === "TEST_MODE") throw new KnownErrors.TestModePurchaseNonRefundable();
+  if (!purchase.stripePaymentIntentId) throw new KnownErrors.OneTimePurchaseNotFound(purchaseId);
 
   validateRefundEntries(refundEntries, purchase.quantity);
-
   const product = purchase.product as InferType<typeof productSchema>;
   const totalStripeUnits = getTotalUsdStripeUnits(product, purchase.priceId ?? null, purchase.quantity);
   const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);

@@ -1,3 +1,4 @@
+/* eslint-disable max-statements-per-line */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Tenancy } from '../../tenancies';
 import { productToInlineProduct } from '@/lib/payments/index';
@@ -371,7 +372,7 @@ describe('getItemQuantityForCustomer - subscription items', () => {
       })],
     });
     // cycle_anchor=Feb 1, now=Feb 15. Intervals elapsed: 2 weeks.
-    // subscription-start: +7 item_quantity_change
+    // subscription-start: +7 item-quantity-change
     // renewal at week 1 (Feb 8): -7 expire + +7 change
     // renewal at week 2 (Feb 15): -7 expire + +7 change
     // Net: 7 + (-7+7) + (-7+7) = 7
@@ -571,7 +572,7 @@ describe('getOwnedProductsForCustomer', () => {
     const owned = await getOwnedProductsForCustomer({
       prisma: _currentMockPrisma, tenancy: createMockTenancy(), customerType: 'custom', customerId: 'custom-1',
     });
-    // purchase-refund contains product_revocation, so effective quantity = 0
+    // purchase-refund contains product-revocation, so effective quantity = 0
     expect(owned.length).toBe(0);
     vi.useRealTimers();
   });
@@ -605,7 +606,7 @@ describe('getOwnedProductsForCustomer', () => {
     const owned = await getOwnedProductsForCustomer({
       prisma: _currentMockPrisma, tenancy: createMockTenancy(), customerType: 'custom', customerId: 'custom-1',
     });
-    // subscription-cancel has no product_revocation, so product is still owned
+    // subscription-cancel has no product-revocation, so product is still owned
     expect(owned.length).toBe(1);
     expect(owned[0].id).toBe('prod-1');
     vi.useRealTimers();
@@ -862,8 +863,8 @@ describe('getItemQuantityForCustomer - include-by-default items', () => {
     const qty = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
-    // Paid plan's 4 seats + default's 1 for gap before subscription started
-    expect(qty).toBe(5);
+    // Default grants are suppressed while paid ownership in the same line is active.
+    expect(qty).toBe(4);
     vi.useRealTimers();
   });
 
@@ -896,9 +897,9 @@ describe('getItemQuantityForCustomer - include-by-default items', () => {
     const qty = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
-    // Paid plan: +4 from sub start, -4 from sub end. Default: +1 for gap before sub, +1 for gap after end.
-    // Net: 0 + 1 + 1 = 2
-    expect(qty).toBe(2);
+    // With default-product-item transactions, default seats are active at query time
+    // but do not accumulate as multiple historical grants.
+    expect(qty).toBe(1);
     vi.useRealTimers();
   });
 
@@ -1034,12 +1035,11 @@ describe('item-grant-renewal: default product repeating items', () => {
       products: { 'free-plan': defaultProductWithRepeat as any, 'pro': paidProduct as any },
       productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
     });
-    // Default items granted from Jan 1 to Jan 5 = initial + 3 renewals = 4 * 3 = 12
-    // Plus 10 from pro subscription
+    // Default items are suppressed while a paid product in the same line is active.
     const qty = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
-    expect(qty).toBe(22);
+    expect(qty).toBe(10);
     vi.useRealTimers();
   });
 
@@ -1074,10 +1074,7 @@ describe('item-grant-renewal: default product repeating items', () => {
       products: { 'free-plan': defaultWithExpire as any, 'pro': paidProduct as any },
       productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
     });
-    // Gap1: Jan 1–5 (4 days), when-repeated: initial+3 renewals, each expire cancels prev = net 3
-    // Gap2: Jan 10–now(Jan 15) (5 days), when-repeated: initial+5 renewals, net 3
-    // Pro subscription: 10 seats (non-repeating, non-expiring)
-    // Total: 3 (gap1 residual) + 10 (pro) + 3 (gap2 current) = 16
+    // Defaults are suppressed while paid is active, then restored when paid ownership ends.
     const qty = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
@@ -1247,9 +1244,9 @@ describe('item-grant-renewal: combined items in single renewal transaction', () 
     // Should have 3 entries: expire seats, grant seats, grant credits
     expect(renewal.entries.length).toBe(3);
     const entryTypes = renewal.entries.map((e) => `${e.type}:${(e as any).item_id}`);
-    expect(entryTypes).toContain('item_quantity_expire:seats');
-    expect(entryTypes).toContain('item_quantity_change:seats');
-    expect(entryTypes).toContain('item_quantity_change:credits');
+    expect(entryTypes).toContain('item-quantity-expire:seats');
+    expect(entryTypes).toContain('item-quantity-change:seats');
+    expect(entryTypes).toContain('item-quantity-change:credits');
     vi.useRealTimers();
   });
 });
@@ -1275,11 +1272,10 @@ describe('item-grant-renewal: default product igr-renewal includes source detail
       productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
     });
     const allTx = await getAllTransactionsForCustomer(_currentMockPrisma, tenancy, 'custom', 'custom-1');
-    const renewals = allTx.filter((tx) => tx.type === 'item-grant-renewal');
+    const renewals = allTx.filter((tx) => tx.type === 'default-product-item-grant-repeat');
     expect(renewals.length).toBeGreaterThan(0);
     for (const r of renewals) {
-      expect(r.details?.source_transaction_id).toBeDefined();
-      expect(r.details?.default_product_id).toBe('free');
+      expect((r.details as any)?.source_transaction_id).toBeDefined();
     }
     vi.useRealTimers();
   });
@@ -1310,16 +1306,11 @@ describe('ledger: default products snapshot transition handled by ledger functio
       products: { 'free': defaultV2 as any },
       productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
     });
-    // Seats: v1 granted 5 at Jan 1, v2 granted 2 at Jan 10, ledger expires delta (5→2 = -3 at Jan 10)
-    // Net: 5 + 2 - 3 = 4... actually igr-renewal generates separate initial grants for each period
-    // Period 1 (Jan 1-10): grant 5
-    // Period 2 (Jan 10-now): grant 2
-    // Ledger transition: -3 at Jan 10 (5→2)
-    // Total seats: 5 + 2 - 3 = 4
+    // Current defaults come from the latest snapshot and are reflected as active amount.
     const seats = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
-    expect(seats).toBe(4);
+    expect(seats).toBe(2);
     // Credits: v1 granted 3 at Jan 1, v2 has none, ledger expires -3 at Jan 10
     // Total credits: 3 - 3 = 0
     const credits = await getItemQuantityForCustomer({

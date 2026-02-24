@@ -29,7 +29,7 @@ const netAmountSchema = yupObject({
 }).noUnknown(true).defined();
 
 const transactionEntryMoneyTransferSchema = yupObject({
-  type: yupString().oneOf(["money_transfer"]).defined(),
+  type: yupString().oneOf(["money-transfer"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -39,7 +39,7 @@ const transactionEntryMoneyTransferSchema = yupObject({
 }).defined();
 
 const transactionEntryItemQuantityChangeSchema = yupObject({
-  type: yupString().oneOf(["item_quantity_change"]).defined(),
+  type: yupString().oneOf(["item-quantity-change"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -49,7 +49,7 @@ const transactionEntryItemQuantityChangeSchema = yupObject({
 }).defined();
 
 const transactionEntryItemQuantityExpireSchema = yupObject({
-  type: yupString().oneOf(["item_quantity_expire"]).defined(),
+  type: yupString().oneOf(["item-quantity-expire"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -59,7 +59,7 @@ const transactionEntryItemQuantityExpireSchema = yupObject({
 }).defined();
 
 const transactionEntryProductGrantSchema = yupObject({
-  type: yupString().oneOf(["product_grant"]).defined(),
+  type: yupString().oneOf(["product-grant"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -86,7 +86,7 @@ const transactionEntryProductGrantSchema = yupObject({
 ).defined();
 
 const transactionEntryProductRevocationSchema = yupObject({
-  type: yupString().oneOf(["product_revocation"]).defined(),
+  type: yupString().oneOf(["product-revocation"]).defined(),
   adjusted_transaction_id: yupString().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).defined(),
   customer_type: customerTypeSchema.defined(),
@@ -95,14 +95,14 @@ const transactionEntryProductRevocationSchema = yupObject({
 }).defined();
 
 const transactionEntryProductRevocationReversalSchema = yupObject({
-  type: yupString().oneOf(["product_revocation_reversal"]).defined(),
+  type: yupString().oneOf(["product-revocation-reversal"]).defined(),
   adjusted_transaction_id: yupString().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).defined(),
   quantity: yupNumber().defined(),
 }).defined();
 
 const transactionEntryActiveSubscriptionStartSchema = yupObject({
-  type: yupString().oneOf(["active_subscription_start"]).defined(),
+  type: yupString().oneOf(["active-subscription-start"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -113,7 +113,7 @@ const transactionEntryActiveSubscriptionStartSchema = yupObject({
 }).defined();
 
 const transactionEntryActiveSubscriptionStopSchema = yupObject({
-  type: yupString().oneOf(["active_subscription_stop"]).defined(),
+  type: yupString().oneOf(["active-subscription-stop"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -122,7 +122,7 @@ const transactionEntryActiveSubscriptionStopSchema = yupObject({
 }).defined();
 
 const transactionEntryActiveSubscriptionChangeSchema = yupObject({
-  type: yupString().oneOf(["active_subscription_change"]).defined(),
+  type: yupString().oneOf(["active-subscription-change"]).defined(),
   adjusted_transaction_id: yupString().nullable().defined(),
   adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
   customer_type: customerTypeSchema.defined(),
@@ -134,11 +134,40 @@ const transactionEntryActiveSubscriptionChangeSchema = yupObject({
 }).defined();
 
 const transactionEntryDefaultProductsChangeSchema = yupObject({
-  type: yupString().oneOf(["default_products_change"]).defined(),
+  type: yupString().oneOf(["default-products-change"]).defined(),
   snapshot: yupRecord(
     yupString(),
     inlineProductSchema,
   ).defined(),
+}).defined();
+
+const transactionEntryDefaultProductItemGrantSchema = yupObject({
+  type: yupString().oneOf(["default-product-item-grant"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  product_id: yupString().defined(),
+  item_id: yupString().defined(),
+  quantity: yupNumber().defined(),
+  expires_when_repeated: yupBoolean().defined(),
+}).defined();
+
+const transactionEntryDefaultProductItemChangeSchema = yupObject({
+  type: yupString().oneOf(["default-product-item-change"]).defined(),
+  adjusted_transaction_id: yupString().nullable().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).nullable().defined(),
+  product_id: yupString().defined(),
+  item_id: yupString().defined(),
+  quantity: yupNumber().defined(),
+  expires_when_repeated: yupBoolean().defined(),
+}).defined();
+
+const transactionEntryDefaultProductItemExpireSchema = yupObject({
+  type: yupString().oneOf(["default-product-item-expire"]).defined(),
+  adjusted_transaction_id: yupString().defined(),
+  adjusted_entry_index: yupNumber().integer().min(0).defined(),
+  product_id: yupString().defined(),
+  item_id: yupString().defined(),
+  quantity: yupNumber().defined(),
 }).defined();
 
 export const transactionEntrySchema = yupUnion(
@@ -152,6 +181,9 @@ export const transactionEntrySchema = yupUnion(
   transactionEntryActiveSubscriptionStopSchema,
   transactionEntryActiveSubscriptionChangeSchema,
   transactionEntryDefaultProductsChangeSchema,
+  transactionEntryDefaultProductItemGrantSchema,
+  transactionEntryDefaultProductItemChangeSchema,
+  transactionEntryDefaultProductItemExpireSchema,
 ).defined();
 
 export type TransactionEntry = InferType<typeof transactionEntrySchema>;
@@ -170,6 +202,7 @@ export const TRANSACTION_TYPES = [
   "product-version-change",
   "item-grant-renewal",
   "default-products-change",
+  "default-product-item-grant-repeat",
 ] as const;
 
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];

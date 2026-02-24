@@ -53,8 +53,8 @@ export const GET = createSmartRouteHandler({
 
     const visibleProducts =
       auth.type === "client"
-        ? ownedProducts.filter(({ product }) => !product.serverOnly)
-        : ownedProducts;
+        ? ownedProducts.filter(({ type, product }) => type !== "include-by-default" && !product.server_only)
+        : ownedProducts.filter(({ type }) => type !== "include-by-default");
 
     const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
 
@@ -82,19 +82,22 @@ export const GET = createSmartRouteHandler({
     const sorted = visibleProducts
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((product) => {
+      .flatMap((product) => {
+        if (product.type === "include-by-default") {
+          return [];
+        }
         const productLineId = product.product.product_line_id;
         const switchOptions =
           product.type === "subscription" && product.id && productLineId
             ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== product.id)
             : undefined;
 
-        return {
+        return [{
           cursor: product.sourceId,
           item: {
             id: product.id,
             quantity: product.quantity,
-            product: productToInlineProduct(product.product),
+            product: product.product,
             type: product.type,
             subscription: product.subscription ? {
               current_period_end: product.subscription.currentPeriodEnd ? product.subscription.currentPeriodEnd.toISOString() : null,
@@ -103,7 +106,7 @@ export const GET = createSmartRouteHandler({
             } : null,
             switch_options: switchOptions,
           },
-        };
+        }];
       });
 
     let startIndex = 0;

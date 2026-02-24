@@ -159,10 +159,10 @@ export const POST = createSmartRouteHandler({
     const allItemIds = new Set<string>();
     for (const tx of allTransactions) {
       for (const entry of tx.entries) {
-        if ((entry.type === "item_quantity_change" || entry.type === "item_quantity_expire") && 'item_id' in entry) {
+        if ((entry.type === "item-quantity-change" || entry.type === "item-quantity-expire") && 'item_id' in entry) {
           allItemIds.add(entry.item_id);
         }
-        if (entry.type === "product_grant" && 'product' in entry) {
+        if (entry.type === "product-grant" && 'product' in entry) {
           for (const itemId of Object.keys((entry.product as any).included_items ?? {})) {
             allItemIds.add(itemId);
           }

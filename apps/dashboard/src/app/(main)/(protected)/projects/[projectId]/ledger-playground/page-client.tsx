@@ -1,7 +1,11 @@
+/* eslint-disable max-statements-per-line */
 "use client";
 
 import {
   Button,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Typography,
 } from "@/components/ui";
 import { notFound } from "next/navigation";
@@ -28,6 +32,24 @@ type PlaygroundResult = {
   transactions: any[],
   snapshots: Snapshot[],
 };
+
+const STORAGE_PREFIX = "stack-ledger-playground:";
+function readLocalStorage(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(`${STORAGE_PREFIX}${key}`);
+  } catch {
+    return null;
+  }
+}
+function writeLocalStorage(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(`${STORAGE_PREFIX}${key}`, value);
+  } catch {
+    // Ignore storage errors (private mode/quota), keep in-memory state.
+  }
+}
 
 function randInt(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function randChoice<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -114,6 +136,29 @@ function generateShuffledData() {
     description: null, expiresAt: null, createdAt: randDate(),
   }));
 
+  const subscriptionInvoices: any[] = [];
+  for (const sub of subscriptions) {
+    if (!sub.stripeSubscriptionId) continue;
+    if (!randChoice([true, true, false])) continue;
+    const renewalCount = randInt(1, 3);
+    for (let i = 0; i < renewalCount; i++) {
+      const periodStart = new Date(sub.createdAt.getTime() + (i + 1) * 30 * 86400000);
+      if (periodStart > endDate) break;
+      const periodEnd = new Date(periodStart.getTime() + 30 * 86400000);
+      subscriptionInvoices.push({
+        id: uuid(),
+        tenancyId: "mock-tenancy",
+        stripeSubscriptionId: sub.stripeSubscriptionId,
+        stripeInvoiceId: `in_${uuid().slice(0, 12)}`,
+        hostedInvoiceUrl: `https://example.com/invoices/${uuid().slice(0, 8)}`,
+        isSubscriptionCreationInvoice: false,
+        periodStart,
+        periodEnd,
+        createdAt: randDateAfter(periodStart),
+      });
+    }
+  }
+
   const defaultProductsSnapshots: any[] = [];
   const defaultProductIds = Object.entries(products).filter(([, p]) => (p as any).prices === "include-by-default").map(([id]) => id);
   function buildSnapshot(ids: string[]) {
@@ -142,7 +187,7 @@ function generateShuffledData() {
 
   return {
     config: { products, productLines, items: Object.fromEntries(usedItems.map((id) => [id, { displayName: id, customerType: "custom" }])) },
-    db: { subscriptions, oneTimePurchases, itemQuantityChanges, subscriptionInvoices: [], defaultProductsSnapshots },
+    db: { subscriptions, oneTimePurchases, itemQuantityChanges, subscriptionInvoices, defaultProductsSnapshots },
     customerId, startMillis: startDate.getTime(), endMillis: endDate.getTime(),
   };
 }
@@ -178,6 +223,33 @@ function formatDate(ms: number) {
   return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+function getProductLineIdFromInlineProduct(product: any): string | null {
+  if (typeof product?.product_line_id === "string") return product.product_line_id;
+  if (typeof product?.productLineId === "string") return product.productLineId;
+  return null;
+}
+
+function formatRepeat(repeat: unknown): string {
+  if (repeat === "never" || repeat == null) return "once";
+  if (Array.isArray(repeat) && repeat.length === 2) {
+    const [n, unit] = repeat;
+    if (typeof n === "number" && typeof unit === "string") return `${n} ${unit}`;
+  }
+  return "custom";
+}
+
+function formatIncludedItemsSummary(product: any): string {
+  const includedItems = (product?.included_items ?? product?.includedItems ?? {}) as Record<string, any>;
+  const parts = Object.entries(includedItems).map(([itemId, cfg]) => {
+    const qty = Number(cfg?.quantity ?? 0);
+    const repeat = formatRepeat(cfg?.repeat ?? "never");
+    const expires = String(cfg?.expires ?? "never");
+    return `${qty}x ${itemId}/${repeat} (${expires})`;
+  });
+  if (parts.length === 0) return "none";
+  return parts.join(", ");
+}
+
 function getRelatedTxIdsForRow(
   rowType: "product" | "item",
   rowId: string,
@@ -186,7 +258,7 @@ function getRelatedTxIdsForRow(
   const txIdsWithProductGrant = new Map<string, string>();
   for (const tx of transactions) {
     for (const entry of tx.entries ?? []) {
-      if (entry.type === "product_grant" && entry.product_id === rowId) {
+      if (entry.type === "product-grant" && entry.product_id === rowId) {
         txIdsWithProductGrant.set(tx.id, rowId);
       }
     }
@@ -196,20 +268,20 @@ function getRelatedTxIdsForRow(
   for (const tx of transactions) {
     for (const entry of tx.entries ?? []) {
       if (rowType === "product") {
-        if (entry.type === "product_grant" && entry.product_id === rowId) { ids.add(tx.id); break; }
-        if (entry.type === "product_revocation" && txIdsWithProductGrant.has(entry.adjusted_transaction_id)) { ids.add(tx.id); break; }
-        if (entry.type === "active_subscription_start" && entry.product_id === rowId) { ids.add(tx.id); break; }
-        if (entry.type === "active_subscription_stop") {
+        if (entry.type === "product-grant" && entry.product_id === rowId) { ids.add(tx.id); break; }
+        if (entry.type === "product-revocation" && txIdsWithProductGrant.has(entry.adjusted_transaction_id)) { ids.add(tx.id); break; }
+        if (entry.type === "active-subscription-start" && entry.product_id === rowId) { ids.add(tx.id); break; }
+        if (entry.type === "active-subscription-stop") {
           const subId = entry.subscription_id;
-          if (subId && transactions.some((t) => t.entries?.some((e: any) => e.type === "active_subscription_start" && e.subscription_id === subId && e.product_id === rowId))) {
+          if (subId && transactions.some((t) => t.entries?.some((e: any) => e.type === "active-subscription-start" && e.subscription_id === subId && e.product_id === rowId))) {
             ids.add(tx.id); break;
           }
         }
-        if ((entry.type === "item_quantity_change" || entry.type === "item_quantity_expire") && tx.type === "item-grant-renewal" && tx.details?.source_transaction_id && txIdsWithProductGrant.has(tx.details.source_transaction_id)) {
+        if ((entry.type === "item-quantity-change" || entry.type === "item-quantity-expire") && tx.type === "item-grant-renewal" && tx.details?.source_transaction_id && txIdsWithProductGrant.has(tx.details.source_transaction_id)) {
           ids.add(tx.id); break;
         }
       } else {
-        if ((entry.type === "item_quantity_change" || entry.type === "item_quantity_expire") && entry.item_id === rowId) { ids.add(tx.id); break; }
+        if ((entry.type === "item-quantity-change" || entry.type === "item-quantity-expire") && entry.item_id === rowId) { ids.add(tx.id); break; }
       }
     }
   }
@@ -226,10 +298,12 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { transactions, snapshots } = result;
-  if (snapshots.length === 0) return <Typography variant="secondary">No data.</Typography>;
-
-  const dataMin = Math.min(...snapshots.map((s) => s.at_millis), ...transactions.map((t) => t.effective_at_millis));
-  const dataMax = Math.max(...snapshots.map((s) => s.at_millis), ...transactions.map((t) => t.effective_at_millis));
+  const dataMin = snapshots.length > 0
+    ? Math.min(...snapshots.map((s) => s.at_millis), ...transactions.map((t) => t.effective_at_millis))
+    : 0;
+  const dataMax = snapshots.length > 0
+    ? Math.max(...snapshots.map((s) => s.at_millis), ...transactions.map((t) => t.effective_at_millis))
+    : 0;
   const vStart = viewStart ?? dataMin;
   const vEnd = viewEnd ?? dataMax;
   const vRange = vEnd - vStart || 1;
@@ -287,7 +361,7 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
     setViewEnd(mouseTime + (1 - mouseXRatio) * newRange);
   };
   const wheelListenerAttached = useRef(false);
-  if (containerRef.current && !wheelListenerAttached.current) {
+  if (containerRef.current && wheelListenerAttached.current === false) {
     const el = containerRef.current;
     el.addEventListener("wheel", (e) => handleWheelRef.current?.(e), { passive: false });
     wheelListenerAttached.current = true;
@@ -295,13 +369,12 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
 
   function getMergedSegments<T>(getId: (snap: Snapshot) => T | null) {
     const segments: Array<{ value: T, startMs: number, endMs: number }> = [];
-    for (let i = 0; i < snapshots.length; i++) {
+    for (let i = 0; i + 1 < snapshots.length; i++) {
       const val = getId(snapshots[i]);
       if (val === null) continue;
       const nextSnap = snapshots[i + 1];
-      if (!nextSnap) continue;
-      const last = segments[segments.length - 1];
-      if (last && JSON.stringify(last.value) === JSON.stringify(val) && last.endMs === snapshots[i].at_millis) {
+      const last = segments.length > 0 ? segments[segments.length - 1] : null;
+      if (last !== null && JSON.stringify(last.value) === JSON.stringify(val) && last.endMs === snapshots[i].at_millis) {
         last.endMs = nextSnap.at_millis;
       } else {
         segments.push({ value: val, startMs: snapshots[i].at_millis, endMs: nextSnap.at_millis });
@@ -309,6 +382,8 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
     }
     return segments;
   }
+
+  if (snapshots.length === 0) return <Typography variant="secondary">No data.</Typography>;
 
   return (
     <div className="space-y-2">
@@ -373,13 +448,13 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
             );
           })}
 
-          {/* Cycle anchor markers for hovered/selected transactions with product_grant entries */}
+          {/* Cycle anchor markers for hovered/selected transactions with product-grant entries */}
           {(() => {
             const activeTx = selectedTx ?? hoveredTx;
             if (!activeTx) return null;
             const anchors: Array<{ millis: number, productId: string | null }> = [];
             for (const entry of activeTx.entries ?? []) {
-              if (entry.type === "product_grant" && entry.cycle_anchor) {
+              if (entry.type === "product-grant" && entry.cycle_anchor) {
                 anchors.push({ millis: entry.cycle_anchor, productId: entry.product_id });
               }
             }
@@ -422,18 +497,28 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
                     if (x2 < -5 || x1 > 105) return null;
                     const qty = (seg.value as any).qty;
                     const barH = Math.max(8, (qty / maxProductQty) * (ROW_H - 4));
+                    const snap = snapshots.find((s) => s.at_millis >= seg.startMs);
+                    const owned = snap?.owned_products.find((p) => (p.id ?? "inline") === productId);
+                    const productLineId = getProductLineIdFromInlineProduct(owned?.product);
+                    const itemsSummary = formatIncludedItemsSummary(owned?.product);
+                    const tooltipText = `${productId} qty=${qty} (${(seg.value as any).type}${(seg.value as any).count > 1 ? ` x${(seg.value as any).count} sources` : ""}) | line=${productLineId ?? "none"} | items: ${itemsSummary}`;
                     return (
-                      <div key={si}
-                        className="absolute bottom-0.5 bg-red-500/20 dark:bg-red-400/12 border border-red-500/30 border-b-0 rounded-t-sm cursor-pointer hover:bg-red-500/35 transition-colors hover:transition-none"
-                        style={{ left: `${x1}%`, width: `${Math.max(0.3, x2 - x1)}%`, height: barH }}
-                        title={`${productId} qty=${qty} (${(seg.value as any).type}${(seg.value as any).count > 1 ? ` x${(seg.value as any).count} sources` : ""})`}
-                        onClick={() => {
-                          const snap = snapshots.find((s) => s.at_millis >= seg.startMs);
-                          const owned = snap?.owned_products.find((p) => (p.id ?? "inline") === productId);
-                          if (owned) setSelectedProduct(owned);
-                        }}>
-                        {(x2 - x1) > 3 && <span className="text-[8px] text-red-700 dark:text-red-300 px-0.5 leading-none">{qty}</span>}
-                      </div>
+                      <Tooltip key={si}>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="absolute bottom-0.5 bg-red-500/20 dark:bg-red-400/12 border border-red-500/30 border-b-0 rounded-t-sm cursor-pointer hover:bg-red-500/35 transition-colors hover:transition-none"
+                            style={{ left: `${x1}%`, width: `${Math.max(0.3, x2 - x1)}%`, height: barH }}
+                            onClick={() => {
+                              if (owned) setSelectedProduct(owned);
+                            }}
+                          >
+                            {(x2 - x1) > 3 && <span className="text-[8px] text-red-700 dark:text-red-300 px-0.5 leading-none">{qty}</span>}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-[420px] text-[10px] font-mono break-words">
+                          {tooltipText}
+                        </TooltipContent>
+                      </Tooltip>
                     );
                   })}
                 </div>
@@ -603,13 +688,34 @@ function makeDefaultRow(fields: FieldDef[], customerId: string): Record<string, 
   const now = new Date();
   for (const f of fields) {
     switch (f.type) {
-      case "string": row[f.name] = f.name === "id" ? uuid() : f.name === "tenancyId" ? "mock-tenancy" : f.name === "customerId" ? customerId : ""; break;
-      case "number": row[f.name] = f.name === "quantity" ? 1 : 0; break;
-      case "boolean": row[f.name] = false; break;
-      case "date": row[f.name] = now.toISOString(); break;
-      case "date?": row[f.name] = null; break;
-      case "json": row[f.name] = {}; break;
-      case "enum": row[f.name] = f.options?.[0] ?? ""; break;
+      case "string": {
+        row[f.name] = f.name === "id" ? uuid() : f.name === "tenancyId" ? "mock-tenancy" : f.name === "customerId" ? customerId : "";
+        break;
+      }
+      case "number": {
+        row[f.name] = f.name === "quantity" ? 1 : 0;
+        break;
+      }
+      case "boolean": {
+        row[f.name] = false;
+        break;
+      }
+      case "date": {
+        row[f.name] = now.toISOString();
+        break;
+      }
+      case "date?": {
+        row[f.name] = null;
+        break;
+      }
+      case "json": {
+        row[f.name] = {};
+        break;
+      }
+      case "enum": {
+        row[f.name] = f.options?.[0] ?? "";
+        break;
+      }
     }
   }
   return row;
@@ -630,46 +736,75 @@ function CellEditor({ field, value, onChange }: { field: FieldDef, value: any, o
   const cls = "h-6 w-full rounded border border-input bg-transparent px-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-ring";
 
   switch (field.type) {
-    case "string":
+    case "string": {
       return <input className={cls} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
-    case "number":
+    }
+    case "number": {
       return <input className={cls} type="number" value={value ?? 0} onChange={(e) => onChange(Number(e.target.value))} />;
-    case "boolean":
+    }
+    case "boolean": {
       return <input type="checkbox" className="h-4 w-4" checked={!!value} onChange={(e) => onChange(e.target.checked)} />;
-    case "date":
+    }
+    case "date": {
       return <input className={cls} type="datetime-local" value={toDateInputVal(value)} onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : new Date().toISOString())} />;
-    case "date?":
+    }
+    case "date?": {
       return (
         <div className="flex items-center gap-0.5">
           <input className={`${cls} flex-1`} type="datetime-local" value={toDateInputVal(value)} onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : null)} />
           {value && <button className="text-[9px] text-muted-foreground hover:text-destructive shrink-0" onClick={() => onChange(null)} title="Clear">×</button>}
         </div>
       );
-    case "enum":
+    }
+    case "enum": {
       return (
         <select className={cls} value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
           {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       );
-    case "json": {
-      const [editing, setEditing] = useState(false);
-      const [text, setText] = useState(() => JSON.stringify(value ?? {}, null, 2));
-      if (editing) {
-        return (
-          <div className="absolute z-30 top-0 left-0 right-0 bg-background border rounded shadow-lg p-1">
-            <textarea className="w-full h-32 text-[10px] font-mono border rounded p-1 resize-y bg-transparent" value={text} onChange={(e) => setText(e.target.value)} />
-            <div className="flex gap-1 mt-0.5">
-              <button className="text-[9px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground" onClick={() => { try { onChange(JSON.parse(text)); setEditing(false); } catch { /* invalid json */ } }}>Save</button>
-              <button className="text-[9px] px-1.5 py-0.5 rounded bg-muted" onClick={() => setEditing(false)}>Cancel</button>
-            </div>
-          </div>
-        );
-      }
-      const preview = JSON.stringify(value ?? {}).slice(0, 30);
-      return <button className="text-[10px] font-mono text-muted-foreground hover:text-foreground text-left truncate w-full" onClick={() => { setText(JSON.stringify(value ?? {}, null, 2)); setEditing(true); }}>{preview}{preview.length >= 30 ? "…" : ""}</button>;
     }
-    default: return null;
+    case "json": {
+      return <JsonCellEditor value={value} onChange={onChange} />;
+    }
+    default: {
+      return null;
+    }
   }
+}
+
+function JsonCellEditor({ value, onChange }: { value: any, onChange: (v: any) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(() => JSON.stringify(value ?? {}, null, 2));
+
+  if (editing) {
+    return (
+      <div className="absolute z-30 top-0 left-0 right-0 bg-background border rounded shadow-lg p-1">
+        <textarea className="w-full h-32 text-[10px] font-mono border rounded p-1 resize-y bg-transparent" value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="flex gap-1 mt-0.5">
+          <button className="text-[9px] px-1.5 py-0.5 rounded bg-primary text-primary-foreground" onClick={() => {
+            try {
+              onChange(JSON.parse(text));
+              setEditing(false);
+            } catch {
+              // invalid json
+            }
+          }}>Save</button>
+          <button className="text-[9px] px-1.5 py-0.5 rounded bg-muted" onClick={() => setEditing(false)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  const preview = JSON.stringify(value ?? {}).slice(0, 30);
+  return (
+    <button className="text-[10px] font-mono text-muted-foreground hover:text-foreground text-left truncate w-full" onClick={() => {
+      setText(JSON.stringify(value ?? {}, null, 2));
+      setEditing(true);
+    }}>
+      {preview}
+      {preview.length >= 30 ? "…" : ""}
+    </button>
+  );
 }
 
 function MockDbTableEditor({ dbJson, onChange, customerId }: { dbJson: string, onChange: (json: string) => void, customerId: string }) {
@@ -757,27 +892,48 @@ function MockDbTableEditor({ dbJson, onChange, customerId }: { dbJson: string, o
 
 export default function PageClient() {
   const adminApp = useAdminApp() as AdminAppWithInternals;
-  const [mode, setMode] = useState<"live" | "mock">("mock");
-  const [tenancyId, setTenancyId] = useState("");
-  const [customerType, setCustomerType] = useState<"user" | "team" | "custom">("custom");
-  const [customerId, setCustomerId] = useState("playground-customer");
-  const [startDate, setStartDate] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 16); });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 16));
-  const [mockConfigJson, setMockConfigJson] = useState("{}");
-  const [mockDbJson, setMockDbJson] = useState("{}");
+  const [mode, setMode] = useState<"live" | "mock">(() => {
+    const stored = readLocalStorage("mode");
+    return stored === "live" || stored === "mock" ? stored : "mock";
+  });
+  const [tenancyId, setTenancyId] = useState(() => readLocalStorage("tenancyId") ?? "");
+  const [customerType, setCustomerType] = useState<"user" | "team" | "custom">(() => {
+    const stored = readLocalStorage("customerType");
+    return stored === "user" || stored === "team" || stored === "custom" ? stored : "custom";
+  });
+  const [customerId, setCustomerId] = useState(() => readLocalStorage("customerId") ?? "playground-customer");
+  const [startDate, setStartDate] = useState(() => {
+    const stored = readLocalStorage("startDate");
+    if (stored) return stored;
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    return d.toISOString().slice(0, 16);
+  });
+  const [endDate, setEndDate] = useState(() => readLocalStorage("endDate") ?? new Date().toISOString().slice(0, 16));
+  const [mockConfigJson, setMockConfigJson] = useState(() => readLocalStorage("mockConfigJson") ?? "{}");
+  const [mockDbJson, setMockDbJson] = useState(() => readLocalStorage("mockDbJson") ?? "{}");
   const [result, setResult] = useState<PlaygroundResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => readLocalStorage("collapsed") === "1");
 
   if (adminApp.projectId !== "internal") return notFound();
 
   const handleShuffle = () => {
     const data = generateShuffledData();
-    setMockConfigJson(JSON.stringify(data.config, null, 2));
-    setMockDbJson(JSON.stringify(data.db, null, 2));
+    const configJson = JSON.stringify(data.config, null, 2);
+    const dbJson = JSON.stringify(data.db, null, 2);
+    const nextStartDate = new Date(data.startMillis).toISOString().slice(0, 16);
+    const nextEndDate = new Date(data.endMillis).toISOString().slice(0, 16);
+    setMockConfigJson(configJson);
+    writeLocalStorage("mockConfigJson", configJson);
+    setMockDbJson(dbJson);
+    writeLocalStorage("mockDbJson", dbJson);
     setCustomerId(data.customerId);
-    setStartDate(new Date(data.startMillis).toISOString().slice(0, 16));
-    setEndDate(new Date(data.endMillis).toISOString().slice(0, 16));
+    writeLocalStorage("customerId", data.customerId);
+    setStartDate(nextStartDate);
+    writeLocalStorage("startDate", nextStartDate);
+    setEndDate(nextEndDate);
+    writeLocalStorage("endDate", nextEndDate);
   };
 
   const handleLoad = async () => {
@@ -805,17 +961,45 @@ export default function PageClient() {
         <div className="border rounded p-3 bg-muted/5 space-y-2">
           <div className="flex items-center justify-between">
             <Typography className="text-xs font-medium">Data Source</Typography>
-            <button className="text-[10px] text-muted-foreground hover:text-foreground" onClick={() => setCollapsed(!collapsed)}>{collapsed ? "expand" : "collapse"}</button>
+            <button className="text-[10px] text-muted-foreground hover:text-foreground" onClick={() => {
+              const next = !collapsed;
+              setCollapsed(next);
+              writeLocalStorage("collapsed", next ? "1" : "0");
+            }}>{collapsed ? "expand" : "collapse"}</button>
           </div>
           {!collapsed && (<>
             <div className="flex gap-2 items-center flex-wrap">
-              <select value={mode} onChange={(e) => setMode(e.target.value as any)} className="h-8 rounded border border-input bg-transparent px-2 text-xs"><option value="mock">Mock</option><option value="live">Live</option></select>
-              <select value={customerType} onChange={(e) => setCustomerType(e.target.value as any)} className="h-8 rounded border border-input bg-transparent px-2 text-xs"><option value="custom">custom</option><option value="user">user</option><option value="team">team</option></select>
-              <input value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="Customer ID" className="h-8 w-40 rounded border border-input bg-transparent px-2 text-xs" />
-              {mode === "live" && <input value={tenancyId} onChange={(e) => setTenancyId(e.target.value)} placeholder="Tenancy ID" className="h-8 w-56 rounded border border-input bg-transparent px-2 text-xs" />}
-              <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-8 rounded border border-input bg-transparent px-1.5 text-xs" />
+              <select value={mode} onChange={(e) => {
+                const next = e.target.value as "mock" | "live";
+                setMode(next);
+                writeLocalStorage("mode", next);
+              }} className="h-8 rounded border border-input bg-transparent px-2 text-xs"><option value="mock">Mock</option><option value="live">Live</option></select>
+              <select value={customerType} onChange={(e) => {
+                const next = e.target.value as "custom" | "user" | "team";
+                setCustomerType(next);
+                writeLocalStorage("customerType", next);
+              }} className="h-8 rounded border border-input bg-transparent px-2 text-xs"><option value="custom">custom</option><option value="user">user</option><option value="team">team</option></select>
+              <input value={customerId} onChange={(e) => {
+                const next = e.target.value;
+                setCustomerId(next);
+                writeLocalStorage("customerId", next);
+              }} placeholder="Customer ID" className="h-8 w-40 rounded border border-input bg-transparent px-2 text-xs" />
+              {mode === "live" && <input value={tenancyId} onChange={(e) => {
+                const next = e.target.value;
+                setTenancyId(next);
+                writeLocalStorage("tenancyId", next);
+              }} placeholder="Tenancy ID" className="h-8 w-56 rounded border border-input bg-transparent px-2 text-xs" />}
+              <input type="datetime-local" value={startDate} onChange={(e) => {
+                const next = e.target.value;
+                setStartDate(next);
+                writeLocalStorage("startDate", next);
+              }} className="h-8 rounded border border-input bg-transparent px-1.5 text-xs" />
               <span className="text-xs text-muted-foreground">to</span>
-              <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-8 rounded border border-input bg-transparent px-1.5 text-xs" />
+              <input type="datetime-local" value={endDate} onChange={(e) => {
+                const next = e.target.value;
+                setEndDate(next);
+                writeLocalStorage("endDate", next);
+              }} className="h-8 rounded border border-input bg-transparent px-1.5 text-xs" />
               {mode === "mock" && <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleShuffle}>Shuffle</Button>}
               <Button size="sm" className="h-8 text-xs" onClick={handleLoad}>Load</Button>
             </div>
@@ -825,12 +1009,23 @@ export default function PageClient() {
                   <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground select-none">JSON Editors</summary>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <div><Typography className="text-[10px] text-muted-foreground mb-0.5">Config</Typography>
-                      <textarea value={mockConfigJson} onChange={(e) => setMockConfigJson(e.target.value)} className="w-full h-32 rounded border border-input bg-transparent px-2 py-1 text-[10px] font-mono resize-y" spellCheck={false} /></div>
+                      <textarea value={mockConfigJson} onChange={(e) => {
+                        const next = e.target.value;
+                        setMockConfigJson(next);
+                        writeLocalStorage("mockConfigJson", next);
+                      }} className="w-full h-32 rounded border border-input bg-transparent px-2 py-1 text-[10px] font-mono resize-y" spellCheck={false} /></div>
                     <div><Typography className="text-[10px] text-muted-foreground mb-0.5">DB</Typography>
-                      <textarea value={mockDbJson} onChange={(e) => setMockDbJson(e.target.value)} className="w-full h-32 rounded border border-input bg-transparent px-2 py-1 text-[10px] font-mono resize-y" spellCheck={false} /></div>
+                      <textarea value={mockDbJson} onChange={(e) => {
+                        const next = e.target.value;
+                        setMockDbJson(next);
+                        writeLocalStorage("mockDbJson", next);
+                      }} className="w-full h-32 rounded border border-input bg-transparent px-2 py-1 text-[10px] font-mono resize-y" spellCheck={false} /></div>
                   </div>
                 </details>
-                <MockDbTableEditor dbJson={mockDbJson} onChange={setMockDbJson} customerId={customerId} />
+                <MockDbTableEditor dbJson={mockDbJson} onChange={(next) => {
+                  setMockDbJson(next);
+                  writeLocalStorage("mockDbJson", next);
+                }} customerId={customerId} />
               </div>
             )}
           </>)}
