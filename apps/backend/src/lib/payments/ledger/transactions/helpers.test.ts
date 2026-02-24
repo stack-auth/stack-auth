@@ -262,11 +262,13 @@ describe('createItemQuantityChangeEntry', () => {
 
 describe('createItemQuantityExpireEntry', () => {
   it('creates entry with correct fields', () => {
-    const entry = createItemQuantityExpireEntry({ customerType: 'user', customerId: 'u1', itemId: 'credits', quantity: 50 });
+    const entry = createItemQuantityExpireEntry({ customerType: 'user', customerId: 'u1', itemId: 'credits', quantity: 50, adjustedTransactionId: 'tx-1', adjustedEntryIndex: 3 });
     expect(entry.type).toBe('item_quantity_expire');
     if (entry.type !== 'item_quantity_expire') throw new Error('unreachable');
     expect(entry.item_id).toBe('credits');
     expect(entry.quantity).toBe(50);
+    expect(entry.adjusted_transaction_id).toBe('tx-1');
+    expect(entry.adjusted_entry_index).toBe(3);
   });
 });
 

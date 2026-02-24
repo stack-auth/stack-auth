@@ -1,6 +1,6 @@
 import type { OneTimePurchase } from "@/generated/prisma/client";
 import { productToInlineProduct } from "@/lib/payments/index";
-import { Tenancy } from "@/lib/tenancies";
+import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
@@ -38,6 +38,19 @@ function buildOneTimePurchaseTransaction(purchase: OneTimePurchase): Transaction
     entries.push(moneyTransfer);
   }
 
+  const iqcStartIndex = entries.length + 1;
+  const iqcEntries = createItemQuantityChangeEntriesForProduct({
+    product: inlineProduct,
+    purchaseQuantity: quantity,
+    customerType,
+    customerId: purchase.customerId,
+  });
+  const itemQuantityChangeIndices: Record<string, number> = {};
+  for (let j = 0; j < iqcEntries.length; j++) {
+    const e = iqcEntries[j];
+    if (e.type === "item_quantity_change") itemQuantityChangeIndices[e.item_id] = iqcStartIndex + j;
+  }
+
   entries.push(createProductGrantEntry({
     customerType,
     customerId: purchase.customerId,
@@ -47,14 +60,10 @@ function buildOneTimePurchaseTransaction(purchase: OneTimePurchase): Transaction
     quantity,
     cycleAnchor: purchase.createdAt.getTime(),
     oneTimePurchaseId: purchase.id,
+    itemQuantityChangeIndices,
   }));
 
-  entries.push(...createItemQuantityChangeEntriesForProduct({
-    product: inlineProduct,
-    purchaseQuantity: quantity,
-    customerType,
-    customerId: purchase.customerId,
-  }));
+  entries.push(...iqcEntries);
 
   return {
     id: purchase.id,
@@ -67,9 +76,10 @@ function buildOneTimePurchaseTransaction(purchase: OneTimePurchase): Transaction
   };
 }
 
-export function getOneTimePurchaseTransactions(tenancy: Tenancy): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
+export function getOneTimePurchaseTransactions(prisma: PrismaClientTransaction, tenancyId: string): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
   return createSingleTableTransactionList({
-    tenancy,
+    prisma,
+    tenancyId: tenancyId,
     query: (prisma, tenancyId, filter, cursorWhere, limit) => prisma.oneTimePurchase.findMany({
       where: {
         tenancyId,

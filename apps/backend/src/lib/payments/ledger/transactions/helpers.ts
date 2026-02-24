@@ -1,7 +1,7 @@
-import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
+import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { SUPPORTED_CURRENCIES, type Currency } from "@stackframe/stack-shared/dist/utils/currency-constants";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
 
 export type TransactionFilter = {
@@ -136,6 +136,7 @@ export function createProductGrantEntry(options: {
   cycleAnchor: number,
   subscriptionId?: string,
   oneTimePurchaseId?: string,
+  itemQuantityChangeIndices?: Record<string, number>,
 }): TransactionEntry {
   return {
     type: "product_grant",
@@ -150,6 +151,7 @@ export function createProductGrantEntry(options: {
     cycle_anchor: options.cycleAnchor,
     subscription_id: options.subscriptionId,
     one_time_purchase_id: options.oneTimePurchaseId,
+    item_quantity_change_indices: options.itemQuantityChangeIndices,
   };
 }
 
@@ -230,11 +232,13 @@ export function createItemQuantityExpireEntry(options: {
   customerId: string,
   itemId: string,
   quantity: number,
+  adjustedTransactionId: string,
+  adjustedEntryIndex: number,
 }): TransactionEntry {
   return {
     type: "item_quantity_expire",
-    adjusted_transaction_id: null,
-    adjusted_entry_index: null,
+    adjusted_transaction_id: options.adjustedTransactionId,
+    adjusted_entry_index: options.adjustedEntryIndex,
     customer_type: options.customerType,
     customer_id: options.customerId,
     item_id: options.itemId,
@@ -274,6 +278,8 @@ export function createItemQuantityExpireEntriesForProduct(options: {
   purchaseQuantity: number,
   customerType: "user" | "team" | "custom",
   customerId: string,
+  adjustedTransactionId: string,
+  itemQuantityChangeIndices: Record<string, number>,
 }): TransactionEntry[] {
   const entries: TransactionEntry[] = [];
   for (const [itemId, item] of Object.entries(options.product.included_items)) {
@@ -285,6 +291,8 @@ export function createItemQuantityExpireEntriesForProduct(options: {
       customerId: options.customerId,
       itemId,
       quantity: qty,
+      adjustedTransactionId: options.adjustedTransactionId,
+      adjustedEntryIndex: options.itemQuantityChangeIndices[itemId] ?? throwErr(`item_quantity_change index not found for item ${itemId}`),
     }));
   }
   return entries;
@@ -363,7 +371,8 @@ export function createSingleTableTransactionList<Row extends { id: string, creat
   query: (prisma: PrismaClientTransaction, tenancyId: string, filter: TransactionFilter, cursorWhere: object | undefined, limit: number) => Promise<Row[]>,
   cursorLookup: (prisma: PrismaClientTransaction, tenancyId: string, cursorId: string) => Promise<{ createdAt: Date } | null>,
   toTransaction: (row: Row) => Transaction,
-  tenancy: Tenancy,
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
 }): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
   class SingleTableList extends PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
     override _getFirstCursor() { return ""; }
@@ -376,10 +385,10 @@ export function createSingleTableTransactionList<Row extends { id: string, creat
       _type: "next" | "prev",
       opts: { cursor: string, limit: number, limitPrecision: "approximate", filter: TransactionFilter, orderBy: TransactionOrderBy },
     ) {
-      const prisma = await getPrismaClientForTenancy(options.tenancy);
+      const prisma = options.prisma;
       let cursorWhere: object | undefined;
       if (opts.cursor) {
-        const pivot = await options.cursorLookup(prisma, options.tenancy.id, opts.cursor);
+        const pivot = await options.cursorLookup(prisma, options.tenancyId, opts.cursor);
         if (pivot) {
           cursorWhere = {
             OR: [
@@ -390,7 +399,7 @@ export function createSingleTableTransactionList<Row extends { id: string, creat
         }
       }
 
-      const rows = await options.query(prisma, options.tenancy.id, opts.filter, cursorWhere, opts.limit);
+      const rows = await options.query(prisma, options.tenancyId, opts.filter, cursorWhere, opts.limit);
       const items = rows.map((row) => {
         const tx = options.toTransaction(row);
         return { item: tx, prevCursor: row.id, nextCursor: row.id };

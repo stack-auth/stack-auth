@@ -1,5 +1,5 @@
 import type { Subscription, SubscriptionInvoice } from "@/generated/prisma/client";
-import { Tenancy } from "@/lib/tenancies";
+import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
@@ -41,9 +41,10 @@ function buildSubscriptionRenewalTransaction(subscription: Subscription, subscri
   };
 }
 
-export function getSubscriptionRenewalTransactions(tenancy: Tenancy): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
+export function getSubscriptionRenewalTransactions(prisma: PrismaClientTransaction, tenancyId: string): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
   return createSingleTableTransactionList<SubscriptionInvoice & { subscription: Subscription }>({
-    tenancy,
+    prisma,
+    tenancyId: tenancyId,
     query: (prisma, tenancyId, filter, cursorWhere, limit) => prisma.subscriptionInvoice.findMany({
       where: {
         tenancyId,

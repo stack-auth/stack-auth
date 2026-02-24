@@ -30,7 +30,7 @@ async function getTransactionsFromList(changes: any[]): Promise<Transaction[]> {
   };
 
   const { getManualItemQuantityChangeTransactions } = await import('./manual-item-quantity-change');
-  const list = getManualItemQuantityChangeTransactions({ id: 'tenancy-1', config: {} as any, branchId: 'main', organization: null, project: { id: 'p1' } } as any);
+  const list = getManualItemQuantityChangeTransactions(_mockPrisma, 'tenancy-1');
   const result = await list.next({ after: list.getFirstCursor(), limit: 100, filter: {}, orderBy: 'createdAt-desc', limitPrecision: 'exact' });
   return result.items.map((i) => i.item);
 }

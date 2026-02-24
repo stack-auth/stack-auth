@@ -71,6 +71,7 @@ const transactionEntryProductGrantSchema = yupObject({
   cycle_anchor: yupNumber().defined(),
   subscription_id: yupString().optional(),
   one_time_purchase_id: yupString().optional(),
+  item_quantity_change_indices: yupRecord(yupString(), yupNumber().integer().min(0)).optional(),
 }).test(
   "exclusive-reference",
   "subscription_id and one_time_purchase_id cannot both be set",
@@ -178,6 +179,7 @@ export const transactionSchema = yupObject({
   created_at_millis: yupNumber().defined(),
   effective_at_millis: yupNumber().defined(),
   type: yupString().oneOf(TRANSACTION_TYPES).nullable().defined(),
+  details: yupObject({}).noUnknown(false).optional(),
   entries: yupArray(transactionEntrySchema).defined(),
   adjusted_by: yupArray(
     yupObject({

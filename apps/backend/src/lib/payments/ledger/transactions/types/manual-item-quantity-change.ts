@@ -1,5 +1,5 @@
 import type { ItemQuantityChange } from "@/generated/prisma/client";
-import { Tenancy } from "@/lib/tenancies";
+import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
 import { typedToLowercase, typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -38,9 +38,10 @@ function buildItemQuantityChangeTransaction(options: {
   };
 }
 
-export function getManualItemQuantityChangeTransactions(tenancy: Tenancy): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
+export function getManualItemQuantityChangeTransactions(prisma: PrismaClientTransaction, tenancyId: string): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
   return createSingleTableTransactionList({
-    tenancy,
+    prisma,
+    tenancyId: tenancyId,
     query: (prisma, tenancyId, filter, cursorWhere, limit) => prisma.itemQuantityChange.findMany({
       where: { tenancyId, ...(cursorWhere ?? {}), ...(filter.customerType ? { customerType: typedToUppercase(filter.customerType) } : {}), ...(filter.customerId ? { customerId: filter.customerId } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],

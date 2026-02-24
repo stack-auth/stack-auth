@@ -1,4 +1,4 @@
-import { Tenancy } from "@/lib/tenancies";
+import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
 import type { TransactionFilter, TransactionOrderBy } from "./helpers";
@@ -22,21 +22,21 @@ type FullTransactionFilter = TransactionFilter & {
   type?: Transaction["type"],
 };
 
-export function getTransactionsPaginatedList(tenancy: Tenancy): PaginatedList<Transaction, string, FullTransactionFilter, TransactionOrderBy> {
+export function getTransactionsPaginatedList(prisma: PrismaClientTransaction, tenancyId: string): PaginatedList<Transaction, string, FullTransactionFilter, TransactionOrderBy> {
   return PaginatedList.merge(
-    getSubscriptionStartTransactions(tenancy),
-    getOneTimePurchaseTransactions(tenancy),
-    getSubscriptionRenewalTransactions(tenancy),
-    getSubscriptionEndTransactions(tenancy),
-    getSubscriptionCancelTransactions(tenancy),
-    getSubscriptionReactivationTransactions(tenancy),
-    getPurchaseRefundTransactions(tenancy),
-    getManualItemQuantityChangeTransactions(tenancy),
-    getItemGrantRenewalTransactions(tenancy),
-    getDefaultProductsChangeTransactions(tenancy),
-    getChargebackTransactions(tenancy),
-    getProductVersionChangeTransactions(tenancy),
-    getSubscriptionChangeTransactions(tenancy),
+    getSubscriptionStartTransactions(prisma, tenancyId),
+    getOneTimePurchaseTransactions(prisma, tenancyId),
+    getSubscriptionRenewalTransactions(prisma, tenancyId),
+    getSubscriptionEndTransactions(prisma, tenancyId),
+    getSubscriptionCancelTransactions(prisma, tenancyId),
+    getSubscriptionReactivationTransactions(prisma, tenancyId),
+    getPurchaseRefundTransactions(prisma, tenancyId),
+    getManualItemQuantityChangeTransactions(prisma, tenancyId),
+    getItemGrantRenewalTransactions(prisma, tenancyId),
+    getDefaultProductsChangeTransactions(prisma, tenancyId),
+    getChargebackTransactions(prisma, tenancyId),
+    getProductVersionChangeTransactions(prisma, tenancyId),
+    getSubscriptionChangeTransactions(prisma, tenancyId),
   ).addFilter({
     filter: (item, f) => !f.type || item.type === f.type,
     estimateItemsToFetch: ({ limit }) => limit * 2,

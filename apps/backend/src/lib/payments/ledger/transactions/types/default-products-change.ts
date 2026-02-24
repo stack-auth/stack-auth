@@ -1,5 +1,4 @@
-import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { PaginatedList } from "@stackframe/stack-shared/dist/utils/paginated-lists";
 import {
@@ -31,7 +30,7 @@ function buildDefaultProductsChangeTransaction(row: { id: string, snapshot: unkn
  * Returns default-products-change transactions from the DefaultProductsSnapshot table.
  * These transactions are global (not per-customer) so the customerId filter is ignored.
  */
-export function getDefaultProductsChangeTransactions(tenancy: Tenancy): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
+export function getDefaultProductsChangeTransactions(prisma: PrismaClientTransaction, tenancyId: string): PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
   class DefaultProductsChangeList extends PaginatedList<Transaction, string, TransactionFilter, TransactionOrderBy> {
     override _getFirstCursor() { return ""; }
     override _getLastCursor() { return ""; }
@@ -43,12 +42,10 @@ export function getDefaultProductsChangeTransactions(tenancy: Tenancy): Paginate
       _type: "next" | "prev",
       opts: { cursor: string, limit: number, limitPrecision: "approximate", filter: TransactionFilter, orderBy: TransactionOrderBy },
     ) {
-      const prisma = await getPrismaClientForTenancy(tenancy);
-
       let cursorWhere: object | undefined;
       if (opts.cursor) {
         const pivot = await prisma.defaultProductsSnapshot.findUnique({
-          where: { tenancyId_id: { tenancyId: tenancy.id, id: opts.cursor } },
+          where: { tenancyId_id: { tenancyId, id: opts.cursor } },
           select: { createdAt: true },
         });
         if (pivot) {
@@ -63,7 +60,7 @@ export function getDefaultProductsChangeTransactions(tenancy: Tenancy): Paginate
 
       const rows = await prisma.defaultProductsSnapshot.findMany({
         where: {
-          tenancyId: tenancy.id,
+          tenancyId,
           ...(cursorWhere ?? {}),
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],

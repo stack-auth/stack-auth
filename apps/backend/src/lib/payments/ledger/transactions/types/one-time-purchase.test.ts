@@ -7,20 +7,6 @@ vi.mock('@/prisma-client', () => ({
   getPrismaClientForTenancy: async () => _mockPrisma,
 }));
 
-vi.mock('@/lib/payments/index', () => ({
-  productToInlineProduct: (product: any) => ({
-    display_name: product.displayName ?? 'Product',
-    customer_type: product.customerType,
-    server_only: product.serverOnly ?? false,
-    stackable: product.stackable ?? false,
-    prices: product.prices === 'include-by-default' ? {} : (product.prices ?? {}),
-    included_items: product.includedItems ?? {},
-    client_metadata: null,
-    client_read_only_metadata: null,
-    server_metadata: null,
-  }),
-}));
-
 async function getTransactionsFromList(purchases: any[]): Promise<Transaction[]> {
   _mockPrisma = {
     oneTimePurchase: {
@@ -30,7 +16,7 @@ async function getTransactionsFromList(purchases: any[]): Promise<Transaction[]>
   };
 
   const { getOneTimePurchaseTransactions } = await import('./one-time-purchase');
-  const list = getOneTimePurchaseTransactions({ id: 'tenancy-1', config: {} as any, branchId: 'main', organization: null, project: { id: 'p1' } } as any);
+  const list = getOneTimePurchaseTransactions(_mockPrisma, 'tenancy-1');
   const result = await list.next({ after: list.getFirstCursor(), limit: 100, filter: {}, orderBy: 'createdAt-desc', limitPrecision: 'exact' });
   return result.items.map((i) => i.item);
 }

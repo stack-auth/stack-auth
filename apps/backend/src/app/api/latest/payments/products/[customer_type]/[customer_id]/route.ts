@@ -83,7 +83,7 @@ export const GET = createSmartRouteHandler({
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((product) => {
-        const productLineId = product.product.productLineId;
+        const productLineId = product.product.product_line_id;
         const switchOptions =
           product.type === "subscription" && product.id && productLineId
             ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== product.id)

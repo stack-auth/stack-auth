@@ -8,21 +8,6 @@ vi.mock('@/prisma-client', () => ({
   getPrismaClientForTenancy: async () => _currentMockPrisma,
 }));
 
-vi.mock('@/lib/payments/index', () => ({
-  productToInlineProduct: (product: any) => ({
-    display_name: product.displayName ?? 'Product',
-    customer_type: product.customerType ?? 'custom',
-    server_only: product.serverOnly ?? false,
-    stackable: product.stackable ?? false,
-    prices: product.prices === 'include-by-default' ? {} : (product.prices ?? {}),
-    included_items: product.includedItems ?? {},
-    productLineId: product.productLineId,
-    client_metadata: null,
-    client_read_only_metadata: null,
-    server_metadata: null,
-  }),
-}));
-
 function sortDesc(arr: any[]) {
   return [...arr].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }

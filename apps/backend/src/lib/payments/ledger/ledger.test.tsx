@@ -1,25 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Tenancy } from '../../tenancies';
-import { getItemQuantityForCustomer, getOwnedProductsForCustomer } from './index';
+import { productToInlineProduct } from '@/lib/payments/index';
+import { getAllTransactionsForCustomer, getItemQuantityForCustomer, getOwnedProductsForCustomer } from './index';
 
 let _currentMockPrisma: any = null;
 vi.mock('@/prisma-client', () => ({
   getPrismaClientForTenancy: async () => _currentMockPrisma,
-}));
-
-vi.mock('@/lib/payments/index', () => ({
-  productToInlineProduct: (product: any) => ({
-    display_name: product.displayName ?? 'Product',
-    customer_type: product.customerType ?? 'custom',
-    server_only: product.serverOnly ?? false,
-    stackable: product.stackable ?? false,
-    prices: product.prices === 'include-by-default' ? {} : (product.prices ?? {}),
-    included_items: product.includedItems ?? {},
-    productLineId: product.productLineId,
-    client_metadata: null,
-    client_read_only_metadata: null,
-    server_metadata: null,
-  }),
 }));
 
 function createMockTenancy(config: Partial<Tenancy['config']['payments']> = {}, id: string = 'tenancy-1'): Tenancy {
@@ -674,27 +660,15 @@ describe('getOwnedProductsForCustomer - include-by-default', () => {
 
   const freeProduct = {
     displayName: 'Free Plan',
-    customerType: 'custom',
+    customerType: 'custom' as const,
     productLineId: 'plans',
     includedItems: { seats: { quantity: 1 } },
-    prices: 'include-by-default',
+    prices: 'include-by-default' as const,
     isAddOnTo: false,
+    serverOnly: false,
+    stackable: false,
   };
-
-  const freeProductSnapshot = {
-    'free-plan': {
-      display_name: 'Free Plan',
-      customer_type: 'custom',
-      productLineId: 'plans',
-      included_items: { seats: { quantity: 1 } },
-      prices: {},
-      server_only: false,
-      stackable: false,
-      client_metadata: null,
-      client_read_only_metadata: null,
-      server_metadata: null,
-    },
-  };
+  const freeProductSnapshot = { 'free-plan': productToInlineProduct(freeProduct as any) };
 
   it('adds include-by-default product when no other product in line is owned', async () => {
     vi.setSystemTime(new Date('2025-02-10'));
@@ -830,20 +804,17 @@ describe('getOwnedProductsForCustomer - include-by-default', () => {
 describe('getItemQuantityForCustomer - include-by-default items', () => {
   beforeEach(() => { vi.useFakeTimers(); });
 
-  const freeProductSnapshot = {
-    'free-plan': {
-      display_name: 'Free Plan',
-      customer_type: 'custom',
-      productLineId: 'plans',
-      included_items: { seats: { quantity: 1 } },
-      prices: {},
-      server_only: false,
-      stackable: false,
-      client_metadata: null,
-      client_read_only_metadata: null,
-      server_metadata: null,
-    },
+  const freeProductForItems = {
+    displayName: 'Free Plan',
+    customerType: 'custom' as const,
+    productLineId: 'plans',
+    includedItems: { seats: { quantity: 1 } },
+    prices: 'include-by-default' as const,
+    isAddOnTo: false,
+    serverOnly: false,
+    stackable: false,
   };
+  const freeProductSnapshot = { 'free-plan': productToInlineProduct(freeProductForItems as any) };
 
   it('grants items from default product when no subscription active', async () => {
     vi.setSystemTime(new Date('2025-02-10'));
@@ -891,8 +862,8 @@ describe('getItemQuantityForCustomer - include-by-default items', () => {
     const qty = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
-    // Only the paid plan's 4 seats, no default 1 seat
-    expect(qty).toBe(4);
+    // Paid plan's 4 seats + default's 1 for gap before subscription started
+    expect(qty).toBe(5);
     vi.useRealTimers();
   });
 
@@ -925,27 +896,24 @@ describe('getItemQuantityForCustomer - include-by-default items', () => {
     const qty = await getItemQuantityForCustomer({
       prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
     });
-    // Paid plan: +4 from sub start, -4 from sub end. Default: +1 during gap after end.
-    // Net: 0 + 1 = 1
-    expect(qty).toBe(1);
+    // Paid plan: +4 from sub start, -4 from sub end. Default: +1 for gap before sub, +1 for gap after end.
+    // Net: 0 + 1 + 1 = 2
+    expect(qty).toBe(2);
     vi.useRealTimers();
   });
 
   it('ungrouped default product provides items when not conflicting', async () => {
     vi.setSystemTime(new Date('2025-02-10'));
-    const ungroupedSnapshot = {
-      'bonus': {
-        display_name: 'Bonus',
-        customer_type: 'custom',
-        included_items: { tokens: { quantity: 5 } },
-        prices: {},
-        server_only: false,
-        stackable: false,
-        client_metadata: null,
-        client_read_only_metadata: null,
-        server_metadata: null,
-      },
+    const bonusProduct = {
+      displayName: 'Bonus',
+      customerType: 'custom' as const,
+      includedItems: { tokens: { quantity: 5 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+      serverOnly: false,
+      stackable: false,
     };
+    const ungroupedSnapshot = { 'bonus': productToInlineProduct(bonusProduct as any) };
     setupMockPrisma({
       defaultProductsSnapshots: [{
         id: 'snap-1', tenancyId: 'tenancy-1', snapshot: ungroupedSnapshot, createdAt: new Date('2025-01-01'),
@@ -977,6 +945,387 @@ describe('getItemQuantityForCustomer - include-by-default items', () => {
       prisma: _currentMockPrisma, tenancy, itemId: 'nonexistent', customerId: 'custom-1', customerType: 'custom',
     });
     expect(qty).toBe(0);
+    vi.useRealTimers();
+  });
+});
+
+describe('item-grant-renewal: default product repeating items', () => {
+  const defaultProductWithRepeat = {
+    displayName: 'Free Plan',
+    customerType: 'custom',
+    productLineId: 'plans',
+    includedItems: {
+      seats: { quantity: 3, repeat: [1, 'day'] as const },
+    },
+    prices: 'include-by-default' as const,
+    isAddOnTo: false,
+    serverOnly: false,
+    stackable: false,
+  };
+
+  it('generates repeating item grants for default product with repeat interval', async () => {
+    vi.setSystemTime(new Date('2025-01-08T00:00:00Z'));
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: { 'free-plan': productToInlineProduct(defaultProductWithRepeat as any) },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free-plan': defaultProductWithRepeat as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // 7 days elapsed, so initial grant + 7 renewals = 8 * 3 = 24 seats
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(24);
+    vi.useRealTimers();
+  });
+
+  it('when-repeated items expire on each renewal for default products', async () => {
+    vi.setSystemTime(new Date('2025-01-08T00:00:00Z'));
+    const defaultWithExpire = {
+      ...defaultProductWithRepeat,
+      includedItems: {
+        seats: { quantity: 3, repeat: [1, 'day'] as const, expires: 'when-repeated' as const },
+      },
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: { 'free-plan': productToInlineProduct(defaultWithExpire as any) },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free-plan': defaultWithExpire as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // when-repeated: each renewal expires the previous grant, so only 3 seats active
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(3);
+    vi.useRealTimers();
+  });
+
+  it('stops default item grants when a paid product covers the product line', async () => {
+    vi.setSystemTime(new Date('2025-01-15T00:00:00Z'));
+    const paidProduct = {
+      displayName: 'Pro', customerType: 'custom', productLineId: 'plans',
+      includedItems: { seats: { quantity: 10 } },
+      prices: { monthly: { USD: '49' } },
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'pro', product: paidProduct,
+        createdAt: new Date('2025-01-05'), billingCycleAnchor: new Date('2025-01-05'),
+      })],
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: { 'free-plan': productToInlineProduct(defaultProductWithRepeat as any) },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free-plan': defaultProductWithRepeat as any, 'pro': paidProduct as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // Default items granted from Jan 1 to Jan 5 = initial + 3 renewals = 4 * 3 = 12
+    // Plus 10 from pro subscription
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(22);
+    vi.useRealTimers();
+  });
+
+  it('resumes default item grants after paid product is revoked', async () => {
+    vi.setSystemTime(new Date('2025-01-15T00:00:00Z'));
+    const paidProduct = {
+      displayName: 'Pro', customerType: 'custom', productLineId: 'plans',
+      includedItems: { seats: { quantity: 10 } },
+      prices: { monthly: { USD: '49' } },
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    const defaultWithExpire = {
+      ...defaultProductWithRepeat,
+      includedItems: {
+        seats: { quantity: 3, repeat: [1, 'day'] as const, expires: 'when-repeated' as const },
+      },
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'pro', product: paidProduct,
+        createdAt: new Date('2025-01-05'), billingCycleAnchor: new Date('2025-01-05'),
+        status: 'canceled', endedAt: new Date('2025-01-10'),
+        updatedAt: new Date('2025-01-10'),
+      })],
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: { 'free-plan': productToInlineProduct(defaultWithExpire as any) },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free-plan': defaultWithExpire as any, 'pro': paidProduct as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // Gap1: Jan 1–5 (4 days), when-repeated: initial+3 renewals, each expire cancels prev = net 3
+    // Gap2: Jan 10–now(Jan 15) (5 days), when-repeated: initial+5 renewals, net 3
+    // Pro subscription: 10 seats (non-repeating, non-expiring)
+    // Total: 3 (gap1 residual) + 10 (pro) + 3 (gap2 current) = 16
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(16);
+    vi.useRealTimers();
+  });
+});
+
+describe('item-grant-renewal: when-repeated expiry for non-default products', () => {
+  it('expires items on each repeat cycle for subscription with when-repeated', async () => {
+    vi.setSystemTime(new Date('2025-02-22T00:00:00Z'));
+    const product = {
+      displayName: 'Pro', customerType: 'custom', productLineId: 'plans',
+      includedItems: {
+        seats: { quantity: 5, repeat: [1, 'week'] as const, expires: 'when-repeated' as const },
+      },
+      prices: { monthly: { USD: '49' } },
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'pro', product,
+        createdAt: new Date('2025-02-01'), billingCycleAnchor: new Date('2025-02-01'),
+      })],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'pro': product as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // 3 weeks elapsed: initial 5, then 3 renewals each expiring prev = always 5
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(5);
+    vi.useRealTimers();
+  });
+
+  it('accumulates items with repeat but expires=never', async () => {
+    vi.setSystemTime(new Date('2025-02-22T00:00:00Z'));
+    const product = {
+      displayName: 'Pro', customerType: 'custom', productLineId: 'plans',
+      includedItems: {
+        credits: { quantity: 10, repeat: [1, 'week'] as const, expires: 'never' as const },
+      },
+      prices: { monthly: { USD: '49' } },
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'pro', product,
+        createdAt: new Date('2025-02-01'), billingCycleAnchor: new Date('2025-02-01'),
+      })],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'pro': product as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // 3 weeks: initial 10 + 3 renewals * 10 = 40
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'credits', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(qty).toBe(40);
+    vi.useRealTimers();
+  });
+});
+
+describe('item-grant-renewal: default products change transitions', () => {
+  it('expires items from old default and grants items from new default on snapshot change', async () => {
+    vi.setSystemTime(new Date('2025-01-15T00:00:00Z'));
+    const defaultA = {
+      displayName: 'Free A', customerType: 'custom', productLineId: 'plans',
+      includedItems: { seats: { quantity: 2 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    const defaultB = {
+      displayName: 'Free B', customerType: 'custom', productLineId: 'plans',
+      includedItems: { credits: { quantity: 5 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [
+        { id: 'snap-1', tenancyId: 'tenancy-1', snapshot: { 'free-a': productToInlineProduct(defaultA as any) }, createdAt: new Date('2025-01-01') },
+        { id: 'snap-2', tenancyId: 'tenancy-1', snapshot: { 'free-b': productToInlineProduct(defaultB as any) }, createdAt: new Date('2025-01-10') },
+      ],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free-b': defaultB as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // Seats were granted from snap-1 (Jan 1-10), then expired at snap-2 transition
+    const seats = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(seats).toBe(0);
+    // Credits granted from snap-2 (Jan 10 onwards)
+    const credits = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'credits', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(credits).toBe(5);
+    vi.useRealTimers();
+  });
+});
+
+describe('item-grant-renewal: combined items in single renewal transaction', () => {
+  it('includes both when-repeated and never-expiring items in same renewal', async () => {
+    vi.setSystemTime(new Date('2025-02-15T00:00:00Z'));
+    const product = {
+      displayName: 'Pro', customerType: 'custom', productLineId: 'plans',
+      includedItems: {
+        seats: { quantity: 2, repeat: [1, 'week'] as const, expires: 'when-repeated' as const },
+        credits: { quantity: 3, repeat: [1, 'week'] as const, expires: 'never' as const },
+      },
+      prices: { default: { USD: '73' } },
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'pro', product, quantity: 2,
+        createdAt: new Date('2025-02-01'), billingCycleAnchor: new Date('2025-02-01'),
+      })],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'pro': product as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // seats: qty=2*2=4, when-repeated: always 4 (expire+grant each week)
+    const seats = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(seats).toBe(4);
+    // credits: qty=3*2=6, never-expiring: initial 6 + 2 weeks * 6 = 18
+    const credits = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'credits', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(credits).toBe(18);
+    vi.useRealTimers();
+  });
+
+  it('igr-renewal transactions contain entries for all items with same repeat', async () => {
+    vi.setSystemTime(new Date('2025-02-09T00:00:00Z'));
+    const product = {
+      displayName: 'Pro', customerType: 'custom', productLineId: 'plans',
+      includedItems: {
+        seats: { quantity: 2, repeat: [1, 'week'] as const, expires: 'when-repeated' as const },
+        credits: { quantity: 3, repeat: [1, 'week'] as const, expires: 'never' as const },
+      },
+      prices: { default: { USD: '73' } },
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'pro', product,
+        createdAt: new Date('2025-02-01'), billingCycleAnchor: new Date('2025-02-01'),
+      })],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'pro': product as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const allTx = await getAllTransactionsForCustomer(_currentMockPrisma, tenancy, 'custom', 'custom-1');
+    const renewals = allTx.filter((tx) => tx.type === 'item-grant-renewal');
+    // 1 week elapsed: 1 renewal transaction
+    expect(renewals.length).toBe(1);
+    const renewal = renewals[0];
+    // Should have 3 entries: expire seats, grant seats, grant credits
+    expect(renewal.entries.length).toBe(3);
+    const entryTypes = renewal.entries.map((e) => `${e.type}:${(e as any).item_id}`);
+    expect(entryTypes).toContain('item_quantity_expire:seats');
+    expect(entryTypes).toContain('item_quantity_change:seats');
+    expect(entryTypes).toContain('item_quantity_change:credits');
+    vi.useRealTimers();
+  });
+});
+
+describe('item-grant-renewal: default product igr-renewal includes source details', () => {
+  it('default product renewal has source_transaction_id pointing to default-products-change tx', async () => {
+    vi.setSystemTime(new Date('2025-01-05T00:00:00Z'));
+    const defaultProd = {
+      displayName: 'Free', customerType: 'custom', productLineId: 'plans',
+      includedItems: { seats: { quantity: 1, repeat: [1, 'day'] as const } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-1', tenancyId: 'tenancy-1',
+        snapshot: { 'free': productToInlineProduct(defaultProd as any) },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free': defaultProd as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const allTx = await getAllTransactionsForCustomer(_currentMockPrisma, tenancy, 'custom', 'custom-1');
+    const renewals = allTx.filter((tx) => tx.type === 'item-grant-renewal');
+    expect(renewals.length).toBeGreaterThan(0);
+    for (const r of renewals) {
+      expect(r.details?.source_transaction_id).toBeDefined();
+      expect(r.details?.default_product_id).toBe('free');
+    }
+    vi.useRealTimers();
+  });
+});
+
+describe('ledger: default products snapshot transition handled by ledger function', () => {
+  it('reduces item quantity when default product snapshot removes an item', async () => {
+    vi.setSystemTime(new Date('2025-01-20T00:00:00Z'));
+    const defaultV1 = {
+      displayName: 'Free v1', customerType: 'custom', productLineId: 'plans',
+      includedItems: { seats: { quantity: 5 }, credits: { quantity: 3 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    const defaultV2 = {
+      displayName: 'Free v2', customerType: 'custom', productLineId: 'plans',
+      includedItems: { seats: { quantity: 2 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false, serverOnly: false, stackable: false,
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [
+        { id: 'snap-1', tenancyId: 'tenancy-1', snapshot: { 'free': productToInlineProduct(defaultV1 as any) }, createdAt: new Date('2025-01-01') },
+        { id: 'snap-2', tenancyId: 'tenancy-1', snapshot: { 'free': productToInlineProduct(defaultV2 as any) }, createdAt: new Date('2025-01-10') },
+      ],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free': defaultV2 as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    // Seats: v1 granted 5 at Jan 1, v2 granted 2 at Jan 10, ledger expires delta (5→2 = -3 at Jan 10)
+    // Net: 5 + 2 - 3 = 4... actually igr-renewal generates separate initial grants for each period
+    // Period 1 (Jan 1-10): grant 5
+    // Period 2 (Jan 10-now): grant 2
+    // Ledger transition: -3 at Jan 10 (5→2)
+    // Total seats: 5 + 2 - 3 = 4
+    const seats = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(seats).toBe(4);
+    // Credits: v1 granted 3 at Jan 1, v2 has none, ledger expires -3 at Jan 10
+    // Total credits: 3 - 3 = 0
+    const credits = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'credits', customerId: 'custom-1', customerType: 'custom',
+    });
+    expect(credits).toBe(0);
     vi.useRealTimers();
   });
 });

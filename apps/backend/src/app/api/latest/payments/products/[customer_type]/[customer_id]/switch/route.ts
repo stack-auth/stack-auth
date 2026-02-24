@@ -94,7 +94,7 @@ export const POST = createSmartRouteHandler({
       customerId: params.customer_id,
     });
     const hasOneTimeInProductLine = ownedProducts.some((p) =>
-      p.type === "one_time" && p.product.productLineId === fromProduct.productLineId
+      p.type === "one_time" && p.product.product_line_id === fromProduct.productLineId
     );
     if (hasOneTimeInProductLine) {
       throw new StatusError(400, "Customer already has a one-time purchase in this product line");

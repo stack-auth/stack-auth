@@ -179,8 +179,8 @@ export async function getPurchaseContext(options: {
   if (productLineId) {
     conflictingProducts = ownedProducts.filter((owned) => (
       owned.id &&
-      owned.product.productLineId === productLineId &&
-      owned.product.prices !== "include-by-default" &&
+      owned.product.product_line_id === productLineId &&
+      owned.type !== "include-by-default" &&
       (!options.product.isAddOnTo || !addOnProductIds.includes(owned.id))
     ));
   }
@@ -345,6 +345,7 @@ export function productToInlineProduct(product: ProductWithMetadata): yup.InferT
   return {
     display_name: product.displayName ?? "Product",
     customer_type: product.customerType,
+    product_line_id: product.productLineId,
     stackable: product.stackable === true,
     server_only: product.serverOnly === true,
     included_items: product.includedItems,
@@ -552,7 +553,7 @@ export type OwnedProduct = {
   id: string | null,
   type: "one_time" | "subscription" | "include-by-default",
   quantity: number,
-  product: Product,
+  product: yup.InferType<typeof inlineProductSchema>,
   createdAt: Date,
   sourceId: string,
   subscription: null | {

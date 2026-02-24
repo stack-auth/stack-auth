@@ -16,7 +16,7 @@ async function getTransactionsFromList(subscriptions: any[]): Promise<Transactio
   };
 
   const { getSubscriptionCancelTransactions } = await import('./subscription-cancel');
-  const list = getSubscriptionCancelTransactions({ id: 'tenancy-1', config: {} as any, branchId: 'main', organization: null, project: { id: 'p1' } } as any);
+  const list = getSubscriptionCancelTransactions(_mockPrisma, 'tenancy-1');
   const result = await list.next({ after: list.getFirstCursor(), limit: 100, filter: {}, orderBy: 'createdAt-desc', limitPrecision: 'exact' });
   return result.items.map((i) => i.item);
 }
