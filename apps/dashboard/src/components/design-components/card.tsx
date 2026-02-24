@@ -62,7 +62,8 @@ type DesignCardBaseProps = {
   glassmorphic?: boolean,
   gradient?: DesignCardGradient,
   contentClassName?: string,
-} & Omit<React.ComponentProps<typeof Card>, "title">;
+  onClick?: () => void,
+} & Omit<React.ComponentProps<typeof Card>, "title" | "onClick">;
 
 type WithTitleProps = {
   title: React.ReactNode,
@@ -87,13 +88,17 @@ export function DesignCard({
   actions,
   glassmorphic: glassmorphicProp,
   gradient = "default",
+  onClick,
   children,
   className,
   contentClassName,
   ...props
 }: DesignCardProps) {
   const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
+  const isClickable = onClick != null;
+  const [actionHovered, setActionHovered] = React.useState(false);
   const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
+  const suppressHover = isClickable && actionHovered;
   const hasContent = React.Children.count(children) > 0;
 
   // Derive layout from which props were provided
@@ -107,24 +112,42 @@ export function DesignCard({
         className={cn(
           "group relative rounded-2xl overflow-hidden",
           glassmorphic && [
-            "bg-white/90 dark:bg-background/60 backdrop-blur-xl border-0 transition-all duration-150 hover:transition-none",
-            "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-            "shadow-sm hover:shadow-md",
+            "bg-white/90 dark:bg-background/60 backdrop-blur-xl border-0",
+            "ring-1 ring-black/[0.06] dark:ring-white/[0.06]",
+            "shadow-sm",
           ],
+          (glassmorphic || isClickable) && "transition-all duration-150 hover:transition-none",
+          (glassmorphic || isClickable) && !suppressHover && "hover:ring-black/[0.1] dark:hover:ring-white/[0.1] hover:shadow-md",
+          isClickable && !glassmorphic && [
+            "ring-1 ring-black/[0.06] dark:ring-white/[0.06] shadow-sm",
+          ],
+          isClickable && !suppressHover && "cursor-pointer",
+          suppressHover && "cursor-default",
           className
         )}
+        onClick={suppressHover ? undefined : onClick}
         {...props}
       >
         {glassmorphic && (
           <>
             <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl" />
-            <div
-              className={cn(
-                "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl",
-                hoverTintClass
-              )}
-            />
+            {isClickable && !suppressHover && (
+              <div
+                className={cn(
+                  "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl",
+                  hoverTintClass
+                )}
+              />
+            )}
           </>
+        )}
+        {isClickable && !glassmorphic && !suppressHover && (
+          <div
+            className={cn(
+              "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl",
+              hoverTintClass
+            )}
+          />
         )}
         <div className="relative">
           {variant === "header" && (
@@ -148,7 +171,11 @@ export function DesignCard({
                   )}
                 </div>
                 {actions && (
-                  <div className="flex-shrink-0">
+                  <div
+                    className="flex-shrink-0"
+                    onMouseEnter={isClickable ? () => setActionHovered(true) : undefined}
+                    onMouseLeave={isClickable ? () => setActionHovered(false) : undefined}
+                  >
                     {actions}
                   </div>
                 )}
@@ -168,7 +195,11 @@ export function DesignCard({
                 </span>
               </div>
               {actions && (
-                <div className="flex-shrink-0">
+                <div
+                  className="flex-shrink-0"
+                  onMouseEnter={isClickable ? () => setActionHovered(true) : undefined}
+                  onMouseLeave={isClickable ? () => setActionHovered(false) : undefined}
+                >
                   {actions}
                 </div>
               )}

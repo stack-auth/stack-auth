@@ -1,13 +1,58 @@
 "use client";
 
+import { DesignCard } from "@/components/design-components/card";
 import EmailPreview from "@/components/email-preview";
 import { useRouter } from "@/components/router";
-import { SettingCard } from "@/components/settings";
 import { Button, Typography } from "@/components/ui";
-import { ArrowRightIcon, CheckIcon } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+import { ArrowRightIcon, CheckIcon, PaintBrush } from "@phosphor-icons/react";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import React, { useMemo } from "react";
 import { useAdminApp } from "../use-admin-app";
+
+const PREVIEW_SCALE = 0.50;
+
+function ThemePreviewFrame({ children, className, active, style }: { children: React.ReactNode, className?: string, active?: boolean, style?: React.CSSProperties }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const applyIframeStyles = () => {
+      const iframe = el.querySelector("iframe");
+      if (iframe) {
+        iframe.setAttribute("scrolling", "no");
+        iframe.style.overflow = "hidden";
+      }
+    };
+    const observer = new MutationObserver(applyIframeStyles);
+    observer.observe(el, { childList: true, subtree: true });
+    applyIframeStyles();
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className={cn("relative shrink-0 rounded-xl border bg-background overflow-clip", className)} style={style}>
+      {/* Scale email content down so the full email is visible as a miniature */}
+      <div
+        className="origin-top-left"
+        style={{
+          transform: `scale(${PREVIEW_SCALE})`,
+          width: `${100 / PREVIEW_SCALE}%`,
+          height: `${100 / PREVIEW_SCALE}%`,
+        }}
+      >
+        {children}
+      </div>
+      {active && (
+        <div className="absolute top-3 left-3 z-10 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md">
+          <CheckIcon className="w-3.5 h-3.5 text-white" weight="bold" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ThemeSettings() {
   const router = useRouter();
@@ -17,64 +62,75 @@ export function ThemeSettings() {
   const activeThemeId = config.emails.selectedThemeId;
   const activeTheme = themes.find(t => t.id === activeThemeId) ?? throwErr(`Unknown theme ${activeThemeId}`, { activeThemeId });
 
-  // Find default themes by display name (more robust than hardcoding IDs)
-  const defaultLightTheme = themes.find(t => t.displayName === "Default Light");
-  const defaultDarkTheme = themes.find(t => t.displayName === "Default Dark");
-
-  // Determine the background theme:
-  // - If active is dark default, show light default behind
-  // - Otherwise, show dark default behind (if it exists)
-  const backgroundTheme = activeTheme.displayName === "Default Dark"
-    ? defaultLightTheme
-    : (defaultDarkTheme ?? themes.find(t => t.id !== activeThemeId));
+  // Pick up to two flanking themes for the carousel, preferring named defaults
+  const flankingThemes = useMemo(() => {
+    const others = themes.filter(t => t.id !== activeThemeId);
+    const byName = new Map(others.map(t => [t.displayName, t]));
+    const candidates = [
+      byName.get("Default Light"),
+      byName.get("Default Dark"),
+      byName.get("Default Colorful"),
+      ...others,
+    ].filter((t): t is typeof themes[number] => t != null);
+    const seen = new Set<string>();
+    const unique: typeof themes = [];
+    for (const t of candidates) {
+      if (!seen.has(t.id)) {
+        seen.add(t.id);
+        unique.push(t);
+      }
+      if (unique.length >= 2) break;
+    }
+    return unique;
+  }, [themes, activeThemeId]);
 
   return (
-    <SettingCard>
-      {/* Custom header with button aligned to title */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <Typography type="h3" className="font-semibold">Theme Settings</Typography>
-          <Typography variant="secondary" className="text-sm mt-1">
-            Create email themes - stylistic defaults that can be applied across multiple emails
-          </Typography>
-        </div>
-        <Button onClick={() => router.push("email-themes")} size="sm" variant="outline" className="gap-1.5 shrink-0">
-          <span>Manage Themes</span>
+    <DesignCard
+      title="Theme Settings"
+      icon={PaintBrush}
+      gradient="default"
+      onClick={() => router.push("email-themes")}
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 hover:bg-foreground/10 hover:transition-none transition-colors duration-150"
+          onClick={(e) => {
+            e.stopPropagation();
+            router.push("email-themes");
+          }}
+        >
+          Manage Themes
           <ArrowRightIcon className="h-3.5 w-3.5" />
         </Button>
-      </div>
-
-      {/* Stacked preview container - side by side with overlap like reference */}
-      <div className="relative h-[460px]">
-        {/* Background theme (right side, behind, peeks from top) */}
-        {backgroundTheme && (
-          <div
-            className="absolute right-0 top-0 w-[55%] h-[310px] rounded-xl overflow-hidden border border-border shadow-md"
-            style={{ zIndex: 1 }}
-          >
-            <EmailPreview themeId={backgroundTheme.id} templateTsxSource={previewTemplateSource} disableResizing />
-          </div>
+      }
+    >
+      <div className="relative h-[320px] my-2">
+        {/* Left flanking theme - tucked behind left side */}
+        {flankingThemes[0] && (
+          <ThemePreviewFrame className="absolute left-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[240px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+            <EmailPreview themeId={flankingThemes[0].id} templateTsxSource={previewTemplateSource} disableResizing />
+          </ThemePreviewFrame>
         )}
 
-        {/* Active theme (left side, front, prominent, positioned lower) */}
-        <div
-          className="absolute left-0 top-14 w-[55%] h-[340px] rounded-xl overflow-hidden border border-border shadow-xl bg-background"
-          style={{ zIndex: 2 }}
-        >
+        {/* Active theme - centered, prominent, overlapping sides */}
+        <ThemePreviewFrame className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-[45%] h-[290px] shadow-xl border-border" style={{ zIndex: 2 }} active>
           <EmailPreview themeId={activeTheme.id} templateTsxSource={previewTemplateSource} disableResizing />
-          {/* Active indicator - green circle with checkmark */}
-          <div className="absolute top-3 left-3 z-10 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md">
-            <CheckIcon className="w-3.5 h-3.5 text-white" weight="bold" />
-          </div>
-        </div>
+        </ThemePreviewFrame>
 
-        {/* Active theme label */}
-        <div className="absolute bottom-0 left-0">
-          <Typography variant="secondary" className="text-sm">
-            Active: <span className="font-medium text-foreground">{activeTheme.displayName}</span>
-          </Typography>
-        </div>
+        {/* Right flanking theme - tucked behind right side */}
+        {flankingThemes[1] && (
+          <ThemePreviewFrame className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[240px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+            <EmailPreview themeId={flankingThemes[1].id} templateTsxSource={previewTemplateSource} disableResizing />
+          </ThemePreviewFrame>
+        )}
       </div>
-    </SettingCard>
+
+      <div className="text-center pb-1">
+        <Typography variant="secondary" className="text-sm">
+          Active: <span className="font-medium text-foreground">{activeTheme.displayName}</span>
+        </Typography>
+      </div>
+    </DesignCard>
   );
 }
