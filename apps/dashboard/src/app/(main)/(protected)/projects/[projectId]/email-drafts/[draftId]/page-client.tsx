@@ -7,11 +7,11 @@ import { DesignDataTable } from "@/components/design-components/table";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouter, useRouterConfirm } from "@/components/router";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography } from "@/components/ui";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Tooltip, TooltipContent, TooltipTrigger, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
-import { Envelope } from "@phosphor-icons/react";
+import { Envelope, GearSix } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -63,8 +63,12 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
   const [stage, setStageInternal] = useState<DraftStage>(initialStage);
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(draft?.themeId);
+  const [editedVariables, setEditedVariables] = useState<Record<string, string>>(draft?.templateVariables ?? {});
+  const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
   const [viewport, setViewport] = useState<ViewportMode>('edit');
   const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
+
+  const hasTemplateVariables = Object.keys(editedVariables).length > 0;
 
   // Wrapper to update stage and URL together
   // Uses window.history.replaceState directly to avoid triggering the router's confirmation dialog
@@ -92,7 +96,11 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const handleSave = async () => {
     setSaveAlert(null);
     try {
-      await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
+      await stackAdminApp.updateEmailDraft(draftId, {
+        tsxSource: currentCode,
+        themeId: selectedThemeId,
+        ...(hasTemplateVariables ? { templateVariables: editedVariables } : {}),
+      });
       setSaveAlert({ variant: "success", title: "Draft saved" });
     } catch (error) {
       if (error instanceof KnownErrors.EmailRenderingError) {
@@ -109,8 +117,26 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
   const handleNext = async () => {
     setSaveAlert(null);
+
+    if (hasTemplateVariables) {
+      const emptyVars = Object.entries(editedVariables).filter(([, v]) => !v.trim());
+      if (emptyVars.length > 0) {
+        setSaveAlert({
+          variant: "destructive",
+          title: "Missing template variables",
+          description: `Please fill in: ${emptyVars.map(([k]) => k).join(", ")}`,
+        });
+        setVariablesDialogOpen(true);
+        return;
+      }
+    }
+
     try {
-      await stackAdminApp.updateEmailDraft(draftId, { tsxSource: currentCode, themeId: selectedThemeId });
+      await stackAdminApp.updateEmailDraft(draftId, {
+        tsxSource: currentCode,
+        themeId: selectedThemeId,
+        ...(hasTemplateVariables ? { templateVariables: editedVariables } : {}),
+      });
       setNeedConfirm(false);
       setStage("recipients");
     } catch (error) {
@@ -130,11 +156,13 @@ export default function PageClient({ draftId }: { draftId: string }) {
     if (draft) {
       setCurrentCode(draft.tsxSource);
       setSelectedThemeId(draft.themeId);
+      setEditedVariables(draft.templateVariables);
     }
   };
 
   const previewActions = null;
-  const isDirty = draft ? (currentCode !== draft.tsxSource || selectedThemeId !== draft.themeId) : false;
+  const variablesDirty = hasTemplateVariables && draft ? JSON.stringify(editedVariables) !== JSON.stringify(draft.templateVariables) : false;
+  const isDirty = draft ? (currentCode !== draft.tsxSource || selectedThemeId !== draft.themeId || variablesDirty) : false;
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
@@ -185,6 +213,22 @@ export default function PageClient({ draftId }: { draftId: string }) {
                 previewActions={previewActions}
                 editorTitle="Draft Source Code"
                 editModeEnabled
+                codeToggleBarExtra={hasTemplateVariables ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setVariablesDialogOpen(true)}
+                        className="h-full px-3 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60 dark:hover:bg-foreground/[0.06] transition-colors duration-150 hover:transition-none border-l border-border/30 dark:border-foreground/[0.06]"
+                      >
+                        <GearSix size={14} weight={variablesDirty ? "fill" : "regular"} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      {variablesDirty ? "Template Variables (unsaved)" : "Template Variables"}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : null}
                 wysiwygDebugInfo={wysiwygDebugInfo}
                 headerAction={
                   <EmailThemeSelector
@@ -241,6 +285,35 @@ export default function PageClient({ draftId }: { draftId: string }) {
         ) : (
           <SentStage draftId={draftId} />
         )}
+
+        {/* Template Variables Dialog */}
+        <Dialog open={variablesDialogOpen} onOpenChange={setVariablesDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Template Variables</DialogTitle>
+            </DialogHeader>
+            <Typography variant="secondary" className="text-sm">
+              Values passed to the base template when sending this draft.
+            </Typography>
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {Object.entries(editedVariables).map(([name, value]) => (
+                <div key={name} className="space-y-1.5">
+                  <Label htmlFor={`var-${name}`} className="text-sm font-medium">{name}</Label>
+                  <Input
+                    id={`var-${name}`}
+                    value={value}
+                    onChange={(e) => setEditedVariables(prev => ({ ...prev, [name]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+            {variablesDirty && (
+              <Typography variant="secondary" className="text-xs text-orange-500">
+                Unsaved changes — save or click Next to persist.
+              </Typography>
+            )}
+          </DialogContent>
+        </Dialog>
       </DraftFlowProvider>
     </AppEnabledGuard>
   );
