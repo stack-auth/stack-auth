@@ -1,21 +1,12 @@
 'use client';
 
 import { useChat, type UIMessage } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { DefaultChatTransport, type DynamicToolUIPart } from 'ai';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
-
-type ToolInvocationPart = {
-  type: `tool-${string}`,
-  toolCallId: string,
-  state: "input-streaming" | "input-available" | "output-available" | "output-error" | "approval-requested" | "approval-responded" | "output-denied",
-  input: unknown,
-  output?: unknown,
-  errorText?: string,
-};
 
 function getMessageContent(message: UIMessage): string {
   return message.parts
@@ -24,10 +15,10 @@ function getMessageContent(message: UIMessage): string {
     .join("");
 }
 
-function getToolInvocations(message: UIMessage): ToolInvocationPart[] {
-  return message.parts
-    .filter((part) => part.type.startsWith("tool-") || part.type === "dynamic-tool")
-    .map((part) => part as unknown as ToolInvocationPart);
+function getToolInvocations(message: UIMessage): DynamicToolUIPart[] {
+  return message.parts.filter(
+    (part): part is DynamicToolUIPart => part.type === "dynamic-tool"
+  );
 }
 
 // Stack Auth Icon Component (just the icon, not full logo)
@@ -377,17 +368,6 @@ export function AIChatDrawer() {
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
-  // Debug: log messages, status, and errors
-  useEffect(() => {
-    console.log('[docs-chat] status:', status);
-    console.log('[docs-chat] error:', error);
-    console.log('[docs-chat] messages:', JSON.stringify(messages.map(m => ({
-      id: m.id,
-      role: m.role,
-      parts: m.parts.map(p => ({ type: p.type, ...(p.type === 'text' ? { text: (p as { text: string }).text.slice(0, 100) } : {}) })),
-    })), null, 2));
-  }, [messages, status, error]);
-
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -626,7 +606,7 @@ export function AIChatDrawer() {
                         <ToolCallDisplay
                           key={index}
                           toolCall={{
-                            toolName: part.type === "dynamic-tool" ? (part as unknown as { toolName: string }).toolName : part.type.replace(/^tool-/, ""),
+                            toolName: part.toolName,
                             args: part.input as { id?: string, search_query?: string },
                             result: part.output as { content?: { text: string }[], text?: string } | undefined,
                           }}

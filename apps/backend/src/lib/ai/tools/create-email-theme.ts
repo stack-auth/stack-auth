@@ -14,55 +14,30 @@ export function createEmailThemeTool(auth: SmartRequestAuth | null) {
   return tool({
     description: `
 Create a new email theme.
-
-The email theme is a React component that wraps all emails with a consistent layout.
-
-EXACT PROP SIGNATURE (do not change or add props):
-\`\`\`tsx
-type EmailThemeProps = {
-  children: React.ReactNode,    // required — the email body
-  unsubscribeLink?: string,     // optional URL string — use as href={unsubscribeLink}, NOT as a function call
-}
-\`\`\`
-
-Other requirements:
-- Must include \`<Html>\`, \`<Head>\`, and a \`<Tailwind>\` wrapper (the theme owns the full document)
-- Import ONLY from \`@react-email/components\` — no other packages
-- Use standard Tailwind utility classes in \`className\` props — do NOT pass a \`config\` prop to \`<Tailwind>\`
-- EVERY component used in JSX must be explicitly imported
-- JavaScript object literals use COMMAS between properties, never semicolons
-
-The user's current email theme can be found in the conversation messages.
+The email theme is a React component that is used to render the email theme.
+It must use react-email components.
+It must be exported as a function with name "EmailTheme".
+It must take one prop, children, which is a React node.
+It must not import from any package besides "@react-email/components".
+It uses tailwind classes inside of the <Tailwind> tag.
 
 Here is an example of a valid email theme:
 \`\`\`tsx
-import { Body, Container, Head, Hr, Html, Link, Section, Text, Tailwind } from '@react-email/components'
+import { Container, Head, Html, Tailwind } from '@react-email/components'
 
-export function EmailTheme({ children, unsubscribeLink }: { children: React.ReactNode, unsubscribeLink?: string }) {
+export function EmailTheme({ children }: { children: React.ReactNode }) {
   return (
     <Html>
       <Head />
       <Tailwind>
-        <Body className="bg-gray-50 font-sans">
-          <Container className="mx-auto max-w-[600px] py-8 px-4">
-            <Section className="bg-white rounded-lg shadow-sm p-8">
-              {children}
-            </Section>
-            <Section className="mt-6 text-center">
-              <Hr className="border-gray-200 mb-4" />
-              {unsubscribeLink && (
-                <Text className="text-xs text-gray-400">
-                  <Link href={unsubscribeLink} className="text-gray-400 underline">Unsubscribe</Link>
-                </Text>
-              )}
-            </Section>
-          </Container>
-        </Body>
+        <Container>{children}</Container>
       </Tailwind>
     </Html>
   )
 }
 \`\`\`
+
+The user's current email theme can be found in the conversation messages.
 `,
     inputSchema: z.object({
       content: z.string().describe("The content of the email theme"),

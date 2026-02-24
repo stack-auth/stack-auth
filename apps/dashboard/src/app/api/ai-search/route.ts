@@ -18,7 +18,6 @@ export async function POST(req: Request) {
   const user = await stackServerApp.getUser({ or: "redirect" });
   const accessToken = await user.getAccessToken();
 
-  // Check if the user has admin access to the requested project
   let hasProjectAccess = false;
   if (projectId) {
     const projects = await user.listOwnedProjects();
@@ -29,7 +28,6 @@ export async function POST(req: Request) {
   // so the backend can scope Clickhouse queries to the right project via auth context
   const tools = hasProjectAccess ? ["docs", "sql-query"] : ["docs"];
 
-  // Convert UIMessage[] (sent by useChat) to ModelMessage[] (expected by the backend)
   const modelMessages = await convertToModelMessages(messages);
 
   const backendBaseUrl =
@@ -37,37 +35,48 @@ export async function POST(req: Request) {
     getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ??
     throwErr("Backend API URL is not configured (NEXT_PUBLIC_STACK_API_URL)");
 
-  const requestHeaders: Record<string, string> = {
-    "content-type": "application/json",
+  const useAdminAuth = projectId != null && hasProjectAccess && accessToken != null;
+
+  const makeRequest = async (withAuth: boolean) => {
+    const requestHeaders: Record<string, string> = {
+      "content-type": "application/json",
+    };
+
+    if (withAuth && projectId != null && accessToken != null) {
+      requestHeaders["x-stack-access-type"] = "admin";
+      requestHeaders["x-stack-project-id"] = projectId;
+      requestHeaders["x-stack-admin-access-token"] = accessToken;
+    }
+
+    return await fetch(
+      `${backendBaseUrl}/api/latest/ai/query/stream`,
+      {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          quality: "smart",
+          speed: "fast",
+          tools: withAuth ? tools : ["docs"],
+          systemPrompt: "command-center-ask-ai",
+          messages: modelMessages,
+        }),
+      }
+    );
   };
 
-  // Pass project admin auth so the backend's sql-query tool can scope queries to this project.
-  // The dashboard user's access token acts as the admin access token for their owned projects
-  // (same mechanism used by StackAdminApp.projectOwnerSession internally).
-  if (projectId && hasProjectAccess && accessToken) {
-    requestHeaders["x-stack-access-type"] = "admin";
-    requestHeaders["x-stack-project-id"] = projectId;
-    requestHeaders["x-stack-admin-access-token"] = accessToken;
+  let backendResponse = await makeRequest(useAdminAuth);
+  if (!backendResponse.ok && useAdminAuth) {
+    backendResponse = await makeRequest(false);
   }
 
-  const backendResponse = await fetch(
-    `${backendBaseUrl}/api/latest/ai/query/stream`,
-    {
-      method: "POST",
-      headers: requestHeaders,
-      body: JSON.stringify({
-        quality: "smart",
-        speed: "fast",
-        tools,
-        systemPrompt: "command-center-ask-ai",
-        messages: modelMessages,
-      }),
-    }
-  );
+  if (!backendResponse.ok) {
+    const error = await backendResponse.json().catch(() => ({ error: "Unknown error" }));
+    return new Response(JSON.stringify(error), {
+      status: backendResponse.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
-  // Stream the response directly back to the client.
-  // Only forward safe headers — avoid leaking internal Next.js routing headers
-  // (x-middleware-rewrite etc.) which would cause a NextResponse.rewrite() error.
   return new Response(backendResponse.body, {
     status: backendResponse.status,
     headers: {

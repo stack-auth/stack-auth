@@ -17,17 +17,13 @@ export const POST = createSmartRouteHandler({
   },
   request: yupObject({
     params: yupObject({
-      mode: yupString().defined(),
+      mode: yupString().oneOf(["stream", "generate"]).defined(),
     }),
     body: requestBodySchema,
   }),
   response: yupMixed<SmartResponse>().defined(),
   async handler({ params, body }, fullReq) {
     const { mode } = params;
-
-    if (mode !== "stream" && mode !== "generate") {
-      throw new StatusError(StatusError.BadRequest, `Invalid mode: ${mode}. Must be "stream" or "generate".`);
-    }
 
     if (!validateToolNames(body.tools)) {
       throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
@@ -43,22 +39,26 @@ export const POST = createSmartRouteHandler({
     }
 
     if (apiKey === "FORWARD_TO_PRODUCTION") {
+      const prodResponse = await forwardToProduction(fullReq.headers, mode, body);
       return {
-        statusCode: 200,
+        statusCode: prodResponse.status,
         bodyType: "response" as const,
-        body: await forwardToProduction(fullReq.headers, mode, body),
+        body: prodResponse,
       };
     }
 
     const isAuthenticated = fullReq.auth != null;
+    const quality = body.quality as ModelQuality;
+    const speed = body.speed as ModelSpeed;
+    const systemPromptId = body.systemPrompt as SystemPromptId;
+    const toolNames = body.tools as ToolName[];
 
-    const model = selectModel(body.quality as ModelQuality, body.speed as ModelSpeed, isAuthenticated);
-    const systemPrompt = getFullSystemPrompt(body.systemPrompt as SystemPromptId);
-    const tools = await getTools(body.tools as ToolName[], { auth: fullReq.auth });
+    const model = selectModel(quality, speed, isAuthenticated);
+    const systemPrompt = getFullSystemPrompt(systemPromptId);
+    const tools = await getTools(toolNames, { auth: fullReq.auth });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const messages = body.messages as ModelMessage[];
-    const promptId = body.systemPrompt as SystemPromptId;
-    const isDocsOrSearch = promptId === "docs-ask-ai" || promptId === "command-center-ask-ai";
+    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
 
     if (mode === "stream") {
@@ -103,14 +103,19 @@ export const POST = createSmartRouteHandler({
           });
         }
 
+        const toolResultsByCallId = new Map(
+          step.toolResults.map((r) => [r.toolCallId, r])
+        );
+
         step.toolCalls.forEach((toolCall) => {
+          const toolResult = toolResultsByCallId.get(toolCall.toolCallId);
           contentBlocks.push({
             type: "tool-call",
             toolName: toolCall.toolName,
             toolCallId: toolCall.toolCallId,
             args: toolCall.input,
             argsText: JSON.stringify(toolCall.input),
-            result: (toolCall as any).result ?? null,
+            result: (toolResult?.output ?? null) as Json,
           });
         });
       });

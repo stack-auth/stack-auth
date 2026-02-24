@@ -8,7 +8,9 @@ export const requestBodySchema = yupObject({
   systemPrompt: yupString().oneOf([
     "command-center-ask-ai",
     "docs-ask-ai",
+    "wysiwyg-edit",
     "email-wysiwyg-editor",
+    "email-assistant-template",
     "email-assistant-theme",
     "email-assistant-draft",
     "create-dashboard",

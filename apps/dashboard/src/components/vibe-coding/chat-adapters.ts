@@ -14,7 +14,7 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
 
 const CONTEXT_MAP = {
   "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
-  "email-template": { systemPrompt: "email-wysiwyg-editor", tools: ["create-email-template"] },
+  "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
   "email-draft": { systemPrompt: "email-assistant-draft", tools: ["create-email-draft"] },
 } as const;
 
@@ -59,66 +59,14 @@ export function createChatAdapter(
           throw new Error(`AI request failed: ${response.status}`);
         }
 
-        const result = await response.json();
-        const content: ChatContent = Array.isArray(result?.content) ? result.content : [];
+        const result = await response.json() as { content?: ChatContent };
+        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
 
         const toolCall = content.find(isToolCall);
         if (toolCall) {
           onToolCall(toolCall);
         }
-        return { content };
-      } catch (error) {
-        if (abortSignal.aborted) {
-          return {};
-        }
-        throw error;
-      }
-    },
-  };
-}
 
-export function createDashboardChatAdapter(
-  projectId: string,
-  currentSource: string,
-  onToolCall: (toolCall: ToolCallContent) => void,
-): ChatModelAdapter {
-  return {
-    async run({ messages, abortSignal }) {
-      try {
-        const formattedMessages = [];
-        for (const msg of messages) {
-          const textContent = msg.content.filter(c => !isToolCall(c));
-          if (textContent.length > 0) {
-            formattedMessages.push({ role: msg.role, content: textContent });
-          }
-        }
-
-        const systemPrompt = currentSource.length > 0 ? "edit-dashboard" : "create-dashboard";
-
-        const response = await fetch("/api/dashboard-ai", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            systemPrompt,
-            tools: ["update-dashboard"],
-            messages: formattedMessages,
-            currentSource,
-          }),
-          signal: abortSignal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`AI request failed: ${response.status}`);
-        }
-
-        const result = await response.json();
-        const content: ChatContent = Array.isArray(result?.content) ? result.content : [];
-
-        const toolCall = content.find(isToolCall);
-        if (toolCall) {
-          onToolCall(toolCall);
-        }
         return { content };
       } catch (error) {
         if (abortSignal.aborted) {

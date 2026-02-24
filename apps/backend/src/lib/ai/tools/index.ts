@@ -28,14 +28,8 @@ export async function getTools(
   for (const toolName of toolNames) {
     switch (toolName) {
       case "docs": {
-        // Docs tools come from MCP server - returns multiple tools
-        try {
-          const docsTools = await createDocsTools();
-          Object.assign(tools, docsTools);
-        } catch (error) {
-          console.error("Failed to load docs tools:", error);
-          // Continue without docs tools rather than failing completely
-        }
+        const docsTools = await createDocsTools();
+        Object.assign(tools, docsTools);
         break;
       }
 
@@ -44,7 +38,6 @@ export async function getTools(
         if (sqlTool != null) {
           tools["queryAnalytics"] = sqlTool;
         }
-        // If null (no auth), skip this tool silently
         break;
       }
 

@@ -1,8 +1,14 @@
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project } from "../../../backend-helpers";
-// Note: Since tests run with FORWARD_TO_PRODUCTION, actual AI responses won't be tested.
-// These tests focus on request validation, structure, and error handling.
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+
+const hasRealAiKey = (() => {
+  const key = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+  return key !== "" && key !== "FORWARD_TO_PRODUCTION";
+})();
+
+const describeWithAi = hasRealAiKey ? describe : describe.skip;
 
 describe("AI Query Endpoint - Validation", () => {
   it("rejects invalid mode in URL", async ({ expect }) => {
@@ -19,7 +25,10 @@ describe("AI Query Endpoint - Validation", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body).toEqual(expect.stringContaining("Invalid mode"));
+    expect(response.body).toMatchObject({
+      code: "SCHEMA_ERROR",
+      error: expect.stringContaining("must be one of the following values: stream, generate"),
+    });
   });
 
   it("rejects missing quality field", async ({ expect }) => {
@@ -206,7 +215,7 @@ describe("AI Query Endpoint - Validation", () => {
   }, 10000); // 60 seconds for AI API call
 });
 
-describe("AI Query Endpoint - Authentication", () => {
+describeWithAi("AI Query Endpoint - Authentication", () => {
   it("accepts authenticated requests with admin access", async ({ expect }) => {
     await Project.createAndSwitch();
 
@@ -246,7 +255,7 @@ describe("AI Query Endpoint - Authentication", () => {
   }, 10000); // 60 seconds for AI API call
 });
 
-describe("AI Query Endpoint - System Prompts", () => {
+describeWithAi("AI Query Endpoint - System Prompts", () => {
   const systemPrompts = [
     "command-center-ask-ai",
     "docs-ask-ai",
@@ -278,7 +287,7 @@ describe("AI Query Endpoint - System Prompts", () => {
   }
 });
 
-describe("AI Query Endpoint - Tools", () => {
+describeWithAi("AI Query Endpoint - Tools", () => {
   const validTools = [
     "docs",
     "sql-query",
@@ -325,7 +334,7 @@ describe("AI Query Endpoint - Tools", () => {
   }, 10000); // 60 seconds for AI API call
 });
 
-describe("AI Query Endpoint - Mode Handling", () => {
+describeWithAi("AI Query Endpoint - Mode Handling", () => {
   it("stream mode returns response (forwarded to production)", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1/ai/query/stream", {
       method: "POST",
@@ -363,7 +372,7 @@ describe("AI Query Endpoint - Mode Handling", () => {
   }, 10000); // 60 seconds for AI API call
 });
 
-describe("AI Query Endpoint - Quality and Speed Combinations", () => {
+describeWithAi("AI Query Endpoint - Quality and Speed Combinations", () => {
   const qualities = ["dumb", "smart", "smartest"];
   const speeds = ["slow", "fast"];
 
@@ -389,7 +398,7 @@ describe("AI Query Endpoint - Quality and Speed Combinations", () => {
   }
 });
 
-describe("AI Query Endpoint - Response Structure", () => {
+describeWithAi("AI Query Endpoint - Response Structure", () => {
   it("generate mode returns body with content array", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1/ai/query/generate", {
       method: "POST",
@@ -425,7 +434,7 @@ describe("AI Query Endpoint - Response Structure", () => {
   }, 10000);
 });
 
-describe("AI Query Endpoint - Message Formats", () => {
+describeWithAi("AI Query Endpoint - Message Formats", () => {
   it("accepts multi-turn conversation (user → assistant → user)", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1/ai/query/generate", {
       method: "POST",
@@ -505,7 +514,7 @@ describe("AI Query Endpoint - Invalid Message Structure", () => {
   });
 });
 
-describe("AI Query Endpoint - Tool Behavior", () => {
+describeWithAi("AI Query Endpoint - Tool Behavior", () => {
   it("sql-query tool is gracefully omitted when unauthenticated (no error)", async ({ expect }) => {
     // Without auth, createSqlQueryTool returns null and the tool is silently skipped
     const response = await niceBackendFetch("/api/v1/ai/query/generate", {
@@ -552,7 +561,7 @@ describe("AI Query Endpoint - Tool Behavior", () => {
   }, 10000);
 });
 
-describe("AI Query Endpoint - Auth Edge Cases", () => {
+describeWithAi("AI Query Endpoint - Auth Edge Cases", () => {
   it("smartest quality without auth falls back to cheaper model and succeeds", async ({ expect }) => {
     // Unauthenticated + smartest → falls back to x-ai/grok-4.1-fast per model matrix
     const response = await niceBackendFetch("/api/v1/ai/query/generate", {
