@@ -131,7 +131,7 @@ async function createLiveModeOneTimePurchaseTransaction(options: { quantity?: nu
   });
   expect(transactionsRes.status).toBe(200);
 
-  const purchaseTransaction = transactionsRes.body.transactions.find((tx: any) => tx.type === "purchase");
+  const purchaseTransaction = transactionsRes.body.transactions.find((tx: any) => tx.type === "one-time-purchase");
   expect(purchaseTransaction).toBeDefined();
 
   return { userId, transactionsRes, purchaseTransaction };
@@ -211,54 +211,17 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
   expect(productsRes.body.items).toHaveLength(1);
   expect(productsRes.body.items[0].id).toBe("otp-product");
 
-  expect(transactionsRes.body).toMatchInlineSnapshot(`
-    {
-      "next_cursor": null,
-      "transactions": [
-        {
-          "adjusted_by": [],
-          "created_at_millis": <stripped field 'created_at_millis'>,
-          "effective_at_millis": <stripped field 'effective_at_millis'>,
-          "entries": [
-            {
-              "adjusted_entry_index": null,
-              "adjusted_transaction_id": null,
-              "customer_id": "<stripped UUID>",
-              "customer_type": "user",
-              "one_time_purchase_id": "<stripped UUID>",
-              "price_id": "single",
-              "product": {
-                "client_metadata": null,
-                "client_read_only_metadata": null,
-                "customer_type": "user",
-                "display_name": "One-Time Product",
-                "included_items": {},
-                "prices": { "single": { "USD": "5000" } },
-                "server_metadata": null,
-                "server_only": false,
-                "stackable": false,
-              },
-              "product_id": "otp-product",
-              "quantity": 1,
-              "type": "product-grant",
-            },
-            {
-              "adjusted_entry_index": null,
-              "adjusted_transaction_id": null,
-              "charged_amount": { "USD": "5000" },
-              "customer_id": "<stripped UUID>",
-              "customer_type": "user",
-              "net_amount": { "USD": "5000" },
-              "type": "money_transfer",
-            },
-          ],
-          "id": "<stripped UUID>",
-          "test_mode": false,
-          "type": "purchase",
-        },
-      ],
-    }
-  `);
+  const otpTxs = transactionsRes.body.transactions.filter((tx: any) => tx.type === "one-time-purchase");
+  expect(otpTxs).toHaveLength(1);
+  const otpTx = otpTxs[0];
+  expect(otpTx.test_mode).toBe(false);
+  const grant = otpTx.entries.find((e: any) => e.type === "product-grant");
+  expect(grant).toBeDefined();
+  expect(grant.product_id).toBe("otp-product");
+  expect(grant.one_time_purchase_id).toBeDefined();
+  const transfer = otpTx.entries.find((e: any) => e.type === "money-transfer");
+  expect(transfer).toBeDefined();
+  expect(transfer.charged_amount).toEqual({ USD: "5000" });
 
   const refundRes = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",

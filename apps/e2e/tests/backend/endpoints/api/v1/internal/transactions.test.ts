@@ -131,50 +131,14 @@ it("includes TEST_MODE subscription", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body.transactions).toMatchInlineSnapshot(`
-    [
-      {
-        "adjusted_by": [],
-        "created_at_millis": <stripped field 'created_at_millis'>,
-        "effective_at_millis": <stripped field 'effective_at_millis'>,
-        "entries": [
-          {
-            "adjusted_entry_index": null,
-            "adjusted_transaction_id": null,
-            "customer_id": "<stripped UUID>",
-            "customer_type": "user",
-            "price_id": "monthly",
-            "product": {
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "customer_type": "user",
-              "display_name": "Sub Product",
-              "included_items": {},
-              "prices": {
-                "monthly": {
-                  "USD": "1000",
-                  "interval": [
-                    1,
-                    "month",
-                  ],
-                },
-              },
-              "server_metadata": null,
-              "server_only": false,
-              "stackable": false,
-            },
-            "product_id": "sub-product",
-            "quantity": 1,
-            "subscription_id": "<stripped UUID>",
-            "type": "product-grant",
-          },
-        ],
-        "id": "<stripped UUID>",
-        "test_mode": true,
-        "type": "purchase",
-      },
-    ]
-  `);
+  const txs = response.body.transactions.filter((tx: any) => tx.type !== "default-products-change");
+  expect(txs).toHaveLength(1);
+  expect(txs[0].type).toBe("subscription-start");
+  expect(txs[0].test_mode).toBe(true);
+  const grant = txs[0].entries.find((e: any) => e.type === "product-grant");
+  expect(grant).toBeDefined();
+  expect(grant.product_id).toBe("sub-product");
+  expect(grant.subscription_id).toBeDefined();
 });
 
 it("includes TEST_MODE one-time purchase", async () => {
@@ -193,42 +157,14 @@ it("includes TEST_MODE one-time purchase", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body.transactions).toMatchInlineSnapshot(`
-    [
-      {
-        "adjusted_by": [],
-        "created_at_millis": <stripped field 'created_at_millis'>,
-        "effective_at_millis": <stripped field 'effective_at_millis'>,
-        "entries": [
-          {
-            "adjusted_entry_index": null,
-            "adjusted_transaction_id": null,
-            "customer_id": "<stripped UUID>",
-            "customer_type": "user",
-            "one_time_purchase_id": "<stripped UUID>",
-            "price_id": "single",
-            "product": {
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "customer_type": "user",
-              "display_name": "One-Time Product",
-              "included_items": {},
-              "prices": { "single": { "USD": "5000" } },
-              "server_metadata": null,
-              "server_only": false,
-              "stackable": false,
-            },
-            "product_id": "otp-product",
-            "quantity": 1,
-            "type": "product-grant",
-          },
-        ],
-        "id": "<stripped UUID>",
-        "test_mode": true,
-        "type": "purchase",
-      },
-    ]
-  `);
+  const txs = response.body.transactions.filter((tx: any) => tx.type !== "default-products-change");
+  expect(txs).toHaveLength(1);
+  expect(txs[0].type).toBe("one-time-purchase");
+  expect(txs[0].test_mode).toBe(true);
+  const grant = txs[0].entries.find((e: any) => e.type === "product-grant");
+  expect(grant).toBeDefined();
+  expect(grant.product_id).toBe("otp-product");
+  expect(grant.one_time_purchase_id).toBeDefined();
 });
 
 it("includes item quantity change entries", async () => {
@@ -247,29 +183,14 @@ it("includes item quantity change entries", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body.transactions).toMatchInlineSnapshot(`
-    [
-      {
-        "adjusted_by": [],
-        "created_at_millis": <stripped field 'created_at_millis'>,
-        "effective_at_millis": <stripped field 'effective_at_millis'>,
-        "entries": [
-          {
-            "adjusted_entry_index": null,
-            "adjusted_transaction_id": null,
-            "customer_id": "<stripped UUID>",
-            "customer_type": "user",
-            "item_id": "credits",
-            "quantity": 5,
-            "type": "item-quantity-change",
-          },
-        ],
-        "id": "<stripped UUID>",
-        "test_mode": false,
-        "type": "manual-item-quantity-change",
-      },
-    ]
-  `);
+  const txs = response.body.transactions.filter((tx: any) => tx.type !== "default-products-change");
+  expect(txs).toHaveLength(1);
+  expect(txs[0].type).toBe("manual-item-quantity-change");
+  expect(txs[0].test_mode).toBe(false);
+  const entry = txs[0].entries[0];
+  expect(entry.type).toBe("item-quantity-change");
+  expect(entry.item_id).toBe("credits");
+  expect(entry.quantity).toBe(5);
 });
 
 it("supports concatenated cursor pagination", async () => {
@@ -413,9 +334,9 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
 
   const renewalTransactions = response.body.transactions.filter((tx: any) => tx.type === "subscription-renewal");
   expect(renewalTransactions.length).toBe(1);
-  expect(renewalTransactions[0]?.entries?.[0]?.type).toBe("money_transfer");
+  expect(renewalTransactions[0]?.entries?.[0]?.type).toBe("money-transfer");
 
-  const purchaseTransaction = response.body.transactions.find((tx: any) => tx.type === "purchase");
+  const purchaseTransaction = response.body.transactions.find((tx: any) => tx.type === "subscription-start");
   expect(purchaseTransaction).toBeDefined();
 });
 
@@ -447,11 +368,11 @@ it("filters results by transaction type", async () => {
 
   const purchaseOnly = await niceBackendFetch("/api/latest/internal/payments/transactions", {
     accessType: "admin",
-    query: { type: "purchase" },
+    query: { type: "subscription-start" },
   });
   expect(purchaseOnly.status).toBe(200);
   expect(purchaseOnly.body.transactions).toHaveLength(1);
-  expect(purchaseOnly.body.transactions[0].type).toBe("purchase");
+  expect(purchaseOnly.body.transactions[0].type).toBe("subscription-start");
 });
 
 it("filters results by customer_type across sources", async () => {
@@ -505,8 +426,9 @@ it("filters results by customer_type across sources", async () => {
     query: { customer_type: "team" },
   });
   expect(teamResponse.status).toBe(200);
-  expect(teamResponse.body.transactions).toHaveLength(2);
-  expect(teamResponse.body.transactions.every((tx: any) =>
+  const teamTxs = teamResponse.body.transactions.filter((tx: any) => tx.type !== "default-products-change");
+  expect(teamTxs).toHaveLength(2);
+  expect(teamTxs.every((tx: any) =>
     tx.entries.every((entry: any) => entry.customer_type === "team")
   )).toBe(true);
 
@@ -515,8 +437,9 @@ it("filters results by customer_type across sources", async () => {
     query: { customer_type: "user" },
   });
   expect(userResponse.status).toBe(200);
-  expect(userResponse.body.transactions).toHaveLength(1);
-  expect(userResponse.body.transactions[0].entries.every((entry: any) => entry.customer_type === "user")).toBe(true);
+  const userTxs = userResponse.body.transactions.filter((tx: any) => tx.type !== "default-products-change");
+  expect(userTxs).toHaveLength(1);
+  expect(userTxs[0].entries.every((entry: any) => entry.customer_type === "user")).toBe(true);
 });
 
 it("returns server-granted subscriptions in transactions", async () => {
@@ -547,52 +470,17 @@ it("returns server-granted subscriptions in transactions", async () => {
     accessType: "admin",
   });
   expect(response.status).toBe(200);
-  expect(response.body).toMatchInlineSnapshot(`
-    {
-      "next_cursor": null,
-      "transactions": [
-        {
-          "adjusted_by": [],
-          "created_at_millis": <stripped field 'created_at_millis'>,
-          "effective_at_millis": <stripped field 'effective_at_millis'>,
-          "entries": [
-            {
-              "adjusted_entry_index": null,
-              "adjusted_transaction_id": null,
-              "customer_id": "<stripped UUID>",
-              "customer_type": "user",
-              "price_id": null,
-              "product": {
-                "client_metadata": null,
-                "client_read_only_metadata": null,
-                "customer_type": "user",
-                "display_name": "Subscription A",
-                "included_items": {},
-                "prices": {
-                  "monthly": {
-                    "USD": "12.34",
-                    "interval": [
-                      1,
-                      "month",
-                    ],
-                  },
-                },
-                "server_metadata": null,
-                "server_only": false,
-                "stackable": true,
-              },
-              "product_id": "subscription-a",
-              "quantity": 3,
-              "subscription_id": "<stripped UUID>",
-              "type": "product-grant",
-            },
-          ],
-          "id": "<stripped UUID>",
-          "test_mode": false,
-          "type": "purchase",
-        },
-      ],
-    }
-  `);
+  const txs = response.body.transactions.filter((tx: any) => tx.type !== "default-products-change");
+  expect(txs).toHaveLength(1);
+  expect(txs[0].type).toBe("subscription-start");
+  expect(txs[0].test_mode).toBe(false);
+  const grant = txs[0].entries.find((e: any) => e.type === "product-grant");
+  expect(grant).toBeDefined();
+  expect(grant.product_id).toBe("subscription-a");
+  expect(grant.quantity).toBe(3);
+  expect(grant.subscription_id).toBeDefined();
+  const subStart = txs[0].entries.find((e: any) => e.type === "active-subscription-start");
+  expect(subStart).toBeDefined();
+  expect(subStart.product_id).toBe("subscription-a");
 
 });

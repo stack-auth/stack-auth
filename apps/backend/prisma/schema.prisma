@@ -1006,7 +1006,7 @@ model Subscription {
 }
 
 model DefaultProductsSnapshot {
-  id        String   @default(uuid()) @db.Uuid
+  id        String   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenancyId String   @db.Uuid
   snapshot  Json
   createdAt DateTime @default(now())
