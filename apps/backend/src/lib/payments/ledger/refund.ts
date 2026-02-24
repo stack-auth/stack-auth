@@ -53,9 +53,15 @@ function validateRefundAmount(refundAmountStripeUnits: number, totalStripeUnits:
   }
 }
 
-function validateRefundEntries(refundEntries: RefundEntrySelection[], purchaseQuantity: number) {
+function validateRefundEntries(refundEntries: RefundEntrySelection[], purchaseQuantity: number, productGrantEntryIndex: number, totalEntries: number) {
   const seenEntryIndexes = new Set<number>();
   for (const refundEntry of refundEntries) {
+    if (!Number.isFinite(refundEntry.entry_index) || refundEntry.entry_index < 0 || refundEntry.entry_index >= totalEntries) {
+      throw new KnownErrors.SchemaError("Refund entry index is invalid.");
+    }
+    if (refundEntry.entry_index !== productGrantEntryIndex) {
+      throw new KnownErrors.SchemaError("Refund entries must reference product grant entries.");
+    }
     if (!Number.isFinite(refundEntry.quantity) || Math.trunc(refundEntry.quantity) !== refundEntry.quantity) {
       throw new KnownErrors.SchemaError("Refund quantity must be an integer.");
     }
@@ -98,7 +104,11 @@ async function refundSubscription(
   if (!subscription) throw new KnownErrors.SubscriptionInvoiceNotFound(subscriptionId);
   if (subscription.refundedAt) throw new KnownErrors.SubscriptionAlreadyRefunded(subscriptionId);
 
-  validateRefundEntries(refundEntries, subscription.quantity);
+  const product = subscription.product as InferType<typeof productSchema>;
+  const includedItemCount = Object.keys(product.includedItems).length;
+  const subProductGrantIndex = 2;
+  const subTotalEntries = 3 + includedItemCount;
+  validateRefundEntries(refundEntries, subscription.quantity, subProductGrantIndex, subTotalEntries);
 
   const subscriptionInvoices = await prisma.subscriptionInvoice.findMany({
     where: {
@@ -127,7 +137,6 @@ async function refundSubscription(
     throw new StackAssertionError("Payment has no payment intent", { invoiceId: subscriptionInvoices[0].stripeInvoiceId });
   }
 
-  const product = subscription.product as InferType<typeof productSchema>;
   const totalStripeUnits = getTotalUsdStripeUnits(product, subscription.priceId ?? null, subscription.quantity);
   const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
   validateRefundAmount(refundAmountStripeUnits, totalStripeUnits);
@@ -189,8 +198,11 @@ async function refundOneTimePurchase(
   if (purchase.creationSource === "TEST_MODE") throw new KnownErrors.TestModePurchaseNonRefundable();
   if (!purchase.stripePaymentIntentId) throw new KnownErrors.OneTimePurchaseNotFound(purchaseId);
 
-  validateRefundEntries(refundEntries, purchase.quantity);
   const product = purchase.product as InferType<typeof productSchema>;
+  const includedItemCount = Object.keys(product.includedItems).length;
+  const otpProductGrantIndex = 1;
+  const otpTotalEntries = 2 + includedItemCount;
+  validateRefundEntries(refundEntries, purchase.quantity, otpProductGrantIndex, otpTotalEntries);
   const totalStripeUnits = getTotalUsdStripeUnits(product, purchase.priceId ?? null, purchase.quantity);
   const refundAmountStripeUnits = getRefundAmountStripeUnits(refundEntries);
   validateRefundAmount(refundAmountStripeUnits, totalStripeUnits);

@@ -25,6 +25,21 @@ async function buildTransactions(prisma: PrismaClientTransaction, tenancyId: str
     processEvent(state, event);
   }
 
+  const txById = new Map(state.output.map((tx) => [tx.id, tx]));
+  for (const tx of state.output) {
+    for (let ei = 0; ei < tx.entries.length; ei++) {
+      const entry = tx.entries[ei];
+      if (!("adjusted_transaction_id" in entry)) continue;
+      const adjustedId = entry.adjusted_transaction_id;
+      if (!adjustedId) continue;
+      const target = txById.get(adjustedId);
+      if (!target) continue;
+      if (!target.adjusted_by.some((a) => a.transaction_id === tx.id && a.entry_index === ei)) {
+        target.adjusted_by.push({ transaction_id: tx.id, entry_index: ei });
+      }
+    }
+  }
+
   state.output.sort((a, b) => {
     if (a.created_at_millis !== b.created_at_millis) return b.created_at_millis - a.created_at_millis;
     return a.id < b.id ? 1 : -1;

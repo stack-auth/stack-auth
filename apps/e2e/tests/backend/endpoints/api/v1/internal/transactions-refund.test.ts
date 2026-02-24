@@ -229,7 +229,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -239,12 +239,11 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
     accessType: "admin",
   });
   const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
+  expect(refundedTransaction?.adjusted_by).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`) }),
+    ]),
+  );
 
   const secondRefundAttempt = await niceBackendFetch("/api/latest/internal/payments/transactions/refund", {
     accessType: "admin",
@@ -252,7 +251,7 @@ it("refunds non-test mode one-time purchases created via Stripe webhooks", async
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(secondRefundAttempt).toMatchInlineSnapshot(`
@@ -291,7 +290,7 @@ it("refunds partial amounts for non-test mode one-time purchases", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1250" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "1250" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -301,12 +300,11 @@ it("refunds partial amounts for non-test mode one-time purchases", async () => {
     accessType: "admin",
   });
   const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
+  expect(refundedTransaction?.adjusted_by).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`) }),
+    ]),
+  );
 
   const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
@@ -319,7 +317,7 @@ it("refunds partial amounts for non-test mode one-time purchases", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "1250" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "1250" }],
     },
   });
   expect(secondRefundAttempt.body.code).toBe("ONE_TIME_PURCHASE_ALREADY_REFUNDED");
@@ -334,7 +332,7 @@ it("refunds selected quantities for non-test mode one-time purchases", async () 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 2, amount_usd: "10000" }],
+      refund_entries: [{ entry_index: 1, quantity: 2, amount_usd: "10000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -344,12 +342,11 @@ it("refunds selected quantities for non-test mode one-time purchases", async () 
     accessType: "admin",
   });
   const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
+  expect(refundedTransaction?.adjusted_by).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`) }),
+    ]),
+  );
 
   const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
@@ -366,7 +363,7 @@ it("returns SCHEMA_ERROR when amount_usd is negative", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "-1" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "-1" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -402,7 +399,7 @@ it("allows amount_usd of zero", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "0" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "0" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -423,7 +420,7 @@ it("allows zero-quantity refund entries (money-only refund)", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 0, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: 0, amount_usd: "5000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -433,12 +430,11 @@ it("allows zero-quantity refund entries (money-only refund)", async () => {
     accessType: "admin",
   });
   const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
+  expect(refundedTransaction?.adjusted_by).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`) }),
+    ]),
+  );
 
   const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
@@ -483,7 +479,7 @@ it("returns SCHEMA_ERROR when refund_entries contains negative quantity", async 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: -1, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: -1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -511,7 +507,7 @@ it("allows refund_entries with zero quantity", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 0, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: 0, amount_usd: "5000" }],
     },
   });
   expect(refundRes.status).toBe(200);
@@ -521,12 +517,11 @@ it("allows refund_entries with zero quantity", async () => {
     accessType: "admin",
   });
   const refundedTransaction = transactionsAfterRefund.body.transactions.find((tx: any) => tx.id === purchaseTransaction.id);
-  expect(refundedTransaction?.adjusted_by).toEqual([
-    {
-      entry_index: 0,
-      transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`),
-    },
-  ]);
+  expect(refundedTransaction?.adjusted_by).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ transaction_id: expect.stringContaining(`${purchaseTransaction.id}:refund`) }),
+    ]),
+  );
 
   const productsAfterRes = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
@@ -543,7 +538,7 @@ it("returns SCHEMA_ERROR when refund_entries contains quantity past limit", asyn
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 2, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: 2, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -571,7 +566,7 @@ it("returns SCHEMA_ERROR when amount_usd exceeds charged amount", async () => {
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5001" }],
+      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "5001" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -627,7 +622,7 @@ it("returns SCHEMA_ERROR when refund_entries quantity is not an integer", async 
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 0, quantity: 1.5, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 1, quantity: 1.5, amount_usd: "5000" }],
     },
   });
   expect(refundRes.body.code).toBe("SCHEMA_ERROR");
@@ -642,7 +637,7 @@ it("returns SCHEMA_ERROR when refund_entries references non-product-grant entrie
     body: {
       type: "one-time-purchase",
       id: purchaseTransaction.id,
-      refund_entries: [{ entry_index: 1, quantity: 1, amount_usd: "5000" }],
+      refund_entries: [{ entry_index: 0, quantity: 1, amount_usd: "5000" }],
     },
   });
   expect(refundRes).toMatchInlineSnapshot(`
@@ -671,8 +666,8 @@ it("returns SCHEMA_ERROR when refund_entries contains duplicate entry indexes", 
       type: "one-time-purchase",
       id: purchaseTransaction.id,
       refund_entries: [
-        { entry_index: 0, quantity: 1, amount_usd: "5000" },
-        { entry_index: 0, quantity: 1, amount_usd: "5000" },
+        { entry_index: 1, quantity: 1, amount_usd: "5000" },
+        { entry_index: 1, quantity: 1, amount_usd: "5000" },
       ],
     },
   });

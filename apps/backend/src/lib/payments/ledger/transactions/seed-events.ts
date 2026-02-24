@@ -39,8 +39,12 @@ export async function fetchSeedEvents(prisma: PrismaClientTransaction, tenancyId
     events.push({ kind: "default-products-change-event", at: row.createdAt.getTime(), snapshotRow: row });
   }
   for (const subscription of subscriptions) {
-    events.push({ kind: "subscription-start-event", at: subscription.createdAt.getTime(), subscription });
-    if (subscription.endedAt) events.push({ kind: "subscription-end-event", at: subscription.endedAt.getTime(), subscription });
+    const startAt = subscription.createdAt.getTime();
+    events.push({ kind: "subscription-start-event", at: startAt, subscription });
+    if (subscription.endedAt) {
+      const endAt = Math.max(subscription.endedAt.getTime(), startAt + 1);
+      events.push({ kind: "subscription-end-event", at: endAt, subscription });
+    }
     if (subscription.cancelAtPeriodEnd && !subscription.endedAt) {
       events.push({ kind: "subscription-cancel-event", at: subscription.updatedAt.getTime(), subscription });
     }
