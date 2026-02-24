@@ -426,8 +426,8 @@ it("rejects oversized payloads", async ({ expect }) => {
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   await Auth.Otp.signIn();
 
-  // Backend limit is 5_000_000 bytes; a single large string is sufficient to exceed it.
-  const hugeString = "a".repeat(5_100_000);
+  // Backend limit is 1_000_000 bytes; a single large string is sufficient to exceed it.
+  const hugeString = "a".repeat(1_100_000);
 
   const res = await niceBackendFetch("/api/v1/session-replays/batch", {
     method: "POST",
