@@ -59,15 +59,14 @@ export function createChatAdapter(
           throw new Error(`AI request failed: ${response.status}`);
         }
 
-        const result: { content: ChatContent } = await response.json();
+        const result = await response.json();
+        const content: ChatContent = Array.isArray(result?.content) ? result.content : [];
 
-        if (result.content.some(isToolCall)) {
-          const toolCall = result.content.find(isToolCall);
-          if (toolCall) {
-            onToolCall(toolCall);
-          }
+        const toolCall = content.find(isToolCall);
+        if (toolCall) {
+          onToolCall(toolCall);
         }
-        return { content: result.content };
+        return { content };
       } catch (error) {
         if (abortSignal.aborted) {
           return {};
@@ -113,15 +112,14 @@ export function createDashboardChatAdapter(
           throw new Error(`AI request failed: ${response.status}`);
         }
 
-        const result: { content: ChatContent } = await response.json();
+        const result = await response.json();
+        const content: ChatContent = Array.isArray(result?.content) ? result.content : [];
 
-        if (result.content.some(isToolCall)) {
-          const toolCall = result.content.find(isToolCall);
-          if (toolCall) {
-            onToolCall(toolCall);
-          }
+        const toolCall = content.find(isToolCall);
+        if (toolCall) {
+          onToolCall(toolCall);
         }
-        return { content: result.content };
+        return { content };
       } catch (error) {
         if (abortSignal.aborted) {
           return {};

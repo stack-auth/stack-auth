@@ -361,13 +361,27 @@ No markdown, no explanation — just the JSON.`;
     return availableFiles;
   }
 
-  const result = await response.json() as { content: Array<{ type: string, text?: string }> };
-  const textBlock = result.content.find((b) => b.type === "text" && b.text);
-  if (!textBlock?.text) {
+  const result = await response.json();
+
+  // The generate endpoint returns { content: [{ type: "text", text: "..." }, ...] }
+  // but the format may differ when forwarded to production. Extract text from
+  // whichever shape we receive.
+  let responseText: string | undefined;
+
+  if (Array.isArray(result?.content)) {
+    const textBlock = result.content.find((b: { type: string, text?: string }) => b.type === "text" && b.text);
+    responseText = textBlock?.text;
+  } else if (typeof result?.text === "string") {
+    responseText = result.text;
+  } else if (typeof result?.content === "string") {
+    responseText = result.content;
+  }
+
+  if (!responseText) {
     return availableFiles;
   }
 
-  const jsonMatch = textBlock.text.match(/\{[\s\S]*"selectedFiles"[\s\S]*\}/);
+  const jsonMatch = responseText.match(/\{[\s\S]*"selectedFiles"[\s\S]*\}/);
   if (!jsonMatch) {
     return availableFiles;
   }

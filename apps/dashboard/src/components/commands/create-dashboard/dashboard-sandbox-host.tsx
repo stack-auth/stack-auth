@@ -76,7 +76,7 @@ function getDependencyScripts(esmVersion: string, dashboardUrl: string): string 
     </script>`;
 }
 
-function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark"): string {
+function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = packageJson.version;
@@ -416,7 +416,9 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   }, []);
 
   const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
-  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, dashboardUrl, initialThemeRef.current), [artifact, baseUrl, dashboardUrl]);
+  const initialChatOpenRef = useRef(!!isChatOpen);
+  const showControls = onBack != null || onEditToggle != null;
+  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, dashboardUrl, initialThemeRef.current, showControls, initialChatOpenRef.current), [artifact, baseUrl, dashboardUrl, showControls]);
 
   // Send theme changes to iframe dynamically (without full reload)
   useEffect(() => {

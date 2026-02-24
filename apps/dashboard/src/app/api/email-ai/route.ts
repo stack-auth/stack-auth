@@ -98,9 +98,11 @@ export async function POST(req: Request) {
     });
   }
 
-  const result = await backendResponse.json() as { content: Array<{ type: string, args?: { content?: string, [key: string]: unknown }, [key: string]: unknown }> };
+  const result = await backendResponse.json();
+  const contentArr: Array<{ type: string, args?: { content?: string, [key: string]: unknown }, [key: string]: unknown }> =
+    Array.isArray(result?.content) ? result.content : [];
   const sanitized = {
-    content: result.content.map((item) => {
+    content: contentArr.map((item) => {
       if (item.type === "tool-call" && typeof item.args?.content === "string") {
         return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
       }

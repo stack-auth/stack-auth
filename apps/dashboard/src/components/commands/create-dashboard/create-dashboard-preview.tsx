@@ -71,8 +71,10 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
       return;
     }
 
-    const result = await response.json() as { content: Array<{ type: string, toolName?: string, args?: { content?: string }, [key: string]: unknown }> };
-    const toolCall = result.content.find(
+    const result = await response.json();
+    const contentArr: Array<{ type: string, toolName?: string, args?: { content?: string }, [key: string]: unknown }> =
+      Array.isArray(result?.content) ? result.content : [];
+    const toolCall = contentArr.find(
       (block) => block.type === "tool-call" && block.toolName === "updateDashboard"
     );
 
