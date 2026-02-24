@@ -111,3 +111,21 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.
+
+## Cursor Cloud specific instructions
+
+### Prerequisites
+- **Docker** must be available (used for PostgreSQL, ClickHouse, Inbucket, Svix, S3 mock, LocalStack, QStash, and other infrastructure).
+- **Node.js >= 20** and **pnpm 10.23.0** (specified via `packageManager` in root `package.json`).
+
+### Starting the environment
+1. Start Docker infrastructure: `pnpm start-deps` (or `pnpm restart-deps` for a full reset). This starts ~18 Docker containers and runs `db:init` (migrations + seed).
+2. Before `db:init` can succeed, packages must be built: `pnpm build:packages && pnpm codegen`. On subsequent runs after the update script, this is usually already done.
+3. Start dev servers: `pnpm dev:basic` (backend on port 8102, dashboard on 8101, mock-oauth on 8114). Use `pnpm dev` for the full dev experience including docs, examples, and SDK watcher.
+
+### Gotchas
+- `pnpm start-deps` calls `db:init`, which requires `@/generated` (Prisma client). If packages haven't been built and codegen hasn't run, `db:init` will fail with `ERR_MODULE_NOT_FOUND`. Fix: run `pnpm build:packages && pnpm codegen` first, then `pnpm db:init`.
+- The full test suite (`pnpm test run`) runs ~196 test files. Many are E2E tests that require the backend (port 8102) to be running. If the dev server dies during tests, restart with `pnpm dev:basic`.
+- To sign in to the dashboard in dev mode: use OTP with `admin@example.com`. The OTP code is captured by Inbucket at `http://localhost:8105`.
+- The `pnpm install` step may warn about "Ignored build scripts" for Prisma, esbuild, etc. Running `pnpm install --config.ignore-scripts=false` allows them to run. Prisma client generation is also handled by `pnpm codegen`.
+- Lint and typecheck commands: `pnpm lint` and `pnpm typecheck` (see AGENTS.md essential commands above).
