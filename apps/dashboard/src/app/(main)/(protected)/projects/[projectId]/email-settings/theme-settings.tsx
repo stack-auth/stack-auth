@@ -3,7 +3,8 @@
 import { DesignCard } from "@/components/design-components/card";
 import EmailPreview from "@/components/email-preview";
 import { useRouter } from "@/components/router";
-import { Button, Typography } from "@/components/ui";
+import { DesignButton } from "@/components/design-components/button";
+import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CheckIcon, PaintBrush } from "@phosphor-icons/react";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -87,7 +88,6 @@ export function ThemeSettings() {
   return (
     <DesignCard
       gradient="default"
-      onClick={() => router.push("email-themes")}
     >
       {/* Header row -- no divider, showcase overlaps below */}
       <div className="flex items-center justify-between">
@@ -99,10 +99,10 @@ export function ThemeSettings() {
             Theme Settings
           </span>
         </div>
-        <Button
+        <DesignButton
           variant="outline"
           size="sm"
-          className="gap-1.5 hover:bg-foreground/10 hover:transition-none transition-colors duration-150"
+          className="gap-1.5 hover:bg-accent"
           onClick={(e) => {
             e.stopPropagation();
             router.push("email-themes");
@@ -110,7 +110,7 @@ export function ThemeSettings() {
         >
           Manage Themes
           <ArrowRightIcon className="h-3.5 w-3.5" />
-        </Button>
+        </DesignButton>
       </div>
 
       {/* Showcase -- pulls up into the header area with negative margin */}

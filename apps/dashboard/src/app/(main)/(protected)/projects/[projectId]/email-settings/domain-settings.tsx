@@ -12,7 +12,11 @@ import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { Envelope, GearSix, PaperPlaneTilt } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { Alert, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography, useToast } from "@/components/ui";
+import { DesignAlert } from "@/components/design-components/alert";
+import { DesignButton } from "@/components/design-components/button";
+import { DesignInput } from "@/components/design-components/input";
+import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { Label, Typography, useToast } from "@/components/ui";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -112,7 +116,7 @@ function TestSendingDialog(props: { trigger: React.ReactNode }) {
       render={(form) => (
         <>
           <InputField label="Email" name="email" control={form.control} type="email" autoComplete="email" required />
-          {error && <Alert variant="destructive">{error}</Alert>}
+          {error && <DesignAlert variant="error" description={error} />}
         </>
       )}
     />
@@ -242,11 +246,11 @@ export function DomainSettings() {
   if (isEmulator) {
     return (
       <DesignCard title="Mock Emails" subtitle="View all emails sent through the emulator in Inbucket" icon={Envelope} gradient="default">
-        <Button variant="secondary" onClick={() => {
+        <DesignButton variant="secondary" onClick={() => {
           window.open(getPublicEnvVar("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL") + "/monitor", "_blank");
         }}>
           Open Inbox
-        </Button>
+        </DesignButton>
       </DesignCard>
     );
   }
@@ -278,16 +282,16 @@ export function DomainSettings() {
         <div className="grid gap-x-6 gap-y-4 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Server Type</Label>
-            <Select value={serverType} onValueChange={(v) => handleServerTypeChange(v as ServerType)}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="shared">{SERVER_TYPE_LABELS.shared}</SelectItem>
-                <SelectItem value="resend">{SERVER_TYPE_LABELS.resend}</SelectItem>
-                <SelectItem value="standard">{SERVER_TYPE_LABELS.standard}</SelectItem>
-              </SelectContent>
-            </Select>
+            <DesignSelectorDropdown
+              value={serverType}
+              onValueChange={(v) => handleServerTypeChange(v as ServerType)}
+              options={[
+                { value: "shared", label: SERVER_TYPE_LABELS.shared },
+                { value: "resend", label: SERVER_TYPE_LABELS.resend },
+                { value: "standard", label: SERVER_TYPE_LABELS.standard },
+              ]}
+              size="md"
+            />
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Email</Label>
@@ -297,12 +301,13 @@ export function DomainSettings() {
               </SimpleTooltip>
             ) : (
               <>
-                <Input
+                <DesignInput
                   value={formValues.senderEmail || ""}
                   onChange={(e) => updateField("senderEmail", e.target.value)}
-                  className={cn("h-9 text-sm", emailFormatError && "border-destructive")}
+                  className={cn(emailFormatError && "border-destructive")}
                   type="email"
                   placeholder="you@example.com"
+                  size="md"
                 />
                 {emailFormatError && (
                   <Typography variant="secondary" className="text-xs text-destructive">{emailFormatError}</Typography>
@@ -317,12 +322,12 @@ export function DomainSettings() {
                 <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">{project.displayName}</Typography>
               </SimpleTooltip>
             ) : (
-              <Input
+              <DesignInput
                 value={formValues.senderName || ""}
                 onChange={(e) => updateField("senderName", e.target.value)}
-                className="h-9 text-sm"
                 type="text"
                 placeholder="Your App Name"
+                size="md"
               />
             )}
           </div>
@@ -333,13 +338,10 @@ export function DomainSettings() {
           <div className="flex justify-center">
             <TestSendingDialog
               trigger={
-                <Button
-                  variant="outline"
-                  className="gap-2 hover:bg-foreground/10 hover:transition-none transition-colors duration-150"
-                >
+                <DesignButton variant="outline" className="gap-2 hover:bg-accent">
                   <PaperPlaneTilt className="h-4 w-4" />
                   Send Test Email
-                </Button>
+                </DesignButton>
               }
             />
           </div>
@@ -374,11 +376,12 @@ export function DomainSettings() {
                   return (
                     <div key={field.key} className="space-y-1.5">
                       <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{field.label}</Label>
-                      <Input
+                      <DesignInput
                         value={formValues[field.key] || ""}
                         onChange={(e) => updateField(field.key, e.target.value)}
-                        className={cn("h-9 text-sm", isDirty && isEmpty && "border-destructive")}
+                        className={cn(isDirty && isEmpty && "border-destructive")}
                         type={field.type}
+                        size="md"
                       />
                       {isDirty && isEmpty && (
                         <Typography variant="secondary" className="text-xs text-destructive">{field.label} is required</Typography>
@@ -393,23 +396,23 @@ export function DomainSettings() {
 
         {/* Save error */}
         {saveError && (
-          <Alert variant="destructive">{saveError}</Alert>
+          <DesignAlert variant="error" description={saveError} />
         )}
 
         {/* Save / Cancel -- only when dirty */}
         {isDirty && (
           <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
-            <Button type="button" variant="secondary" size="sm" onClick={handleDiscard} disabled={saving}>
+            <DesignButton variant="secondary" size="sm" onClick={handleDiscard} disabled={saving}>
               Cancel
-            </Button>
-            <Button
+            </DesignButton>
+            <DesignButton
               size="sm"
               loading={saving}
               disabled={!canSave}
               onClick={() => runAsynchronouslyWithAlert(handleSave)}
             >
               Save
-            </Button>
+            </DesignButton>
           </div>
         )}
       </div>
