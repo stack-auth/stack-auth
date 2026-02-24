@@ -124,6 +124,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string> }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string> }): Promise<void>,
     deleteEmailDraft(id: string): Promise<void>,
+    refreshEmailDrafts(): Promise<void>,
     createItemQuantityChange(options: (
       { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |

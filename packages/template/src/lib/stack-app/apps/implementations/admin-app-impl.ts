@@ -652,6 +652,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailDraftsCache.refresh([]);
   }
 
+  async refreshEmailDrafts(): Promise<void> {
+    await this._adminEmailDraftsCache.refresh([]);
+  }
+
   async sendChatMessage(
     threadId: string,
     contextType: "email-theme" | "email-template" | "email-draft",

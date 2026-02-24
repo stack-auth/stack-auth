@@ -425,6 +425,7 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
         ) as Parameters<typeof stackAdminApp.sendEmail>[0]
       );
 
+      await stackAdminApp.refreshEmailDrafts();
       resetFlowState();
       onSent();
     } catch (error) {
