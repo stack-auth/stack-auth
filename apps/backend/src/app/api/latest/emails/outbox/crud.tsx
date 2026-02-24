@@ -7,6 +7,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { emailOutboxCrud, EmailOutboxCrud } from "@stackframe/stack-shared/dist/interface/crud/email-outbox";
 import { yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 /**
@@ -57,6 +58,25 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
     to = { type: "custom-emails", emails: recipient?.emails ?? [] };
   }
 
+  // Convert sendAttemptErrors from DB format (camelCase) to API format (snake_case)
+  const sendAttemptErrors = prismaModel.sendAttemptErrors
+    ? (prismaModel.sendAttemptErrors as Array<{
+        attemptNumber: number,
+        timestamp: string,
+        externalMessage: string,
+        externalDetails: Record<string, Json>,
+        internalMessage: string,
+        internalDetails: Record<string, Json>,
+      }>).map(e => ({
+        attempt_number: e.attemptNumber,
+        timestamp: e.timestamp,
+        external_message: e.externalMessage,
+        external_details: e.externalDetails,
+        internal_message: e.internalMessage,
+        internal_details: e.internalDetails,
+      }))
+    : null;
+
   // Base fields present on all emails
   const base = {
     id: prismaModel.id,
@@ -68,6 +88,9 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
     variables: (prismaModel.extraRenderVariables ?? {}) as Record<string, any>,
     skip_deliverability_check: prismaModel.shouldSkipDeliverabilityCheck,
     scheduled_at_millis: prismaModel.scheduledAt.getTime(),
+    send_retries: prismaModel.sendRetries,
+    next_send_retry_at_millis: prismaModel.nextSendRetryAt?.getTime() ?? null,
+    send_attempt_errors: sendAttemptErrors,
     // Default flags (overridden in specific statuses)
     is_paused: false,
     has_rendered: false,
@@ -358,6 +381,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       // Cancel action - mark as skipped
       set("isPaused", Prisma.sql`false`);
       set("isQueued", Prisma.sql`false`);
+      setNull("nextSendRetryAt"); // Clear any pending retry so it won't be picked up
       set("skippedReason", Prisma.sql`'MANUALLY_CANCELLED'::"EmailOutboxSkippedReason"`);
       set("skippedDetails", Prisma.sql`'{}'::jsonb`);
     } else {
@@ -395,6 +419,8 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       // If content changed, reset rendering and sending state
       if (needsRerenderReset) {
         set("isQueued", Prisma.sql`false`);
+        // Reset retry fields (sendRetries to 0, others to null)
+        set("sendRetries", Prisma.sql`0`);
         setNull(
           "renderedByWorkerId", "startedRenderingAt", "finishedRenderingAt",
           "renderErrorExternalMessage", "renderErrorExternalDetails",
@@ -402,6 +428,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
           "renderedHtml", "renderedText", "renderedSubject",
           "renderedIsTransactional", "renderedNotificationCategoryId",
           "startedSendingAt", "finishedSendingAt",
+          "nextSendRetryAt", "sendAttemptErrors",
           "sendServerErrorExternalMessage", "sendServerErrorExternalDetails",
           "sendServerErrorInternalMessage", "sendServerErrorInternalDetails",
           "skippedReason", "skippedDetails", "canHaveDeliveryInfo",
@@ -494,6 +521,9 @@ function parseEmailOutboxFromJson(j: Record<string, unknown>): EmailOutbox {
     scheduledAtIfNotYetQueued: dateOrNull("scheduledAtIfNotYetQueued"),
     startedSendingAt: dateOrNull("startedSendingAt"),
     finishedSendingAt: dateOrNull("finishedSendingAt"),
+    sendRetries: j.sendRetries as number,
+    nextSendRetryAt: dateOrNull("nextSendRetryAt"),
+    sendAttemptErrors: j.sendAttemptErrors as Prisma.JsonValue,
     sentAt: dateOrNull("sentAt"),
     sendServerErrorExternalMessage: j.sendServerErrorExternalMessage as string | null,
     sendServerErrorExternalDetails: j.sendServerErrorExternalDetails as Prisma.JsonValue,

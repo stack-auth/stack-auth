@@ -103,7 +103,14 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
-        return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
+        const error = new KnownErrors.AccessTokenExpired(
+          decoded?.exp ? new Date(decoded.exp * 1000) : undefined,
+          decoded?.aud?.toString().split(":")[0],
+          decoded?.sub ?? undefined,
+          (decoded?.refresh_token_id ?? decoded?.refreshTokenId) as string | undefined,
+        );
+        console.warn(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
+        return Result.error(error);
       } else if (error instanceof JOSEError) {
         console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
         return Result.error(new KnownErrors.UnparsableAccessToken());
@@ -271,7 +278,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
-      teamId: "",
+      teamId: undefined,
     }
   );
 
@@ -283,9 +290,12 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       branchId: options.tenancy.branchId,
       userId: options.refreshTokenObj.projectUserId,
       refreshTokenId: options.refreshTokenObj.id,
-      organizationId: null,
       isAnonymous: user.is_anonymous,
+      teamId: undefined,
       ipInfo,
+    },
+    {
+      refreshTokenId: options.refreshTokenObj.id,
     }
   );
 

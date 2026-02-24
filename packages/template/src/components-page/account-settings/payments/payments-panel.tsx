@@ -96,6 +96,7 @@ type CustomerLike = {
       prices: Record<string, { interval?: [number, "day" | "week" | "month" | "year"] }>,
     }>,
     subscription: null | {
+      subscriptionId: string | null,
       currentPeriodEnd: Date | null,
       cancelAtPeriodEnd: boolean,
       isCancelable: boolean,
@@ -237,7 +238,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [setupIntentClientSecret, setSetupIntentClientSecret] = useState<string | null>(null);
   const [setupIntentStripeAccountId, setSetupIntentStripeAccountId] = useState<string | null>(null);
-  const [cancelProductId, setCancelProductId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{ productId: string, subscriptionId?: string } | null>(null);
   const [switchFromProductId, setSwitchFromProductId] = useState<string | null>(null);
   const [switchToProductId, setSwitchToProductId] = useState<string | null>(null);
 
@@ -349,10 +350,9 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
             {productsForCustomerType.map((product, index) => {
               const quantitySuffix = product.quantity !== 1 ? ` ×${product.quantity}` : "";
               const isSubscription = product.type === "subscription";
-              const isCancelable = isSubscription && !!product.id && !!product.subscription?.isCancelable;
+              const isCancelable = isSubscription && !!product.subscription?.isCancelable;
               const canSwitchPlans = isSubscription && defaultPaymentMethod && !!product.id && (product.switchOptions?.length ?? 0) > 0;
               const renewsAt = isSubscription ? (product.subscription?.currentPeriodEnd ?? null) : null;
-
               const subtitle =
                 product.type === "one_time"
                   ? t("One-time purchase")
@@ -381,7 +381,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
                       <Button
                         variant="secondary"
                         color="neutral"
-                        onClick={() => setCancelProductId(product.id)}
+                        onClick={() => setCancelTarget({ productId: product.id ?? "_inline", subscriptionId: product.subscription?.subscriptionId ?? undefined })}
                       >
                         {t("Cancel subscription")}
                       </Button>
@@ -393,9 +393,9 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
           </div>
 
           <ActionDialog
-            open={cancelProductId !== null}
+            open={cancelTarget !== null}
             onOpenChange={(open) => {
-              if (!open) setCancelProductId(null);
+              if (!open) setCancelTarget(null);
             }}
             title={t("Cancel subscription")}
             description={t("Canceling will stop future renewals for this subscription.")}
@@ -404,14 +404,14 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
             okButton={{
               label: t("Cancel subscription"),
               onClick: async () => {
-                const productId = cancelProductId;
-                if (!productId) return;
+                if (!cancelTarget) return;
+                const { productId, subscriptionId } = cancelTarget;
                 if (props.customerType === "team") {
-                  await stackApp.cancelSubscription({ teamId: props.customer.id, productId });
+                  await stackApp.cancelSubscription({ teamId: props.customer.id, productId, subscriptionId });
                 } else {
-                  await stackApp.cancelSubscription({ productId });
+                  await stackApp.cancelSubscription({ productId, subscriptionId });
                 }
-                setCancelProductId(null);
+                setCancelTarget(null);
               },
             }}
           />

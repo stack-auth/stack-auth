@@ -25,6 +25,9 @@ export const DELETE = createSmartRouteHandler({
       customer_id: yupString().defined(),
       product_id: yupString().defined(),
     }).defined(),
+    query: yupObject({
+      subscription_id: yupString().optional(),
+    }).default(() => ({})).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),
@@ -33,7 +36,7 @@ export const DELETE = createSmartRouteHandler({
       success: yupBoolean().oneOf([true]).defined(),
     }).defined(),
   }),
-  handler: async ({ auth, params }, fullReq) => {
+  handler: async ({ auth, params, query }, fullReq) => {
     if (auth.type === "client") {
       const currentUser = fullReq.auth?.user;
       if (!currentUser) {
@@ -59,49 +62,67 @@ export const DELETE = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const product = await ensureProductIdOrInlineProduct(auth.tenancy, auth.type, params.product_id, undefined);
-    if (params.customer_type !== product.customerType) {
-      throw new KnownErrors.ProductCustomerTypeDoesNotMatch(
-        params.product_id,
-        params.customer_id,
-        product.customerType,
-        params.customer_type,
-      );
-    }
 
-    const ownedProducts = await getOwnedProductsForCustomer({
-      prisma,
-      tenancy: auth.tenancy,
-      customerType: params.customer_type,
-      customerId: params.customer_id,
-    });
-    const ownedProductsForProduct = ownedProducts.filter((p) => p.id === params.product_id);
-    if (ownedProductsForProduct.length === 0) {
-      throw new StatusError(400, "Customer does not have this product.");
-    }
-    if (ownedProductsForProduct.some((product) => product.type === "one_time")) {
-      throw new StatusError(400, "This product is a one time purchase and cannot be canceled.");
-    }
+    let subscriptions;
+    if (query.subscription_id) {
+      // Cancel by subscription DB ID (used for inline products that have no product_id)
+      subscriptions = await prisma.subscription.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          id: query.subscription_id,
+          customerType: typedToUppercase(params.customer_type),
+          customerId: params.customer_id,
+          status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+        },
+      });
+      if (subscriptions.length === 0) {
+        throw new StatusError(400, "No active subscription found with this ID for the given customer.");
+      }
+    } else {
+      const product = await ensureProductIdOrInlineProduct(auth.tenancy, auth.type, params.product_id, undefined);
+      if (params.customer_type !== product.customerType) {
+        throw new KnownErrors.ProductCustomerTypeDoesNotMatch(
+          params.product_id,
+          params.customer_id,
+          product.customerType,
+          params.customer_type,
+        );
+      }
 
-    const subscriptions = await prisma.subscription.findMany({
-      where: {
-        tenancyId: auth.tenancy.id,
-        customerType: typedToUppercase(params.customer_type),
+      const ownedProducts = await getOwnedProductsForCustomer({
+        prisma,
+        tenancy: auth.tenancy,
+        customerType: params.customer_type,
         customerId: params.customer_id,
-        productId: params.product_id,
-        status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
-      },
-    });
-    if (subscriptions.length === 0) {
-      captureError("cancel-subscription-missing", new StackAssertionError(
-        "Owned subscription product missing active/trialing subscription record.",
-        {
-          customerType: params.customer_type,
+      });
+      const ownedProductsForProduct = ownedProducts.filter((p) => p.id === params.product_id);
+      if (ownedProductsForProduct.length === 0) {
+        throw new StatusError(400, "Customer does not have this product.");
+      }
+      if (ownedProductsForProduct.some((product) => product.type === "one_time")) {
+        throw new StatusError(400, "This product is a one time purchase and cannot be canceled.");
+      }
+
+      subscriptions = await prisma.subscription.findMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          customerType: typedToUppercase(params.customer_type),
           customerId: params.customer_id,
           productId: params.product_id,
+          status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
         },
-      ));
-      throw new StatusError(400, "This subscription cannot be canceled.");
+      });
+      if (subscriptions.length === 0) {
+        captureError("cancel-subscription-missing", new StackAssertionError(
+          "Owned subscription product missing active/trialing subscription record.",
+          {
+            customerType: params.customer_type,
+            customerId: params.customer_id,
+            productId: params.product_id,
+          },
+        ));
+        throw new StatusError(400, "This subscription cannot be canceled.");
+      }
     }
 
     const hasStripeSubscription = subscriptions.some((subscription) => subscription.stripeSubscriptionId);

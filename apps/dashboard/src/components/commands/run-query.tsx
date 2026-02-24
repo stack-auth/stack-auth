@@ -1,51 +1,50 @@
 "use client";
 
+import {
+  FolderWithId,
+  isDateValue,
+  isJsonValue,
+  JsonValue,
+  parseClickHouseDate,
+  RowData,
+  RowDetailDialog,
+  VirtualizedFlatTable
+} from "@/app/(main)/(protected)/projects/[projectId]/analytics/shared";
 import { useAdminAppIfExists } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useRouter } from "@/components/router";
+import { Button } from "@/components/ui";
 import {
   Dialog,
   DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
+import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { useFromNow } from "@/hooks/use-from-now";
-import { cn } from "@/lib/utils";
+import { useUpdateConfig } from "@/lib/config-update";
 import {
   ArrowClockwiseIcon,
   CheckCircleIcon,
+  FloppyDiskIcon,
   PlayIcon,
+  PlusIcon,
   SpinnerGapIcon,
-  WarningCircleIcon,
+  WarningCircleIcon
 } from "@phosphor-icons/react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../cmdk-commands";
-
-type RowData = Record<string, unknown>;
 
 const DEBOUNCE_MS = 400;
 
-// Detect if a value is a date string
-function isDateValue(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  return /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}:\d{2})?/.test(value);
-}
-
-// Detect if a value is JSON
-function isJsonValue(value: unknown): boolean {
-  return typeof value === "object" && value !== null;
-}
-
-// Parse ClickHouse date string as UTC
-function parseClickHouseDate(value: string): Date {
-  const normalized = value.replace(" ", "T") + (value.includes("Z") || value.includes("+") ? "" : "Z");
-  return new Date(normalized);
-}
-
-// Component for displaying dates
+// Component for displaying dates with relative time (specific to command palette)
 function DateValue({ value }: { value: string }) {
   const date = parseClickHouseDate(value);
   const fromNow = useFromNow(date);
@@ -57,26 +56,8 @@ function DateValue({ value }: { value: string }) {
   );
 }
 
-// Component for displaying JSON values
-function JsonValue({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
-  const formatted = JSON.stringify(value, null, 2);
-  const preview = JSON.stringify(value);
-
-  if (truncate && preview.length > 60) {
-    return (
-      <SimpleTooltip tooltip={<pre className="text-xs max-w-md overflow-auto max-h-64">{formatted}</pre>}>
-        <span className="cursor-help text-muted-foreground">
-          {preview.slice(0, 57)}...
-        </span>
-      </SimpleTooltip>
-    );
-  }
-
-  return <span className="text-muted-foreground">{preview}</span>;
-}
-
-// Format a cell value for display
-function CellValue({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
+// Format a cell value for display with relative dates (specific to command palette)
+function CellValueWithRelativeDates({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground/50">—</span>;
   }
@@ -101,167 +82,9 @@ function CellValue({ value, truncate = true }: { value: unknown, truncate?: bool
   return <span>{str}</span>;
 }
 
-// Row detail dialog
-function RowDetailDialog({
-  row,
-  columns,
-  open,
-  onOpenChange,
-}: {
-  row: RowData | null,
-  columns: string[],
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-}) {
-  if (!row) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Row Details</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <div className="space-y-4">
-            {columns.map((column) => (
-              <div key={column} className="space-y-1">
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {column}
-                </Label>
-                <div className="font-mono text-sm bg-muted/30 rounded px-3 py-2 overflow-auto max-h-48">
-                  {isJsonValue(row[column]) ? (
-                    <pre className="whitespace-pre-wrap break-all">
-                      {JSON.stringify(row[column], null, 2)}
-                    </pre>
-                  ) : (
-                    <CellValue value={row[column]} truncate={false} />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Virtualized flat table component
-function VirtualizedFlatTable({
-  columns,
-  rows,
-  onRowClick,
-}: {
-  columns: string[],
-  rows: RowData[],
-  onRowClick: (row: RowData) => void,
-}) {
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 36,
-    overscan: 10,
-  });
-
-  // Column widths - distribute based on content type
-  const columnWidths = useMemo(() => {
-    const widths = new Map<string, string>();
-    columns.forEach((col) => {
-      if (col.includes("id") && col !== "project_id") {
-        widths.set(col, "minmax(200px, 1fr)");
-      } else if (col.includes("_at") || col.includes("date")) {
-        widths.set(col, "minmax(100px, 140px)");
-      } else if (col === "data" || col.includes("json")) {
-        widths.set(col, "minmax(180px, 2fr)");
-      } else if (col === "event_type" || col === "type") {
-        widths.set(col, "minmax(100px, 160px)");
-      } else {
-        widths.set(col, "minmax(80px, 1fr)");
-      }
-    });
-    return widths;
-  }, [columns]);
-
-  const gridTemplateColumns = columns.map((col) => columnWidths.get(col) ?? "1fr").join(" ");
-  const minContentWidth = columns.length * 120;
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      <div
-        ref={parentRef}
-        className="flex-1 overflow-auto"
-      >
-        <div style={{ minWidth: `${minContentWidth}px` }}>
-          {/* Sticky header */}
-          <div
-            className="grid gap-3 px-3 py-1.5 border-b border-border/50 bg-muted/40 backdrop-blur-sm sticky top-0 z-10"
-            style={{ gridTemplateColumns }}
-          >
-            {columns.map((column) => (
-              <span
-                key={column}
-                className="font-mono text-xs font-medium text-muted-foreground"
-              >
-                {column}
-              </span>
-            ))}
-          </div>
-
-          {/* Virtualized rows container */}
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const row = rows[virtualRow.index];
-
-              return (
-                <div
-                  key={virtualRow.index}
-                  className={cn(
-                    "absolute left-0 right-0 grid gap-3 px-3 items-center cursor-pointer",
-                    "border-b border-border/30 hover:bg-muted/30 transition-colors hover:transition-none",
-                    virtualRow.index % 2 === 0 ? "bg-transparent" : "bg-muted/10"
-                  )}
-                  style={{
-                    top: `${virtualRow.start}px`,
-                    height: `${virtualRow.size}px`,
-                    gridTemplateColumns,
-                  }}
-                  onClick={() => onRowClick(row)}
-                >
-                  {columns.map((column) => (
-                    <div key={column} className="font-mono text-[11px] truncate">
-                      <CellValue value={row[column]} />
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Parse error message for human-readable display
-function parseErrorMessage(error: unknown): { title: string, details: string | null } {
-  const message = error instanceof Error ? error.message : String(error);
-  return {
-    title: "Query Error",
-    details: message,
-  };
-}
-
-// Error display component
+// Error display component for this file (uses relative dates display)
 function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () => void }) {
-  const { title, details } = parseErrorMessage(error);
+  const message = error instanceof Error ? error.message : String(error);
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 p-6 text-center">
@@ -269,12 +92,10 @@ function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () => void 
         <WarningCircleIcon className="h-7 w-7 text-red-500" />
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-1">{title}</h3>
-        {details && (
-          <p className="text-xs text-muted-foreground max-w-md break-words font-mono whitespace-pre-wrap">
-            {details}
-          </p>
-        )}
+        <h3 className="text-sm font-semibold text-foreground mb-1">Query Error</h3>
+        <p className="text-xs text-muted-foreground max-w-md break-words font-mono whitespace-pre-wrap">
+          {message}
+        </p>
       </div>
       <button
         onClick={onRetry}
@@ -338,6 +159,217 @@ function LoadingState() {
   );
 }
 
+// Save query dialog for the command palette
+// Note: This component requires adminApp to be non-null to avoid conditional hook calls
+function SaveQueryDialog({
+  open,
+  onOpenChange,
+  adminApp,
+  sqlQuery,
+}: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  adminApp: NonNullable<ReturnType<typeof useAdminAppIfExists>>,
+  sqlQuery: string,
+}) {
+  const updateConfig = useUpdateConfig();
+  const router = useRouter();
+  const [displayName, setDisplayName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  // Get folders from config - hooks are now called unconditionally
+  const config = adminApp.useProject().useConfig();
+  const folders = useMemo((): FolderWithId[] => {
+    const analyticsConfig = config.analytics;
+    const queryFolders = analyticsConfig.queryFolders;
+
+    return Object.entries(queryFolders)
+      .map(([id, folder]) => ({
+        id,
+        displayName: folder.displayName,
+        sortOrder: folder.sortOrder,
+        queries: Object.entries(folder.queries).map(([queryId, q]) => ({
+          id: queryId,
+          displayName: q.displayName,
+          sqlQuery: q.sqlQuery,
+          description: q.description,
+        })),
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [config]);
+
+  const handleSave = async () => {
+    if (!displayName.trim() || !sqlQuery.trim() || !selectedFolderId) return;
+    setLoading(true);
+    try {
+      const queryId = generateSecureRandomString();
+      await updateConfig({
+        adminApp,
+        configUpdate: {
+          [`analytics.queryFolders.${selectedFolderId}.queries.${queryId}`]: {
+            displayName: displayName.trim(),
+            sqlQuery,
+            ...(description.trim() ? { description: description.trim() } : {}),
+          },
+        },
+        pushable: false,
+      });
+      setDisplayName("");
+      setDescription("");
+      setSelectedFolderId("");
+      onOpenChange(false);
+      // Navigate to the queries page after saving
+      router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/queries`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    setCreatingFolder(true);
+    try {
+      const folderId = generateSecureRandomString();
+      await updateConfig({
+        adminApp,
+        configUpdate: {
+          [`analytics.queryFolders.${folderId}`]: {
+            displayName: newFolderName.trim(),
+            sortOrder: folders.length,
+            queries: {},
+          },
+        },
+        pushable: false,
+      });
+      // Auto-select the newly created folder
+      setSelectedFolderId(folderId);
+      setNewFolderName("");
+      setShowCreateFolder(false);
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const canSave = displayName.trim() && selectedFolderId && sqlQuery.trim();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Save Query</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="query-name">Query Name</Label>
+              <Input
+                id="query-name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="My Query"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="query-folder">Folder</Label>
+                {!showCreateFolder && (
+                  <button
+                    onClick={() => setShowCreateFolder(true)}
+                    className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors hover:transition-none"
+                  >
+                    <PlusIcon className="h-3 w-3" />
+                    New folder
+                  </button>
+                )}
+              </div>
+              {showCreateFolder ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="Folder name"
+                    className="flex-1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        runAsynchronouslyWithAlert(handleCreateFolder);
+                      } else if (e.key === "Escape") {
+                        setShowCreateFolder(false);
+                        setNewFolderName("");
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => runAsynchronouslyWithAlert(handleCreateFolder)}
+                    disabled={!newFolderName.trim() || creatingFolder}
+                  >
+                    {creatingFolder ? "..." : "Create"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowCreateFolder(false);
+                      setNewFolderName("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <select
+                  id="query-folder"
+                  className="w-full h-10 px-3 border rounded-md text-sm bg-background"
+                  value={selectedFolderId}
+                  onChange={(e) => {
+                    if (e.target.value === "__create_new__") {
+                      setShowCreateFolder(true);
+                    } else {
+                      setSelectedFolderId(e.target.value);
+                    }
+                  }}
+                >
+                  <option value="">Select a folder...</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {folder.displayName}
+                    </option>
+                  ))}
+                  <option value="__create_new__">Create new...</option>
+                </select>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="query-description">Description (optional)</Label>
+              <Textarea
+                id="query-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What this query does..."
+                rows={2}
+              />
+            </div>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => runAsynchronouslyWithAlert(handleSave)} disabled={!canSave || loading}>
+            {loading ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Main Run Query Preview Component - wrapper that resets state on query change
 export function RunQueryPreview({ query, ...rest }: CmdKPreviewProps) {
   return <RunQueryPreviewInner key={query} query={query} {...rest} />;
@@ -355,6 +387,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   const [hasQueried, setHasQueried] = useState(false);
   const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
   const trimmedQuery = query.trim();
 
@@ -406,9 +439,7 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   };
 
   const handleRetry = useCallback(() => {
-    runQuery().catch(() => {
-      // Error is already handled in runQuery
-    });
+    runAsynchronouslyWithAlert(runQuery);
   }, [runQuery]);
 
   // No admin app available
@@ -453,11 +484,18 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
   // Results table
   return (
     <div className="flex flex-col h-full w-full">
-      {/* Header with row count */}
+      {/* Header with row count and save button */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 shrink-0">
         <span className="text-[10px] text-muted-foreground">
           {rows.length.toLocaleString()} row{rows.length !== 1 ? "s" : ""}
         </span>
+        <button
+          onClick={() => setSaveDialogOpen(true)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors hover:transition-none"
+        >
+          <FloppyDiskIcon className="h-3 w-3" />
+          Save Query
+        </button>
       </div>
 
       {/* Table */}
@@ -472,6 +510,13 @@ const RunQueryPreviewInner = memo(function RunQueryPreviewInner({
         columns={columns}
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
+      />
+
+      <SaveQueryDialog
+        open={saveDialogOpen}
+        onOpenChange={setSaveDialogOpen}
+        adminApp={adminApp}
+        sqlQuery={trimmedQuery}
       />
     </div>
   );

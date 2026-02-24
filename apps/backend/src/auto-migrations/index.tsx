@@ -132,7 +132,7 @@ export async function applyMigrations(options: {
         }
 
         for (const statementRaw of migration.sql.split('SPLIT_STATEMENT_SENTINEL')) {
-          const statement = statementRaw.replace('/* SCHEMA_NAME_SENTINEL */', sqlQuoteIdentToString(options.schema));
+          const statement = statementRaw.replaceAll('/* SCHEMA_NAME_SENTINEL */', sqlQuoteIdentToString(options.schema));
           const runOutside = statement.includes('RUN_OUTSIDE_TRANSACTION_SENTINEL');
           const isSingleStatement = statement.includes('SINGLE_STATEMENT_SENTINEL');
           const isConditionallyRepeatMigration = statement.includes('CONDITIONALLY_REPEAT_MIGRATION_SENTINEL');
