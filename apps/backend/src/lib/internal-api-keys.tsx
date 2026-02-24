@@ -1,23 +1,48 @@
 // TODO remove and replace with CRUD handler
 
-import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
 import { ApiKeySet, Prisma } from '@/generated/prisma/client';
+import { RawQuery, globalPrismaClient, rawQuery } from '@/prisma-client';
 import { InternalApiKeysCrud } from '@stackframe/stack-shared/dist/interface/crud/internal-api-keys';
 import { yupString } from '@stackframe/stack-shared/dist/schema-fields';
 import { typedIncludes } from '@stackframe/stack-shared/dist/utils/arrays';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
+import { KnownError, KnownErrors } from '@stackframe/stack-shared/dist/known-errors';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { publishableClientKeyNotNecessarySentinel } from '@stackframe/stack-shared/dist/utils/oauth';
+import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { getRenderedProjectConfigQuery } from './config';
 
 export const publishableClientKeyHeaderSchema = yupString().matches(/^[a-zA-Z0-9_-]*$/);
 export const secretServerKeyHeaderSchema = publishableClientKeyHeaderSchema;
 export const superSecretAdminKeyHeaderSchema = secretServerKeyHeaderSchema;
 
-export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<boolean> {
+export type CheckApiKeySetError = "invalid-key" | "publishable-key-required";
+
+export function throwCheckApiKeySetError(error: CheckApiKeySetError, projectId: string, invalidKeyError: KnownError): never {
+  if (error === "publishable-key-required") {
+    throw new KnownErrors.PublishableClientKeyRequiredForProject(projectId);
+  }
+  throw invalidKeyError;
+}
+
+export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<Promise<Result<void, CheckApiKeySetError>>> {
   key = validateKeyType(key);
   const keyType = Object.keys(key)[0] as keyof KeyType;
   const keyValue = key[keyType];
+
+  if (keyType === "publishableClientKey" && keyValue === publishableClientKeyNotNecessarySentinel) {
+    return RawQuery.then(
+      getRenderedProjectConfigQuery({ projectId }),
+      async (configPromise) => {
+        const config = await configPromise;
+        if (config.project.requirePublishableClientKey) {
+          return Result.error("publishable-key-required" as const);
+        }
+        return Result.ok(undefined);
+      },
+    );
+  }
 
   const whereClause = Prisma.sql`
     ${Prisma.raw(JSON.stringify(keyType))} = ${keyValue}
@@ -34,33 +59,15 @@ export function checkApiKeySetQuery(projectId: string, key: KeyType): RawQuery<b
       AND "manuallyRevokedAt" IS NULL
       AND "expiresAt" > ${new Date()}
     `,
-    postProcess: (rows) => rows[0]?.result === "t",
+    postProcess: async (rows): Promise<Result<void, CheckApiKeySetError>> =>
+      rows[0]?.result === "t" ? Result.ok(undefined) : Result.error("invalid-key"),
   };
 }
 
-export async function checkApiKeySet(projectId: string, key: KeyType): Promise<boolean> {
+export async function checkApiKeySet(projectId: string, key: KeyType): Promise<Result<void, CheckApiKeySetError>> {
   const result = await rawQuery(globalPrismaClient, checkApiKeySetQuery(projectId, key));
 
-  // In non-prod environments, let's also call the legacy function and ensure the result is the same
-  if (!getNodeEnvironment().includes("prod")) {
-    const legacy = await checkApiKeySetLegacy(projectId, key);
-    if (legacy !== result) {
-      throw new StackAssertionError("checkApiKeySet result mismatch", {
-        result,
-        legacy,
-      });
-    }
-  }
-
   return result;
-}
-
-async function checkApiKeySetLegacy(projectId: string, key: KeyType): Promise<boolean> {
-  const set = await getApiKeySet(projectId, key);
-  if (!set) return false;
-  if (set.manually_revoked_at_millis) return false;
-  if (set.expires_at_millis < Date.now()) return false;
-  return true;
 }
 
 

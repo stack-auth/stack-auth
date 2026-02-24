@@ -92,7 +92,7 @@ describe("get email theme", () => {
           "display_name": "Default Light",
           "id": "<stripped UUID>",
           "tsx_source": deindent\`
-            import { Html, Head, Tailwind, Body, Container, Link } from '@react-email/components';
+            import { Html, Head, Tailwind, Body, Container, Section } from '@react-email/components';
             import { ThemeProps, ProjectLogo } from "@stackframe/emails";
             
             export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
@@ -100,16 +100,17 @@ describe("get email theme", () => {
                 <Html>
                   <Head />
                   <Tailwind>
-                    <Body className="bg-[#fafbfb] font-sans text-base">
-                      <Container className="bg-white p-[45px] rounded-lg">
-                        <ProjectLogo data={projectLogos} mode="light" />
-                        {children}
-                      </Container>
+                    <Body className="bg-[#fafbfb] font-sans text-base m-0 p-0" style={{ overflowX: 'hidden' }}>
+                      <div className="py-8 px-4 flex justify-center">
+                        <Container className="bg-white p-[45px] rounded-lg shadow-sm mx-auto" style={{ width: '100%', maxWidth: '600px' }}>
+                          <ProjectLogo data={projectLogos} mode="light" />
+                          {children}
+                        </Container>
+                      </div>
                       {unsubscribeLink && (
-                        <div className="p-4">
-                          <Link href={unsubscribeLink}>Click here{" "}</Link>
-                          to unsubscribe from these emails
-                        </div>
+                        <Section className="p-4 opacity-60 text-center" style={{ textAlign: 'center' }}>
+                          <a href={unsubscribeLink} className="text-blue-600" target="_blank" rel="noopener noreferrer">Click here</a> to unsubscribe from these emails
+                        </Section>
                       )}
                     </Body>
                   </Tailwind>

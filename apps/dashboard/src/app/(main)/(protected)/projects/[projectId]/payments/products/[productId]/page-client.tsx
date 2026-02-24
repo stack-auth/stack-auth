@@ -1,6 +1,6 @@
 "use client";
 
-import { EditableGrid, type EditableGridItem } from "@/components/editable-grid";
+import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { Link, StyledLink } from "@/components/link";
 import { useRouter } from "@/components/router";
@@ -426,6 +426,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     } else {
       setPendingChanges({ ...pendingChanges, displayName: value || null });
     }
+    return Promise.resolve();
   };
 
   const handleProductLineUpdate = async (productLineId: string) => {
@@ -469,6 +470,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     } else {
       setPendingChanges({ ...pendingChanges, stackable: value });
     }
+    return Promise.resolve();
   };
 
   const handleServerOnlyChange = (value: boolean) => {
@@ -479,6 +481,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
     } else {
       setPendingChanges({ ...pendingChanges, serverOnly: value });
     }
+    return Promise.resolve();
   };
 
   const handleAddOnDialogSave = () => {
@@ -556,7 +559,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
   };
 
   // Build grid items for EditableGrid
-  const gridItems: EditableGridItem[] = [
+  const gridItems: DesignEditableGridItem[] = [
     {
       type: 'text',
       itemKey: 'displayName',
@@ -565,7 +568,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       tooltip: "The name shown to customers. Leave empty to use the product ID.",
       value: localDisplayName || '',
       placeholder: productId,
-      onChange: handleDisplayNameChange,
+      onUpdate: handleDisplayNameChange,
     },
     {
       type: 'dropdown',
@@ -575,7 +578,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       tooltip: "Product lines group products together. Customers can only have one active product per product line.",
       value: product.productLineId || '__none__',
       options: productLineOptions,
-      onChange: (value) => runAsynchronouslyWithAlert(handleProductLineUpdate(value)),
+      onUpdate: handleProductLineUpdate,
       extraAction: {
         label: "+ Create new product line",
         onClick: () => setCreateProductLineDialogOpen(true),
@@ -588,7 +591,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       name: "Stackable",
       tooltip: "Stackable products can be purchased multiple times by the same customer.",
       value: localStackable,
-      onChange: handleStackableChange,
+      onUpdate: handleStackableChange,
     },
     {
       type: 'custom-button',
@@ -689,7 +692,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
       name: "Server Only",
       tooltip: "Server-only products are only available through checkout sessions created by server-side APIs.",
       value: localServerOnly,
-      onChange: handleServerOnlyChange,
+      onUpdate: handleServerOnlyChange,
     },
     {
       type: 'custom',
@@ -727,7 +730,7 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   return (
     <>
-      <EditableGrid
+      <DesignEditableGrid
         items={gridItems}
         columns={2}
         deferredSave
@@ -1196,7 +1199,7 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
                       variant="ghost"
                       size="sm"
                       className="h-5 w-5 p-0"
-                      onClick={() => handleCopyPrompt(itemId, displayName)}
+                      onClick={() => runAsynchronouslyWithAlert(() => handleCopyPrompt(itemId, displayName))}
                     >
                       <CopyIcon className="h-3 w-3" />
                     </Button>

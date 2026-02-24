@@ -266,8 +266,8 @@ describe("sign-up rules", () => {
         "status": 403,
         "body": {
           "code": "SIGN_UP_REJECTED",
-          "details": { "message": "Your sign up was rejected. Please contact us for more information." },
-          "error": "Your sign up was rejected. Please contact us for more information.",
+          "details": { "message": "Your sign up was rejected by an administrator's sign-up rule." },
+          "error": "Your sign up was rejected by an administrator's sign-up rule.",
         },
         "headers": Headers {
           "x-stack-known-error": "SIGN_UP_REJECTED",

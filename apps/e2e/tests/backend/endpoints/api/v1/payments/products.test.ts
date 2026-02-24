@@ -132,6 +132,7 @@ it("should grant configured subscription product and expose it via listing", asy
               "cancel_at_period_end": false,
               "current_period_end": <stripped field 'current_period_end'>,
               "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
           },
@@ -533,6 +534,7 @@ it("should hide server-only products from clients while exposing them to servers
               "cancel_at_period_end": false,
               "current_period_end": <stripped field 'current_period_end'>,
               "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
           },
@@ -670,6 +672,7 @@ it("should allow granting stackable product with custom quantity", async ({ expe
               "cancel_at_period_end": false,
               "current_period_end": <stripped field 'current_period_end'>,
               "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
           },
@@ -747,11 +750,116 @@ it("should grant inline product without needing configuration", async ({ expect 
             "subscription": {
               "cancel_at_period_end": false,
               "current_period_end": <stripped field 'current_period_end'>,
-              "is_cancelable": false,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
           },
         ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow canceling an inline product subscription via subscription_id", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+
+  const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_inline: {
+        display_name: "Inline Sub",
+        customer_type: "user",
+        server_only: false,
+        prices: {
+          monthly: {
+            USD: "500",
+            interval: [1, "month"],
+          },
+        },
+        included_items: {},
+      },
+    },
+  });
+  expect(grantResponse.status).toBe(200);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": null,
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Inline Sub",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "500",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  const items = listResponse.body.items;
+
+  const subscriptionId = items[0].subscription.subscription_id;
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/_inline?subscription_id=${encodeURIComponent(subscriptionId)}`, {
+    method: "DELETE",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const afterCancelList = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(afterCancelList).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
         "pagination": { "next_cursor": null },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -1055,6 +1163,7 @@ it("listing products should list both subscription and one-time products", async
               "cancel_at_period_end": false,
               "current_period_end": <stripped field 'current_period_end'>,
               "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
           },
@@ -1199,6 +1308,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
               "cancel_at_period_end": false,
               "current_period_end": <stripped field 'current_period_end'>,
               "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
           },
