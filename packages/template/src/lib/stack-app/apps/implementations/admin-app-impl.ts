@@ -20,7 +20,7 @@ import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, Interna
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
-import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
+import { ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
@@ -602,6 +602,34 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       sentAt: new Date(email.sent_at_millis),
       error: email.error,
     }));
+  }
+
+  async setupManagedEmailProvider(options: { subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderSetupResult> {
+    const response = await this._interface.setupManagedEmailProvider({
+      subdomain: options.subdomain,
+      sender_local_part: options.senderLocalPart,
+    });
+    return {
+      domainId: response.domain_id,
+      nameServerRecords: response.name_server_records,
+    };
+  }
+
+  async checkManagedEmailStatus(options: { domainId: string, subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderStatus> {
+    const response = await this._interface.checkManagedEmailStatus({
+      domain_id: options.domainId,
+      subdomain: options.subdomain,
+      sender_local_part: options.senderLocalPart,
+    });
+    if (response.status === "pending") {
+      return {
+        status: "pending",
+        missingNameServerRecords: response.missing_name_server_records ?? [],
+      };
+    }
+    return {
+      status: "complete",
+    };
   }
 
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {

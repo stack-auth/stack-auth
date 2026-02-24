@@ -400,6 +400,35 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async setupManagedEmailProvider(data: {
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{ domain_id: string, name_server_records: string[] }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async checkManagedEmailStatus(data: {
+    domain_id: string,
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{ status: "pending" | "complete", missing_name_server_records?: string[] }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/check", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async sendSignInInvitationEmail(
     email: string,
     callbackUrl: string,

@@ -17,6 +17,16 @@ export function SmartFormDialog<S extends yup.ObjectSchema<any, any, any, any>>(
   const formId = `${useId()}-form`;
   const [submitting, setSubmitting] = useState(false);
   const [openState, setOpenState] = useState(false);
+  const okButton = props.okButton === false ? false : {
+    onClick: async () => "prevent-close" as const,
+    ...(typeof props.okButton === "boolean" ? {} : props.okButton),
+    props: {
+      form: formId,
+      type: "submit" as const,
+      loading: submitting,
+      ...((typeof props.okButton === "boolean") ? {} : props.okButton?.props),
+    },
+  };
   const handleSubmit = async (values: yup.InferType<S>) => {
     const res = await props.onSubmit(values);
     if (res !== 'prevent-close') {
@@ -34,16 +44,7 @@ export function SmartFormDialog<S extends yup.ObjectSchema<any, any, any, any>>(
         setOpenState(open);
         props.onOpenChange?.(open);
       }}
-      okButton={{
-        onClick: async () => "prevent-close",
-        ...(typeof props.okButton === "boolean" ? {} : props.okButton),
-        props: {
-          form: formId,
-          type: "submit",
-          loading: submitting,
-          ...((typeof props.okButton === "boolean") ? {} : props.okButton?.props)
-        },
-      }}
+      okButton={okButton}
     >
       <SmartForm formSchema={props.formSchema} onSubmit={handleSubmit} onChangeIsSubmitting={setSubmitting} formId={formId} />
     </ActionDialog>
@@ -67,6 +68,16 @@ export function FormDialog<F extends FieldValues>(
   });
   const [openState, setOpenState] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const okButton = props.okButton === false ? false : {
+    onClick: async () => "prevent-close" as const,
+    ...(typeof props.okButton == "boolean" ? {} : props.okButton),
+    props: {
+      form: formId,
+      type: "submit" as const,
+      loading: submitting,
+      ...((typeof props.okButton == "boolean") ? {} : props.okButton?.props),
+    },
+  };
 
   const onSubmit = async (values: F, e?: React.BaseSyntheticEvent) => {
     e?.preventDefault();
@@ -122,16 +133,7 @@ export function FormDialog<F extends FieldValues>(
         setOpenState(false);
         runAsynchronouslyWithAlert(props.onClose?.());
       }}
-      okButton={{
-        onClick: async () => "prevent-close",
-        ...(typeof props.okButton == "boolean" ? {} : props.okButton),
-        props: {
-          form: formId,
-          type: "submit",
-          loading: submitting,
-          ...((typeof props.okButton == "boolean") ? {} : props.okButton?.props)
-        },
-      }}
+      okButton={okButton}
     >
       <Form {...(form)}>
         <form

@@ -76,3 +76,18 @@ A: The card playground now includes a `Header Actions` toggle that injects a sam
 
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: What is the intended managed email onboarding DNS flow with Cloudflare?
+A: For a user-provided subdomain (for example `mail.customer.com`), create a dedicated Cloudflare zone for that exact subdomain, return that zone's nameservers to the user for NS delegation at their existing DNS provider, write Resend verification/sending records into the Cloudflare zone, and poll verification before persisting `emails.server.provider = "managed"` config.
+
+Q: How can managed email onboarding run locally without real Resend/Cloudflare credentials?
+A: In `apps/backend/src/lib/managed-email-onboarding.tsx`, mock onboarding is inferred (no separate flag): it auto-enables in test and in development when `STACK_RESEND_API_KEY` starts with `mock_` (for example `mock_resend_api_key`), so setup/check use mock nameservers and skip external fetches.
+
+Q: Where is the managed email setup dialog on the dashboard emails page, and how should post-submit UI behave?
+A: The dialog is `ManagedEmailSetupDialog` in `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/emails/page-client.tsx`; use a subdomain placeholder like `emails.example.com`, validate subdomain/local-part via schema before submit, and after setup starts hide both input fields and the submit button so users cannot re-run setup from that dialog state.
+
+Q: Why can `okButton={false}` still show an OK button in dashboard form dialogs?
+A: `FormDialog` and `SmartFormDialog` must explicitly pass `okButton={false}` through to `ActionDialog`; otherwise they can accidentally always construct a submit-button config, causing hidden-form submits and no-op clicks in post-submit states.
+
+Q: What fields must be included when constructing `CompleteConfig['emails']['server']` objects after adding managed email support?
+A: Even for non-managed providers (`smtp`/`resend`), include `managedSubdomain` and `managedSenderLocalPart` (typically `undefined`) to satisfy the widened `CompleteConfig['emails']['server']` type and keep typecheck green.

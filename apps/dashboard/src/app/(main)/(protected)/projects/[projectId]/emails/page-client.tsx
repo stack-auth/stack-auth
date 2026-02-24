@@ -13,7 +13,7 @@ import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef, Table as TableType } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -164,11 +164,15 @@ function EmulatorModeCard() {
 function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails']['server'] }) {
   const serverType = emailConfig.isShared
     ? 'Shared'
-    : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
+    : emailConfig.provider === 'managed'
+      ? 'Managed Resend'
+      : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared
     ? 'noreply@stackframe.co'
-    : emailConfig.senderEmail;
+    : emailConfig.provider === 'managed' && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
+      ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
+      : emailConfig.senderEmail;
 
   return (
     <GlassCard gradientColor="slate">
@@ -191,6 +195,14 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
                 }
               />
             )}
+            <ManagedEmailSetupDialog
+              trigger={
+                <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
+                  <Envelope className="h-3.5 w-3.5" />
+                  Managed Setup
+                </Button>
+              }
+            />
             <EditEmailServerDialog
               trigger={
                 <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
@@ -224,9 +236,189 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
             </span>
             <span className="text-sm font-medium text-foreground font-mono">{senderEmail}</span>
           </div>
+
+          {emailConfig.provider === "managed" && (
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Managed Domain
+              </span>
+              <span className="text-sm font-medium text-foreground font-mono">{emailConfig.managedSubdomain}</span>
+            </div>
+          )}
+
+          {emailConfig.provider === "managed" && (
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Sender Local Part
+              </span>
+              <span className="text-sm font-medium text-foreground font-mono">{emailConfig.managedSenderLocalPart}</span>
+            </div>
+          )}
         </div>
       </div>
     </GlassCard>
+  );
+}
+
+const managedEmailSetupSchema = yup.object({
+  subdomain: yup
+    .string()
+    .trim()
+    .defined("Managed subdomain is required")
+    .test(
+      "non-empty-subdomain",
+      "Managed subdomain is required",
+      (value) => value.trim().length > 0,
+    )
+    .matches(
+      /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,63}$/,
+      "Enter a full subdomain like emails.example.com",
+    ),
+  senderLocalPart: yup
+    .string()
+    .trim()
+    .defined("Sender local part is required")
+    .test(
+      "non-empty-sender-local-part",
+      "Sender local part is required",
+      (value) => value.trim().length > 0,
+    ),
+});
+
+function ManagedEmailSetupDialog(props: {
+  trigger: React.ReactNode,
+}) {
+  const stackAdminApp = useAdminApp();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [setupState, setSetupState] = useState<{ domainId: string, nameServerRecords: string[], subdomain: string, senderLocalPart: string } | null>(null);
+  const [checkStatus, setCheckStatus] = useState<"idle" | "pending" | "complete">("idle");
+  const [missingNameServers, setMissingNameServers] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !setupState || checkStatus !== "pending") return;
+
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      while (!cancelled) {
+        const result = await stackAdminApp.checkManagedEmailStatus({
+          domainId: setupState.domainId,
+          subdomain: setupState.subdomain,
+          senderLocalPart: setupState.senderLocalPart,
+        });
+
+        if (result.status === "complete") {
+          setCheckStatus("complete");
+          setMissingNameServers([]);
+          toast({
+            title: "Managed email enabled",
+            description: "Managed Resend provider is now configured for this project.",
+            variant: "success",
+          });
+          return;
+        }
+
+        setMissingNameServers(result.missingNameServerRecords);
+        await wait(3000);
+      }
+    }, {
+      onError: (err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Managed onboarding status check failed");
+      },
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [checkStatus, open, setupState, stackAdminApp, toast]);
+
+  return (
+    <FormDialog
+      trigger={props.trigger}
+      open={open}
+      onOpenChange={(newOpen) => {
+        setOpen(newOpen);
+        if (!newOpen) {
+          setSetupState(null);
+          setCheckStatus("idle");
+          setMissingNameServers([]);
+          setError(null);
+        }
+      }}
+      title="Managed Email Setup"
+      formSchema={managedEmailSetupSchema}
+      defaultValues={{ subdomain: "", senderLocalPart: "updates" }}
+      okButton={setupState ? false : { label: "Start Setup" }}
+      cancelButton
+      onSubmit={async (values) => {
+        const setupResult = await stackAdminApp.setupManagedEmailProvider({
+          subdomain: values.subdomain,
+          senderLocalPart: values.senderLocalPart,
+        });
+        setSetupState({
+          domainId: setupResult.domainId,
+          nameServerRecords: setupResult.nameServerRecords,
+          subdomain: values.subdomain,
+          senderLocalPart: values.senderLocalPart,
+        });
+        setError(null);
+        setMissingNameServers([]);
+        setCheckStatus("pending");
+        return "prevent-close" as const;
+      }}
+      render={(form) => (
+        <>
+          {setupState == null && (
+            <>
+              <InputField
+                label="Managed subdomain"
+                name="subdomain"
+                control={form.control}
+                type="text"
+                placeholder="emails.example.com"
+                required
+              />
+              <InputField
+                label="Sender local part"
+                name="senderLocalPart"
+                control={form.control}
+                type="text"
+                required
+              />
+            </>
+          )}
+          {setupState && (
+            <Alert className="bg-blue-500/5 border-blue-500/20">
+              <AlertTitle>Delegate your subdomain with these NS records</AlertTitle>
+              <AlertDescription>
+                Add these nameservers at your DNS provider for the managed subdomain you entered.
+                <div className="mt-2 flex flex-col gap-1">
+                  {setupState.nameServerRecords.map((record) => (
+                    <div key={record} className="font-mono text-xs">{record}</div>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {checkStatus === "pending" && (
+            <Alert className="bg-orange-500/5 border-orange-500/20">
+              <AlertTitle>Waiting for DNS propagation</AlertTitle>
+              <AlertDescription>
+                {missingNameServers.length > 0 ? `Missing NS records: ${missingNameServers.join(", ")}` : "Polling verification status..."}
+              </AlertDescription>
+            </Alert>
+          )}
+          {checkStatus === "complete" && (
+            <Alert className="bg-emerald-500/5 border-emerald-500/20">
+              <AlertTitle>Managed email provider is ready</AlertTitle>
+            </Alert>
+          )}
+          {error && <Alert variant="destructive">{error}</Alert>}
+        </>
+      )}
+    />
   );
 }
 
@@ -392,6 +584,14 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
       senderName: emailConfig.senderName,
       password: emailConfig.password,
     } as const;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  } else if (emailConfig.provider === 'managed') {
+    return {
+      type: 'resend',
+      senderEmail: emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}` : emailConfig.senderEmail,
+      senderName: emailConfig.senderName ?? project.displayName,
+      password: emailConfig.password,
+    } as const;
   } else {
     return {
       type: 'standard',
@@ -508,6 +708,8 @@ function EditEmailServerDialog(props: {
           senderEmail: emailConfig.senderEmail,
           senderName: emailConfig.senderName,
           provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+          managedSubdomain: undefined,
+          managedSenderLocalPart: undefined,
         } satisfies CompleteConfig['emails']['server']
       },
       pushable: false,
@@ -719,14 +921,24 @@ function TestSendingDialog(props: {
       }
 
       // Convert CompleteConfig email server to AdminEmailConfig format
-      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' ? {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' || emailServerConfig.provider === 'managed' ? {
         type: 'resend',
-        host: emailServerConfig.host ?? throwErr("Email host is missing"),
-        port: emailServerConfig.port ?? throwErr("Email port is missing"),
-        username: emailServerConfig.username ?? throwErr("Email username is missing"),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        host: emailServerConfig.provider === "managed" ? "smtp.resend.com" : (emailServerConfig.host ?? throwErr("Email host is missing")),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        port: emailServerConfig.provider === "managed" ? 465 : (emailServerConfig.port ?? throwErr("Email port is missing")),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        username: emailServerConfig.provider === "managed" ? "resend" : (emailServerConfig.username ?? throwErr("Email username is missing")),
         password: emailServerConfig.password ?? throwErr("Email password is missing"),
-        senderName: emailServerConfig.senderName ?? throwErr("Email sender name is missing"),
-        senderEmail: emailServerConfig.senderEmail ?? throwErr("Email sender email is missing"),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        senderName: emailServerConfig.provider === "managed" ? project.displayName : (emailServerConfig.senderName ?? throwErr("Email sender name is missing")),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        senderEmail: emailServerConfig.provider === "managed"
+          ? (emailServerConfig.managedSubdomain && emailServerConfig.managedSenderLocalPart
+            ? `${emailServerConfig.managedSenderLocalPart}@${emailServerConfig.managedSubdomain}`
+            : throwErr("Managed sender config is missing"))
+          : (emailServerConfig.senderEmail ?? throwErr("Email sender email is missing")),
       } : {
         type: 'standard',
         host: emailServerConfig.host ?? throwErr("Email host is missing"),
