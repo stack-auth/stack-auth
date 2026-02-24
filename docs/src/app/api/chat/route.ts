@@ -14,11 +14,16 @@ export async function POST(request: Request) {
     "content-type": "application/json",
   };
 
+  const projectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID;
+  const publishableClientKey = process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY;
+
   const user = await stackServerApp.getUser();
-  if (user != null) {
+  if (user != null && projectId != null && publishableClientKey != null) {
     const accessToken = await user.getAccessToken();
     if (accessToken != null) {
       requestHeaders["x-stack-access-type"] = "client";
+      requestHeaders["x-stack-project-id"] = projectId;
+      requestHeaders["x-stack-publishable-client-key"] = publishableClientKey;
       requestHeaders["x-stack-access-token"] = accessToken;
     }
   }
