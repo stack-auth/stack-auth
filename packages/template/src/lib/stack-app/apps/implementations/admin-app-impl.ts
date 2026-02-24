@@ -414,7 +414,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       }));
     }, [crud]);
   }
-  useEmailDrafts(): { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[] {
+  useEmailDrafts(): { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null, templateVariables: Record<string, string> }[] {
     const crud = useAsyncCache(this._adminEmailDraftsCache, [], "adminApp.useEmailDrafts()");
     return useMemo(() => {
       return crud.map((draft) => ({
@@ -423,6 +423,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         themeId: draft.theme_id,
         tsxSource: draft.tsx_source,
         sentAt: draft.sent_at_millis ? new Date(draft.sent_at_millis) : null,
+        templateVariables: draft.template_variables,
       }));
     }, [crud]);
   }
@@ -445,7 +446,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
-  async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null }[]> {
+  async listEmailDrafts(): Promise<{ id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null, templateVariables: Record<string, string> }[]> {
     const crud = Result.orThrow(await this._adminEmailDraftsCache.getOrWait([], "write-only"));
     return crud.map((draft) => ({
       id: draft.id,
@@ -453,6 +454,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       themeId: draft.theme_id,
       tsxSource: draft.tsx_source,
       sentAt: draft.sent_at_millis ? new Date(draft.sent_at_millis) : null,
+      templateVariables: draft.template_variables,
     }));
   }
 
@@ -620,21 +622,23 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailTemplatesCache.refresh([]);
   }
 
-  async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string }): Promise<{ id: string }> {
+  async createEmailDraft(options: { displayName: string, themeId?: string | false, tsxSource?: string, templateVariables?: Record<string, string> }): Promise<{ id: string }> {
     const result = await this._interface.createEmailDraft({
       display_name: options.displayName,
       theme_id: options.themeId,
       tsx_source: options.tsxSource,
+      template_variables: options.templateVariables,
     });
     await this._adminEmailDraftsCache.refresh([]);
     return result;
   }
 
-  async updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void> {
+  async updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string> }): Promise<void> {
     await this._interface.updateEmailDraft(id, {
       display_name: data.displayName,
       theme_id: data.themeId,
       tsx_source: data.tsxSource,
+      template_variables: data.templateVariables,
     });
     await this._adminEmailDraftsCache.refresh([]);
   }

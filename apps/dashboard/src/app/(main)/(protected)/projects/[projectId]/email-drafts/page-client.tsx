@@ -3,9 +3,9 @@
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Spinner, Typography } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Spinner, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
+import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useMemo, useState } from "react";
@@ -13,6 +13,54 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+
+/**
+ * Extracts template variable info from TSX source.
+ * Returns variable names and their default values from PreviewVariables.
+ */
+function extractTemplateVariables(tsxSource: string): { name: string, defaultValue: string }[] {
+  const variables: { name: string, defaultValue: string }[] = [];
+
+  // Extract variable names from variablesSchema
+  const schemaMatch = tsxSource.match(/variablesSchema\s*=\s*type\s*\(\s*\{([\s\S]*?)\}\s*\)/);
+  if (!schemaMatch) {
+    return variables;
+  }
+
+  const schemaContent = schemaMatch[1];
+  const varMatches = schemaContent.match(/(\w+)\s*:/g) || [];
+  const variableNames: string[] = [];
+  for (const match of varMatches) {
+    const name = match.replace(/\s*:/, '');
+    if (name) {
+      variableNames.push(name);
+    }
+  }
+
+  // Extract PreviewVariables defaults
+  const previewVarsMatch = tsxSource.match(/EmailTemplate\.PreviewVariables\s*=\s*(\{[\s\S]*?\})\s*satisfies/);
+  const defaults: Record<string, string> = {};
+  if (previewVarsMatch) {
+    try {
+      const objContent = previewVarsMatch[1];
+      const pairs = objContent.match(/(\w+)\s*:\s*["'`]([^"'`]*)["'`]/g) || [];
+      for (const pair of pairs) {
+        const pairMatch = pair.match(/(\w+)\s*:\s*["'`]([^"'`]*)["'`]/);
+        if (pairMatch) {
+          const [, key, value] = pairMatch;
+          defaults[key] = value;
+        }
+      }
+    } catch {
+      // If parsing fails, continue with empty defaults
+    }
+  }
+
+  return variableNames.map(name => ({
+    name,
+    defaultValue: defaults[name] ?? "",
+  }));
+}
 
 // Glassmorphic card component following design guide
 function GlassCard({
@@ -583,6 +631,8 @@ function NewDraftDialog({
   );
 }
 
+type TemplateDialogStep = "select" | "variables";
+
 function TemplateSelectDialog({
   open,
   onOpenChange,
@@ -593,78 +643,202 @@ function TemplateSelectDialog({
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const templates = stackAdminApp.useEmailTemplates();
-  const [loadingTemplateId, setLoadingTemplateId] = useState<string | null>(null);
 
-  const handleSelectTemplate = async (template: { id: string, displayName: string, tsxSource: string }) => {
-    setLoadingTemplateId(template.id);
+  const [step, setStep] = useState<TemplateDialogStep>("select");
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string, displayName: string, tsxSource: string } | null>(null);
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Extract variables from selected template
+  const templateVariables = useMemo(() => {
+    if (!selectedTemplate) return [];
+    return extractTemplateVariables(selectedTemplate.tsxSource);
+  }, [selectedTemplate]);
+
+  // Check if all variables have values
+  const allVariablesFilled = useMemo(() => {
+    return templateVariables.every(v => (variableValues[v.name] ?? "").trim() !== "");
+  }, [templateVariables, variableValues]);
+
+  const resetDialog = () => {
+    setStep("select");
+    setSelectedTemplate(null);
+    setVariableValues({});
+    setIsCreating(false);
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      resetDialog();
+    }
+    onOpenChange(newOpen);
+  };
+
+  const handleSelectTemplate = (template: { id: string, displayName: string, tsxSource: string }) => {
+    setSelectedTemplate(template);
+    const variables = extractTemplateVariables(template.tsxSource);
+
+    if (variables.length > 0) {
+      // Pre-fill with default values
+      const defaults: Record<string, string> = {};
+      for (const v of variables) {
+        defaults[v.name] = v.defaultValue;
+      }
+      setVariableValues(defaults);
+      setStep("variables");
+    } else {
+      // No variables, create draft directly
+      runAsynchronouslyWithAlert(() => createDraftFromTemplate(template, {}));
+    }
+  };
+
+  const createDraftFromTemplate = async (
+    template: { id: string, displayName: string, tsxSource: string },
+    variables: Record<string, string>,
+  ) => {
+    setIsCreating(true);
     try {
       const draft = await stackAdminApp.createEmailDraft({
         displayName: `Copy of ${template.displayName}`,
         tsxSource: template.tsxSource,
+        templateVariables: Object.keys(variables).length > 0 ? variables : undefined,
       });
-      onOpenChange(false);
+
+      handleOpenChange(false);
       router.push(urlString`email-drafts/${draft.id}`);
     } finally {
-      setLoadingTemplateId(null);
+      setIsCreating(false);
     }
   };
 
+  const handleCreateWithVariables = () => {
+    if (!selectedTemplate || !allVariablesFilled) return;
+    runAsynchronouslyWithAlert(() => createDraftFromTemplate(selectedTemplate, variableValues));
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Create from Template</DialogTitle>
+          <DialogTitle>
+            {step === "select" ? "Create from Template" : "Template Variables"}
+          </DialogTitle>
         </DialogHeader>
-        <div className="mt-4">
-          {templates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="p-3 rounded-xl bg-foreground/[0.04] mb-3">
-                <FileCode className="h-6 w-6 text-muted-foreground/50" />
+
+        {step === "select" && (
+          <div className="mt-4">
+            {templates.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="p-3 rounded-xl bg-foreground/[0.04] mb-3">
+                  <FileCode className="h-6 w-6 text-muted-foreground/50" />
+                </div>
+                <Typography className="text-sm font-medium text-foreground mb-1">
+                  No templates available
+                </Typography>
+                <Typography variant="secondary" className="text-sm max-w-xs">
+                  Create templates first to use them as a starting point for drafts
+                </Typography>
               </div>
-              <Typography className="text-sm font-medium text-foreground mb-1">
-                No templates available
-              </Typography>
-              <Typography variant="secondary" className="text-sm max-w-xs">
-                Create templates first to use them as a starting point for drafts
-              </Typography>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {templates.map((template) => (
-                <button
-                  type="button"
-                  key={template.id}
-                  disabled={loadingTemplateId !== null}
-                  onClick={() => runAsynchronouslyWithAlert(() => handleSelectTemplate(template))}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg text-left",
-                    "bg-gray-100/50 dark:bg-foreground/[0.03]",
-                    "border border-border/30 dark:border-foreground/[0.06]",
-                    "hover:bg-gray-100 dark:hover:bg-foreground/[0.05]",
-                    "transition-all duration-150 hover:transition-none",
-                    loadingTemplateId !== null && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  <div className="p-2 rounded-lg bg-foreground/[0.04] shrink-0">
-                    {loadingTemplateId === template.id ? (
-                      <Spinner className="h-4 w-4" />
-                    ) : (
+            ) : (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {templates.map((template) => (
+                  <button
+                    type="button"
+                    key={template.id}
+                    disabled={isCreating}
+                    onClick={() => handleSelectTemplate(template)}
+                    className={cn(
+                      "w-full flex items-center gap-3 p-3 rounded-lg text-left",
+                      "bg-gray-100/50 dark:bg-foreground/[0.03]",
+                      "border border-border/30 dark:border-foreground/[0.06]",
+                      "hover:bg-gray-100 dark:hover:bg-foreground/[0.05]",
+                      "transition-all duration-150 hover:transition-none",
+                      isCreating && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <div className="p-2 rounded-lg bg-foreground/[0.04] shrink-0">
                       <FileCode className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <Typography className="font-medium text-sm truncate">
+                        {template.displayName}
+                      </Typography>
+                      <Typography variant="secondary" className="text-xs truncate">
+                        Use as starting point
+                      </Typography>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === "variables" && selectedTemplate && (
+          <div className="mt-4 space-y-4">
+            <Alert>
+              <WarningCircle className="h-4 w-4" />
+              <AlertTitle>This template uses variables</AlertTitle>
+              <AlertDescription>
+                Enter values for the template variables below. These will be used when sending the email.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-4">
+              {templateVariables.map((variable) => {
+                const isLinkVariable = variable.name.toLowerCase().includes("link") || variable.name.toLowerCase().includes("url");
+                return (
+                  <div key={variable.name} className="space-y-2">
+                    <Label htmlFor={`var-${variable.name}`} className="text-sm font-medium">
+                      {variable.name}
+                    </Label>
+                    <Input
+                      id={`var-${variable.name}`}
+                      value={variableValues[variable.name] ?? ""}
+                      onChange={(e) => setVariableValues(prev => ({
+                        ...prev,
+                        [variable.name]: e.target.value,
+                      }))}
+                      placeholder={isLinkVariable ? "https://example.com/..." : (variable.defaultValue || `Enter ${variable.name}`)}
+                    />
+                    {isLinkVariable && (
+                      <Typography variant="secondary" className="text-xs">
+                        Enter a full URL including https://
+                      </Typography>
                     )}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <Typography className="font-medium text-sm truncate">
-                      {template.displayName}
-                    </Typography>
-                    <Typography variant="secondary" className="text-xs truncate">
-                      {loadingTemplateId === template.id ? "Creating draft..." : "Use as starting point"}
-                    </Typography>
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
-          )}
-        </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setStep("select")}
+                disabled={isCreating}
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back
+              </Button>
+              <Button
+                type="button"
+                onClick={handleCreateWithVariables}
+                disabled={!allVariablesFilled || isCreating}
+                className="flex-1"
+              >
+                {isCreating ? (
+                  <>
+                    <Spinner className="h-4 w-4 mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Draft"
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

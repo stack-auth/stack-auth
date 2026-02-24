@@ -244,7 +244,10 @@ export type SendEmailOptions = SendEmailOptionsBase
       templateId: string,
       variables?: Record<string, any>,
     },
-    { draftId: string }
+    {
+      draftId: string,
+      variables?: Record<string, any>,
+    }
   ]>
 
 export type EmailDeliveryWindowStats = {

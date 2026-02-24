@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 export type SelectedUser = {
   id: string,
@@ -38,56 +38,12 @@ const DEFAULT_FLOW_STATE: DraftFlowState = {
   schedule: { mode: "immediate", date: "", time: "" },
 };
 
-function getStorageKey(draftId: string): string {
-  return `draft-flow-state-${draftId}`;
-}
-
-function loadFlowStateFromStorage(draftId: string): DraftFlowState | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = sessionStorage.getItem(getStorageKey(draftId));
-    if (stored) {
-      return JSON.parse(stored) as DraftFlowState;
-    }
-  } catch {
-    // Ignore storage errors
-  }
-  return null;
-}
-
-function saveFlowStateToStorage(draftId: string, state: DraftFlowState): void {
-  if (typeof window === "undefined") return;
-  try {
-    sessionStorage.setItem(getStorageKey(draftId), JSON.stringify(state));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function clearFlowStateFromStorage(draftId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    sessionStorage.removeItem(getStorageKey(draftId));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
 export function DraftFlowProvider({
-  draftId,
   children,
 }: {
-  draftId: string,
   children: React.ReactNode,
 }) {
-  const [flowState, setFlowState] = useState<DraftFlowState>(() => {
-    return loadFlowStateFromStorage(draftId) ?? DEFAULT_FLOW_STATE;
-  });
-
-  // Sync to sessionStorage when state changes
-  useEffect(() => {
-    saveFlowStateToStorage(draftId, flowState);
-  }, [draftId, flowState]);
+  const [flowState, setFlowState] = useState<DraftFlowState>(DEFAULT_FLOW_STATE);
 
   const updateRecipients = useCallback((data: Partial<RecipientsState>) => {
     setFlowState((prev) => ({
@@ -105,8 +61,7 @@ export function DraftFlowProvider({
 
   const resetFlowState = useCallback(() => {
     setFlowState(DEFAULT_FLOW_STATE);
-    clearFlowStateFromStorage(draftId);
-  }, [draftId]);
+  }, []);
 
   const contextValue = useMemo((): DraftFlowContextValue => ({
     flowState,

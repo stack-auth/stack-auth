@@ -153,7 +153,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
   return (
     <AppEnabledGuard appId="emails">
-      <DraftFlowProvider draftId={draftId}>
+      <DraftFlowProvider>
         {stage === "draft" ? (
           <div data-full-bleed className="flex h-full flex-col">
             <div className="border-b border-border bg-background">
@@ -419,9 +419,10 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
         : undefined;
 
       await stackAdminApp.sendEmail(
-        scope === "users"
+        (scope === "users"
           ? { draftId, userIds: selectedUserIds, scheduledAt }
           : { draftId, allUsers: true, scheduledAt }
+        ) as Parameters<typeof stackAdminApp.sendEmail>[0]
       );
 
       resetFlowState();

@@ -973,6 +973,10 @@ model EmailDraft {
   tsxSource   String
   sentAt      DateTime?
 
+  /// Key-value pairs for template variables (e.g. { "passwordResetLink": "https://..." }).
+  /// Only expected to be populated when the draft was created from a template that uses variables.
+  templateVariables Json? @default("{}")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
