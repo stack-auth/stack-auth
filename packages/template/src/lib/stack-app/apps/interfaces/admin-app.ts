@@ -54,7 +54,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
   & AsyncStoreProperty<"emailPreview", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }], string, false>
   & AsyncStoreProperty<"emailPreviewWithEditableMarkers", [{ themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string, editableSource?: 'template' | 'theme' | 'both' }], { html: string, editableRegions?: Record<string, unknown> }, false> // THIS_LINE_PLATFORM react-like
   & AsyncStoreProperty<"emailTemplates", [], { id: string, displayName: string, themeId?: string, tsxSource: string }[], true>
-  & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null, templateVariables: Record<string, string> }[], true>
+  & AsyncStoreProperty<"emailDrafts", [], { id: string, displayName: string, themeId: string | undefined | false, tsxSource: string, sentAt: Date | null, templateVariables: Record<string, string | number> }[], true>
   & AsyncStoreProperty<"stripeAccountInfo", [], { account_id: string, charges_enabled: boolean, details_submitted: boolean, payouts_enabled: boolean } | null, false>
   & AsyncStoreProperty<
     "transactions",
@@ -121,8 +121,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createStripeWidgetAccountSession(): Promise<{ client_secret: string }>,
     getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null>,
     updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void>,
-    createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string> }): Promise<{ id: string }>,
-    updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string> }): Promise<void>,
+    createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string | number> }): Promise<{ id: string }>,
+    updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string, templateVariables?: Record<string, string | number> }): Promise<void>,
     deleteEmailDraft(id: string): Promise<void>,
     refreshEmailDrafts(): Promise<void>,
     createItemQuantityChange(options: (

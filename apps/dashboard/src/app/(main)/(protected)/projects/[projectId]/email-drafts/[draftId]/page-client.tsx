@@ -14,7 +14,7 @@ import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { Envelope, GearSix } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -63,12 +63,43 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
   const [stage, setStageInternal] = useState<DraftStage>(initialStage);
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(draft?.themeId);
-  const [editedVariables, setEditedVariables] = useState<Record<string, string>>(draft?.templateVariables ?? {});
+  const [editedVariables, setEditedVariables] = useState<Record<string, string>>(() => {
+    const vars = draft?.templateVariables ?? {};
+    return Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, String(v)]));
+  });
   const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
   const [viewport, setViewport] = useState<ViewportMode>('edit');
   const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
 
   const hasTemplateVariables = Object.keys(editedVariables).length > 0;
+
+  // Detect which variables are numbers by inspecting the variablesSchema in the TSX source
+  const variableTypes = useMemo(() => {
+    const types = new Map<string, "string" | "number">();
+    const schemaMatch = currentCode.match(/variablesSchema\s*=\s*type\s*\(\s*\{([\s\S]*?)\}\s*\)/);
+    if (!schemaMatch) return types;
+    const entries = schemaMatch[1].match(/(\w+)\s*:\s*["'](\w+)["']/g) ?? [];
+    for (const entry of entries) {
+      const m = entry.match(/(\w+)\s*:\s*["'](\w+)["']/);
+      if (m) {
+        types.set(m[1], m[2] === "number" ? "number" : "string");
+      }
+    }
+    return types;
+  }, [currentCode]);
+
+  const coercedVariables = useMemo((): Record<string, string | number> => {
+    const result: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(editedVariables)) {
+      if (variableTypes.get(k) === "number") {
+        const n = Number(v);
+        result[k] = Number.isNaN(n) ? v : n;
+      } else {
+        result[k] = v;
+      }
+    }
+    return result;
+  }, [editedVariables, variableTypes]);
 
   // Wrapper to update stage and URL together
   // Uses window.history.replaceState directly to avoid triggering the router's confirmation dialog
@@ -99,7 +130,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
       await stackAdminApp.updateEmailDraft(draftId, {
         tsxSource: currentCode,
         themeId: selectedThemeId,
-        ...(hasTemplateVariables ? { templateVariables: editedVariables } : {}),
+        ...(hasTemplateVariables ? { templateVariables: coercedVariables } : {}),
       });
       setSaveAlert({ variant: "success", title: "Draft saved" });
     } catch (error) {
@@ -135,7 +166,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
       await stackAdminApp.updateEmailDraft(draftId, {
         tsxSource: currentCode,
         themeId: selectedThemeId,
-        ...(hasTemplateVariables ? { templateVariables: editedVariables } : {}),
+        ...(hasTemplateVariables ? { templateVariables: coercedVariables } : {}),
       });
       setNeedConfirm(false);
       setStage("recipients");
@@ -156,12 +187,12 @@ export default function PageClient({ draftId }: { draftId: string }) {
     if (draft) {
       setCurrentCode(draft.tsxSource);
       setSelectedThemeId(draft.themeId);
-      setEditedVariables(draft.templateVariables);
+      setEditedVariables(Object.fromEntries(Object.entries(draft.templateVariables).map(([k, v]) => [k, String(v)])));
     }
   };
 
   const previewActions = null;
-  const variablesDirty = hasTemplateVariables && draft ? JSON.stringify(editedVariables) !== JSON.stringify(draft.templateVariables) : false;
+  const variablesDirty = hasTemplateVariables && draft ? JSON.stringify(coercedVariables) !== JSON.stringify(draft.templateVariables) : false;
   const isDirty = draft ? (currentCode !== draft.tsxSource || selectedThemeId !== draft.themeId || variablesDirty) : false;
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
@@ -767,7 +798,7 @@ function SentStage({ draftId }: { draftId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
         const result = await stackAdminApp.listOutboxEmails();

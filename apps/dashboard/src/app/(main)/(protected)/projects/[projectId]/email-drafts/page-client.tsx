@@ -6,6 +6,7 @@ import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Spinner, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useMemo, useState } from "react";
@@ -14,52 +15,70 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
+type TemplateVariable = {
+  name: string,
+  type: "string" | "number",
+  defaultValue: string,
+};
+
 /**
  * Extracts template variable info from TSX source.
- * Returns variable names and their default values from PreviewVariables.
+ * Returns variable names, their arktype types, and default values from PreviewVariables.
  */
-function extractTemplateVariables(tsxSource: string): { name: string, defaultValue: string }[] {
-  const variables: { name: string, defaultValue: string }[] = [];
-
-  // Extract variable names from variablesSchema
+function extractTemplateVariables(tsxSource: string): TemplateVariable[] {
   const schemaMatch = tsxSource.match(/variablesSchema\s*=\s*type\s*\(\s*\{([\s\S]*?)\}\s*\)/);
   if (!schemaMatch) {
-    return variables;
+    return [];
   }
 
   const schemaContent = schemaMatch[1];
-  const varMatches = schemaContent.match(/(\w+)\s*:/g) || [];
-  const variableNames: string[] = [];
-  for (const match of varMatches) {
-    const name = match.replace(/\s*:/, '');
-    if (name) {
-      variableNames.push(name);
+  const varEntries = schemaContent.match(/(\w+)\s*:\s*["'](\w+)["']/g) ?? [];
+  const parsed = new Map<string, "string" | "number">();
+  for (const entry of varEntries) {
+    const m = entry.match(/(\w+)\s*:\s*["'](\w+)["']/);
+    if (m) {
+      const [, name, typeStr] = m;
+      parsed.set(name, typeStr === "number" ? "number" : "string");
     }
   }
 
-  // Extract PreviewVariables defaults
+  if (parsed.size === 0) {
+    throwErr("Template defines a variablesSchema but no variable names could be parsed from it. The schema format may have changed.");
+  }
+
+  // Extract PreviewVariables defaults (handles both quoted strings and bare numbers/booleans)
   const previewVarsMatch = tsxSource.match(/EmailTemplate\.PreviewVariables\s*=\s*(\{[\s\S]*?\})\s*satisfies/);
-  const defaults: Record<string, string> = {};
+  const defaults = new Map<string, string>();
   if (previewVarsMatch) {
-    try {
-      const objContent = previewVarsMatch[1];
-      const pairs = objContent.match(/(\w+)\s*:\s*["'`]([^"'`]*)["'`]/g) || [];
-      for (const pair of pairs) {
-        const pairMatch = pair.match(/(\w+)\s*:\s*["'`]([^"'`]*)["'`]/);
-        if (pairMatch) {
-          const [, key, value] = pairMatch;
-          defaults[key] = value;
-        }
+    const objContent = previewVarsMatch[1];
+    const pairs = objContent.match(/(\w+)\s*:\s*(?:["'`]([^"'`]*)["'`]|(\S+?))\s*[,}]/g) ?? [];
+    for (const pair of pairs) {
+      const pairMatch = pair.match(/(\w+)\s*:\s*(?:["'`]([^"'`]*)["'`]|(\S+?))\s*[,}]/);
+      if (pairMatch) {
+        defaults.set(pairMatch[1], pairMatch[2] || pairMatch[3] || "");
       }
-    } catch {
-      // If parsing fails, continue with empty defaults
     }
   }
 
-  return variableNames.map(name => ({
+  return [...parsed.entries()].map(([name, type]) => ({
     name,
-    defaultValue: defaults[name] ?? "",
+    type,
+    defaultValue: defaults.get(name) ?? "",
   }));
+}
+
+/**
+ * Coerce a string input value to the appropriate JSON type based on the variable's schema type.
+ */
+function coerceVariableValue(value: string, type: "string" | "number"): string | number {
+  if (type === "number") {
+    const n = Number(value);
+    if (Number.isNaN(n)) {
+      throwErr(`Variable value "${value}" is not a valid number`);
+    }
+    return n;
+  }
+  return value;
 }
 
 // Glassmorphic card component following design guide
@@ -700,10 +719,18 @@ function TemplateSelectDialog({
     if (!selectedTemplate || !draftName.trim()) return;
     setIsCreating(true);
     try {
+      const coercedVars: Record<string, string | number> = {};
+      for (const v of templateVariables) {
+        const raw = variableValues[v.name] ?? "";
+        if (raw.trim()) {
+          coercedVars[v.name] = coerceVariableValue(raw, v.type);
+        }
+      }
+
       const draft = await stackAdminApp.createEmailDraft({
         displayName: draftName.trim(),
         tsxSource: selectedTemplate.tsxSource,
-        templateVariables: Object.keys(variableValues).length > 0 ? variableValues : undefined,
+        templateVariables: Object.keys(coercedVars).length > 0 ? coercedVars : undefined,
       });
 
       handleOpenChange(false);
@@ -788,9 +815,11 @@ function TemplateSelectDialog({
                   <div key={variable.name} className="space-y-2">
                     <Label htmlFor={`var-${variable.name}`} className="text-sm font-medium">
                       {variable.name}
+                      <span className="text-muted-foreground font-normal ml-1.5">({variable.type})</span>
                     </Label>
                     <Input
                       id={`var-${variable.name}`}
+                      type={variable.type === "number" ? "number" : "text"}
                       value={variableValues[variable.name] ?? ""}
                       onChange={(e) => setVariableValues(prev => ({
                         ...prev,

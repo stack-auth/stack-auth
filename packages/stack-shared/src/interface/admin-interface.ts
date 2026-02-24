@@ -177,13 +177,13 @@ export class StackAdminInterface extends StackServerInterface {
     return result.templates;
   }
 
-  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null, template_variables: Record<string, string> }[]> {
+  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null, template_variables: Record<string, string | number> }[]> {
     const response = await this.sendAdminRequest(`/internal/email-drafts`, {}, null);
-    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null, template_variables: Record<string, string> }[] };
+    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null, template_variables: Record<string, string | number> }[] };
     return result.drafts;
   }
 
-  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string, template_variables?: Record<string, string> }): Promise<{ id: string }> {
+  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string, template_variables?: Record<string, string | number> }): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-drafts`,
       {
@@ -198,7 +198,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null, template_variables?: Record<string, string> }): Promise<void> {
+  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null, template_variables?: Record<string, string | number> }): Promise<void> {
     await this.sendAdminRequest(
       `/internal/email-drafts/${id}`,
       {
