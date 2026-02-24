@@ -991,7 +991,9 @@ model Subscription {
   currentPeriodStart   DateTime
   cancelAtPeriodEnd    Boolean
 
-  refundedAt DateTime?
+  refundedAt         DateTime?
+  endedAt            DateTime?
+  billingCycleAnchor DateTime?
 
   creationSource PurchaseCreationSource
   createdAt      DateTime               @default(now())
@@ -1001,6 +1003,15 @@ model Subscription {
 
   @@id([tenancyId, id])
   @@unique([tenancyId, stripeSubscriptionId])
+}
+
+model DefaultProductsSnapshot {
+  id        String   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenancyId String   @db.Uuid
+  snapshot  Json
+  createdAt DateTime @default(now())
+
+  @@id([tenancyId, id])
 }
 
 model ProductVersion {

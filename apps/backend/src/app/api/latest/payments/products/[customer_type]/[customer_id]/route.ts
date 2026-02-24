@@ -1,10 +1,11 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { getOwnedProductsForCustomer } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, grantProductToCustomer, productToInlineProduct } from "@/lib/payments/index";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({
@@ -52,8 +53,8 @@ export const GET = createSmartRouteHandler({
 
     const visibleProducts =
       auth.type === "client"
-        ? ownedProducts.filter(({ product }) => !product.serverOnly)
-        : ownedProducts;
+        ? ownedProducts.filter(({ type, product }) => type !== "include-by-default" && !product.server_only)
+        : ownedProducts.filter(({ type }) => type !== "include-by-default");
 
     const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
 
@@ -81,19 +82,22 @@ export const GET = createSmartRouteHandler({
     const sorted = visibleProducts
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((product) => {
-        const productLineId = product.product.productLineId;
+      .flatMap((product) => {
+        if (product.type === "include-by-default") {
+          return [];
+        }
+        const productLineId = product.product.product_line_id;
         const switchOptions =
           product.type === "subscription" && product.id && productLineId
             ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== product.id)
             : undefined;
 
-        return {
+        return [{
           cursor: product.sourceId,
           item: {
             id: product.id,
             quantity: product.quantity,
-            product: productToInlineProduct(product.product),
+            product: product.product,
             type: product.type,
             subscription: product.subscription ? {
               current_period_end: product.subscription.currentPeriodEnd ? product.subscription.currentPeriodEnd.toISOString() : null,
@@ -102,7 +106,7 @@ export const GET = createSmartRouteHandler({
             } : null,
             switch_options: switchOptions,
           },
-        };
+        }];
       });
 
     let startIndex = 0;

@@ -1,7 +1,6 @@
 import { purchaseUrlVerificationCodeHandler } from "@/app/api/latest/payments/purchases/verification-code-handler";
-import { grantProductToCustomer } from "@/lib/payments";
+import { grantProductToCustomer } from "@/lib/payments/index";
 import { getTenancy } from "@/lib/tenancies";
-import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";

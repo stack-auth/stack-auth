@@ -663,6 +663,7 @@ export const productSchemaWithMetadata = productSchema.concat(yupObject({
 export const inlineProductSchema = yupObject({
   display_name: yupString().defined(),
   customer_type: customerTypeSchema.defined(),
+  product_line_id: userSpecifiedIdSchema("productLineId").optional(),
   free_trial: dayIntervalSchema.optional(),
   server_only: yupBoolean().default(true),
   stackable: yupBoolean().default(false),

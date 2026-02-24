@@ -1,10 +1,10 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/index";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { teamsCrudHandlers } from "../../teams/crud";
@@ -75,6 +75,8 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
+    // HACK: Hardcode team member limit for internal project
+    // TODO: Expose this to everyone
     if (tenancy.project.id === "internal") {
       const currentMemberCount = await prisma.teamMember.count({
         where: {

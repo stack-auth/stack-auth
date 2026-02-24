@@ -1,13 +1,14 @@
-import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer } from "@/lib/payments";
+import { SubscriptionStatus } from "@/generated/prisma/client";
+import { getOwnedProductsForCustomer } from "@/lib/payments";
+import { ensureProductIdOrInlineProduct } from "@/lib/payments/index";
+import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { SubscriptionStatus } from "@/generated/prisma/client";
-import { getStripeForAccount } from "@/lib/stripe";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
 
 export const DELETE = createSmartRouteHandler({
   metadata: {
@@ -110,21 +111,22 @@ export const DELETE = createSmartRouteHandler({
       if (subscription.stripeSubscriptionId) {
         const stripeClient = stripe ?? throwErr(500, "Stripe client missing for subscription cancellation.");
         await stripeClient.subscriptions.cancel(subscription.stripeSubscriptionId);
-        continue;
-      }
-      await prisma.subscription.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: auth.tenancy.id,
-            id: subscription.id,
+      } else {
+        await prisma.subscription.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: auth.tenancy.id,
+              id: subscription.id,
+            },
           },
-        },
-        data: {
-          status: SubscriptionStatus.canceled,
-          currentPeriodEnd: new Date(),
-          cancelAtPeriodEnd: true,
-        },
-      });
+          data: {
+            status: SubscriptionStatus.canceled,
+            currentPeriodEnd: new Date(),
+            cancelAtPeriodEnd: true,
+            endedAt: new Date(),
+          },
+        });
+      }
     }
 
     return {

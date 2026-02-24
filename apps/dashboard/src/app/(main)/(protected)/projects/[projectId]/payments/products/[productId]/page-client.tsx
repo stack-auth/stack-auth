@@ -1445,8 +1445,8 @@ type ProductCustomersSectionProps = {
   product: Product,
 };
 
-function isProductGrantEntry(entry: TransactionEntry): entry is Extract<TransactionEntry, { type: 'product_grant' }> {
-  return entry.type === 'product_grant';
+function isProductGrantEntry(entry: TransactionEntry): entry is Extract<TransactionEntry, { type: 'product-grant' }> {
+  return entry.type === 'product-grant';
 }
 
 function ProductCustomersSection({ productId, product }: ProductCustomersSectionProps) {
@@ -1463,9 +1463,6 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
     }>();
 
     for (const transaction of transactions) {
-      // Only consider purchase transactions
-      if (transaction.type !== 'purchase') continue;
-
       const productGrant = transaction.entries.find(isProductGrantEntry);
       if (!productGrant || productGrant.product_id !== productId) continue;
 
