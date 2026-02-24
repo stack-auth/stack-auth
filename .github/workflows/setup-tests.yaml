@@ -17,6 +17,9 @@ env:
 jobs:
   setup-tests:
     runs-on: ubicloud-standard-16
+    env:
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
     steps:
       - uses: actions/checkout@v6
 
@@ -43,4 +46,5 @@ jobs:
           tail: true
           wait-for: 120s
           log-output-if: true
-      - run: pnpm run test --reporter=verbose
+      - name: Run tests
+        run: pnpm run test run --reporter=verbose

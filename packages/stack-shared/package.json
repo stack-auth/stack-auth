@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.62",
+  "version": "2.8.70",
   "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
     "build": "rimraf dist && tsup-node",
@@ -55,6 +55,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.876.0",
+    "@babel/core": "^7.28.5",
+    "@babel/generator": "^7.28.5",
+    "@babel/parser": "^7.28.5",
+    "@babel/traverse": "^7.28.5",
+    "@babel/types": "^7.28.5",
     "@opentelemetry/api": "^1.9.0",
     "@simplewebauthn/browser": "^11.0.0",
     "@vercel/functions": "^2.0.0",
@@ -72,6 +77,9 @@
   "devDependencies": {
     "@sentry/nextjs": "^10.11.0",
     "@simplewebauthn/types": "^11.0.0",
+    "@types/babel__core": "^7.20.5",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/elliptic": "^6.4.18",
     "@types/semver": "^7.5.8",

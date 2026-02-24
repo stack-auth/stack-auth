@@ -130,6 +130,8 @@ describe("getConfig", () => {
           "otp": { "allowSignIn": false },
           "passkey": { "allowSignIn": false },
           "password": { "allowSignIn": true },
+          "signUpRules": {},
+          "signUpRulesDefaultAction": "allow",
         },
         "teams": {
           "allowClientTeamCreation": false,
@@ -157,6 +159,8 @@ describe("updateConfig", () => {
         "otp": { "allowSignIn": false },
         "passkey": { "allowSignIn": false },
         "password": { "allowSignIn": true },
+        "signUpRules": {},
+        "signUpRulesDefaultAction": "allow",
       }
     `);
 
@@ -175,6 +179,8 @@ describe("updateConfig", () => {
         "otp": { "allowSignIn": false },
         "passkey": { "allowSignIn": false },
         "password": { "allowSignIn": true },
+        "signUpRules": {},
+        "signUpRulesDefaultAction": "allow",
       }
     `);
   });
@@ -391,6 +397,91 @@ describe("updatePushedConfig", () => {
         allowConnectedAccounts: true,
       },
     } as any)).rejects.toThrow(/auth\.oauth\.providers/);
+  });
+});
+
+
+describe("resetConfigOverrideKeys", () => {
+  it("resetConfigOverrideKeys removes keys from environment override", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Set branch config
+    await project.updatePushedConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // Set environment config that overrides branch
+    await project.updateConfig({
+      'teams.allowClientTeamCreation': false,
+    });
+
+    // Verify environment takes precedence
+    let config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(false);
+
+    // Reset the key from environment level
+    await project.resetConfigOverrideKeys("environment", ["teams.allowClientTeamCreation"]);
+
+    // Now branch config should win
+    config = await project.getConfig();
+    expect(config.teams.allowClientTeamCreation).toBe(true);
+  });
+
+  it("resetConfigOverrideKeys with parent key removes children", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Set environment config with multiple team settings
+    await project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+      'teams.createPersonalTeamOnSignUp': true,
+      'users.allowClientUserDeletion': true,
+    });
+
+    // Reset the parent "teams" key
+    await project.resetConfigOverrideKeys("environment", ["teams"]);
+
+    // Verify teams keys are gone but users key remains
+    const envOverride = await project.getConfigOverride("environment");
+    expect(envOverride["teams.allowClientTeamCreation"]).toBeUndefined();
+    expect(envOverride["teams.createPersonalTeamOnSignUp"]).toBeUndefined();
+    expect(envOverride["users.allowClientUserDeletion"]).toBe(true);
+  });
+
+  it("resetConfigOverrideKeys with non-existent keys is a no-op", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Set environment config
+    await project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // Reset a non-existent key
+    await project.resetConfigOverrideKeys("environment", ["nonExistent.key"]);
+
+    // Config should be unchanged
+    const envOverride = await project.getConfigOverride("environment");
+    expect(envOverride["teams.allowClientTeamCreation"]).toBe(true);
+  });
+
+  it("resetConfigOverrideKeys on branch level works", async ({ expect }) => {
+    const { adminApp } = await createApp();
+    const project = await adminApp.getProject();
+
+    // Set branch config
+    await project.updatePushedConfig({
+      'teams.allowClientTeamCreation': true,
+      'users.allowClientUserDeletion': true,
+    });
+
+    // Reset one branch key
+    await project.resetConfigOverrideKeys("branch", ["teams.allowClientTeamCreation"]);
+
+    const branchOverride = await project.getConfigOverride("branch");
+    expect(branchOverride["teams.allowClientTeamCreation"]).toBeUndefined();
+    expect(branchOverride["users.allowClientUserDeletion"]).toBe(true);
   });
 });
 

@@ -1,4 +1,5 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { traceSpan } from "@/utils/telemetry";
 import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
@@ -62,29 +63,31 @@ const fetchFromResend = async (): Promise<{ data: ResendEmail[] }> => {
 };
 
 const performSignUp = async (email: string, password: string) => {
-  const apiBaseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
-  const response = await fetch(`${apiBaseUrl}/api/v1/auth/password/sign-up`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Stack-Access-Type": "client",
-      "X-Stack-Publishable-Client-Key": getEnvVariable("STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY"),
-      "X-Stack-Project-Id": "internal",
-    },
-    body: JSON.stringify({
-      email,
-      password,
-      verification_callback_url: getEnvVariable("STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL"),
-    }),
-  });
-
-  const responseBody = await response.text();
-
-  if (!response.ok) {
-    throw new StackAssertionError(`Sign-up failed: ${response.status} - ${responseBody}`, {
-      responseBody,
+  await traceSpan("performing sign-up", async () => {
+    const apiBaseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+    const response = await fetch(`${apiBaseUrl}/api/v1/auth/password/sign-up`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Stack-Access-Type": "client",
+        "X-Stack-Publishable-Client-Key": getEnvVariable("STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY"),
+        "X-Stack-Project-Id": getEnvVariable("STACK_EMAIL_MONITOR_PROJECT_ID"),
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        verification_callback_url: getEnvVariable("STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL"),
+      }),
     });
-  }
+
+    const responseBody = await response.text();
+
+    if (!response.ok) {
+      throw new StackAssertionError(`Sign-up failed: ${response.status} - ${responseBody}`, {
+        responseBody,
+      });
+    }
+  });
 };
 
 const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boolean => {
@@ -99,28 +102,37 @@ const isExpectedVerificationEmail = (email: ResendEmail, testEmail: string): boo
 };
 
 const waitForVerificationEmail = async (testEmail: string, useInbucket: boolean) => {
-  const MAX_POLL_ATTEMPTS = 24;
-  const POLL_INTERVAL_MS = 5000;
+  await traceSpan("waiting for verification email", async () => {
+    const MAX_POLL_ATTEMPTS = 36;
+    const POLL_INTERVAL_MS = 5000;
 
-  for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
-    await wait(POLL_INTERVAL_MS);
+    for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
+      const done = await traceSpan(`waiting for verification email - attempt ${attempt}`, async () => {
+        await wait(POLL_INTERVAL_MS);
 
-    const listData = useInbucket
-      ? await fetchFromInbucket(testEmail)
-      : await fetchFromResend();
+        const listData = useInbucket
+          ? await fetchFromInbucket(testEmail)
+          : await fetchFromResend();
 
-    const emails = listData.data;
-    const verificationEmail = emails.find((email) => isExpectedVerificationEmail(email, testEmail));
+        const emails = listData.data;
+        const verificationEmail = emails.find((email) => isExpectedVerificationEmail(email, testEmail));
 
-    if (verificationEmail) {
-      return;
+        if (verificationEmail) {
+          return true;
+        }
+
+        return false;
+      });
+      if (done) {
+        return;
+      }
     }
-  }
 
-  throw new StackAssertionError(`Couldn't find verification email in time limit`, { recipient_email: testEmail, max_poll_attempts: MAX_POLL_ATTEMPTS, poll_interval_ms: POLL_INTERVAL_MS });
+    throw new StackAssertionError(`Couldn't find verification email in time limit`, { recipient_email: testEmail, max_poll_attempts: MAX_POLL_ATTEMPTS, poll_interval_ms: POLL_INTERVAL_MS });
+  });
 };
 
-export const GET = createSmartRouteHandler({
+export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
     summary: "Email Health Monitor",

@@ -11,7 +11,7 @@
   
   "//": "NEXT_LINE_PLATFORM template",
   "private": true,
-  "version": "2.8.62",
+  "version": "2.8.70",
   "repository": "https://github.com/stack-auth/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -71,8 +71,8 @@
     ,"//": "END_PLATFORM",
 
     "//": "IF_PLATFORM template"
-    ,"codegen": "pnpm run css && pnpm run quetzal",
-    "codegen:watch": "concurrently -n \"css,quetzal\" -k \"pnpm run css:watch\" \"pnpm run quetzal:watch\"",
+    ,"codegen": "pnpm run css",
+    "codegen:watch": "concurrently -n \"css\" -k \"pnpm run css:watch\"",
     "override-env-local-for-quetzal": "echo \"\\n$STACK_ENV_LOCAL_PACKAGE_BUILD_OVERRIDE_FOR_QUETZAL\\n\" >> .env.local",
     "quetzal": "rimraf quetzal-translations && pnpm run override-env-local-for-quetzal && quetzal-process-translations && tsx ./scripts/merge-quetzal-translations.ts",
     "quetzal:ignore-errors": "pnpm run quetzal || echo Quetzal failed, probably because the API key is missing. We will just ignore it",
@@ -116,6 +116,7 @@
     "rimraf": "^6.1.2",
     "//": "NEXT_LINE_PLATFORM react-like",
     "tailwindcss-animate": "^1.0.7",
+    "rrweb": "^1.1.3",
     "tsx": "^4.21.0",
     "yup": "^1.7.1"
   },

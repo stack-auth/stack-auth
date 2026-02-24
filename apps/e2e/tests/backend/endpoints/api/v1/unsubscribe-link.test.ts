@@ -130,7 +130,8 @@ it("unsubscribe link should not be sent for emails with transactional notificati
   const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Custom Test Email Subject");
   const sentEmail = messages[0];
   expect(sentEmail).toBeDefined();
-  expect(sentEmail!.body?.html).toMatchInlineSnapshot(`"<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head><meta content=\\"text/html; charset=UTF-8\\" http-equiv=\\"Content-Type\\"/><meta name=\\"x-apple-disable-message-reformatting\\"/></head><body style=\\"background-color:rgb(250,251,251);font-family:ui-sans-serif, system-ui, sans-serif, &quot;Apple Color Emoji&quot;, &quot;Segoe UI Emoji&quot;, &quot;Segoe UI Symbol&quot;, &quot;Noto Color Emoji&quot;;font-size:1rem;line-height:1.5rem\\"><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"background-color:rgb(255,255,255);padding:45px;border-radius:0.5rem;max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div><h1>Test Email</h1><p>This is a test email with HTML content.</p></div></td></tr></tbody></table><!--7--><!--/$--></body></html>"`);
+  expect(sentEmail!.body?.html).toContain("<h1>Test Email</h1><p>This is a test email with HTML content.</p>");
+  expect(sentEmail!.body?.html).not.toContain("/api/v1/emails/unsubscribe-link");
 });
 
 it("unsubscribe link should be included when template exports Marketing notification category (two-pass rendering)", async ({ expect }) => {

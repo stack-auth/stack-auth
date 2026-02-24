@@ -1,12 +1,14 @@
+import { CustomerType } from "@/generated/prisma/client";
+import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { CustomerType } from "@/generated/prisma/client";
+import type { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
+import type * as yup from "yup";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
-import { InputJsonValue } from "@prisma/client/runtime/client";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
@@ -16,6 +18,170 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   host: "localhost",
   port: Number(`${stackPortPrefix}23`),
 } : {};
+
+/** Product type as stored in Stripe metadata (same as config product schema) */
+export type StripeMetadataProduct = yup.InferType<typeof productSchema>;
+
+/**
+ * Sanitizes subscription period dates from Stripe.
+ *
+ * The Stripe mock returns hardcoded fixture dates that are invalid (e.g., start in 2030, end in 2000).
+ * This function detects when end <= start and replaces with sensible defaults.
+ *
+ * We only check the ordering constraint to avoid interfering with legitimate Stripe dates
+ * (e.g., long trials, future billing anchors).
+ *
+ * @param startTimestamp - Unix timestamp in seconds for period start
+ * @param endTimestamp - Unix timestamp in seconds for period end
+ * @param context - Optional context for error reporting (subscriptionId, tenancyId)
+ * @returns Sanitized Date objects for start and end
+ */
+export function sanitizeStripePeriodDates(
+  startTimestamp: number,
+  endTimestamp: number,
+  context?: { subscriptionId?: string, tenancyId?: string },
+): { start: Date, end: Date } {
+  const startDate = new Date(startTimestamp * 1000);
+  const endDate = new Date(endTimestamp * 1000);
+
+  if (startDate < endDate) {
+    return { start: startDate, end: endDate };
+  }
+
+  // Dates are invalid (likely from Stripe mock where end <= start), use sensible defaults
+  captureError("sanitize-stripe-period-dates", new StackAssertionError(
+    "Invalid Stripe period dates detected (end <= start), using fallback dates",
+    { startTimestamp, endTimestamp, startDate, endDate, useStripeMock, ...context }
+  ));
+
+  const now = new Date();
+  const defaultEnd = new Date(now);
+  defaultEnd.setMonth(defaultEnd.getMonth() + 1);
+
+  return { start: now, end: defaultEnd };
+}
+
+/**
+ * Resolves product JSON from Stripe metadata with backward compatibility.
+ *
+ * Resolution order:
+ * 1. productVersionId - new approach, looks up ProductVersion table
+ * 2. product - older approach, JSON string in metadata
+ * 3. offer - oldest approach, JSON string in metadata (legacy naming)
+ *
+ * @throws StackAssertionError if none of the above are found
+ */
+export async function resolveProductFromStripeMetadata(options: {
+  prisma: Parameters<typeof getProductVersion>[0]['prisma'],
+  tenancyId: string,
+  metadata: Record<string, string | undefined>,
+  context?: { subscriptionId?: string, paymentIntentId?: string },
+}): Promise<StripeMetadataProduct> {
+  const productVersionId = options.metadata.productVersionId;
+  if (productVersionId) {
+    const version = await getProductVersion({
+      prisma: options.prisma,
+      tenancyId: options.tenancyId,
+      productVersionId,
+    });
+    return version.productJson as StripeMetadataProduct;
+  }
+
+  const productString = options.metadata.product ?? options.metadata.offer;
+  if (productString) {
+    try {
+      return JSON.parse(productString) as StripeMetadataProduct;
+    } catch (error) {
+      throw new StackAssertionError(
+        "Failed to parse product JSON from Stripe metadata. The 'product' or 'offer' field contains invalid JSON.",
+        {
+          ...options.context,
+          tenancyId: options.tenancyId,
+          productString,
+          metadata: options.metadata,
+          error,
+        }
+      );
+    }
+  }
+
+  throw new StackAssertionError(
+    "Stripe metadata is missing product information. Expected one of: 'productVersionId' (current), 'product' (legacy), or 'offer' (oldest). This may indicate the purchase was created before product tracking was implemented, or the metadata was corrupted.",
+    {
+      ...options.context,
+      tenancyId: options.tenancyId,
+      metadata: options.metadata,
+    }
+  );
+}
+
+import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
+  const mockProduct = { displayName: "Test Product", customerType: "team" as const };
+
+  // Note: productVersionId path is tested via E2E tests since it requires database mocking
+
+  test("falls back to 'product' metadata (legacy format)", async ({ expect }) => {
+    const result = await resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: { product: JSON.stringify(mockProduct) },
+    });
+
+    expect(result).toEqual(mockProduct);
+  });
+
+  test("falls back to 'offer' metadata (oldest format)", async ({ expect }) => {
+    const result = await resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: { offer: JSON.stringify(mockProduct) },
+    });
+
+    expect(result).toEqual(mockProduct);
+  });
+
+  test("prefers 'product' over 'offer' when both present", async ({ expect }) => {
+    const offerProduct = { displayName: "Offer Product", customerType: "user" as const };
+
+    const result = await resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: {
+        product: JSON.stringify(mockProduct),
+        offer: JSON.stringify(offerProduct),
+      },
+    });
+
+    expect(result).toEqual(mockProduct);
+  });
+
+  test("throws on invalid JSON in product field", async ({ expect }) => {
+    await expect(resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: { product: "not valid json" },
+    })).rejects.toThrow("Failed to parse product JSON");
+  });
+
+  test("throws when no product info in metadata", async ({ expect }) => {
+    await expect(resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: {},
+    })).rejects.toThrow("Stripe metadata is missing product information");
+  });
+
+  test("includes context in error when provided", async ({ expect }) => {
+    await expect(resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: {},
+      context: { subscriptionId: "sub-123" },
+    })).rejects.toMatchObject({
+      message: expect.stringContaining("missing product information"),
+    });
+  });
+});
 
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
@@ -92,18 +258,19 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       continue;
     }
     const item = subscription.items.data[0];
+    const sanitizedDates = sanitizeStripePeriodDates(
+      item.current_period_start,
+      item.current_period_end,
+      { subscriptionId: subscription.id, tenancyId: tenancy.id }
+    );
     const priceId = subscription.metadata.priceId as string | undefined;
-    // old subscriptions were created with offer metadata instead of product metadata
-    const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
-    if (!productString) {
-      throw new StackAssertionError("Stripe subscription metadata missing product or offer", { subscriptionId: subscription.id });
-    }
-    let productJson: InputJsonValue;
-    try {
-      productJson = JSON.parse(productString);
-    } catch (error) {
-      throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
-    }
+
+    const product = await resolveProductFromStripeMetadata({
+      prisma,
+      tenancyId: tenancy.id,
+      metadata: subscription.metadata as Record<string, string | undefined>,
+      context: { subscriptionId: subscription.id },
+    });
 
     await prisma.subscription.upsert({
       where: {
@@ -114,10 +281,10 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
       update: {
         status: subscription.status,
-        product: productJson,
+        product,
         quantity: item.quantity ?? 1,
-        currentPeriodEnd: new Date(item.current_period_end * 1000),
-        currentPeriodStart: new Date(item.current_period_start * 1000),
+        currentPeriodEnd: sanitizedDates.end,
+        currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         priceId: priceId ?? null,
       },
@@ -127,12 +294,12 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         customerType,
         productId: subscription.metadata.productId as string | undefined ?? subscription.metadata.offerId,
         priceId: priceId ?? null,
-        product: productJson,
+        product,
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
-        currentPeriodEnd: new Date(item.current_period_end * 1000),
-        currentPeriodStart: new Date(item.current_period_start * 1000),
+        currentPeriodEnd: sanitizedDates.end,
+        currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         creationSource: "PURCHASE_PAGE"
       },

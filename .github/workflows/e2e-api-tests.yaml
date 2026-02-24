@@ -19,6 +19,8 @@ jobs:
       NODE_ENV: test
       STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
 
     strategy:
       matrix:
@@ -100,6 +102,12 @@ jobs:
 
       - name: Wait on Svix
         run: pnpx wait-on tcp:localhost:8113
+      
+      - name: Wait on QStash
+        run: pnpx wait-on tcp:localhost:8125
+
+      - name: Wait on ClickHouse
+        run: pnpx wait-on http://localhost:8136/ping
 
       - name: Initialize database
         run: pnpm run db:init
@@ -140,20 +148,29 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+      - name: Start run-cron-jobs in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
+          wait-on: |
+            http://localhost:8102
+          tail: true
+          wait-for: 30s
+          log-output-if: true
 
       - name: Wait 10 seconds
         run: sleep 10
 
       - name: Run tests
-        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }} ${{ matrix.freestyle-mode == 'prod' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' && 'mail' || '' }}
 
-      - name: Run tests again, to make sure they are stable (attempt 1)
+      - name: Run tests again (attempt 1)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
-      - name: Run tests again, to make sure they are stable (attempt 2)
+      - name: Run tests again (attempt 2)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-        run: pnpm test ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
+        run: pnpm test run ${{ matrix.freestyle-mode == 'prod' && '--min-workers=1 --max-workers=1' || '' }}
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail

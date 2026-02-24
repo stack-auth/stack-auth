@@ -3,8 +3,6 @@
 import { EnvKeys } from "@/components/env-keys";
 import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
-import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Alert,
   AlertDescription,
@@ -20,6 +18,8 @@ import {
   Typography,
   cn
 } from "@/components/ui";
+import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import * as confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -28,7 +28,7 @@ import { useAdminApp } from "../use-admin-app";
 
 type GeneratedKeys = {
   projectId: string,
-  publishableClientKey: string,
+  publishableClientKey?: string,
   secretServerKey: string,
 };
 
@@ -63,6 +63,8 @@ const STATUS_META: Record<
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const projectConfig = project.useConfig();
+  const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
   const [keys, setKeys] = useState<GeneratedKeys | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export default function PageClient() {
     runAsynchronouslyWithAlert(async () => {
       try {
         const newKey = await adminApp.createInternalApiKey({
-          hasPublishableClientKey: true,
+          hasPublishableClientKey: requirePublishableClientKey,
           hasSecretServerKey: true,
           hasSuperSecretAdminKey: false,
           expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),
@@ -89,7 +91,7 @@ export default function PageClient() {
 
         setKeys({
           projectId: adminApp.projectId,
-          publishableClientKey: newKey.publishableClientKey!,
+          publishableClientKey: newKey.publishableClientKey ?? undefined,
           secretServerKey: newKey.secretServerKey!,
         });
       } finally {
@@ -163,7 +165,9 @@ export default function PageClient() {
             </div>
           ) : (
             <Typography variant="secondary" className="text-xs">
-              You&apos;ll receive a publishable client key and a secret server key for this project.
+              {requirePublishableClientKey
+                ? "You'll receive a publishable client key and a secret server key for this project."
+                : "You'll receive a secret server key for this project."}
             </Typography>
           ),
         },

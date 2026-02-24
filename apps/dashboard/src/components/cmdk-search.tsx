@@ -230,102 +230,6 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
   );
 });
 
-// Analytics query mode placeholder component
-const AnalyticsQueryPlaceholder = memo(function AnalyticsQueryPlaceholder({
-  onSelectQuery,
-}: {
-  onSelectQuery?: (query: string) => void,
-}) {
-  const tables = [
-    { id: "events", name: "Events", description: "User events and actions", query: "SELECT * FROM events ORDER BY event_at DESC LIMIT 100" },
-  ];
-
-  const exampleQueries = [
-    "Show me all events from the last hour",
-    "Count events by type",
-    "SELECT event_type, COUNT(*) FROM events GROUP BY event_type",
-  ];
-
-  return (
-    <div className="h-full flex flex-col items-center select-none px-6">
-      {/* Top spacer */}
-      <div className="flex-1" />
-
-      <div className="relative w-fit max-w-md">
-        {/* Header */}
-        <div className="relative text-center mb-6">
-          <h2 className="relative text-base font-semibold text-foreground mb-1 inline-block">
-            Analytics Query
-          </h2>
-          <p className="text-[11px] text-muted-foreground/50">
-            Query your data using English or ClickHouse SQL
-          </p>
-        </div>
-
-        {/* Tables section */}
-        <div className="mb-6">
-          <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-3 text-center">Available Tables</p>
-          <div className="space-y-2">
-            {tables.map((table) => (
-              <button
-                key={table.id}
-                type="button"
-                onClick={() => onSelectQuery?.(table.query)}
-                className="w-full flex items-center gap-3 rounded-lg px-4 py-3 transition-colors hover:transition-none hover:bg-foreground/[0.04] border border-foreground/[0.06]"
-              >
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                  <PlayIcon className="h-4 w-4 text-amber-500" />
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <h3 className="text-[12px] font-medium text-foreground font-mono">
-                    {table.name}
-                  </h3>
-                  <p className="text-[10px] text-muted-foreground/50">
-                    {table.description}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Example queries */}
-        <div>
-          <p className="text-[9px] text-muted-foreground/40 uppercase tracking-wider mb-3 text-center">Try something like</p>
-          <div className="space-y-1.5">
-            {exampleQueries.map((q, index) => (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onSelectQuery?.(q)}
-                className="w-full text-left text-[11px] text-muted-foreground/60 hover:text-foreground px-3 py-2 rounded-md hover:bg-foreground/[0.04] transition-colors hover:transition-none font-mono truncate"
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom spacer */}
-      <div className="flex-1" />
-
-      {/* Footer */}
-      <div className="w-full shrink-0 -mx-6 px-6">
-        <div className="py-3 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
-          <div className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">↵</kbd>
-            <span>run query</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">esc</kbd>
-            <span>close</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // Reusable Results List Component
 export const CmdKResultsList = memo(function CmdKResultsList({
@@ -337,7 +241,6 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   showCyclingPlaceholder = false,
   onSelectExampleQuery,
   isParentColumn = false,
-  analyticsQueryMode = false,
 }: {
   commands: CmdKCommand[],
   selectedIndex: number,
@@ -351,8 +254,6 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   onSelectExampleQuery?: (query: string) => void,
   /** When true, selection shows as outline only (for parent columns) */
   isParentColumn?: boolean,
-  /** When true, show analytics query placeholder instead of cycling placeholder */
-  analyticsQueryMode?: boolean,
 }) {
   const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const hasResults = commands.length > 0;
@@ -366,9 +267,6 @@ export const CmdKResultsList = memo(function CmdKResultsList({
   }, [selectedIndex]);
 
   if (!hasResults) {
-    if (analyticsQueryMode) {
-      return <AnalyticsQueryPlaceholder onSelectQuery={onSelectExampleQuery} />;
-    }
     if (showCyclingPlaceholder) {
       return <CyclingPlaceholder onSelectQuery={onSelectExampleQuery} />;
     }
@@ -505,12 +403,13 @@ export function CmdKSearch({
   const [activeDepth, setActiveDepth] = useState(0); // Which column is active (0 = main list)
   const [selectedIndices, setSelectedIndices] = useState<number[]>([0]); // Selected index in each column
   const [nestedBlurHandlers, setNestedBlurHandlers] = useState<(() => void)[]>([]); // onBlur handlers for each depth
-  // Analytics query mode state
-  const [analyticsQueryMode, setAnalyticsQueryMode] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const inputRef = useRef<HTMLInputElement>(null);
   const columnsContainerRef = useRef<HTMLDivElement>(null);
+  // Track previous selection to handle reordering
+  const prevSelectedIdRef = useRef<string | null>(null);
+  const prevSelectedIndexRef = useRef<number>(0);
 
   // Handle keyboard shortcut and custom event
   useEffect(() => {
@@ -528,23 +427,15 @@ export function CmdKSearch({
       setOpen((prev) => !prev);
     };
 
-    const handleAnalyticsQuery = () => {
-      setAnalyticsQueryMode(true);
-      setQuery("");
-      setOpen(true);
-    };
-
     document.addEventListener("keydown", down);
     window.addEventListener("spotlight-toggle", handleToggle);
-    window.addEventListener("spotlight-analytics-query", handleAnalyticsQuery);
     return () => {
       document.removeEventListener("keydown", down);
       window.removeEventListener("spotlight-toggle", handleToggle);
-      window.removeEventListener("spotlight-analytics-query", handleAnalyticsQuery);
     };
   }, []);
 
-  // Focus and select input when opening, reset analytics mode when closing
+  // Focus and select input when opening
   useEffect(() => {
     if (open) {
       setSelectedIndex(0);
@@ -553,16 +444,13 @@ export function CmdKSearch({
         inputRef.current?.focus();
         inputRef.current?.select();
       });
-    } else {
-      // Reset analytics mode when closing
-      setAnalyticsQueryMode(false);
     }
   }, [open]);
 
   // Get commands from the hook
   const commands = useCmdKCommands({ projectId, enabledApps, query, onEnableApp });
 
-  // Filter commands based on query
+  // Filter and sort commands based on query
   const filteredCommands = useMemo(() => {
     if (!query.trim()) return [];
 
@@ -590,14 +478,47 @@ export function CmdKSearch({
     return selectedIndices[activeDepth] ?? 0;
   }, [activeDepth, selectedIndices]);
 
-  // Reset selection and close nested columns when results change
+  // Handle selection when commands reorder
+  // - If currently selected item moved UP, keep it selected at new index
+  // - If currently selected item moved DOWN or is gone, reset to first item
   useEffect(() => {
-    setSelectedIndex(0);
-    setSelectedIndices([0]);
+    const prevId = prevSelectedIdRef.current;
+    const prevIndex = prevSelectedIndexRef.current;
+
+    if (prevId && filteredCommands.length > 0) {
+      const newIndex = filteredCommands.findIndex((cmd) => cmd.id === prevId);
+
+      if (newIndex !== -1 && newIndex <= prevIndex) {
+        // Item moved up or stayed same - keep it selected
+        setSelectedIndex(newIndex);
+        setSelectedIndices([newIndex]);
+      } else {
+        // Item moved down or is no longer in list - reset to first
+        setSelectedIndex(0);
+        setSelectedIndices([0]);
+      }
+    } else {
+      // No previous selection or empty list - reset to first
+      setSelectedIndex(0);
+      setSelectedIndices([0]);
+    }
+
+    // Always clear nested state when commands change
     setNestedColumns([]);
     setActiveDepth(0);
     setNestedBlurHandlers([]);
-  }, [filteredCommands.length]);
+  }, [filteredCommands]);
+
+  // Keep track of currently selected command for reorder detection
+  useEffect(() => {
+    if (filteredCommands.length > 0 && selectedIndex < filteredCommands.length) {
+      prevSelectedIdRef.current = filteredCommands[selectedIndex].id;
+      prevSelectedIndexRef.current = selectedIndex;
+    } else {
+      prevSelectedIdRef.current = null;
+      prevSelectedIndexRef.current = 0;
+    }
+  }, [selectedIndex, filteredCommands]);
 
   const registerOnFocus = useCallback((onFocus: () => void) => {
     setPreviewFocusHandlers((prev) => new Set(prev).add(onFocus));
@@ -855,7 +776,7 @@ export function CmdKSearch({
         className="fixed inset-0 flex items-center justify-center z-50 px-4 pointer-events-none"
         style={{ animation: "spotlight-slide-in 150ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
-        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1000px)] pointer-events-auto">
+        <div className="relative rounded-2xl ring-2 ring-inset ring-foreground/[0.08] h-[76vh] min-h-[320px] w-full max-w-[min(max(540px,75vw),1500px)] pointer-events-auto">
           {/* Background layer */}
           <div className="absolute inset-[2px] rounded-[14px] -z-10 backdrop-blur-xl bg-gray-100/80 dark:bg-[#161616]/80" />
           <div
@@ -872,7 +793,7 @@ export function CmdKSearch({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={analyticsQueryMode ? "Type your query... (English or ClickHouse SQL)" : "Search or ask AI..."}
+                placeholder="Search or ask AI..."
                 className="flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground/50"
                 autoComplete="off"
                 autoCorrect="off"
@@ -934,7 +855,6 @@ export function CmdKSearch({
                     showCyclingPlaceholder={true}
                     onSelectExampleQuery={setQuery}
                     isParentColumn={activeDepth > 0}
-                    analyticsQueryMode={analyticsQueryMode}
                   />
                 </div>
 
@@ -1097,7 +1017,7 @@ export function CmdKTrigger() {
           "rounded-[12px]",
           "ring-2 ring-inset ring-foreground/[0.06]",
           "transition-all duration-300 hover:transition-none",
-          "hover:ring-blue-500/15 hover:shadow-[0_0_16px_rgba(59,130,246,0.08),inset_0_1px_0_rgba(255,255,255,0.03)]"
+          "hover:ring-[#9196F4]/20 hover:shadow-[0_0_20px_rgba(145,150,244,0.12),inset_0_1px_0_rgba(255,255,255,0.03)]"
         )}
       >
         <div

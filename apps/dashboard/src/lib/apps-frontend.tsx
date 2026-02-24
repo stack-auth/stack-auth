@@ -74,6 +74,7 @@ export const ALL_APPS_FRONTEND = {
     navigationItems: [
       { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
       { displayName: "Auth Methods", href: "../auth-methods" },
+      { displayName: "Sign-up Rules", href: "../sign-up-rules" },
       { displayName: "Trusted Domains", href: "../domains" },
     ],
     screenshots: getScreenshots('auth', 6),
@@ -308,6 +309,8 @@ export const ALL_APPS_FRONTEND = {
     href: "analytics",
     navigationItems: [
       { displayName: "Tables", href: "./tables" },
+      { displayName: "Replays", href: "./replays" },
+      { displayName: "Queries", href: "./queries" },
     ],
     screenshots: [],
     storeDescription: (

@@ -2,6 +2,18 @@ import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
+type ExpectLike = ((value: unknown) => { toEqual: (value: unknown) => void }) & {
+  any: (constructor: unknown) => unknown,
+};
+
+const stripQueryId = <T extends { status: number, body?: Record<string, unknown> | null }>(response: T, expect: ExpectLike) => {
+  if (response.status === 200 && response.body) {
+    expect(response.body.query_id).toEqual(expect.any(String));
+    delete response.body.query_id;
+  }
+  return response;
+};
+
 const queryEvents = async (params: {
   userId?: string,
   eventType?: string,
@@ -24,6 +36,52 @@ const queryEvents = async (params: {
     },
   },
 });
+
+const queryEventDataJson = async (params: {
+  userId?: string,
+  eventType?: string,
+}) => await niceBackendFetch("/api/v1/internal/analytics/query", {
+  method: "POST",
+  accessType: "admin",
+  body: {
+    query: `
+      SELECT toJSONString(data) AS data_json
+      FROM events
+      WHERE 1
+        ${params.userId ? "AND user_id = {user_id:Nullable(String)}" : ""}
+        ${params.eventType ? "AND event_type = {event_type:String}" : ""}
+      ORDER BY event_at DESC
+      LIMIT 1
+    `,
+    params: {
+      ...(params.userId ? { user_id: params.userId } : {}),
+      ...(params.eventType ? { event_type: params.eventType } : {}),
+    },
+  },
+});
+
+const fetchEventDataJsonWithRetry = async (
+  params: { userId?: string, eventType?: string },
+  options: { attempts?: number, delayMs?: number } = {}
+) => {
+  const attempts = options.attempts ?? 5;
+  const delayMs = options.delayMs ?? 250;
+
+  let response = await queryEventDataJson(params);
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (response.status !== 200) {
+      break;
+    }
+    const results = Array.isArray(response.body?.result) ? response.body.result : [];
+    if (results.length > 0) {
+      break;
+    }
+    await wait(delayMs);
+    response = await queryEventDataJson(params);
+  }
+
+  return response;
+};
 
 const fetchEventsWithRetry = async (
   params: { userId?: string, eventType?: string },
@@ -70,6 +128,33 @@ it("stores backend events in ClickHouse", async ({ expect }) => {
   });
 });
 
+it("stores $token-refresh data in snake_case without row identity fields", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { userId } = await Auth.Otp.signIn();
+
+  const queryResponse = await fetchEventDataJsonWithRetry({
+    userId,
+    eventType: "$token-refresh",
+  });
+
+  expect(queryResponse.status).toBe(200);
+  const results = Array.isArray(queryResponse.body?.result) ? queryResponse.body.result : [];
+  expect(results.length).toBeGreaterThan(0);
+
+  const dataJson = results[0]?.data_json;
+  if (typeof dataJson !== "string") {
+    throw new Error("Expected ClickHouse $token-refresh row to include data_json as a string.");
+  }
+  const data = JSON.parse(dataJson) as Record<string, unknown>;
+
+  expect(data).toMatchInlineSnapshot(`
+    {
+      "is_anonymous": false,
+      "refresh_token_id": <stripped field 'refresh_token_id'>,
+    }
+  `);
+});
+
 it("cannot read events from other projects", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const projectAKeys = backendContext.value.projectKeys;
@@ -82,7 +167,7 @@ it("cannot read events from other projects", async ({ expect }) => {
     userId: projectBUserId,
     eventType: "$token-refresh",
   });
-  expect(projectBResponse).toMatchInlineSnapshot(`
+  expect(stripQueryId(projectBResponse, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
       "body": {
@@ -95,10 +180,6 @@ it("cannot read events from other projects", async ({ expect }) => {
             "user_id": "<stripped UUID>",
           },
         ],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -112,16 +193,10 @@ it("cannot read events from other projects", async ({ expect }) => {
     userId: projectBUserId,
     eventType: "$token-refresh",
   });
-  expect(queryResponse).toMatchInlineSnapshot(`
+  expect(stripQueryId(queryResponse, expect)).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": {
-        "result": [],
-        "stats": {
-          "cpu_time": <stripped field 'cpu_time'>,
-          "wall_clock_time": <stripped field 'wall_clock_time'>,
-        },
-      },
+      "body": { "result": [] },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);

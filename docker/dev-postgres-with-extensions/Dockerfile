@@ -53,4 +53,5 @@ ENTRYPOINT ["sh", "-c", "\
     -c max_replication_slots=5 \
     -c wal_keep_size=64MB \
     -c hot_standby=on \
+    -c statement_timeout=30s `# In production this is higher, but better safe than sorry during dev` \
 "]

@@ -84,6 +84,7 @@ const stripFields = [
   "port",
   "wall_clock_time",
   "cpu_time",
+  "hourly_counts",
 ] as const;
 
 const stripFieldsIfString = [
