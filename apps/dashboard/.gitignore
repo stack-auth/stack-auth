@@ -34,7 +34,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# IIFE bundle (copied from dashboard-ui-components build)
-public/dashboard-ui-components.iife.js
-public/dashboard-ui-components.iife.js.map

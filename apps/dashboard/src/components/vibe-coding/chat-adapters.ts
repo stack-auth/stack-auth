@@ -94,7 +94,8 @@ export function createDashboardChatAdapter(
           }
         }
 
-        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = currentTsxSource ? [
+        const hasExistingSource = currentTsxSource.length > 0;
+        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = hasExistingSource ? [
           { role: "user", content: `Here is the current dashboard source:\n\`\`\`tsx\n${currentTsxSource}\n\`\`\`` },
           { role: "assistant", content: "Got it. What would you like to change?" },
         ] : [];
@@ -104,7 +105,7 @@ export function createDashboardChatAdapter(
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             projectId,
-            systemPrompt: "edit-dashboard",
+            systemPrompt: "create-dashboard",
             tools: ["update-dashboard"],
             messages: [...contextMessages, ...formattedMessages],
           }),

@@ -17,9 +17,6 @@ export async function POST(request: Request) {
     "content-type": "application/json",
   };
 
-  const projectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID;
-  const publishableClientKey = process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY;
-
   if (projectId != null && publishableClientKey != null) {
     requestHeaders["x-stack-access-type"] = "client";
     requestHeaders["x-stack-project-id"] = projectId;

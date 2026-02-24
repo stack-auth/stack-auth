@@ -4,7 +4,7 @@
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
-    "clean": "rimraf .next && rimraf node_modules && rimraf src/generated",
+    "clean": "rimraf .next && rimraf node_modules",
     "typecheck": "tsc --noEmit",
     "with-env": "dotenv -c development --",
     "with-env:prod": "dotenv -c --",

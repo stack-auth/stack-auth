@@ -137,6 +137,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
         --input: 240 3.7% 25.9%;
         --ring: 240 4.9% 83.9%;
       }
+      :root, .dark { --page-background: transparent; }
       html, body {
         margin: 0;
         padding: 0;
@@ -144,7 +145,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
         height: 100%;
         overflow-x: hidden;
         font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
-        background: hsl(var(--background));
+        background: var(--page-background);
         color: hsl(var(--foreground));
       }
       #root { width: 100%; height: 100%; overflow-x: hidden; }
@@ -174,8 +175,9 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
         window.parent.postMessage({ type: 'dashboard-edit' }, '*');
       };
 
-      // Chat state flag for AI-generated controls
-      window.__chatOpen = false;
+      // Controls visibility flag — only true in the full dashboard viewer (not cmd+K preview)
+      window.__showControls = ${showControls};
+      window.__chatOpen = ${initialChatOpen};
 
       // Theme syncing and chat state from parent window
       window.addEventListener('message', (event) => {

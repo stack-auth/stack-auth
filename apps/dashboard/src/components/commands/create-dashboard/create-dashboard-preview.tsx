@@ -52,7 +52,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     setErrorText(null);
     setArtifact(null);
 
-    const response = await fetch("/api/dashboard-ai", {
+    const response = await fetch("/api/ai-call", {
       method: "POST",
       headers: {
         "content-type": "application/json",

@@ -1,4 +1,9 @@
 import { getPublicEnvVar } from "@/lib/env";
+import {
+  BUNDLED_DASHBOARD_UI_TYPES,
+  loadSelectedTypeDefinitions,
+  selectRelevantFiles,
+} from "@/lib/ai-dashboard/shared-prompt";
 import { stackServerApp } from "@/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -37,18 +42,28 @@ function sanitizeGeneratedCode(code: string): string {
   return result;
 }
 
+const DASHBOARD_SYSTEM_PROMPTS = new Set(["create-dashboard"]);
 
 export async function POST(req: Request) {
   const payload = await req.json() as {
     projectId: string,
     systemPrompt: string,
     tools: string[],
-    messages: unknown[],
+    messages: Array<{ role: string, content: unknown }>,
+    currentSource?: string,
     quality?: string,
     speed?: string,
   };
 
-  const { projectId, systemPrompt, tools, messages, quality = "smartest", speed = "fast" } = payload;
+  const {
+    projectId,
+    systemPrompt,
+    tools,
+    messages,
+    currentSource,
+    quality = "smartest",
+    speed = "fast",
+  } = payload;
 
   const user = await stackServerApp.getUser({ or: "redirect" });
   const accessToken = await user.getAccessToken();
@@ -68,6 +83,52 @@ export async function POST(req: Request) {
     getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ??
     throwErr("Backend API URL is not configured (NEXT_PUBLIC_STACK_API_URL)");
 
+  const authHeaders = {
+    "x-stack-access-type": "admin",
+    "x-stack-project-id": projectId,
+    "x-stack-admin-access-token": accessToken,
+  };
+
+  let finalMessages = messages;
+
+  if (DASHBOARD_SYSTEM_PROMPTS.has(systemPrompt)) {
+    const aiConfig = { backendBaseUrl, headers: authHeaders };
+
+    const lastUserMessage = [...messages].reverse().find(m => m.role === "user");
+    const promptForFileSelection = typeof lastUserMessage?.content === "string"
+      ? lastUserMessage.content
+      : Array.isArray(lastUserMessage?.content)
+        ? (lastUserMessage.content as Array<{ type: string, text?: string }>).find(c => c.type === "text")?.text ?? "dashboard"
+        : "dashboard";
+
+    const selectedFiles = await selectRelevantFiles(promptForFileSelection, aiConfig);
+    const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
+
+    const contextMessages: Array<{ role: string, content: string }> = [];
+
+    if (currentSource != null && currentSource.length > 0) {
+      contextMessages.push({
+        role: "user",
+        content: `Here is the current dashboard source code:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nHere are the type definitions:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}`,
+      });
+      contextMessages.push({
+        role: "assistant",
+        content: "I understand the current dashboard code, type definitions, and available UI components. What changes would you like to make?",
+      });
+    } else {
+      contextMessages.push({
+        role: "user",
+        content: `Here are the type definitions for the Stack SDK:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}`,
+      });
+      contextMessages.push({
+        role: "assistant",
+        content: "I have the type definitions and available UI components. What dashboard would you like me to create?",
+      });
+    }
+
+    finalMessages = [...contextMessages, ...messages];
+  }
+
   const makeRequest = (withAuth: boolean) =>
     fetch(
       `${backendBaseUrl}/api/latest/ai/query/generate`,
@@ -75,13 +136,9 @@ export async function POST(req: Request) {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...(withAuth ? {
-            "x-stack-access-type": "admin",
-            "x-stack-project-id": projectId,
-            "x-stack-admin-access-token": accessToken,
-          } : {}),
+          ...(withAuth ? authHeaders : {}),
         },
-        body: JSON.stringify({ quality, speed, systemPrompt, tools, messages }),
+        body: JSON.stringify({ quality, speed, systemPrompt, tools, messages: finalMessages }),
       }
     );
 
