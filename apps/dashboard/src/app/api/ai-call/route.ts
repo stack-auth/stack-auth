@@ -3,7 +3,7 @@ import { stackServerApp } from "@/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
- * Sanitizes AI-generated JSX/TSX code before it is applied to the email renderer.
+ * Sanitizes AI-generated JSX/TSX code before it is applied to renderers.
  *
  * Handles four common model output issues:
  * 1. Markdown code fences (```tsx ... ```) wrapping the output despite instructions
@@ -16,20 +16,15 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 function sanitizeGeneratedCode(code: string): string {
   let result = code.trim();
 
-  // Strip markdown code fences if the model added them despite instructions.
-  // Handles ```tsx ... ``` and also plain ``` ... ```.
   if (result.startsWith("```")) {
     const lines = result.split("\n");
-    lines.shift(); // remove opening ```tsx or similar
+    lines.shift();
     if (lines[lines.length - 1]?.trim() === "```") {
-      lines.pop(); // remove closing ```
+      lines.pop();
     }
     result = lines.join("\n").trim();
   }
 
-  // Decode common HTML entities that models sometimes emit inside code.
-  // This fixes things like `&amp;&amp;` (should be `&&`) and `&lt;Container&gt;`.
-  // Only decodes the entities we expect in generated TSX.
   result = result
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -37,9 +32,6 @@ function sanitizeGeneratedCode(code: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
 
-  // Fix the common model mistake of using `;` as a property separator in object literals.
-  // Replace `;` with `,` only when it looks like `key: value;` followed by another `key:`.
-  // This avoids touching for-loops and other valid `;` usage.
   result = result.replace(/;(\s*\n\s*[A-Za-z_$][\w$]*\s*:)/g, ",$1");
 
   return result;
@@ -76,19 +68,28 @@ export async function POST(req: Request) {
     getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ??
     throwErr("Backend API URL is not configured (NEXT_PUBLIC_STACK_API_URL)");
 
-  const backendResponse = await fetch(
-    `${backendBaseUrl}/api/latest/ai/query/generate`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-stack-access-type": "admin",
-        "x-stack-project-id": projectId,
-        "x-stack-admin-access-token": accessToken, //TODO not entirely sure
-      },
-      body: JSON.stringify({ quality, speed, systemPrompt, tools, messages }),
-    }
-  );
+  const makeRequest = (withAuth: boolean) =>
+    fetch(
+      `${backendBaseUrl}/api/latest/ai/query/generate`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(withAuth ? {
+            "x-stack-access-type": "admin",
+            "x-stack-project-id": projectId,
+            "x-stack-admin-access-token": accessToken,
+          } : {}),
+        },
+        body: JSON.stringify({ quality, speed, systemPrompt, tools, messages }),
+      }
+    );
+
+  let backendResponse = await makeRequest(true);
+
+  if (!backendResponse.ok) {
+    backendResponse = await makeRequest(false);
+  }
 
   if (!backendResponse.ok) {
     const error = await backendResponse.json().catch(() => ({ error: "Unknown error" }));

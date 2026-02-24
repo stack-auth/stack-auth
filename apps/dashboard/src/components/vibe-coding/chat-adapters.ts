@@ -43,13 +43,69 @@ export function createChatAdapter(
 
         const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
-        const response = await fetch("/api/email-ai", {
+        const response = await fetch("/api/ai-call", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             projectId,
             systemPrompt,
             tools: [...tools],
+            messages: [...contextMessages, ...formattedMessages],
+          }),
+          signal: abortSignal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`AI request failed: ${response.status}`);
+        }
+
+        const result = await response.json() as { content?: ChatContent };
+        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
+
+        const toolCall = content.find(isToolCall);
+        if (toolCall) {
+          onToolCall(toolCall);
+        }
+
+        return { content };
+      } catch (error) {
+        if (abortSignal.aborted) {
+          return {};
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+export function createDashboardChatAdapter(
+  projectId: string,
+  currentTsxSource: string,
+  onToolCall: (toolCall: ToolCallContent) => void,
+): ChatModelAdapter {
+  return {
+    async run({ messages, abortSignal }) {
+      try {
+        const formattedMessages = [];
+        for (const msg of messages) {
+          const textContent = msg.content.filter(c => !isToolCall(c));
+          if (textContent.length > 0) {
+            formattedMessages.push({ role: msg.role, content: textContent });
+          }
+        }
+
+        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = currentTsxSource ? [
+          { role: "user", content: `Here is the current dashboard source:\n\`\`\`tsx\n${currentTsxSource}\n\`\`\`` },
+          { role: "assistant", content: "Got it. What would you like to change?" },
+        ] : [];
+
+        const response = await fetch("/api/ai-call", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            systemPrompt: "edit-dashboard",
+            tools: ["update-dashboard"],
             messages: [...contextMessages, ...formattedMessages],
           }),
           signal: abortSignal,
