@@ -1,7 +1,7 @@
 import PageClient from "./page-client";
 
 export const metadata = {
-  title: "ClickHouse Event Migration",
+  title: "Component Playground",
 };
 
 export default function Page() {
