@@ -137,6 +137,35 @@ export async function getOwnedProductsForCustomer(options: {
 
   const ownedProducts: OwnedProduct[] = [];
 
+  const subscriptionIds = new Set<string>();
+  for (const tx of transactions) {
+    for (const entry of tx.entries) {
+      const typedEntry = entry as any;
+      if (typedEntry.type === "product-grant" && typedEntry.subscription_id) {
+        subscriptionIds.add(typedEntry.subscription_id);
+      }
+    }
+  }
+
+  const subscriptionMetadata = new Map<string, {
+    stripeSubscriptionId: string | null,
+    currentPeriodEnd: Date | null,
+    cancelAtPeriodEnd: boolean,
+  }>();
+  if (subscriptionIds.size > 0) {
+    const subs = await options.prisma.subscription.findMany({
+      where: { tenancyId: options.tenancy.id, id: { in: [...subscriptionIds] } },
+      select: { id: true, stripeSubscriptionId: true, currentPeriodEnd: true, cancelAtPeriodEnd: true },
+    });
+    for (const sub of subs) {
+      subscriptionMetadata.set(sub.id, {
+        stripeSubscriptionId: sub.stripeSubscriptionId,
+        currentPeriodEnd: sub.currentPeriodEnd,
+        cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      });
+    }
+  }
+
   for (const tx of transactions) {
     for (let i = 0; i < tx.entries.length; i++) {
       const entry = tx.entries[i];
@@ -149,6 +178,7 @@ export async function getOwnedProductsForCustomer(options: {
 
       const isSubscription = typedEntry.subscription_id != null;
       const isOneTime = typedEntry.one_time_purchase_id != null;
+      const subMeta = isSubscription ? subscriptionMetadata.get(typedEntry.subscription_id) : null;
 
       ownedProducts.push({
         id: typedEntry.product_id,
@@ -158,9 +188,9 @@ export async function getOwnedProductsForCustomer(options: {
         createdAt: new Date(tx.created_at_millis),
         sourceId: typedEntry.subscription_id ?? typedEntry.one_time_purchase_id ?? tx.id,
         subscription: isSubscription ? {
-          stripeSubscriptionId: null,
-          currentPeriodEnd: null,
-          cancelAtPeriodEnd: false,
+          stripeSubscriptionId: subMeta?.stripeSubscriptionId ?? null,
+          currentPeriodEnd: subMeta?.currentPeriodEnd ?? null,
+          cancelAtPeriodEnd: subMeta?.cancelAtPeriodEnd ?? false,
           isCancelable: typedEntry.product_id !== null,
         } : null,
       });
