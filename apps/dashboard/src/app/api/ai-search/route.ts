@@ -35,31 +35,39 @@ export async function POST(req: Request) {
     getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ??
     throwErr("Backend API URL is not configured (NEXT_PUBLIC_STACK_API_URL)");
 
-  const requestHeaders: Record<string, string> = {
-    "content-type": "application/json",
+  const useAdminAuth = projectId != null && hasProjectAccess && accessToken != null;
+
+  const makeRequest = async (withAuth: boolean) => {
+    const requestHeaders: Record<string, string> = {
+      "content-type": "application/json",
+    };
+
+    if (withAuth && projectId != null && accessToken != null) {
+      requestHeaders["x-stack-access-type"] = "admin";
+      requestHeaders["x-stack-project-id"] = projectId;
+      requestHeaders["x-stack-admin-access-token"] = accessToken;
+    }
+
+    return await fetch(
+      `${backendBaseUrl}/api/latest/ai/query/stream`,
+      {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          quality: "smart",
+          speed: "fast",
+          tools: withAuth ? tools : ["docs"],
+          systemPrompt: "command-center-ask-ai",
+          messages: modelMessages,
+        }),
+      }
+    );
   };
 
-
-  if (projectId && hasProjectAccess && accessToken) {
-    requestHeaders["x-stack-access-type"] = "admin";
-    requestHeaders["x-stack-project-id"] = projectId;
-    requestHeaders["x-stack-admin-access-token"] = accessToken;
+  let backendResponse = await makeRequest(useAdminAuth);
+  if (!backendResponse.ok && useAdminAuth) {
+    backendResponse = await makeRequest(false);
   }
-
-  const backendResponse = await fetch(
-    `${backendBaseUrl}/api/latest/ai/query/stream`,
-    {
-      method: "POST",
-      headers: requestHeaders,
-      body: JSON.stringify({
-        quality: "smart",
-        speed: "fast",
-        tools,
-        systemPrompt: "command-center-ask-ai",
-        messages: modelMessages,
-      }),
-    }
-  );
 
   if (!backendResponse.ok) {
     const error = await backendResponse.json().catch(() => ({ error: "Unknown error" }));
