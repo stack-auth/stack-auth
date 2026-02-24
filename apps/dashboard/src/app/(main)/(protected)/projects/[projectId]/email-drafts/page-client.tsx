@@ -631,7 +631,7 @@ function NewDraftDialog({
   );
 }
 
-type TemplateDialogStep = "select" | "variables";
+type TemplateDialogStep = "select" | "variables" | "name";
 
 function TemplateSelectDialog({
   open,
@@ -647,15 +647,14 @@ function TemplateSelectDialog({
   const [step, setStep] = useState<TemplateDialogStep>("select");
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string, displayName: string, tsxSource: string } | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [draftName, setDraftName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
-  // Extract variables from selected template
   const templateVariables = useMemo(() => {
     if (!selectedTemplate) return [];
     return extractTemplateVariables(selectedTemplate.tsxSource);
   }, [selectedTemplate]);
 
-  // Check if all variables have values
   const allVariablesFilled = useMemo(() => {
     return templateVariables.every(v => (variableValues[v.name] ?? "").trim() !== "");
   }, [templateVariables, variableValues]);
@@ -664,6 +663,7 @@ function TemplateSelectDialog({
     setStep("select");
     setSelectedTemplate(null);
     setVariableValues({});
+    setDraftName("");
     setIsCreating(false);
   };
 
@@ -676,10 +676,10 @@ function TemplateSelectDialog({
 
   const handleSelectTemplate = (template: { id: string, displayName: string, tsxSource: string }) => {
     setSelectedTemplate(template);
+    setDraftName(`Copy of ${template.displayName}`);
     const variables = extractTemplateVariables(template.tsxSource);
 
     if (variables.length > 0) {
-      // Pre-fill with default values
       const defaults: Record<string, string> = {};
       for (const v of variables) {
         defaults[v.name] = v.defaultValue;
@@ -687,21 +687,23 @@ function TemplateSelectDialog({
       setVariableValues(defaults);
       setStep("variables");
     } else {
-      // No variables, create draft directly
-      runAsynchronouslyWithAlert(() => createDraftFromTemplate(template, {}));
+      setStep("name");
     }
   };
 
-  const createDraftFromTemplate = async (
-    template: { id: string, displayName: string, tsxSource: string },
-    variables: Record<string, string>,
-  ) => {
+  const handleVariablesContinue = () => {
+    if (!allVariablesFilled) return;
+    setStep("name");
+  };
+
+  const createDraftFromTemplate = async () => {
+    if (!selectedTemplate || !draftName.trim()) return;
     setIsCreating(true);
     try {
       const draft = await stackAdminApp.createEmailDraft({
-        displayName: `Copy of ${template.displayName}`,
-        tsxSource: template.tsxSource,
-        templateVariables: Object.keys(variables).length > 0 ? variables : undefined,
+        displayName: draftName.trim(),
+        tsxSource: selectedTemplate.tsxSource,
+        templateVariables: Object.keys(variableValues).length > 0 ? variableValues : undefined,
       });
 
       handleOpenChange(false);
@@ -711,17 +713,12 @@ function TemplateSelectDialog({
     }
   };
 
-  const handleCreateWithVariables = () => {
-    if (!selectedTemplate || !allVariablesFilled) return;
-    runAsynchronouslyWithAlert(() => createDraftFromTemplate(selectedTemplate, variableValues));
-  };
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {step === "select" ? "Create from Template" : "Template Variables"}
+            {step === "select" ? "Create from Template" : step === "variables" ? "Template Variables" : "Name Your Draft"}
           </DialogTitle>
         </DialogHeader>
 
@@ -816,6 +813,40 @@ function TemplateSelectDialog({
                 type="button"
                 variant="secondary"
                 onClick={() => setStep("select")}
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back
+              </Button>
+              <Button
+                type="button"
+                onClick={handleVariablesContinue}
+                disabled={!allVariablesFilled}
+                className="flex-1"
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "name" && (
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="draft-name" className="text-sm font-medium">Draft name</Label>
+              <Input
+                id="draft-name"
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                placeholder="Enter a name for your draft"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setStep(templateVariables.length > 0 ? "variables" : "select")}
                 disabled={isCreating}
               >
                 <ArrowLeft className="h-4 w-4 mr-1" />
@@ -823,8 +854,8 @@ function TemplateSelectDialog({
               </Button>
               <Button
                 type="button"
-                onClick={handleCreateWithVariables}
-                disabled={!allVariablesFilled || isCreating}
+                onClick={() => runAsynchronouslyWithAlert(createDraftFromTemplate)}
+                disabled={!draftName.trim() || isCreating}
                 className="flex-1"
               >
                 {isCreating ? (
