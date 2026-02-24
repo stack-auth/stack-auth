@@ -86,11 +86,19 @@ export function ThemeSettings() {
 
   return (
     <DesignCard
-      title="Theme Settings"
-      icon={PaintBrush}
       gradient="default"
       onClick={() => router.push("email-themes")}
-      actions={
+    >
+      {/* Header row -- no divider, showcase overlaps below */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+            <PaintBrush className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
+          </div>
+          <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+            Theme Settings
+          </span>
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -103,31 +111,30 @@ export function ThemeSettings() {
           Manage Themes
           <ArrowRightIcon className="h-3.5 w-3.5" />
         </Button>
-      }
-    >
-      <div className="relative h-[320px] my-2">
-        {/* Left flanking theme - tucked behind left side */}
+      </div>
+
+      {/* Showcase -- pulls up into the header area with negative margin */}
+      <div className="relative h-[280px] -mt-2">
         {flankingThemes[0] && (
-          <ThemePreviewFrame className="absolute left-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[240px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+          <ThemePreviewFrame className="absolute left-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[220px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
             <EmailPreview themeId={flankingThemes[0].id} templateTsxSource={previewTemplateSource} disableResizing />
           </ThemePreviewFrame>
         )}
 
-        {/* Active theme - centered, prominent, overlapping sides */}
-        <ThemePreviewFrame className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-[45%] h-[290px] shadow-xl border-border" style={{ zIndex: 2 }} active>
+        <ThemePreviewFrame className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-[45%] h-[270px] shadow-xl border-border" style={{ zIndex: 2 }} active>
           <EmailPreview themeId={activeTheme.id} templateTsxSource={previewTemplateSource} disableResizing />
         </ThemePreviewFrame>
 
-        {/* Right flanking theme - tucked behind right side */}
         {flankingThemes[1] && (
-          <ThemePreviewFrame className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[240px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+          <ThemePreviewFrame className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[220px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
             <EmailPreview themeId={flankingThemes[1].id} templateTsxSource={previewTemplateSource} disableResizing />
           </ThemePreviewFrame>
         )}
       </div>
 
-      <div className="text-center pb-1">
-        <Typography variant="secondary" className="text-sm">
+      {/* Active theme label */}
+      <div className="text-center -mt-1">
+        <Typography variant="secondary" className="text-xs">
           Active: <span className="font-medium text-foreground">{activeTheme.displayName}</span>
         </Typography>
       </div>
