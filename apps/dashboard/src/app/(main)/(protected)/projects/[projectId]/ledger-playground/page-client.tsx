@@ -96,6 +96,29 @@ function generateShuffledData() {
 
   const customerId = "playground-customer";
   const paidProductIds = productIds.filter((p) => products[p].prices !== "include-by-default");
+
+  function maybeCreateOlderVersion(product: any): any {
+    if (Math.random() > 0.3) return product;
+    const old = { ...product, includedItems: { ...product.includedItems } };
+    old.displayName = `${product.displayName} (old)`;
+    for (const itemId of Object.keys(old.includedItems)) {
+      old.includedItems[itemId] = {
+        ...old.includedItems[itemId],
+        quantity: Math.max(1, old.includedItems[itemId].quantity + randChoice([-2, -1, 1, 3])),
+      };
+    }
+    if (Math.random() < 0.4) {
+      const extraItem = randChoice(usedItems);
+      if (!(extraItem in old.includedItems)) {
+        old.includedItems[extraItem] = { quantity: randInt(1, 5) };
+      }
+    }
+    if (old.prices !== "include-by-default" && old.prices?.default?.USD) {
+      old.prices = { ...old.prices, default: { ...old.prices.default, USD: String(Math.max(1, Number(old.prices.default.USD) + randChoice([-10, -5, 5, 15]))) } };
+    }
+    return old;
+  }
+
   const subscriptions: any[] = [];
 
   const subScenarios = ["active", "ended", "refunded", ...Array.from({ length: randInt(1, 4) }, () => randChoice(["active", "ended", "refunded", "canceled"]))];
@@ -104,7 +127,7 @@ function generateShuffledData() {
     const prodId = randChoice(paidProductIds);
     subscriptions.push({
       id: uuid(), tenancyId: "mock-tenancy", customerId, customerType: "CUSTOM",
-      productId: prodId, priceId: "default", product: products[prodId], quantity: randInt(1, 3),
+      productId: prodId, priceId: "default", product: maybeCreateOlderVersion(products[prodId]), quantity: randInt(1, 3),
       stripeSubscriptionId: `stripe-${uuid().slice(0, 8)}`,
       status: scenario === "ended" || scenario === "refunded" ? "canceled" : "active",
       currentPeriodStart: created, currentPeriodEnd: new Date(created.getTime() + 30 * 86400000),
@@ -123,7 +146,7 @@ function generateShuffledData() {
     const prodId = randChoice(paidProductIds);
     oneTimePurchases.push({
       id: uuid(), tenancyId: "mock-tenancy", customerId, customerType: "CUSTOM",
-      productId: prodId, priceId: "default", product: products[prodId], quantity: randInt(1, 2),
+      productId: prodId, priceId: "default", product: maybeCreateOlderVersion(products[prodId]), quantity: randInt(1, 2),
       stripePaymentIntentId: `pi-${uuid().slice(0, 8)}`,
       refundedAt: scenario === "refunded" ? randDateAfter(created) : null,
       creationSource: "PURCHASE_PAGE", createdAt: created, updatedAt: created,
@@ -164,7 +187,7 @@ function generateShuffledData() {
   function buildSnapshot(ids: string[]) {
     const snap: Record<string, any> = {};
     for (const id of ids) {
-      const prod = products[id];
+      const prod = maybeCreateOlderVersion(products[id]);
       if (!prod) continue;
       snap[id] = {
         display_name: (prod as any).displayName, customer_type: "custom", product_line_id: (prod as any).productLineId,
@@ -238,16 +261,40 @@ function formatRepeat(repeat: unknown): string {
   return "custom";
 }
 
-function formatIncludedItemsSummary(product: any): string {
+function formatIncludedItemsSummary(product: any): string[] {
   const includedItems = (product?.included_items ?? product?.includedItems ?? {}) as Record<string, any>;
   const parts = Object.entries(includedItems).map(([itemId, cfg]) => {
     const qty = Number(cfg?.quantity ?? 0);
     const repeat = formatRepeat(cfg?.repeat ?? "never");
     const expires = String(cfg?.expires ?? "never");
-    return `${qty}x ${itemId}/${repeat} (${expires})`;
+    return `${qty}x ${itemId} / ${repeat} (${expires})`;
   });
-  if (parts.length === 0) return "none";
-  return parts.join(", ");
+  return parts;
+}
+
+function detectProductVersionDrift(snapshotProduct: any, configProduct: any): string[] {
+  if (!snapshotProduct || !configProduct) return [];
+  const diffs: string[] = [];
+  const snapItems = snapshotProduct.included_items ?? snapshotProduct.includedItems ?? {};
+  const configItems = configProduct.includedItems ?? configProduct.included_items ?? {};
+  const allKeys = new Set([...Object.keys(snapItems), ...Object.keys(configItems)]);
+  for (const key of allKeys) {
+    const snapQty = Number(snapItems[key]?.quantity ?? 0);
+    const cfgQty = Number(configItems[key]?.quantity ?? 0);
+    if (snapQty !== cfgQty) {
+      diffs.push(`${key}: ${snapQty} (was) -> ${cfgQty} (now)`);
+    }
+    if ((key in snapItems) !== (key in configItems)) {
+      if (!(key in configItems)) diffs.push(`${key}: removed in config`);
+      else diffs.push(`${key}: added in config`);
+    }
+  }
+  const snapName = snapshotProduct.display_name ?? snapshotProduct.displayName;
+  const cfgName = configProduct.displayName ?? configProduct.display_name;
+  if (snapName && cfgName && snapName !== cfgName) {
+    diffs.push(`name: "${snapName}" -> "${cfgName}"`);
+  }
+  return diffs;
 }
 
 function getRelatedTxIdsForRow(
@@ -288,7 +335,7 @@ function getRelatedTxIdsForRow(
   return ids;
 }
 
-function TimelineView({ result }: { result: PlaygroundResult }) {
+function TimelineView({ result, configProducts }: { result: PlaygroundResult, configProducts: Record<string, any> }) {
   const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const [hoveredTxId, setHoveredTxId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
@@ -500,8 +547,8 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
                     const snap = snapshots.find((s) => s.at_millis >= seg.startMs);
                     const owned = snap?.owned_products.find((p) => (p.id ?? "inline") === productId);
                     const productLineId = getProductLineIdFromInlineProduct(owned?.product);
-                    const itemsSummary = formatIncludedItemsSummary(owned?.product);
-                    const tooltipText = `${productId} qty=${qty} (${(seg.value as any).type}${(seg.value as any).count > 1 ? ` x${(seg.value as any).count} sources` : ""}) | line=${productLineId ?? "none"} | items: ${itemsSummary}`;
+                    const itemLines = formatIncludedItemsSummary(owned?.product);
+                    const versionDrift = detectProductVersionDrift(owned?.product, configProducts[productId]);
                     return (
                       <Tooltip key={si}>
                         <TooltipTrigger asChild>
@@ -515,8 +562,24 @@ function TimelineView({ result }: { result: PlaygroundResult }) {
                             {(x2 - x1) > 3 && <span className="text-[8px] text-red-700 dark:text-red-300 px-0.5 leading-none">{qty}</span>}
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[420px] text-[10px] font-mono break-words">
-                          {tooltipText}
+                        <TooltipContent side="top" className="max-w-[420px] text-[10px] font-mono p-2 space-y-0.5">
+                          <div className="font-bold">{productId} qty={qty}</div>
+                          <div className="text-muted-foreground">type: {(seg.value as any).type}{(seg.value as any).count > 1 ? ` (x${(seg.value as any).count} sources)` : ""}</div>
+                          <div className="text-muted-foreground">line: {productLineId ?? "none"}</div>
+                          {itemLines.length > 0 ? (
+                            <div className="text-muted-foreground">
+                              <span>items:</span>
+                              {itemLines.map((line, li) => <div key={li} className="ml-2">{line}</div>)}
+                            </div>
+                          ) : (
+                            <div className="text-muted-foreground">items: none</div>
+                          )}
+                          {versionDrift.length > 0 && (
+                            <div className="text-amber-500 dark:text-amber-400 border-t border-muted pt-0.5 mt-0.5">
+                              <div className="font-semibold">product version differs from config:</div>
+                              {versionDrift.map((d, di) => <div key={di} className="ml-2">{d}</div>)}
+                            </div>
+                          )}
                         </TooltipContent>
                       </Tooltip>
                     );
@@ -953,7 +1016,13 @@ export default function PageClient() {
         {result && (
           <div>
             <Typography className="text-xs font-medium text-muted-foreground mb-1">{result.transactions.length} transactions, {result.snapshots.length} snapshots</Typography>
-            <TimelineView result={result} />
+            <TimelineView result={result} configProducts={(() => {
+              try {
+                return JSON.parse(mockConfigJson)?.products ?? {};
+              } catch {
+                return {};
+              }
+            })()} />
           </div>
         )}
         {error && <div className="rounded bg-destructive/10 border border-destructive/20 p-2"><Typography className="text-xs text-destructive">{error}</Typography></div>}
