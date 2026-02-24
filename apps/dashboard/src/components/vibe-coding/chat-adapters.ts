@@ -20,6 +20,7 @@ const CONTEXT_MAP = {
 
 export function createChatAdapter(
   projectId: string,
+  threadId: string,
   contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,

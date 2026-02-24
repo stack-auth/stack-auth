@@ -25,7 +25,7 @@ describe("AI Query Endpoint - Validation", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body).toEqual(expect.stringContaining("Invalid mode"));
+    expect(response.body).toEqual(expect.stringContaining("must be one of the following values: stream, generate"));
   });
 
   it("rejects missing quality field", async ({ expect }) => {
