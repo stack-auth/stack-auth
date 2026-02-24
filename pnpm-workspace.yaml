@@ -3,5 +3,25 @@ packages:
   - apps/*
   - examples/*
   - docs
+  - sdks/*
+  - sdks/implementations/*
 
 minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+- ai
+- '@ai-sdk/openai'
+- '@ai-sdk/react'
+- '@ai-sdk/provider'
+- '@ai-sdk/provider-utils'
+- '@ai-sdk/gateway'
+- next
+- '@next/env'
+- '@next/swc-darwin-arm64'
+- '@next/swc-darwin-x64'
+- '@next/swc-linux-arm64-gnu'
+- '@next/swc-linux-arm64-musl'
+- '@next/swc-linux-x64-gnu'
+- '@next/swc-linux-x64-musl'
+- '@next/swc-win32-arm64-msvc'
+- '@next/swc-win32-ia32-msvc'
+- '@next/swc-win32-x64-msvc'

@@ -18,6 +18,9 @@ const projectSchemaFuzzerConfig = [{
       "123-some-branch-id": ["", "THIS IS A CONNECTION STRING OR SO"],
     }],
   }],
+  project: [{
+    requirePublishableClientKey: [true, false],
+  }],
 }] satisfies FuzzerConfig<ProjectConfigNormalizedOverride>;
 
 const branchSchemaFuzzerConfig = [{
@@ -46,6 +49,30 @@ const branchSchemaFuzzerConfig = [{
           allowSignIn: [true, false],
           allowConnectedAccounts: [true, false],
         }],
+      }],
+    }],
+    signUpRules: [{
+      "some-rule-id": [{
+        enabled: [true, false],
+        displayName: ["Block Test Emails", "Allow Only Company Domain"],
+        priority: [0, 1, 100],
+        condition: ['email.endsWith("@test.com")', 'emailDomain == "company.com"'],
+        action: [{
+          type: ["allow", "reject", "restrict", "log"] as const,
+          message: ["", "Sign up is not allowed for this email"],
+        }],
+      }],
+    }],
+    signUpRulesDefaultAction: ["allow", "reject"],
+  }],
+  dbSync: [{
+    externalDatabases: [{
+      "some-external-db-id": [{
+        type: ["postgres"] as const,
+        connectionString: [
+          "postgres://user:password@host:port/database",
+          "some-connection-string",
+        ],
       }],
     }],
   }],
@@ -188,6 +215,7 @@ const environmentSchemaFuzzerConfig = [{
         clientSecret: ["some-client-secret"],
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
+        appleBundles: [{ "some-bundle-id": [{ bundleId: ["com.example.app"] }] }],
       }]]))] as const,
     }],
   }],
@@ -216,6 +244,21 @@ const environmentSchemaFuzzerConfig = [{
   payments: [{
     ...branchSchemaFuzzerConfig[0].payments[0],
     testMode: [false, true],
+  }],
+  analytics: [{
+    queryFolders: [{
+      "some-folder-id": [{
+        displayName: ["Some Folder", "Some Other Folder"],
+        sortOrder: [0, 1, 10, -5],
+        queries: [{
+          "some-query-id": [{
+            displayName: ["Some Query", "Some Other Query"],
+            sqlQuery: ["", "SELECT * FROM events", "SELECT * FROM users"],
+            description: ["", "A query description", "Another description"],
+          }],
+        }],
+      }],
+    }],
   }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 

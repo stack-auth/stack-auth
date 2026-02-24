@@ -1,9 +1,13 @@
-import { executeJavascript } from '@/lib/js-execution';
+import { executeJavascript, type ExecuteResult } from '@/lib/js-execution';
 import { emptyEmailTheme } from '@stackframe/stack-shared/dist/helpers/emails';
-import { getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { bundleJavaScript } from '@stackframe/stack-shared/dist/utils/esbuild';
 import { get, has } from '@stackframe/stack-shared/dist/utils/objects';
+import {
+  type EditableMetadata,
+  transpileJsxForEditing,
+  convertSentinelTokensToComments,
+} from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
@@ -50,7 +54,7 @@ export function createTemplateComponentFromHtml(html: string) {
 const nodeModules = {
   "react-dom": "19.1.1",
   "react": "19.1.1",
-  "@react-email/components": "0.1.1",
+  "@react-email/components": "1.0.6",
   "arktype": "2.1.20",
 };
 
@@ -69,13 +73,16 @@ const entryJs = deindent`
   };
 `;
 
-type EmailRenderResult = { html: string, text: string, subject?: string, notificationCategory?: string };
-type ExecuteResult =
-  | { status: "ok", data: unknown }
-  | { status: "error", error: unknown };
+type EmailRenderResult = {
+  html: string,
+  text: string,
+  subject?: string,
+  notificationCategory?: string,
+  editableRegions?: Record<string, EditableMetadata>,
+};
 
 async function bundleAndExecute<T>(
-  files: Record<string, string> & { '/entry.js': string }
+  files: Record<string, string> & { '/entry.js': string },
 ): Promise<Result<T, string>> {
   const bundle = await bundleJavaScript(files, {
     keepAsImports: ['arktype', 'react', 'react/jsx-runtime', '@react-email/components'],
@@ -87,40 +94,11 @@ async function bundleAndExecute<T>(
     return Result.error(bundle.error);
   }
 
-  if (["development", "test"].includes(getNodeEnvironment())) {
-    const executeResult = await executeJavascript(bundle.data, { nodeModules, engine: 'freestyle' }) as ExecuteResult;
-    if (executeResult.status === "error") {
-      return Result.error(JSON.stringify(executeResult.error));
-    }
-    return Result.ok(executeResult.data as T);
-  }
-
-  const executeResult = await executeJavascript(bundle.data, { nodeModules }) as ExecuteResult;
+  const executeResult: ExecuteResult = await executeJavascript(bundle.data, { nodeModules });
 
   if (executeResult.status === "error") {
-    const vercelResult = await executeJavascript(bundle.data, { nodeModules, engine: 'vercel-sandbox' }) as ExecuteResult;
-    if (vercelResult.status === "error") {
-      captureError("email-rendering-freestyle-and-vercel-runtime-error", new StackAssertionError(
-        "Email rendering failed with both freestyle and vercel-sandbox engines",
-        {
-          freestyleError: executeResult.error,
-          vercelError: vercelResult.error,
-          innerCode: bundle.data,
-          innerOptions: [
-            { nodeModules, engine: 'freestyle' },
-            { nodeModules, engine: 'vercel-sandbox' },
-          ],
-        },
-      ));
-      return Result.error(JSON.stringify(vercelResult.error));
-    }
-    captureError("email-rendering-freestyle-runtime-error", new StackAssertionError(
-      "Email rendering failed with freestyle but succeeded with vercel-sandbox",
-      { freestyleError: executeResult.error, innerCode: bundle.data, innerOptions: { nodeModules, engine: 'freestyle' } }
-    ));
-    return Result.ok(vercelResult.data as T);
+    return Result.error(JSON.stringify(executeResult.error));
   }
-
   return Result.ok(executeResult.data as T);
 }
 
@@ -131,6 +109,8 @@ export async function renderEmailWithTemplate(
     user?: { displayName: string | null },
     project?: { displayName: string },
     variables?: Record<string, any>,
+    editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
     themeProps?: {
       unsubscribeLink?: string,
       projectLogos: {
@@ -154,10 +134,51 @@ export async function renderEmailWithTemplate(
     throw new StackAssertionError("Project is required when not in preview mode", { user, project, variables });
   }
 
+  // Process editable markers if requested
+  const editableMarkers = options.editableMarkers ?? false;
+  const editableSource = options.editableSource ?? 'template';
+  let editableRegions: Record<string, EditableMetadata> = {};
+
+  let processedTemplate = templateOrDraftComponent;
+  let processedTheme = themeComponent;
+
+  if (editableMarkers) {
+    // Transpile template if needed
+    if (editableSource === 'template' || editableSource === 'both') {
+      try {
+        const templateResult = transpileJsxForEditing(templateOrDraftComponent, { sourceFile: 'template' });
+        processedTemplate = templateResult.code;
+        editableRegions = { ...editableRegions, ...templateResult.editableRegions };
+      } catch (e) {
+        // If transpilation fails, fall back to original source
+        // This can happen with complex or invalid JSX
+        captureError("email-transpilation-template-error", new StackAssertionError(
+          "Failed to transpile template for editable markers",
+          { error: e instanceof Error ? e.message : String(e) }
+        ));
+      }
+    }
+
+    // Transpile theme if needed
+    if (editableSource === 'theme' || editableSource === 'both') {
+      try {
+        const themeResult = transpileJsxForEditing(themeComponent, { sourceFile: 'theme' });
+        processedTheme = themeResult.code;
+        editableRegions = { ...editableRegions, ...themeResult.editableRegions };
+      } catch (e) {
+        // If transpilation fails, fall back to original source
+        captureError("email-transpilation-theme-error", new StackAssertionError(
+          "Failed to transpile theme for editable markers",
+          { error: e instanceof Error ? e.message : String(e) }
+        ));
+      }
+    }
+  }
+
   const files = {
     "/utils.tsx": findComponentValueUtil,
-    "/theme.tsx": themeComponent,
-    "/template.tsx": templateOrDraftComponent,
+    "/theme.tsx": processedTheme,
+    "/template.tsx": processedTemplate,
     "/render.tsx": deindent`
       import { configure } from "arktype/config"
       configure({ onUndeclaredKey: "delete" })
@@ -195,7 +216,19 @@ export async function renderEmailWithTemplate(
     "/entry.js": entryJs,
   };
 
-  return await bundleAndExecute<EmailRenderResult>(files);
+  const result = await bundleAndExecute<EmailRenderResult>(files);
+
+  // Post-process HTML to convert sentinel tokens to HTML comments if editable markers enabled
+  if (result.status === "ok" && editableMarkers) {
+    const processedHtml = convertSentinelTokensToComments(result.data.html);
+    return Result.ok({
+      ...result.data,
+      html: processedHtml,
+      editableRegions: Object.keys(editableRegions).length > 0 ? editableRegions : undefined,
+    });
+  }
+
+  return result;
 }
 
 export type RenderEmailRequestForTenancy = {

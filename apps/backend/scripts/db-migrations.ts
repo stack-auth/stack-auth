@@ -1,19 +1,25 @@
 import { applyMigrations } from "@/auto-migrations";
 import { MIGRATION_FILES_DIR, getMigrationFiles } from "@/auto-migrations/utils";
 import { Prisma } from "@/generated/prisma/client";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { globalPrismaClient, globalPrismaSchema, sqlQuoteIdent } from "@/prisma-client";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
+import { runClickhouseMigrations } from "./clickhouse-migrations";
+
+const getClickhouseClient = () => getClickhouseAdminClient();
 
 const dropSchema = async () => {
   await globalPrismaClient.$executeRaw(Prisma.sql`DROP SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} CASCADE`);
   await globalPrismaClient.$executeRaw(Prisma.sql`CREATE SCHEMA ${sqlQuoteIdent(globalPrismaSchema)}`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO postgres`);
   await globalPrismaClient.$executeRaw(Prisma.sql`GRANT ALL ON SCHEMA ${sqlQuoteIdent(globalPrismaSchema)} TO public`);
+  const clickhouseClient = getClickhouseClient();
+  await clickhouseClient.command({ query: "DROP DATABASE IF EXISTS analytics_internal" });
+  await clickhouseClient.command({ query: "CREATE DATABASE IF NOT EXISTS analytics_internal" });
 };
 
 
@@ -74,7 +80,6 @@ const generateMigrationFile = async () => {
   const folderName = `${timestampPrefix()}_${migrationName}`;
   const migrationDir = path.join(MIGRATION_FILES_DIR, folderName);
   const migrationSqlPath = path.join(migrationDir, 'migration.sql');
-  const diffUrl = getEnvVariable('STACK_DATABASE_CONNECTION_STRING');
 
   console.log(`Generating migration ${folderName}...`);
   const diffResult = spawnSync(
@@ -84,9 +89,8 @@ const generateMigrationFile = async () => {
       'prisma',
       'migrate',
       'diff',
-      '--from-url',
-      diffUrl,
-      '--to-schema-datamodel',
+      '--from-config-datasource',
+      '--to-schema',
       'prisma/schema.prisma',
       '--script',
     ],
@@ -162,6 +166,8 @@ const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: st
   }
 
   console.log('='.repeat(60) + '\n');
+
+  await runClickhouseMigrations();
 
   return result;
 };

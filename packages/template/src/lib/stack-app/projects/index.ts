@@ -59,9 +59,7 @@ export type AdminProject = {
   // We have some strict types here in order to prevent accidental overwriting of a top-level property of a config object
   updateConfig(
     this: AdminProject,
-    config: EnvironmentConfigOverrideOverride & {
-      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
-    }
+    config: EnvironmentConfigOverrideOverride,
   ): Promise<void>,
 
   /**
@@ -76,9 +74,7 @@ export type AdminProject = {
    */
   pushConfig(
     this: AdminProject,
-    config: EnvironmentConfigOverrideOverride & {
-      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
-    },
+    config: EnvironmentConfigOverrideOverride,
     options: PushConfigOptions,
   ): Promise<void>,
 
@@ -94,9 +90,7 @@ export type AdminProject = {
    */
   updatePushedConfig(
     this: AdminProject,
-    config: EnvironmentConfigOverrideOverride & {
-      [K in keyof EnvironmentConfigNormalizedOverride]: "............................ERROR MESSAGE AFTER THIS LINE............................ You have attempted to update a config object with a top-level property in it (for example `emails`). This is very likely a mistake, and you probably meant to update a nested property instead (for example `emails.server`). If you really meant to update a top-level property (resetting all nested properties to their defaults), cast as any (the code will work at runtime) ............................ERROR MESSAGE BEFORE THIS LINE............................";
-    }
+    config: EnvironmentConfigOverrideOverride
   ): Promise<void>,
 
   /**
@@ -115,6 +109,27 @@ export type AdminProject = {
    */
   unlinkPushedConfigSource(this: AdminProject): Promise<void>,
 
+  /**
+   * Resets (removes) specific keys from the config override at the specified level.
+   * Uses the same nested key logic as the override algorithm: resetting key "a.b" also resets "a.b.c".
+   *
+   * This is useful when updating the pushed config (branch level) and wanting to remove the same keys
+   * from the environment config override so that the branch config values take precedence.
+   */
+  resetConfigOverrideKeys(this: AdminProject, level: "branch" | "environment", keys: string[]): Promise<void>,
+
+  /**
+   * Gets the raw config override at the specified level (before merging/defaults).
+   * Useful for inspecting exactly what's been set at each level.
+   */
+  getConfigOverride(this: AdminProject, level: "branch" | "environment"): Promise<Record<string, unknown>>,
+
+  /**
+   * Replaces the entire config override at the specified level.
+   * For branch level, preserves the existing source metadata.
+   */
+  replaceConfigOverride(this: AdminProject, level: "branch" | "environment", config: Record<string, unknown>): Promise<void>,
+
   getProductionModeErrors(this: AdminProject): Promise<ProductionModeError[]>,
   // NEXT_LINE_PLATFORM react-like
   useProductionModeErrors(this: AdminProject): ProductionModeError[],
@@ -128,6 +143,10 @@ export type AdminProjectUpdateOptions = {
   displayName?: string,
   description?: string,
   isProductionMode?: boolean,
+  /**
+   * Updates `project.requirePublishableClientKey` in the project-level config override.
+   */
+  requirePublishableClientKey?: boolean,
   logoUrl?: string | null,
   logoFullUrl?: string | null,
   logoDarkModeUrl?: string | null,
@@ -160,6 +179,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
           client_secret: p.clientSecret,
           facebook_config_id: p.facebookConfigId,
           microsoft_tenant_id: p.microsoftTenantId,
+          apple_bundle_ids: p.appleBundleIds,
         }),
       })),
       email_config: options.config?.emailConfig && (

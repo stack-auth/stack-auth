@@ -48,8 +48,10 @@ ENTRYPOINT ["sh", "-c", "\
   exec docker-entrypoint.sh postgres \
     -c shared_preload_libraries='pg_stat_statements' \
     -c pg_stat_statements.track=all \
-    -c wal_level=replica \
-    -c max_wal_senders=3 \
+    -c wal_level=logical \
+    -c max_wal_senders=5 \
+    -c max_replication_slots=5 \
     -c wal_keep_size=64MB \
     -c hot_standby=on \
+    -c statement_timeout=30s `# In production this is higher, but better safe than sorry during dev` \
 "]

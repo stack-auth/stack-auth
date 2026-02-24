@@ -4,7 +4,82 @@ import { describe } from "vitest";
 import { it, localRedirectUrl } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
+const enableSharedSpotifyProvider = async () => {
+  await Project.updateConfig({
+    "auth.oauth.providers.spotify": {
+      type: "spotify",
+      isShared: true,
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+};
+
+const setupOAuthProject = async (requirePublishableClientKey?: boolean) => {
+  const { projectId, adminAccessToken } = await Project.createAndSwitch();
+  if (requirePublishableClientKey !== undefined) {
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": requirePublishableClientKey,
+    });
+  }
+  await enableSharedSpotifyProvider();
+  backendContext.set({
+    projectKeys: { projectId, adminAccessToken },
+    userAuth: null,
+  });
+  return projectId;
+};
+
 describe("with grant_type === 'authorization_code'", async () => {
+  it("should sign in a user with public client secret sentinel when publishable keys are not required", async ({ expect }) => {
+    await setupOAuthProject(false);
+
+    const response = await Auth.OAuth.signIn({ includeClientSecret: false });
+    expect(response.tokenResponse.status).toBe(200);
+    await Auth.expectToBeSignedIn();
+  });
+
+  it("should sign in a user with public client secret sentinel when publishable keys are not configured", async ({ expect }) => {
+    await setupOAuthProject();
+
+    const response = await Auth.OAuth.signIn({ includeClientSecret: false });
+    expect(response.tokenResponse.status).toBe(200);
+    await Auth.expectToBeSignedIn();
+  });
+
+  it("should reject public client secret sentinel when publishable keys are required", async ({ expect }) => {
+    await setupOAuthProject(true);
+    const { projectKeys } = await InternalApiKey.createAndSetProjectKeys();
+
+    const { authorizationCode } = await Auth.OAuth.getAuthorizationCode();
+    const response = await niceBackendFetch("/api/v1/auth/oauth/token", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        client_id: projectKeys.projectId,
+        code: authorizationCode,
+        redirect_uri: localRedirectUrl,
+        code_verifier: "some-code-challenge",
+        grant_type: "authorization_code",
+      },
+    });
+
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+          "details": { "project_id": "<stripped UUID>" },
+          "error": "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
   it("should sign in a user when called as part of the OAuth flow", async ({ expect }) => {
     const response = await Auth.OAuth.signIn();
 
@@ -55,6 +130,8 @@ describe("with grant_type === 'authorization_code'", async () => {
           "primary_email_verified": true,
           "profile_image_url": null,
           "requires_totp_mfa": false,
+          "restricted_by_admin": false,
+          "restricted_by_admin_reason": null,
           "restricted_reason": null,
           "selected_team": {
             "client_metadata": null,

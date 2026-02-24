@@ -1,8 +1,9 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
 import { listPermissions } from "@/lib/permissions";
-import { getStackStripe, getStripeForAccount, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
-import { getTenancy, type Tenancy } from "@/lib/tenancies";
+import { getStackStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
+import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
+import { getTenancy, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -12,7 +13,6 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import type { StripeOverridesMap } from "@/lib/stripe-proxy";
 import Stripe from "stripe";
 
 const subscriptionChangedEvents = [
@@ -38,6 +38,15 @@ const subscriptionChangedEvents = [
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "payment_intent.canceled",
+] as const satisfies Stripe.Event.Type[];
+
+const ignoredEvents = [
+  "account.updated",
+  "account.application.authorized",
+  "capability.updated",
+  "charge.failed",
+  "balance.available",
+  "customer.updated",
 ] as const satisfies Stripe.Event.Type[];
 
 const isSubscriptionChangedEvent = (event: Stripe.Event): event is Stripe.Event & { type: (typeof subscriptionChangedEvents)[number] } => {
@@ -174,7 +183,14 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     }
     const tenancy = await getTenancyForStripeAccountId(accountId, mockData);
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const product = JSON.parse(metadata.product || "{}");
+
+    const product = await resolveProductFromStripeMetadata({
+      prisma,
+      tenancyId: tenancy.id,
+      metadata: metadata as Record<string, string | undefined>,
+      context: { paymentIntentId: paymentIntent.id },
+    });
+
     const qty = Math.max(1, Number(metadata.purchaseQuantity || 1));
     const stripePaymentIntentId = paymentIntent.id;
     if (!metadata.customerId || !metadata.customerType) {
@@ -217,7 +233,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       customerId: metadata.customerId,
     });
     const receiptLink = paymentIntent.charges?.data?.[0]?.receipt_url ?? null;
-    const productName = typeof product?.displayName === "string" ? product.displayName : "Purchase";
+    const productName = product.displayName ?? "Purchase";
     const extraVariables: Record<string, string | number> = {
       productName,
       quantity: qty,
@@ -255,8 +271,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       customerType,
       customerId: metadata.customerId,
     });
-    const product = JSON.parse(metadata.product || "{}");
-    const productName = typeof product?.displayName === "string" ? product.displayName : "Purchase";
+    const product = await resolveProductFromStripeMetadata({
+      prisma,
+      tenancyId: tenancy.id,
+      metadata: metadata as Record<string, string | undefined>,
+      context: { paymentIntentId: paymentIntent.id },
+    });
+    const productName = product.displayName ?? "Purchase";
     const failureReason = paymentIntent.last_payment_error?.message;
     const extraVariables: Record<string, string | number> = {
       productName,
@@ -399,8 +420,12 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       });
     }
   }
+  else if (typedIncludes(ignoredEvents, event.type)) {
+    // These events are received but don't require processing
+    return;
+  }
   else {
-    throw new StackAssertionError("Unknown stripe webhook type received", { event });
+    throw new StackAssertionError("Unknown stripe webhook type received: " + event.type, { event });
   }
 }
 

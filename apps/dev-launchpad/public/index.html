@@ -130,6 +130,7 @@
         { suffix: "22", label: "Freestyle mock" },
         { suffix: "24", label: "LocalStack Gateway (AWS mock)" },
         { suffix: "25", label: "QStash mock" },
+        { suffix: "33", label: "ClickHouse native interface" },
         { range: ["50", "99"], label: "Reserved for LocalStack (external services)" },
       ];
 
@@ -305,6 +306,17 @@
           importance: 1,
         },
         {
+          name: "WAL Info",
+          portSuffix: "38",
+          description: [
+            "Replication & WAL monitoring",
+            "Tracks primary/replica LSN positions",
+            "Decodes WAL to SQL statements",
+          ],
+          importance: 1,
+          img: "https://www.svgrepo.com/show/374002/replication.svg",
+        },
+        {
           name: "JS example",
           portSuffix: "19",
           description: [
@@ -317,6 +329,15 @@
           description: [
             "React example",
           ],
+        },
+        {
+          name: "ClickHouse HTTP",
+          portSuffix: "36",
+          description: [
+            "ClickHouse",
+          ],
+          importance: 1,
+          img: "https://thumbs.bfldr.com/at/qkjfv3nvsv4rbwn94zmtb4t/v/1197417003?expiry=1764357242&fit=bounds&height=800&sig=NjEwNzA0OThjZmJiZDQzZmUwNjIyY2UxYzZiNGYxNmQ3NjJiYjc0OA%3D%3D&width=1100",
         },
         {
           name: "Convex example",
@@ -344,7 +365,7 @@
           if ((app.importance ?? 0) === importance) {
             // TODO escape HTML
             appContainer.innerHTML += `
-              <a href="http://localhost:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
+              <a href="http://${`${stackPortPrefix}` === "81" ? "" : `p${stackPortPrefix}.`}localhost:${withPrefix(app.portSuffix)}${app.path ?? ""}" target="_blank" rel="noopener noreferrer" class="${app.importance === 2 ? "important" : app.importance === 1 ? "" : "unimportant"}">
                 <div class="port">:${withPrefix(app.portSuffix)}</div>
                 <div>
                   <img src=${app.img || `//localhost:${withPrefix(app.portSuffix)}/favicon.ico`} />

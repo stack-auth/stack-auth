@@ -11,7 +11,7 @@ import {
   ClientInterfaceOptions,
   StackClientInterface
 } from "./client-interface";
-import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
+import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ItemCrud } from "./crud/items";
@@ -33,7 +33,7 @@ export type ServerAuthApplicationOptions = (
       readonly secretServerKey: string,
     }
     | {
-      readonly projectOwnerSession: InternalSession,
+      readonly projectOwnerSession: InternalSession | (() => Promise<string | null>),
     }
   )
 );
@@ -131,6 +131,7 @@ export class StackServerInterface extends StackClientInterface {
     );
     return await response.json();
   }
+
 
   protected async sendServerRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
     path: string,
@@ -430,6 +431,27 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async listServerUserTeamInvitations(userId: string): Promise<TeamInvitationCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      "/team-invitations?" + new URLSearchParams({ user_id: userId }),
+      {},
+      null,
+    );
+    const result = await response.json() as TeamInvitationCrud['Server']['List'];
+    return result.items;
+  }
+
+  async acceptServerTeamInvitationById(
+    invitationId: string,
+    userId: string,
+  ) {
+    await this.sendServerRequest(
+      urlString`/team-invitations/${invitationId}/accept` + "?" + new URLSearchParams({ user_id: userId }),
+      { method: "POST" },
+      null,
+    );
+  }
+
   async updateServerUser(userId: string, update: UsersCrud['Server']['Update']): Promise<UsersCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       urlString`/users/${userId}`,
@@ -459,6 +481,44 @@ export class StackServerInterface extends StackClientInterface {
         },
         body: JSON.stringify({ scope }),
       },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Get access token for a specific connected account by provider ID and provider account ID.
+   * This is the preferred method when dealing with multiple accounts of the same provider.
+   */
+  async createServerProviderAccessTokenByAccount(
+    userId: string,
+    providerId: string,
+    providerAccountId: string,
+    scope: string,
+  ): Promise<ConnectedAccountAccessTokenCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/connected-accounts/${userId}/${providerId}/${providerAccountId}/access-token`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ scope }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * List all connected accounts for a user.
+   */
+  async listServerConnectedAccounts(
+    userId: string,
+  ): Promise<ConnectedAccountCrud['Server']['List']> {
+    const response = await this.sendServerRequest(
+      urlString`/connected-accounts/${userId}`,
+      { method: "GET" },
       null,
     );
     return await response.json();
@@ -710,7 +770,7 @@ export class StackServerInterface extends StackClientInterface {
   }
 
 
-  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['List']> {
     const response = await this.sendServerRequest(
       urlString`/auth/sessions?user_id=${userId}`,
       {

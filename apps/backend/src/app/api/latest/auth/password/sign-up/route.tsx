@@ -1,6 +1,6 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
-import { createOrUpgradeAnonymousUser } from "@/lib/users";
+import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -54,7 +54,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    const createdUser = await createOrUpgradeAnonymousUser(
+    const createdUser = await createOrUpgradeAnonymousUserWithRules(
       tenancy,
       currentUser ?? null,
       {
@@ -63,7 +63,10 @@ export const POST = createSmartRouteHandler({
         primary_email_auth_enabled: true,
         password,
       },
-      [KnownErrors.UserWithEmailAlreadyExists]
+      [KnownErrors.UserWithEmailAlreadyExists],
+      {
+        authMethod: 'password',
+      }
     );
 
     if (verificationCallbackUrl) {

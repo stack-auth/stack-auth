@@ -1,6 +1,6 @@
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../helpers";
 import { niceBackendFetch } from "../../../backend-helpers";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 it("should return 400 when theme is not found", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/emails/render-email", {
@@ -140,8 +140,82 @@ it("should render email when valid theme and template TSX sources are provided",
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><div style=\\"background-color:rgb(255,255,255);color:rgb(30,41,59);padding:1rem;border-radius:0.5rem;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.625\\"><p>Test email content</p></div><!--3--><!--/$--></body></html>" },
+      "body": { "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td><div style=\\"background-color:rgb(255,255,255);color:rgb(29,41,61);padding:1rem;border-radius:0.5rem;max-width:600px;margin-right:auto;margin-left:auto;line-height:1.625\\"><p>Test email content</p></div></td></tr></tbody></table><!--3--><!--/$--></body></html>" },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("should return 400 when theme throws an error during rendering", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      theme_tsx_source: `
+        import { Html, Body } from '@react-email/components';
+        export function EmailTheme({ children }: { children: React.ReactNode }) {
+          throw new Error("Theme rendering error");
+          return (
+            <Html>
+              <Body>
+                <div>{children}</div>
+              </Body>
+            </Html>
+          );
+        }
+      `,
+      template_tsx_source: `
+        import { type } from "arktype";
+        export function EmailTemplate() { 
+          return <p>Test email content</p>; 
+        }
+        export const variablesSchema = type({});
+      `,
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(response.headers.get("x-stack-known-error")).toBe("EMAIL_RENDERING_ERROR");
+  // Verify the error message contains the user's error
+  expect(response.body.error).toContain("Theme rendering error");
+  expect(response.body.details.error).toContain("Theme rendering error");
+});
+
+it("should return 400 when template throws an error during rendering", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      theme_tsx_source: `
+        import { Html, Body } from '@react-email/components';
+        export function EmailTheme({ children }: { children: React.ReactNode }) {
+          return (
+            <Html>
+              <Body>
+                <div>{children}</div>
+              </Body>
+            </Html>
+          );
+        }
+      `,
+      template_tsx_source: `
+        import { type } from "arktype";
+        export function EmailTemplate() { 
+          throw new Error("Template rendering error");
+          return <p>Test email content</p>; 
+        }
+        export const variablesSchema = type({});
+      `,
+    },
+  });
+  expect(response.status).toBe(400);
+  expect(response.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(response.headers.get("x-stack-known-error")).toBe("EMAIL_RENDERING_ERROR");
+  // Verify the error message contains the user's error
+  expect(response.body.error).toContain("Template rendering error");
+  expect(response.body.details.error).toContain("Template rendering error");
 });

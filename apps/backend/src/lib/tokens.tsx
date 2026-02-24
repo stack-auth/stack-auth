@@ -1,18 +1,19 @@
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { KnownErrors } from '@stackframe/stack-shared';
-import { yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
 import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
-import { getEndUserInfo } from './end-users';
-import { SystemEventTypes, logEvent } from './events';
+import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -25,9 +26,7 @@ const accessTokenSchema = yupObject({
   exp: yupNumber().defined(),
   isAnonymous: yupBoolean().defined(),
   isRestricted: yupBoolean().defined(),
-  restrictedReason: yupObject({
-    type: yupString().oneOf(["anonymous", "email_not_verified"] as const).defined(),
-  }).nullable().defined(),
+  restrictedReason: restrictedReasonSchema.nullable().defined(),
 }).defined();
 
 export const oauthCookieSchema = yupObject({
@@ -104,7 +103,14 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
       });
     } catch (error) {
       if (error instanceof JWTExpired) {
-        return Result.error(new KnownErrors.AccessTokenExpired(decoded?.exp ? new Date(decoded.exp * 1000) : undefined));
+        const error = new KnownErrors.AccessTokenExpired(
+          decoded?.exp ? new Date(decoded.exp * 1000) : undefined,
+          decoded?.aud?.toString().split(":")[0],
+          decoded?.sub ?? undefined,
+          (decoded?.refresh_token_id ?? decoded?.refreshTokenId) as string | undefined,
+        );
+        console.warn(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
+        return Result.error(error);
       } else if (error instanceof JOSEError) {
         console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
         return Result.error(new KnownErrors.UnparsableAccessToken());
@@ -117,7 +123,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
     // Legacy tokens default to non-restricted; also, anonymous users are always restricted
     const isRestricted = (payload.is_restricted as boolean | undefined) ?? isAnonymous;
     // For legacy anonymous tokens, infer restrictedReason as { type: "anonymous" }
-    const restrictedReason = (payload.restricted_reason as { type: "anonymous" | "email_not_verified" } | null | undefined)
+    const restrictedReason = (payload.restricted_reason as RestrictedReason | null | undefined)
       ?? (isAnonymous ? { type: "anonymous" as const } : null);
 
     // Anonymous users must be restricted
@@ -166,25 +172,23 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
   });
 }
 
-export async function isRefreshTokenValid(options: {
+type RefreshTokenOptions = {
   tenancy: Tenancy,
   refreshTokenObj: null | {
     projectUserId: string,
     id: string,
     expiresAt: Date | null,
   },
-}) {
-  return !!await generateAccessTokenFromRefreshTokenIfValid(options);
-}
+};
 
-export async function generateAccessTokenFromRefreshTokenIfValid(options: {
-  tenancy: Tenancy,
-  refreshTokenObj: null | {
-    projectUserId: string,
-    id: string,
-    expiresAt: Date | null,
-  },
-}) {
+/**
+ * Validates a refresh token and returns the user if valid.
+ * This function has NO side effects - it doesn't log events or update timestamps.
+ * Use this when you just need to check validity without triggering analytics.
+ *
+ * @returns The user object if the token is valid, null otherwise.
+ */
+async function validateRefreshTokenAndGetUser(options: RefreshTokenOptions) {
   if (!options.refreshTokenObj) {
     return null;
   }
@@ -193,13 +197,13 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     return null;
   }
 
-  let user;
   try {
-    user = await usersCrudHandlers.adminRead({
+    const user = await usersCrudHandlers.adminRead({
       tenancy: options.tenancy,
       user_id: options.refreshTokenObj.projectUserId,
       allowedErrorTypes: [KnownErrors.UserNotFound],
     });
+    return user;
   } catch (error) {
     if (error instanceof KnownErrors.UserNotFound) {
       // The user was deleted — their refresh token still exists because we don't cascade deletes across source-of-truth/global tables.
@@ -208,14 +212,36 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     }
     throw error;
   }
+}
+
+/**
+ * Checks if a refresh token is valid.
+ */
+export async function isRefreshTokenValid(options: RefreshTokenOptions) {
+  return !!(await validateRefreshTokenAndGetUser(options));
+}
+
+/**
+ * Generates an access token from a refresh token if the token is valid.
+ *
+ * This function has side effects:
+ * - Updates last active timestamps on the user and session
+ * - Logs session activity and token refresh events for analytics
+ *
+ * @returns The access token string if valid, null otherwise.
+ */
+export async function generateAccessTokenFromRefreshTokenIfValid(options: RefreshTokenOptions) {
+  const user = await validateRefreshTokenAndGetUser(options);
+  if (!user || !options.refreshTokenObj) {
+    return null;
+  }
 
   // Update last active at on user and session
   const now = new Date();
   const prisma = await getPrismaClientForTenancy(options.tenancy);
 
-  // Get end user IP info for session tracking
-  const endUserInfo = await getEndUserInfo();
-  const ipInfo = endUserInfo ? (endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo) : undefined;
+  // Get end user IP info for session tracking and event logging
+  const ipInfo = await getEndUserIpInfoForEvent();
 
   await Promise.all([
     prisma.projectUser.update({
@@ -225,9 +251,9 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
           projectUserId: options.refreshTokenObj.projectUserId,
         },
       },
-      data: {
+      data: withExternalDbSyncUpdate({
         lastActiveAt: now,
-      },
+      }),
     }),
     globalPrismaClient.projectUserRefreshToken.update({
       where: {
@@ -238,7 +264,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       },
       data: {
         lastActiveAt: now,
-        lastActiveAtIpInfo: ipInfo,
+        lastActiveAtIpInfo: ipInfo ?? undefined,
       },
     }),
   ]);
@@ -252,6 +278,24 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
       userId: options.refreshTokenObj.projectUserId,
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
+      teamId: undefined,
+    }
+  );
+
+  // Log token refresh event for ClickHouse analytics
+  await logEvent(
+    [SystemEventTypes.TokenRefresh],
+    {
+      projectId: options.tenancy.project.id,
+      branchId: options.tenancy.branchId,
+      userId: options.refreshTokenObj.projectUserId,
+      refreshTokenId: options.refreshTokenObj.id,
+      isAnonymous: user.is_anonymous,
+      teamId: undefined,
+      ipInfo,
+    },
+    {
+      refreshTokenId: options.refreshTokenObj.id,
     }
   );
 
@@ -269,6 +313,22 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: {
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,
   };
+
+  // Validate the payload matches the accessTokenSchema before signing, to catch inconsistencies early
+  try {
+    await accessTokenSchema.validate({
+      projectId: options.tenancy.project.id,
+      userId: options.refreshTokenObj.projectUserId,
+      branchId: options.tenancy.branchId,
+      refreshTokenId: options.refreshTokenObj.id,
+      exp: 0, // placeholder, actual exp is set by signJWT
+      isAnonymous: user.is_anonymous,
+      isRestricted: user.is_restricted,
+      restrictedReason: user.restricted_reason,
+    });
+  } catch (error) {
+    captureError("generated-access-token-payload-does-not-fit-the-access-token-schema", new StackAssertionError("Generated access token payload does not fit the accessTokenSchema. This is a bug — the token data is inconsistent.", { cause: error, payload }));
+  }
 
   const userType = getUserType(user.is_anonymous, user.is_restricted);
   return await signJWT({

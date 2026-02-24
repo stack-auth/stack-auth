@@ -4,7 +4,7 @@
  * The migration functions in schema.ts should handle the conversion automatically.
  */
 import { it } from "../../../../../../helpers";
-import { Payments, Project, User, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Payments, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should work with old catalogs config property", async ({ expect }) => {
   await Project.createAndSwitch();
@@ -34,7 +34,7 @@ it("should work with old catalogs config property", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   const createUrlResponse = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
     accessType: "client",
@@ -92,7 +92,7 @@ it("should block one-time purchase in same group using old catalogs config", asy
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
   // Purchase offerA in TEST_MODE
   const urlA = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {
     method: "POST",
@@ -174,7 +174,7 @@ it("should work with subscription switching using old catalogs config", async ({
     },
   });
 
-  const { userId } = await User.create();
+  const { userId } = await Auth.fastSignUp();
 
   // First purchase: Offer A
   const createUrlA = await niceBackendFetch("/api/v1/payments/purchases/create-purchase-url", {

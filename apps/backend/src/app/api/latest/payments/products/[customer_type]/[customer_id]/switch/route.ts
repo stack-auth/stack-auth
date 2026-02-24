@@ -1,6 +1,7 @@
+import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
-import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
-import { getStripeForAccount } from "@/lib/stripe";
+import { upsertProductVersion } from "@/lib/product-versions";
+import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -8,7 +9,6 @@ import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupOb
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { SubscriptionStatus } from "@/generated/prisma/client";
 import Stripe from "stripe";
 
 
@@ -170,6 +170,13 @@ export const POST = createSmartRouteHandler({
 
     const stripeProduct = await stripe.products.create({ name: toProduct.displayName || "Subscription" });
 
+    const productVersionId = await upsertProductVersion({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      productId: body.to_product_id,
+      productJson: toProduct,
+    });
+
     if (subscription?.stripeSubscriptionId) {
       const existingStripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
       if (existingStripeSub.items.data.length === 0) {
@@ -195,11 +202,16 @@ export const POST = createSmartRouteHandler({
         }],
         metadata: {
           productId: body.to_product_id,
-          product: JSON.stringify(toProduct),
+          productVersionId,
           priceId: selectedPriceId,
         },
       });
       const updatedSubscription = updated as Stripe.Subscription;
+      const sanitizedUpdateDates = sanitizeStripePeriodDates(
+        existingItem.current_period_start,
+        existingItem.current_period_end,
+        { subscriptionId: subscription.stripeSubscriptionId, tenancyId: auth.tenancy.id }
+      );
 
       await prisma.subscription.update({
         where: {
@@ -214,8 +226,8 @@ export const POST = createSmartRouteHandler({
           priceId: selectedPriceId,
           quantity,
           status: updatedSubscription.status,
-          currentPeriodStart: new Date(existingItem.current_period_start * 1000),
-          currentPeriodEnd: new Date(existingItem.current_period_end * 1000),
+          currentPeriodStart: sanitizedUpdateDates.start,
+          currentPeriodEnd: sanitizedUpdateDates.end,
           cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
         },
       });
@@ -239,7 +251,7 @@ export const POST = createSmartRouteHandler({
         }],
         metadata: {
           productId: body.to_product_id,
-          product: JSON.stringify(toProduct),
+          productVersionId,
           priceId: selectedPriceId,
         },
       });
@@ -248,6 +260,11 @@ export const POST = createSmartRouteHandler({
         throw new StackAssertionError("Stripe subscription has no items", { stripeSubscriptionId: createdSubscription.id });
       }
       const createdItem = createdSubscription.items.data[0];
+      const sanitizedCreateDates = sanitizeStripePeriodDates(
+        createdItem.current_period_start,
+        createdItem.current_period_end,
+        { subscriptionId: createdSubscription.id, tenancyId: auth.tenancy.id }
+      );
 
       await prisma.subscription.create({
         data: {
@@ -260,8 +277,8 @@ export const POST = createSmartRouteHandler({
           quantity,
           stripeSubscriptionId: createdSubscription.id,
           status: createdSubscription.status,
-          currentPeriodStart: new Date(createdItem.current_period_start * 1000),
-          currentPeriodEnd: new Date(createdItem.current_period_end * 1000),
+          currentPeriodStart: sanitizedCreateDates.start,
+          currentPeriodEnd: sanitizedCreateDates.end,
           cancelAtPeriodEnd: createdSubscription.cancel_at_period_end,
           creationSource: "PURCHASE_PAGE",
         },

@@ -24,14 +24,14 @@ import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentUserOptions } from "../../common";
-import { OAuthConnection } from "../../connected-accounts";
+import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
-import { Customer, InlineProduct, ServerItem } from "../../customers";
+import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
-import { EditableTeamMemberProfile, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, TeamInvitation, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
@@ -68,6 +68,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   private readonly _serverTeamsCache = createCache<[string | undefined], TeamsCrud['Server']['Read'][]>(async ([userId]) => {
     return await this._interface.listServerTeams({ userId });
   });
+  private readonly _serverUserTeamInvitationsCache = createCache<string[], TeamInvitationCrud['Client']['Read'][]>(async ([userId]) => {
+    return await this._interface.listServerUserTeamInvitations(userId);
+  });
   private readonly _serverTeamUserPermissionsCache = createCache<
     [string, string, boolean],
     TeamPermissionsCrud['Server']['Read'][]
@@ -80,6 +83,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   >(async ([userId, recursive]) => {
     return await this._interface.listServerProjectPermissions({ userId, recursive }, null);
   });
+  /** @deprecated Used by legacy getConnectedAccount(providerId) — uses old per-provider access token endpoint */
   private readonly _serverUserOAuthConnectionAccessTokensCache = createCache<[string, string, string], { accessToken: string } | null>(
     async ([userId, providerId, scope]) => {
       try {
@@ -93,7 +97,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
   );
-  private readonly _serverUserOAuthConnectionCache = createCache<[string, ProviderType, string, boolean], OAuthConnection | null>(
+  /** @deprecated Used by legacy getConnectedAccount(providerId) — combines token check + redirect */
+  private readonly _serverUserOAuthConnectionCache = createCache<[string, ProviderType, string, boolean], DeprecatedOAuthConnection | null>(
     async ([userId, providerId, scope, redirect]) => {
       return await this._getUserOAuthConnectionCacheFn({
         getUser: async () => Result.orThrow(await this._serverUserCache.getOrWait([userId], "write-only")),
@@ -106,6 +111,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         redirect,
         session: null,
       });
+    }
+  );
+  private readonly _serverUserConnectedAccountsCache = createCache<[string], OAuthConnection[]>(
+    async ([userId]) => {
+      const result = await this._interface.listServerConnectedAccounts(userId);
+      return result.items.map((item) => this._createServerOAuthConnectionFromCrudItem(userId, item));
+    }
+  );
+  private readonly _serverUserOAuthConnectionAccessTokensByAccountCache = createCache<[string, string, string, string], { accessToken: string } | null>(
+    async ([userId, providerId, providerAccountId, scope]) => {
+      try {
+        const result = await this._interface.createServerProviderAccessTokenByAccount(userId, providerId, providerAccountId, scope || "");
+        return { accessToken: result.access_token };
+      } catch (err) {
+        if (!(KnownErrors.OAuthConnectionDoesNotHaveRequiredScope.isInstance(err) || KnownErrors.OAuthConnectionNotConnectedToUser.isInstance(err))) {
+          throw err;
+        }
+      }
+      return null;
     }
   );
   private readonly _serverTeamMemberProfilesCache = createCache<[string], TeamMemberProfilesCrud['Server']['Read'][]>(
@@ -184,19 +208,19 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _serverTeamItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([teamId, itemId]) => {
-      return await this._interface.getItem({ teamId, itemId }, null);
+      return await this._interface.getItem({ teamId, itemId }, null, "server");
     }
   );
 
   private readonly _serverUserItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([userId, itemId]) => {
-      return await this._interface.getItem({ userId, itemId }, null);
+      return await this._interface.getItem({ userId, itemId }, null, "server");
     }
   );
 
   private readonly _serverCustomItemsCache = createCache<[string, string], ItemCrud['Client']['Read']>(
     async ([customCustomerId, itemId]) => {
-      return await this._interface.getItem({ customCustomerId, itemId }, null);
+      return await this._interface.getItem({ customCustomerId, itemId }, null, "server");
     }
   );
 
@@ -207,7 +231,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: userId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -218,7 +242,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: teamId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -229,7 +253,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         customer_id: customCustomerId,
         cursor: cursor ?? undefined,
         limit: limit ?? undefined,
-      }, null);
+      }, null, "server");
     }
   );
 
@@ -265,7 +289,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async createCheckoutUrl(options: { productId: string, returnUrl?: string } | { product: InlineProduct, returnUrl?: string }) {
         const productIdOrInline = "productId" in options ? options.productId : options.product;
-        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl);
+        return await app._interface.createCheckoutUrl(type, userIdOrTeamId, productIdOrInline, null, options.returnUrl, "server");
       },
     };
   }
@@ -360,7 +384,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
             allow_sign_in: data.allowSignIn,
             allow_connected_accounts: data.allowConnectedAccounts,
           });
-          await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+          await Promise.all([
+            app._serverOAuthProvidersCache.refresh([crud.user_id]),
+            app._serverUserConnectedAccountsCache.refresh([crud.user_id]),
+          ]);
           return Result.ok(undefined);
         } catch (error) {
           if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {
@@ -372,13 +399,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async delete() {
         await app._interface.deleteServerOAuthProvider(crud.user_id, crud.id);
-        await app._serverOAuthProvidersCache.refresh([crud.user_id]);
+        await Promise.all([
+          app._serverOAuthProvidersCache.refresh([crud.user_id]),
+          app._serverUserConnectedAccountsCache.refresh([crud.user_id]),
+        ]);
       },
     };
   }
 
   constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
+
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     super(resolvedOptions, {
       ...extraOptions,
@@ -387,7 +419,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
-        publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+        ...(publishableClientKey != null ? { publishableClientKey } : {}),
         secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
     });
@@ -420,29 +452,116 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  protected _createServerOAuthConnectionFromCrudItem(
+    userId: string,
+    item: { provider: string, provider_account_id: string },
+  ): OAuthConnection {
+    const app = this;
+    const providerId = item.provider;
+    const providerAccountId = item.provider_account_id;
+    return {
+      id: providerId, // deprecated, for backward compat
+      provider: providerId,
+      providerAccountId,
+      async getAccessToken(options?: { scopes?: string[] }) {
+        const scopeString = options?.scopes?.join(" ") ?? "";
+        const result = Result.orThrow(await app._serverUserOAuthConnectionAccessTokensByAccountCache.getOrWait([userId, providerId, providerAccountId, scopeString], "write-only"));
+        if (!result) {
+          const scopeDetail = scopeString ? `The requested scopes [${scopeString}] are not available on the existing token.` : "The OAuth refresh token has likely been revoked or expired.";
+          return Result.error(new KnownErrors.OAuthAccessTokenNotAvailable(providerId, `${scopeDetail} The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`));
+        }
+        return Result.ok(result);
+      },
+      // IF_PLATFORM react-like
+      useAccessToken(options?: { scopes?: string[] }) {
+        const scopeString = options?.scopes?.join(" ") ?? "";
+        const result = useAsyncCache(app._serverUserOAuthConnectionAccessTokensByAccountCache, [userId, providerId, providerAccountId, scopeString] as const, "connection.useAccessToken()");
+        if (!result) {
+          const scopeDetail = scopeString ? `The requested scopes [${scopeString}] are not available on the existing token.` : "The OAuth refresh token has likely been revoked or expired.";
+          return Result.error(new KnownErrors.OAuthAccessTokenNotAvailable(providerId, `${scopeDetail} The user needs to re-authorize by calling \`linkConnectedAccount\` or using \`getOrLinkConnectedAccount\`.`));
+        }
+        return Result.ok(result);
+      },
+      // END_PLATFORM
+    };
+  }
+
   protected _serverUserFromCrud(crud: UsersCrud['Server']['Read']): ServerUser {
     const app = this;
 
-    async function getConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): Promise<OAuthConnection | null>;
-    async function getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>;
-    async function getConnectedAccount(id: ProviderType, options?: { or?: 'redirect', scopes?: string[] }): Promise<OAuthConnection | null> {
-      const scopeString = options?.scopes?.join(" ");
-      return Result.orThrow(await app._serverUserOAuthConnectionCache.getOrWait([crud.id, id, scopeString || "", options?.or === 'redirect'], "write-only"));
+    /** @deprecated The string-based overloads are deprecated. Use `getConnectedAccount({ provider, providerAccountId })` for existence check. */
+    async function getConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): Promise<DeprecatedOAuthConnection | null>;
+    async function getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<DeprecatedOAuthConnection>;
+    async function getConnectedAccount(account: { provider: string, providerAccountId: string }): Promise<OAuthConnection | null>;
+    async function getConnectedAccount(
+      idOrAccount: ProviderType | { provider: string, providerAccountId: string },
+      options?: { or?: 'redirect', scopes?: string[] }
+    ): Promise<DeprecatedOAuthConnection | OAuthConnection | null> {
+      const scopeString = options?.scopes?.join(" ") ?? "";
+
+      // Check if it's the new object-based API
+      if (typeof idOrAccount === 'object' && 'provider' in idOrAccount && 'providerAccountId' in idOrAccount) {
+        const { provider, providerAccountId } = idOrAccount;
+        // Check if the account exists in the connected accounts list
+        const connectedAccounts = Result.orThrow(await app._serverUserConnectedAccountsCache.getOrWait([crud.id], "write-only"));
+        const found = connectedAccounts.find(
+          a => a.provider === provider && a.providerAccountId === providerAccountId
+        );
+        if (!found) {
+          return null;
+        }
+        return found;
+      }
+
+      // Original behavior: by provider ID (returns first match)
+      return Result.orThrow(await app._serverUserOAuthConnectionCache.getOrWait([crud.id, idOrAccount, scopeString, options?.or === 'redirect'], "write-only"));
     }
 
     // IF_PLATFORM react-like
-    function useConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): OAuthConnection | null;
-    function useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection;
-    function useConnectedAccount(id: ProviderType, options?: { or?: 'redirect', scopes?: string[] }): OAuthConnection | null {
-      const scopeString = options?.scopes?.join(" ");
-      return useAsyncCache(app._serverUserOAuthConnectionCache, [crud.id, id, scopeString || "", options?.or === 'redirect'] as const, "user.useConnectedAccount()");
+    /** @deprecated The string-based overloads are deprecated. Use `useConnectedAccount({ provider, providerAccountId })` for existence check. */
+    function useConnectedAccount(id: ProviderType, options?: { scopes?: string[] }): DeprecatedOAuthConnection | null;
+    function useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): DeprecatedOAuthConnection;
+    function useConnectedAccount(account: { provider: string, providerAccountId: string }): OAuthConnection | null;
+    function useConnectedAccount(
+      idOrAccount: ProviderType | { provider: string, providerAccountId: string },
+      options?: { or?: 'redirect', scopes?: string[] }
+    ): DeprecatedOAuthConnection | OAuthConnection | null {
+      const scopeString = options?.scopes?.join(" ") ?? "";
+
+      // Check if it's the new object-based API
+      if (typeof idOrAccount === 'object' && 'provider' in idOrAccount && 'providerAccountId' in idOrAccount) {
+        const { provider, providerAccountId } = idOrAccount;
+        // Check if the account exists in the connected accounts list
+        const connectedAccounts = useAsyncCache(
+          app._serverUserConnectedAccountsCache,
+          [crud.id] as const,
+          "user.useConnectedAccount()"
+        );
+        const found = connectedAccounts.find(
+          a => a.provider === provider && a.providerAccountId === providerAccountId
+        );
+        return found ?? null;
+      }
+
+      // Original behavior: by provider ID (returns first match)
+      return useAsyncCache(app._serverUserOAuthConnectionCache, [crud.id, idOrAccount, scopeString, options?.or === 'redirect'] as const, "user.useConnectedAccount()");
     }
     // END_PLATFORM
 
+    // Type assertion needed because the new restricted_by_admin fields may not be reflected in TypeScript types yet
+    // after schema changes - the runtime values are present after the schema is updated
+    const crudWithAdminRestriction = crud as typeof crud & {
+      restricted_by_admin: boolean,
+      restricted_by_admin_reason: string | null,
+      restricted_by_admin_private_details: string | null,
+    };
     const serverUser = withUserDestructureGuard({
       ...super._createBaseUser(crud),
       lastActiveAt: new Date(crud.last_active_at_millis),
       serverMetadata: crud.server_metadata,
+      restrictedByAdmin: crudWithAdminRestriction.restricted_by_admin,
+      restrictedByAdminReason: crudWithAdminRestriction.restricted_by_admin_reason,
+      restrictedByAdminPrivateDetails: crudWithAdminRestriction.restricted_by_admin_private_details,
       async setPrimaryEmail(email: string | null, options?: { verified?: boolean }) {
         await app._updateServerUser(crud.id, { primaryEmail: email, primaryEmailVerified: options?.verified });
       },
@@ -497,7 +616,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
       async getActiveSessions() {
         const sessions = await app._interface.listServerSessions(crud.id);
-        return sessions.map((session) => app._clientSessionFromCrud(session));
+        return sessions.items.map((session) => app._clientSessionFromCrud(session));
       },
 
       async revokeSession(sessionId: string) {
@@ -520,6 +639,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       getConnectedAccount,
       useConnectedAccount, // THIS_LINE_PLATFORM react-like
+      async listConnectedAccounts() {
+        return Result.orThrow(await app._serverUserConnectedAccountsCache.getOrWait([crud.id], "write-only"));
+      },
+      // IF_PLATFORM react-like
+      useConnectedAccounts() {
+        return useAsyncCache(app._serverUserConnectedAccountsCache, [crud.id] as const, "user.useConnectedAccounts()");
+      },
+      // END_PLATFORM
+      async linkConnectedAccount(): Promise<void> {
+        throw new StackAssertionError("linkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+      },
+      async getOrLinkConnectedAccount(): Promise<OAuthConnection> {
+        throw new StackAssertionError("getOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+      },
+      // IF_PLATFORM react-like
+      useOrLinkConnectedAccount(): OAuthConnection {
+        throw new StackAssertionError("useOrLinkConnectedAccount is not available for server users. OAuth flows must be initiated on the client side.");
+      },
+      // END_PLATFORM
       selectedTeam: crud.selected_team ? app._serverTeamFromCrud(crud.selected_team) : null,
       async getTeam(teamId: string) {
         const teams = await this.listTeams();
@@ -556,6 +694,16 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         await app._interface.leaveServerTeam({ teamId: team.id, userId: crud.id });
         // TODO: refresh cache
       },
+      async listTeamInvitations() {
+        const invitations = Result.orThrow(await app._serverUserTeamInvitationsCache.getOrWait([crud.id], "write-only"));
+        return invitations.map((inv) => app._serverReceivedTeamInvitationFromCrud(crud.id, inv));
+      },
+      // IF_PLATFORM react-like
+      useTeamInvitations() {
+        const invitations = useAsyncCache(app._serverUserTeamInvitationsCache, [crud.id], "user.useTeamInvitations()");
+        return useMemo(() => invitations.map((inv) => app._serverReceivedTeamInvitationFromCrud(crud.id, inv)), [invitations]);
+      },
+      // END_PLATFORM
       async listPermissions(scopeOrOptions?: Team | { recursive?: boolean }, options?: { recursive?: boolean }): Promise<AdminTeamPermission[]> {
         if (scopeOrOptions && 'id' in scopeOrOptions) {
           const scope = scopeOrOptions;
@@ -781,7 +929,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return teamUser;
   }
 
-  protected _serverTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): TeamInvitation {
+  protected _serverSentTeamInvitationFromCrud(crud: TeamInvitationCrud['Server']['Read']): SentTeamInvitation {
     return {
       id: crud.id,
       recipientEmail: crud.recipient_email,
@@ -789,6 +937,25 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       revoke: async () => {
         await this._interface.revokeServerTeamInvitation(crud.id, crud.team_id);
         await this._serverTeamInvitationsCache.refresh([crud.team_id]);
+      },
+    };
+  }
+
+  protected _serverReceivedTeamInvitationFromCrud(userId: string, crud: TeamInvitationCrud['Client']['Read']): ReceivedTeamInvitation {
+    const app = this;
+    return {
+      id: crud.id,
+      teamId: crud.team_id,
+      teamDisplayName: crud.team_display_name,
+      recipientEmail: crud.recipient_email,
+      expiresAt: new Date(crud.expires_at_millis),
+      accept: async () => {
+        await app._interface.acceptServerTeamInvitationById(crud.id, userId);
+        await Promise.all([
+          app._serverUserTeamInvitationsCache.refresh([userId]),
+          app._serverTeamsCache.refresh([userId]),
+          app._serverTeamInvitationsCache.refresh([crud.team_id]),
+        ]);
       },
     };
   }
@@ -855,12 +1022,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       async listInvitations() {
         const result = Result.orThrow(await app._serverTeamInvitationsCache.getOrWait([crud.id], "write-only"));
-        return result.map((crud) => app._serverTeamInvitationFromCrud(crud));
+        return result.map((crud) => app._serverSentTeamInvitationFromCrud(crud));
       },
       // IF_PLATFORM react-like
       useInvitations() {
         const result = useAsyncCache(app._serverTeamInvitationsCache, [crud.id] as const, "team.useInvitations()");
-        return useMemo(() => result.map((crud) => app._serverTeamInvitationFromCrud(crud)), [result]);
+        return useMemo(() => result.map((crud) => app._serverSentTeamInvitationFromCrud(crud)), [result]);
       },
       // END_PLATFORM
       // IF_PLATFORM react-like
@@ -1223,6 +1390,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
+  async listProducts(options: CustomerProductsRequestOptions): Promise<CustomerProductsList> {
+    if ("userId" in options) {
+      const response = Result.orThrow(await this._serverUserProductsCache.getOrWait([options.userId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    } else if ("teamId" in options) {
+      const response = Result.orThrow(await this._serverTeamProductsCache.getOrWait([options.teamId, options.cursor ?? null, options.limit ?? null], "write-only"));
+      return this._customerProductsFromResponse(response);
+    }
+    const response = Result.orThrow(await this._serverCustomProductsCache.getOrWait([options.customCustomerId, options.cursor ?? null, options.limit ?? null], "write-only"));
+    return this._customerProductsFromResponse(response);
+  }
+
   // IF_PLATFORM react-like
   useItem(options: { itemId: string, userId: string } | { itemId: string, teamId: string } | { itemId: string, customCustomerId: string }): ServerItem {
     let type: "user" | "team" | "custom";
@@ -1386,6 +1565,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._serverUsersCache.refreshWhere(() => true),
       this._serverContactChannelsCache.refreshWhere(() => true),
       this._serverOAuthProvidersCache.refreshWhere(() => true),
+      this._serverUserConnectedAccountsCache.refreshWhere(() => true),
     ]);
   }
 
@@ -1407,7 +1587,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         allow_connected_accounts: options.allowConnectedAccounts,
       });
 
-      await this._serverOAuthProvidersCache.refresh([options.userId]);
+      await Promise.all([
+        this._serverOAuthProvidersCache.refresh([options.userId]),
+        this._serverUserConnectedAccountsCache.refresh([options.userId]),
+      ]);
       return Result.ok(this._serverOAuthProviderFromCrud(crud));
     } catch (error) {
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(error)) {

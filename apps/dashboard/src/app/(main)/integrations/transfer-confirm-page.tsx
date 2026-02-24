@@ -2,15 +2,14 @@
 
 import { Logo } from "@/components/logo";
 import { useRouter } from "@/components/router";
+import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@/components/ui";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { useStackApp, useUser } from "@stackframe/stack";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { Button, Card, CardContent, CardFooter, CardHeader, Input, Typography } from "@/components/ui";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import NeonLogo from "../../../../public/neon.png";
-
-export const stackAppInternalsSymbol = Symbol.for("StackAuth--DO-NOT-USE-OR-YOU-WILL-BE-FIRED--StackAppInternals");
 
 export default function IntegrationProjectTransferConfirmPageClient(props: { type: "neon" | "custom" }) {
   const app = useStackApp();

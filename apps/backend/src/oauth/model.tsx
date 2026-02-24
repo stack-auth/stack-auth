@@ -1,16 +1,16 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { Prisma } from "@/generated/prisma/client";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
-import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
-import { Prisma } from "@/generated/prisma/client";
-const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 import { KnownErrors } from "@stackframe/stack-shared";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
+const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
 declare module "@node-oauth/oauth2-server" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -47,9 +47,12 @@ export class OAuthModel implements AuthorizationCodeModel {
       return false;
     }
 
+    // If client_secret is provided, validate it
+    // Note: The specific error handling (sentinel vs invalid key) is done in the route handlers
+    // that call this method, as they have more context about the request
     if (clientSecret) {
       const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
-      if (!keySet) {
+      if (keySet.status === "error") {
         return false;
       }
     }
@@ -280,7 +283,7 @@ export class OAuthModel implements AuthorizationCodeModel {
     assertScopeIsValid(code.scope);
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
-    if (!validateRedirectUrl(code.redirectUri, tenancy)) {
+    if (!validateRedirectUrl(code.redirectUri, tenancy) && !isAcceptedNativeAppUrl(code.redirectUri)) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
@@ -381,6 +384,11 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async validateRedirectUri(redirect_uri: string, client: Client): Promise<boolean> {
+    // Accept native app OAuth URLs without trusted domain configuration
+    if (isAcceptedNativeAppUrl(redirect_uri)) {
+      return true;
+    }
+
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
 
     return validateRedirectUrl(redirect_uri, tenancy);

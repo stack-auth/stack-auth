@@ -564,6 +564,8 @@ export const oauthClientIdSchema = yupString().meta({ openapiField: { descriptio
 export const oauthClientSecretSchema = yupString().meta({ openapiField: { description: 'OAuth client secret. Needs to be specified when using type="standard"', exampleValue: 'google-oauth-client-secret' } });
 export const oauthFacebookConfigIdSchema = yupString().meta({ openapiField: { description: 'The configuration id for Facebook business login (for things like ads and marketing). This is only required if you are using the standard OAuth with Facebook and you are using Facebook business login.' } });
 export const oauthMicrosoftTenantIdSchema = yupString().meta({ openapiField: { description: 'The Microsoft tenant id for Microsoft directory. This is only required if you are using the standard OAuth with Microsoft and you have an Azure AD tenant.' } });
+export const oauthAppleBundleIdsSchema = yupArray(yupString().defined()).meta({ openapiField: { description: 'Apple Bundle IDs for native iOS/macOS apps. Required for native Sign In with Apple (in addition to web Apple OAuth which uses the Client ID/Services ID).', exampleValue: ['com.example.ios', 'com.example.macos'] } });
+export const oauthAppleBundleIdSchema = yupString().defined().meta({ openapiField: { description: 'Apple Bundle ID for native iOS/macOS apps.', exampleValue: 'com.example.ios' } });
 export const oauthAccountMergeStrategySchema = yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).meta({ openapiField: { description: 'Determines how to handle OAuth logins that match an existing user by email. `link_method` adds the OAuth method to the existing user. `raise_error` rejects the login with an error. `allow_duplicates` creates a new user.', exampleValue: 'link_method' } });
 // Project email config
 export const emailTypeSchema = yupString().oneOf(['shared', 'standard']).meta({ openapiField: { description: 'Email provider type, one of shared, standard. "shared" uses Stack shared email provider and it is only meant for development. "standard" uses your own email server and will have your email address as the sender.', exampleValue: 'standard' } });
@@ -729,8 +731,12 @@ export const userPasswordHashMutationSchema = yupString()
 export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: 'Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.', exampleValue: 'dG90cC1zZWNyZXQ=' } });
 
 // Auth
-export const restrictedReasonTypes = ["anonymous", "email_not_verified"] as const;
+export const restrictedReasonTypes = ["anonymous", "email_not_verified", "restricted_by_administrator"] as const;
 export type RestrictedReasonType = typeof restrictedReasonTypes[number];
+export const restrictedReasonSchema = yupObject({
+  type: yupString().oneOf(restrictedReasonTypes).defined(),
+});
+export type RestrictedReason = yup.InferType<typeof restrictedReasonSchema>;
 
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
@@ -748,9 +754,7 @@ export const accessTokenPayloadSchema = yupObject({
   selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
   is_restricted: yupBoolean().defined(),
-  restricted_reason: yupObject({
-    type: yupString().oneOf(restrictedReasonTypes).defined(),
-  }).defined().nullable(),
+  restricted_reason: restrictedReasonSchema.defined().nullable(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });

@@ -1,10 +1,9 @@
 import { Prisma } from "@/generated/prisma/client";
-import { Config, getInvalidConfigReason, normalize, override } from "@stackframe/stack-shared/dist/config/format";
-import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, assertNoConfigOverrideErrors, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { Config, getInvalidConfigReason, normalize, override, removeKeysFromConfig } from "@stackframe/stack-shared/dist/config/format";
+import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteConfig, BranchRenderedConfig, CompleteConfig, EnvironmentConfigOverride, EnvironmentConfigOverrideOverride, EnvironmentIncompleteConfig, EnvironmentRenderedConfig, OrganizationConfigOverride, OrganizationConfigOverrideOverride, OrganizationIncompleteConfig, ProjectConfigOverride, ProjectConfigOverrideOverride, ProjectIncompleteConfig, ProjectRenderedConfig, applyBranchDefaults, applyEnvironmentDefaults, applyOrganizationDefaults, applyProjectDefaults, branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, getIncompleteConfigWarnings, migrateConfigOverride, organizationConfigSchema, projectConfigSchema, sanitizeBranchConfig, sanitizeEnvironmentConfig, sanitizeOrganizationConfig, sanitizeProjectConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -221,7 +220,10 @@ export async function setProjectConfigOverride(options: {
     throw new StackAssertionError(`Project config override for ${options.projectId} is too large.`);
   }
 
-  await assertNoConfigOverrideErrors(projectConfigSchema, newConfig);
+  const overrideErrors = await getConfigOverrideErrors(projectConfigSchema, newConfig);
+  if (overrideErrors.status === "error") {
+    captureError("setProjectConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId }));
+  }
   await globalPrismaClient.project.update({
     where: {
       id: options.projectId,
@@ -248,7 +250,10 @@ export async function setBranchConfigOverride(options: {
     throw new StackAssertionError(`Branch config override for ${options.projectId}/${options.branchId} is too large.`);
   }
 
-  await assertNoConfigOverrideErrors(branchConfigSchema, newConfig);
+  const overrideErrors = await getConfigOverrideErrors(branchConfigSchema, newConfig);
+  if (overrideErrors.status === "error") {
+    captureError("setBranchConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
+  }
   await globalPrismaClient.branchConfigOverride.upsert({
     where: {
       projectId_branchId: {
@@ -352,7 +357,10 @@ export async function setEnvironmentConfigOverride(options: {
     throw new StackAssertionError(`Environment config override for ${options.projectId}/${options.branchId} is too large.`);
   }
 
-  await assertNoConfigOverrideErrors(environmentConfigSchema, newConfig);
+  const overrideErrors = await getConfigOverrideErrors(environmentConfigSchema, newConfig);
+  if (overrideErrors.status === "error") {
+    captureError("setEnvironmentConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
+  }
   await globalPrismaClient.environmentConfigOverride.upsert({
     where: {
       projectId_branchId: {
@@ -458,6 +466,75 @@ export function overrideOrganizationConfigOverride(options: {
 
 
 // ---------------------------------------------------------------------------------------------------------------------
+// reset functions (remove specific keys from config override)
+// ---------------------------------------------------------------------------------------------------------------------
+// Uses the same nested key logic as the `override` function: resetting key "a.b" also resets "a.b.c".
+
+export async function resetProjectConfigOverrideKeys(options: {
+  projectId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setProjectConfigOverride({
+    projectId: options.projectId,
+    projectConfigOverride: newConfig as ProjectConfigOverride,
+  });
+}
+
+export async function resetBranchConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getBranchConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setBranchConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    branchConfigOverride: newConfig as BranchConfigOverride,
+  });
+}
+
+export async function resetEnvironmentConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setEnvironmentConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    environmentConfigOverride: newConfig as EnvironmentConfigOverride,
+  });
+}
+
+export async function resetOrganizationConfigOverrideKeys(options: {
+  projectId: string,
+  branchId: string,
+  organizationId: string | null,
+  keysToReset: string[],
+}): Promise<void> {
+  // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
+  const oldConfig = await rawQuery(globalPrismaClient, getOrganizationConfigOverrideQuery(options));
+  const newConfig = removeKeysFromConfig(oldConfig, options.keysToReset);
+
+  await setOrganizationConfigOverride({
+    projectId: options.projectId,
+    branchId: options.branchId,
+    organizationId: options.organizationId,
+    organizationConfigOverride: newConfig as OrganizationConfigOverride,
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // internal functions
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -517,15 +594,9 @@ function makeUnsanitizedIncompleteConfigQuery<T, O>(options: { previous?: RawQue
     async ([prevPromise, overPromise]) => {
       const prev = await prevPromise;
       const over = await overPromise;
-      try {
-        await assertNoConfigOverrideErrors(options.schema, over, { extraInfo: options.extraInfo });
-      } catch (error) {
-        if (getNodeEnvironment().includes("prod")) {
-          // be a bit more resilient in prod... we don't necessarily have to crash here, but this means that something went awfully wrong so go into panic mode regardless
-          captureError("config-override-validation-error", error);
-        } else {
-          throw error;
-        }
+      const overrideErrors = await getConfigOverrideErrors(options.schema, over);
+      if (overrideErrors.status === "error") {
+        captureError("config-override-validation-error", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { extraInfo: options.extraInfo }));
       }
       return override(prev, over);
     },
@@ -658,6 +729,298 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
       Schema 2:
         sourceOfTruth.connectionString must be defined
   `));
+
+  // Dot-notation keys that dot into nothing — detected by simulating the rendering pipeline
+  // (apply all production defaults, then normalize with onDotIntoNonObject: "ignore")
+
+  // Dot-notation into non-existent record entry in actual schemas (trustedDomains)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain.baseUrl': 'https://example.com',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.my-domain.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.my-domain". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.my-domain": { "baseUrl": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Nested object notation should work fine (no warning)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': {
+      baseUrl: 'https://example.com',
+      handlerPath: '/handler',
+    },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation for static object fields should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'teams.allowClientTeamCreation': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.password.allowSignIn': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.allowLocalhost': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into an oauth provider that doesn't exist should warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.oauth.providers.google.clientId': 'test-id',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "auth.oauth.providers.google.clientId" will be silently ignored because it references non-existent parent "auth.oauth.providers.google". Instead of dot notation, use nested object notation like this: { "auth.oauth.providers.google": { "clientId": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation into an oauth provider that exists in the base should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {
+    auth: { oauth: { providers: { google: { type: 'google', allowSignIn: true } } } },
+  }, {
+    'auth.oauth.providers.google.clientId': 'test-id',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // --- More dot-notation warning tests ---
+
+  // Multiple dropped keys should all be reported
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.d1.baseUrl': 'https://a.com',
+    'auth.oauth.providers.github.clientId': 'id',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.d1.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "baseUrl": ... } }
+    Dot-notation key "auth.oauth.providers.github.clientId" will be silently ignored because it references non-existent parent "auth.oauth.providers.github". Instead of dot notation, use nested object notation like this: { "auth.oauth.providers.github": { "clientId": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Setting an entire record entry directly via dot notation (no dotting INTO it) should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Setting the entire record via nested object notation should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    domains: { trustedDomains: { 'my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' } } },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into a permission that doesn't exist (branch-level record)
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'rbac.permissions.my_perm.description': 'hello',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "rbac.permissions.my_perm.description" will be silently ignored because it references non-existent parent "rbac.permissions.my_perm". Instead of dot notation, use nested object notation like this: { "rbac.permissions.my_perm": { "description": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Setting a permission entry directly should NOT warn
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'rbac.permissions.my_perm': { description: 'hello', scope: 'team' },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into a permission that exists in the base should NOT warn
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {
+    rbac: { permissions: { my_perm: { description: 'old' } } },
+  }, {
+    'rbac.permissions.my_perm.description': 'new',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into sign-up rules record
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'auth.signUpRules.my_rule.enabled': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "auth.signUpRules.my_rule.enabled" will be silently ignored because it references non-existent parent "auth.signUpRules.my_rule". Instead of dot notation, use nested object notation like this: { "auth.signUpRules.my_rule": { "enabled": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Setting sign-up rule entry directly should NOT warn
+  expect(await validateConfigOverrideSchema(branchConfigSchema, {}, {
+    'auth.signUpRules.my_rule': { enabled: true, displayName: 'My Rule', priority: 1, condition: 'true', action: { type: 'allow' } },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation into email themes record
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'emails.themes.my_theme.displayName': 'My Theme',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[ERROR] The key "emails.themes.my_theme.displayName" is not valid (nested object not found in schema: "emails.themes.my_theme").",
+      "status": "error",
+    }
+  `);
+
+  // Deeply nested dot notation into payments products record
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'payments.products.my_product.displayName': 'My Product',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "payments.products.my_product.displayName" will be silently ignored because it references non-existent parent "payments.products.my_product". Instead of dot notation, use nested object notation like this: { "payments.products.my_product": { "displayName": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Mix of valid dot notation and invalid dot notation in the same override
+  // The valid one (static object field) should not prevent the invalid one from being flagged
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'teams.allowClientTeamCreation': true,
+    'domains.trustedDomains.d1.baseUrl': 'https://example.com',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.d1.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "baseUrl": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Non-dot-notation keys should never trigger the warning
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    domains: { allowLocalhost: true },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation with an entry that exists in the SAME override (as a flat key) should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' },
+    'domains.trustedDomains.my-domain.handlerPath': '/new-handler',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Dot notation with entry created via nested object in same override should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    domains: { trustedDomains: { 'my-domain': { baseUrl: 'https://example.com', handlerPath: '/handler' } } },
+    'domains.trustedDomains.my-domain.handlerPath': '/new-handler',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Multiple dot-notation keys into the SAME non-existent record entry
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'domains.trustedDomains.d1.baseUrl': 'https://example.com',
+    'domains.trustedDomains.d1.handlerPath': '/handler',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "domains.trustedDomains.d1.baseUrl" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "baseUrl": ... } }
+    Dot-notation key "domains.trustedDomains.d1.handlerPath" will be silently ignored because it references non-existent parent "domains.trustedDomains.d1". Instead of dot notation, use nested object notation like this: { "domains.trustedDomains.d1": { "handlerPath": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation into nested records (products -> prices)
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {
+    payments: { products: { 'my-product': { displayName: 'My Product', customerType: 'user' } } },
+  }, {
+    'payments.products.my-product.prices.monthly.USD': '10.00',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "payments.products.my-product.prices.monthly.USD" will be silently ignored because it references non-existent parent "payments.products.my-product.prices.monthly". Instead of dot notation, use nested object notation like this: { "payments.products.my-product.prices.monthly": { "USD": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation into external databases record
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'dbSync.externalDatabases.my_db.type': 'postgres',
+  })).toMatchInlineSnapshot(`
+    {
+      "error": "[WARNING] Dot-notation key "dbSync.externalDatabases.my_db.type" will be silently ignored because it references non-existent parent "dbSync.externalDatabases.my_db". Instead of dot notation, use nested object notation like this: { "dbSync.externalDatabases.my_db": { "type": ... } }",
+      "status": "error",
+    }
+  `);
+
+  // Dot notation for deeply nested static fields should NOT warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'auth.oauth.accountMergeStrategy': 'link_method',
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'emails.server.isShared': true,
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {
+    'rbac.defaultPermissions.teamCreator': { my_perm: true },
+  })).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
+
+  // Empty override should never warn
+  expect(await validateConfigOverrideSchema(environmentConfigSchema, {}, {})).toMatchInlineSnapshot(`
+    {
+      "data": null,
+      "status": "ok",
+    }
+  `);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -682,6 +1045,7 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
         client_secret: oauthProvider.clientSecret,
         facebook_config_id: oauthProvider.facebookConfigId,
         microsoft_tenant_id: oauthProvider.microsoftTenantId,
+        apple_bundle_ids: oauthProvider.appleBundles ? Object.values(oauthProvider.appleBundles).filter(isTruthy).map(b => b.bundleId).filter(isTruthy) : undefined,
       } as const) satisfies ProjectsCrud["Admin"]["Read"]['config']['oauth_providers'][number];
     })
     .filter(isTruthy)

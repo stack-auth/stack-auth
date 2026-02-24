@@ -1,11 +1,11 @@
-import React from "react";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { cva, type VariantProps } from "class-variance-authority";
+import React from "react";
 
 import { cn } from "@/lib/utils";
 
 const alertVariants = cva(
-  "stack-scope relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
+  "stack-scope relative w-full rounded-2xl border p-4 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
@@ -57,5 +57,5 @@ const AlertDescription = forwardRefIfNeeded<
 ));
 AlertDescription.displayName = "AlertDescription";
 
-export { Alert, AlertTitle, AlertDescription };
+export { Alert, AlertDescription, AlertTitle };
 

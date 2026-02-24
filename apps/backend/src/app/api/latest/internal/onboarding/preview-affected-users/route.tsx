@@ -1,6 +1,7 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, restrictedReasonSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 
 /**
  * Preview which users would be affected by onboarding config changes.
@@ -38,9 +39,7 @@ export const POST = createSmartRouteHandler({
         id: yupString().defined(),
         display_name: yupString().nullable().defined(),
         primary_email: yupString().nullable().defined(),
-        restricted_reason: yupObject({
-          type: yupString().oneOf(["anonymous", "email_not_verified"]).defined(),
-        }).defined(),
+        restricted_reason: restrictedReasonSchema.defined(),
       }).defined()).defined(),
       total_affected_count: yupNumber().defined(),
     }).defined(),
@@ -63,7 +62,7 @@ export const POST = createSmartRouteHandler({
       id: string,
       display_name: string | null,
       primary_email: string | null,
-      restricted_reason: { type: "anonymous" | "email_not_verified" },
+      restricted_reason: RestrictedReason,
     }> = [];
     let totalAffectedCount = 0;
 

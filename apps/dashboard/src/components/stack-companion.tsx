@@ -1,15 +1,53 @@
 'use client';
 
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ChangelogEntry } from '@/lib/changelog';
+import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { BookOpenIcon, CircleNotchIcon, ClockClockwiseIcon, LightbulbIcon, XIcon } from '@phosphor-icons/react';
+import { BookOpenIcon, ClockClockwiseIcon, LightbulbIcon, QuestionIcon, XIcon } from '@phosphor-icons/react';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
+
+/**
+ * Compare two US date versions in M/D/YY format
+ * Returns true if version1 is newer than version2
+ */
+function isNewerVersion(version1: string, version2: string): boolean {
+  const parseUsDate = (version: string): Date | null => {
+    const match = version.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+    if (!match) return null;
+    const [, month, day, year] = match;
+    const twoDigitYear = parseInt(year);
+    // Sliding window: 70-99 → 1970-1999, 00-69 → 2000-2069
+    const fullYear = twoDigitYear >= 70 ? 1900 + twoDigitYear : 2000 + twoDigitYear;
+    return new Date(fullYear, parseInt(month) - 1, parseInt(day));
+  };
+
+  const date1 = parseUsDate(version1);
+  const date2 = parseUsDate(version2);
+
+  if (!date1 || !date2) {
+    // Fallback to string comparison if parsing fails
+    return version1 > version2;
+  }
+
+  return date1.getTime() > date2.getTime();
+}
+
+/**
+ * Sanitize a string value for use in a cookie
+ * Removes or encodes characters that could break cookie parsing
+ */
+function sanitizeCookieValue(value: string): string {
+  // Remove or encode special characters that break cookie parsing
+  return encodeURIComponent(value);
+}
 
 type SidebarItem = {
   id: string,
@@ -44,7 +82,7 @@ const sidebarItems: SidebarItem[] = [
   {
     id: 'support',
     label: "Support",
-    icon: CircleNotchIcon,
+    icon: QuestionIcon,
     color: 'text-orange-600 dark:text-orange-400',
     hoverBg: 'hover:bg-orange-500/10',
   }
@@ -73,6 +111,7 @@ export function useStackCompanion() {
   return useContext(StackCompanionContext);
 }
 
+
 export function StackCompanion({ className }: { className?: string }) {
   const [activeItem, setActiveItem] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -82,6 +121,9 @@ export function StackCompanion({ className }: { className?: string }) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isSplitScreenMode, setIsSplitScreenMode] = useState(false);
+  const [changelogData, setChangelogData] = useState<ChangelogEntry[] | undefined>(undefined);
+  const [hasNewVersions, setHasNewVersions] = useState(false);
+  const [lastSeenVersion, setLastSeenVersion] = useState('');
 
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
@@ -124,6 +166,84 @@ export function StackCompanion({ className }: { className?: string }) {
     });
     return cleanup;
   }, []);
+
+  // Fetch changelog data on mount and check for new versions
+  useEffect(() => {
+    runAsynchronously(async () => {
+      const baseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || '';
+      const response = await fetch(`${baseUrl}/api/latest/internal/changelog`);
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      const entries = payload.entries || [];
+      setChangelogData(entries);
+
+      // Check for new versions
+      const lastSeenRaw = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('stack-last-seen-changelog-version='))
+        ?.split('=')[1] || '';
+
+      const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
+      setLastSeenVersion(lastSeen);
+
+      if (entries.length > 0) {
+        // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
+        if (!lastSeen) {
+          setHasNewVersions(true);
+        } else {
+          const hasNewer = entries.some((entry: ChangelogEntry) => {
+            if (entry.isUnreleased) return false;
+            return isNewerVersion(entry.version, lastSeen);
+          });
+          setHasNewVersions(hasNewer);
+        }
+      }
+    });
+  }, []);
+
+  // Re-check for new versions when changelog is opened/closed
+  useEffect(() => {
+    if (activeItem === 'changelog') {
+      // When changelog is opened, mark the latest released version as seen
+      // Skip unreleased versions to avoid breaking version comparison
+      if (changelogData && changelogData.length > 0) {
+        const latestReleasedEntry = changelogData.find(entry => !entry.isUnreleased);
+        if (latestReleasedEntry) {
+          document.cookie = `stack-last-seen-changelog-version=${sanitizeCookieValue(latestReleasedEntry.version)}; path=/; max-age=31536000`; // 1 year
+          setLastSeenVersion(latestReleasedEntry.version);
+        }
+      }
+      // Clear the notification badge immediately
+      setHasNewVersions(false);
+    } else if (activeItem === null) {
+      // When closed, re-check if there are new versions
+      const lastSeenRaw = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('stack-last-seen-changelog-version='))
+        ?.split('=')[1] || '';
+
+      const lastSeen = lastSeenRaw ? decodeURIComponent(lastSeenRaw) : '';
+
+      if (changelogData && changelogData.length > 0) {
+        // If no lastSeen cookie, user hasn't seen any changelog yet - show bell
+        if (!lastSeen) {
+          setHasNewVersions(true);
+        } else {
+          const hasNewer = changelogData.some((entry: ChangelogEntry) => {
+            if (entry.isUnreleased) return false;
+            return isNewerVersion(entry.version, lastSeen);
+          });
+          setHasNewVersions(hasNewer);
+        }
+      } else {
+        setHasNewVersions(false);
+      }
+    }
+  }, [activeItem, changelogData]);
+
 
   const openDrawer = useCallback((itemId: string) => {
     setActiveItem(itemId);
@@ -277,7 +397,7 @@ export function StackCompanion({ className }: { className?: string }) {
       style={{ opacity: contentOpacity }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-foreground/[0.06] shrink-0 bg-background/40">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-black/[0.06] dark:border-foreground/[0.06] shrink-0 bg-white dark:bg-background/40">
         <div className="flex items-center gap-2.5">
           {currentItem && (
             <>
@@ -304,7 +424,7 @@ export function StackCompanion({ className }: { className?: string }) {
       <div className="flex-1 overflow-y-auto p-5 overflow-x-hidden no-drag cursor-auto">
         {activeItem === 'docs' && <UnifiedDocsWidget isActive={true} />}
         {activeItem === 'feedback' && <FeatureRequestBoard isActive={true} />}
-        {activeItem === 'changelog' && <ChangelogWidget isActive={true} />}
+        {activeItem === 'changelog' && <ChangelogWidget isActive={true} initialData={changelogData} />}
         {activeItem === 'support' && <FeedbackForm />}
       </div>
     </div>
@@ -323,7 +443,7 @@ export function StackCompanion({ className }: { className?: string }) {
     >
       {/* The Handle Pill */}
       <div className={cn(
-        "flex flex-col items-center gap-3 px-2 py-3 bg-foreground/[0.03] backdrop-blur-xl border border-foreground/5 shadow-sm transition-all duration-300 select-none",
+        "flex flex-col items-center gap-3 px-2 py-3 bg-white dark:bg-foreground/[0.03] dark:backdrop-blur-xl border border-black/[0.06] dark:border-foreground/5 shadow-md transition-all duration-300 select-none",
         // Only show grab cursor when an item is selected (drawer can be resized)
         activeItem && "cursor-grab active:cursor-grabbing",
         // Shape morphing
@@ -338,7 +458,9 @@ export function StackCompanion({ className }: { className?: string }) {
                 className={cn(
                   "h-10 w-10 p-0 text-muted-foreground transition-all duration-[50ms] rounded-xl relative group",
                   item.hoverBg,
-                  activeItem === item.id && "bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5"
+                  activeItem === item.id && "bg-foreground/10 text-foreground shadow-sm ring-1 ring-foreground/5",
+                  // Glow effect for changelog with new updates
+                  item.id === 'changelog' && hasNewVersions && "ring-2 ring-green-500/30 bg-green-500/10"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -346,10 +468,16 @@ export function StackCompanion({ className }: { className?: string }) {
                 }}
               >
                 <item.icon className={cn("h-5 w-5 transition-transform duration-[50ms] group-hover:scale-110", item.color)} />
+                {item.id === 'changelog' && hasNewVersions && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
+                  </span>
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left" className="z-[60] mr-2">
-              {item.label}
+              {item.id === 'changelog' && hasNewVersions ? `${item.label} (New updates available!)` : item.label}
             </TooltipContent>
           </Tooltip>
         ))}
@@ -377,7 +505,7 @@ export function StackCompanion({ className }: { className?: string }) {
       <StackCompanionContext.Provider value={contextValue}>
         <aside
           className={cn(
-            "sticky top-20 h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
+            "sticky top-14 h-[calc(100vh-3.5rem)] dark:top-20 dark:h-[calc(100vh-6rem)] mr-3 flex flex-row-reverse items-stretch shrink-0",
             isAnimating && !isResizing && "transition-[width] duration-300 ease-out",
             className
           )}
@@ -387,7 +515,7 @@ export function StackCompanion({ className }: { className?: string }) {
           {showDrawerContainerSplit && (
             <div
               className={cn(
-                "h-full bg-gray-100/80 dark:bg-foreground/5 backdrop-blur-xl border border-border/10 dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-sm",
+              "h-full bg-white dark:bg-foreground/5 dark:backdrop-blur-xl border border-black/[0.06] dark:border-foreground/5 overflow-hidden relative rounded-2xl shadow-md",
                 isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
               )}
               style={{ width: drawerWidth }}
@@ -417,7 +545,7 @@ export function StackCompanion({ className }: { className?: string }) {
         {showDrawerContainer && (
           <div
             className={cn(
-              "h-full overflow-hidden pointer-events-auto relative bg-background/80 backdrop-blur-xl border-l border-foreground/[0.08] shadow-2xl",
+              "h-full overflow-hidden pointer-events-auto relative bg-white dark:bg-background/80 dark:backdrop-blur-xl border-l border-black/[0.06] dark:border-foreground/[0.08] shadow-2xl",
               isAnimating && !isResizing && "transition-[width] duration-300 ease-out"
             )}
             style={{ width: drawerWidth }}

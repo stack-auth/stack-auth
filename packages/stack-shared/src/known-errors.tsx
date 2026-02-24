@@ -84,7 +84,7 @@ export abstract class KnownError extends StatusError {
       }
     }
 
-    throw new Error(`Unknown KnownError code. You may need to update your version of Stack to see more detailed information. ${json.code}: ${json.message}`);
+    throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
   }
 }
 
@@ -131,7 +131,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
     public readonly constructorArgs: Args;
 
     constructor(...args: Args) {
-      // @ts-expect-error legendary ts-expect-error, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
+      // @ts-ignore legendary comment, may never be removed https://x.com/konstiwohlwend/status/1998543556567617780
       super(...createFn(...args));
       this.constructorArgs = args;
     }
@@ -419,6 +419,19 @@ const ClientAuthenticationRequired = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const PublishableClientKeyRequiredForProject = createKnownErrorConstructor(
+  ProjectAuthenticationRequired,
+  "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+  (projectId?: string) => [
+    401,
+    "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+    {
+      project_id: projectId ?? null,
+    },
+  ] as const,
+  (json: any) => [json.project_id ?? undefined] as const,
+);
+
 /**
  * @deprecated Use InsufficientAccessType instead
  */
@@ -528,16 +541,26 @@ const UnparsableAccessToken = createKnownErrorConstructor(
 const AccessTokenExpired = createKnownErrorConstructor(
   InvalidAccessToken,
   "ACCESS_TOKEN_EXPIRED",
-  (expiredAt: Date | undefined) => [
+  (expiredAt: Date | undefined, projectId: string | undefined, userId: string | undefined, refreshTokenId: string | undefined) => [
     401,
     deindent`
-      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}
+      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}${projectId ? ` Project ID: ${projectId}.` : ""}${userId ? ` User ID: ${userId}.` : ""}${refreshTokenId ? ` Refresh token ID: ${refreshTokenId}.` : ""}
 
       Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
     `,
-    { expired_at_millis: expiredAt?.getTime() ?? null },
+    {
+      expired_at_millis: expiredAt?.getTime() ?? null,
+      project_id: projectId ?? null,
+      user_id: userId ?? null,
+      refresh_token_id: refreshTokenId ?? null,
+    },
   ] as const,
-  (json: any) => [json.expired_at_millis ? new Date(json.expired_at_millis) : undefined] as const,
+  (json: any) => [
+    json.expired_at_millis ? new Date(json.expired_at_millis) : undefined,
+    json.project_id ?? undefined,
+    json.user_id ?? undefined,
+    json.refresh_token_id ?? undefined,
+  ] as const,
 );
 
 const InvalidProjectForAccessToken = createKnownErrorConstructor(
@@ -653,7 +676,7 @@ const UserNotFound = createKnownErrorConstructor(
 const RestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
     {
@@ -714,6 +737,19 @@ const SignUpNotEnabled = createKnownErrorConstructor(
     "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.",
   ] as const,
   () => [] as const,
+);
+
+const SignUpRejected = createKnownErrorConstructor(
+  KnownError,
+  "SIGN_UP_REJECTED",
+  (message?: string) => [
+    403,
+    message ?? "Your sign up was rejected by an administrator's sign-up rule.",
+    {
+      message: message ?? "Your sign up was rejected by an administrator's sign-up rule.",
+    },
+  ] as const,
+  (json: any) => [json.message] as const,
 );
 
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
@@ -1063,7 +1099,7 @@ const TeamMembershipNotFound = createKnownErrorConstructor(
 const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
   KnownError,
   "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
-  (restrictedReason: { type: "anonymous" | "email_not_verified" }) => [
+  (restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" }) => [
     403,
     `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
     {
@@ -1112,6 +1148,20 @@ const OAuthConnectionDoesNotHaveRequiredScope = createKnownErrorConstructor(
     "The OAuth connection does not have the required scope.",
   ] as const,
   () => [] as const,
+);
+
+const OAuthAccessTokenNotAvailable = createKnownErrorConstructor(
+  KnownError,
+  "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
+  (provider: string, details: string) => [
+    400,
+    `Failed to retrieve an OAuth access token for the connected account (provider: ${provider}). ${details}`,
+    {
+      provider,
+      details,
+    } as const,
+  ] as const,
+  (json: any) => [json.provider, json.details] as const,
 );
 
 const OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(
@@ -1183,6 +1233,16 @@ const OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
   () => [
     400,
     "The OAuth provider is not found or not enabled.",
+  ] as const,
+  () => [] as const,
+);
+
+const AppleBundleIdNotConfigured = createKnownErrorConstructor(
+  KnownError,
+  "APPLE_BUNDLE_ID_NOT_CONFIGURED",
+  () => [
+    400,
+    "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs.",
   ] as const,
   () => [] as const,
 );
@@ -1320,6 +1380,16 @@ const InvalidAuthorizationCode = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const InvalidAppleCredentials = createKnownErrorConstructor(
+  KnownError,
+  "INVALID_APPLE_CREDENTIALS",
+  () => [
+    400,
+    "The Apple Sign In credentials could not be verified. Please try signing in again.",
+  ] as const,
+  () => [] as const,
+);
+
 const OAuthProviderAccessDenied = createKnownErrorConstructor(
   KnownError,
   "OAUTH_PROVIDER_ACCESS_DENIED",
@@ -1444,7 +1514,6 @@ const PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
   ] as const,
   () => [] as const,
 );
-
 const PermissionIdAlreadyExists = createKnownErrorConstructor(
   KnownError,
   "PERMISSION_ID_ALREADY_EXISTS",
@@ -1672,6 +1741,38 @@ const StripeAccountInfoNotFound = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const AnalyticsQueryTimeout = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_TIMEOUT",
+  (timeoutMs: number) => [
+    400,
+    `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
+    { timeout_ms: timeoutMs },
+  ] as const,
+  (json) => [json.timeout_ms] as const,
+);
+
+const AnalyticsQueryError = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_QUERY_ERROR",
+  (error: string) => [
+    400,
+    `${error}`,
+    { error },
+  ] as const,
+  (json) => [json.error] as const,
+);
+
+const AnalyticsNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "ANALYTICS_NOT_ENABLED",
+  () => [
+    400,
+    "Analytics is not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
 const DefaultPaymentMethodRequired = createKnownErrorConstructor(
   KnownError,
   "DEFAULT_PAYMENT_METHOD_REQUIRED",
@@ -1728,6 +1829,7 @@ export const KnownErrors = {
   AdminAccessTokenIsNotAdmin,
   ProjectAuthenticationRequired,
   ClientAuthenticationRequired,
+  PublishableClientKeyRequiredForProject,
   ServerAuthenticationRequired,
   ClientOrServerAuthenticationRequired,
   ClientOrAdminAuthenticationRequired,
@@ -1754,6 +1856,7 @@ export const KnownErrors = {
   CurrentProjectNotFound,
   BranchDoesNotExist,
   SignUpNotEnabled,
+  SignUpRejected,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,
@@ -1786,6 +1889,7 @@ export const KnownErrors = {
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
   OAuthConnectionDoesNotHaveRequiredScope,
+  OAuthAccessTokenNotAvailable,
   OAuthExtraScopeNotAvailableWithSharedOAuthKeys,
   OAuthAccessTokenNotAvailableWithSharedOAuthKeys,
   InvalidOAuthClientIdOrSecret,
@@ -1793,6 +1897,7 @@ export const KnownErrors = {
   UserAlreadyConnectedToAnotherOAuthConnection,
   OuterOAuthTimeout,
   OAuthProviderNotFoundOrNotEnabled,
+  AppleBundleIdNotConfigured,
   OAuthProviderAccountIdAlreadyUsedForSignIn,
   MultiFactorAuthenticationRequired,
   InvalidTotpCode,
@@ -1803,6 +1908,7 @@ export const KnownErrors = {
   InvalidSharedOAuthProviderId,
   InvalidStandardOAuthProviderId,
   InvalidAuthorizationCode,
+  InvalidAppleCredentials,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
@@ -1831,6 +1937,9 @@ export const KnownErrors = {
   NewPurchasesBlocked,
   DataVaultStoreDoesNotExist,
   DataVaultStoreHashedKeyDoesNotExist,
+  AnalyticsQueryTimeout,
+  AnalyticsQueryError,
+  AnalyticsNotEnabled,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 
