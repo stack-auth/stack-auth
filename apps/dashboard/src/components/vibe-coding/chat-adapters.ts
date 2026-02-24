@@ -14,13 +14,12 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
 
 const CONTEXT_MAP = {
   "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
-  "email-template": { systemPrompt: "email-wysiwyg-editor", tools: ["create-email-template"] },
+  "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
   "email-draft": { systemPrompt: "email-assistant-draft", tools: ["create-email-draft"] },
 } as const;
 
 export function createChatAdapter(
   projectId: string,
-  threadId: string,
   contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,
@@ -59,15 +58,15 @@ export function createChatAdapter(
           throw new Error(`AI request failed: ${response.status}`);
         }
 
-        const result: { content: ChatContent } = await response.json();
+        const result = await response.json() as { content?: ChatContent };
+        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
 
-        if (result.content.some(isToolCall)) {
-          const toolCall = result.content.find(isToolCall);
-          if (toolCall) {
-            onToolCall(toolCall);
-          }
+        const toolCall = content.find(isToolCall);
+        if (toolCall) {
+          onToolCall(toolCall);
         }
-        return { content: result.content };
+
+        return { content };
       } catch (error) {
         if (abortSignal.aborted) {
           return {};
