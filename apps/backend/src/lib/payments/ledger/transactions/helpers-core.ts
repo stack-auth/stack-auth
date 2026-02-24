@@ -121,7 +121,7 @@ export function getLatestGrant(grants: GrantSlice[]): GrantSlice | null {
   return grants.length > 0 ? grants[grants.length - 1] : null;
 }
 
-export function itemChangeEntry(customerType: "user" | "team" | "custom", customerId: string, itemId: string, quantity: number): TransactionEntry {
+export function itemChangeEntry(customerType: "user" | "team" | "custom", customerId: string, itemId: string, quantity: number, expiresAtMillis?: number | null): TransactionEntry & { type: "item-quantity-change" } {
   return {
     type: "item-quantity-change",
     adjusted_transaction_id: null,
@@ -130,6 +130,7 @@ export function itemChangeEntry(customerType: "user" | "team" | "custom", custom
     customer_id: customerId,
     item_id: itemId,
     quantity,
+    expires_at_millis: expiresAtMillis ?? null,
   };
 }
 

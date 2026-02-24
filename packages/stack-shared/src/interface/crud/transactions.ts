@@ -46,6 +46,7 @@ const transactionEntryItemQuantityChangeSchema = yupObject({
   customer_id: yupString().defined(),
   item_id: yupString().defined(),
   quantity: yupNumber().defined(),
+  expires_at_millis: yupNumber().nullable().optional(),
 }).defined();
 
 const transactionEntryItemQuantityExpireSchema = yupObject({

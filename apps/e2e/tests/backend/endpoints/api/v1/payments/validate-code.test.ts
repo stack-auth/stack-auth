@@ -277,6 +277,7 @@ it("should include conflicting_products when switching within the same group", a
               ],
             },
           },
+          "product_line_id": "grp",
           "server_metadata": null,
           "server_only": false,
           "stackable": false,

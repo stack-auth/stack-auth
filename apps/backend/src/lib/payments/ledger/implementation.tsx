@@ -317,10 +317,11 @@ export async function getItemQuantityForCustomer(options: {
         defaultSnapshot = normalizeDefaultSnapshot(typedEntry.snapshot as Record<string, any>);
       } else if (typedEntry.type === "item-quantity-change") {
         if (typedEntry.item_id !== options.itemId) continue;
+        const expiresAtMillis: number | null | undefined = typedEntry.expires_at_millis;
         const ledgerTransaction = {
           amount: typedEntry.quantity,
           grantTime: new Date(tx.effective_at_millis),
-          expirationTime: new Date(8640000000000000),
+          expirationTime: expiresAtMillis ? new Date(expiresAtMillis) : new Date(8640000000000000),
         };
         ledgerTransactions.push(ledgerTransaction);
         const ledgerTransactionMap = ledgerItemGrantMapByTxIdAndEntryIndex.get(tx.id) ?? new Map<number, LedgerTransaction>();

@@ -239,6 +239,7 @@ it("should include conflicting_group_offers when switching within the same group
               ],
             },
           },
+          "product_line_id": "grp",
           "server_metadata": null,
           "server_only": false,
           "stackable": false,

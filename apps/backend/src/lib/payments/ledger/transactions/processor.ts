@@ -552,7 +552,7 @@ export function processEvent(state: BuildState, event: SeedEvent) {
   }
 
   const customerType = toCustomerType(event.change.customerType);
-  state.output.push(txBase("manual-item-quantity-change", event.change.id, event.at, [
-    itemChangeEntry(customerType, event.change.customerId, event.change.itemId, event.change.quantity),
-  ], false));
+  const expiresAtMillis = event.change.expiresAt ? event.change.expiresAt.getTime() : null;
+  const entry = itemChangeEntry(customerType, event.change.customerId, event.change.itemId, event.change.quantity, expiresAtMillis);
+  state.output.push(txBase("manual-item-quantity-change", event.change.id, event.at, [entry], false));
 }

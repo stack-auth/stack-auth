@@ -54,7 +54,7 @@ export type SeedEvent =
   | {
     kind: "item-quantity-change-event",
     at: number,
-    change: { id: string, createdAt: Date, customerId: string, customerType: CustomerType, itemId: string, quantity: number },
+    change: { id: string, createdAt: Date, customerId: string, customerType: CustomerType, itemId: string, quantity: number, expiresAt: Date | null },
   }
   | {
     kind: "default-product-item-grant-repeat-event",
