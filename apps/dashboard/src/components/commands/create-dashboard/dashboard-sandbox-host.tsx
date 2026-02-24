@@ -473,7 +473,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       sandbox="allow-scripts"
       srcDoc={srcDoc}
       className="h-full w-full bg-transparent"
-      allowTransparency
+      allowtransparency="true"
     />
   );
 });
