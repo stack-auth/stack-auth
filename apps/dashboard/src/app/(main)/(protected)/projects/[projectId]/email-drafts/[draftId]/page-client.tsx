@@ -7,7 +7,7 @@ import { DesignDataTable } from "@/components/design-components/table";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouter, useRouterConfirm } from "@/components/router";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Tooltip, TooltipContent, TooltipTrigger, Typography } from "@/components/ui";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Tooltip, TooltipContent, TooltipTrigger, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
@@ -214,7 +214,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
       <DraftFlowProvider>
         {stage === "draft" ? (
           <div data-full-bleed className="flex h-full flex-col">
-            <div className="border-b border-border bg-background">
+            <div>
               <DraftProgressBar
                 steps={DRAFT_STEPS}
                 currentStep={stage}
@@ -322,9 +322,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
             <DialogHeader>
               <DialogTitle>Template Variables</DialogTitle>
             </DialogHeader>
-            <Typography variant="secondary" className="text-sm">
-              Values passed to the base template when sending this draft.
-            </Typography>
             <div className="space-y-3 max-h-[400px] overflow-y-auto">
               {Object.entries(editedVariables).map(([name, value]) => (
                 <div key={name} className="space-y-1.5">
@@ -394,8 +391,8 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
     <div className="mx-auto w-full max-w-4xl p-4">
       <DraftProgressBar steps={DRAFT_STEPS} currentStep="recipients" onStepClick={onStepClick} />
 
-      <Card className="p-4 mt-4">
-        <CardContent className="flex flex-col gap-6">
+      <DesignCard glassmorphic gradient="default" className="mt-4">
+        <div className="flex flex-col gap-6">
           {/* Recipients Section */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -467,7 +464,7 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-between border-t pt-6">
+          <div className="flex justify-between border-t border-black/[0.12] dark:border-white/[0.06] pt-6">
             <Button type="button" variant="outline" onClick={onBack}>
               Back
             </Button>
@@ -475,8 +472,8 @@ function RecipientsStage({ draftId, onBack, onNext, onStepClick }: RecipientsSta
               Next: Schedule
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </DesignCard>
     </div>
   );
 }
@@ -561,10 +558,10 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
         </div>
       )}
 
-      <Card className="p-4 mt-4">
-        <CardContent className="flex flex-col gap-6">
+      <DesignCard glassmorphic gradient="default" className="mt-4">
+        <div className="flex flex-col gap-6">
           {/* Summary of recipients */}
-          <div className="flex flex-col gap-2 pb-4 border-b">
+          <div className="flex flex-col gap-2 pb-4 border-b border-black/[0.12] dark:border-white/[0.06]">
             <Typography variant="secondary" className="text-sm">
               Sending to: {scope === "all" ? "All users" : `${selectedUsers.length} selected user${selectedUsers.length !== 1 ? "s" : ""}`}
             </Typography>
@@ -611,7 +608,7 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-between border-t pt-6">
+          <div className="flex justify-between border-t border-black/[0.12] dark:border-white/[0.06] pt-6">
             <Button variant="outline" onClick={onBack}>
               Back
             </Button>
@@ -619,8 +616,8 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
               {scheduleMode === "scheduled" ? "Schedule" : "Send"}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </DesignCard>
     </div>
   );
 }

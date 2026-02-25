@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 export type DraftStep = {
@@ -18,71 +19,81 @@ export function DraftProgressBar({ steps, currentStep, onStepClick, disableNavig
   const currentIndex = steps.findIndex((s) => s.id === currentStep);
 
   return (
-    <div className="flex items-center justify-center gap-0 py-4">
-      {steps.map((step, index) => {
-        const isCurrent = step.id === currentStep;
-        const isLast = index === steps.length - 1;
-        const isPast = index < currentIndex;
-        const isFuture = index > currentIndex;
+    <div className="flex flex-col items-center py-2 gap-1">
+      {/* Circles + lines row */}
+      <div className="flex items-center">
+        {steps.map((step, index) => {
+          const isCurrent = step.id === currentStep;
+          const isLast = index === steps.length - 1;
+          const isPast = index < currentIndex;
+          const isClickable = !disableNavigation && isPast && onStepClick;
 
-        // Can only click previous steps when navigation is enabled
-        const isClickable = !disableNavigation && isPast && onStepClick;
-
-        const handleClick = () => {
-          if (isClickable) {
-            onStepClick(step.id);
-          }
-        };
-
-        return (
-          <div key={step.id} className="flex items-center">
-            {/* Step circle and label */}
-            <button
-              type="button"
-              onClick={handleClick}
-              disabled={!isClickable}
-              className={cn(
-                "flex flex-col items-center group",
-                isClickable && "cursor-pointer",
-                !isClickable && "cursor-default"
-              )}
-            >
-              <div
+          return (
+            <div key={step.id} className="flex items-center">
+              <button
+                type="button"
+                onClick={() => isClickable && onStepClick(step.id)}
+                disabled={!isClickable}
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors",
-                  isCurrent
-                    ? "bg-primary border-primary text-primary-foreground"
-                    : "bg-background border-muted-foreground/30 text-muted-foreground",
-                  isClickable && "group-hover:border-primary/50 group-hover:bg-primary/10"
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0",
+                  isPast && "bg-primary text-primary-foreground",
+                  isCurrent && "bg-primary text-primary-foreground ring-4 ring-primary/20",
+                  !isPast && !isCurrent && "bg-muted-foreground/15 text-muted-foreground",
+                  isClickable && "cursor-pointer hover:ring-4 hover:ring-primary/20",
+                  !isClickable && "cursor-default"
                 )}
               >
-                <span className="text-xs font-medium">{index + 1}</span>
-              </div>
+                {isPast ? (
+                  <Check className="w-4 h-4" weight="bold" />
+                ) : (
+                  <span className="text-sm font-semibold">{index + 1}</span>
+                )}
+              </button>
+
+              {!isLast && (
+                <div className="w-20 h-1 bg-muted-foreground/15 overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full bg-primary transition-all duration-300",
+                      index < currentIndex ? "w-full" : "w-0"
+                    )}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Labels row */}
+      <div className="flex items-center">
+        {steps.map((step, index) => {
+          const isCurrent = step.id === currentStep;
+          const isPast = index < currentIndex;
+          const isLast = index === steps.length - 1;
+
+          return (
+            <div key={step.id} className="flex items-center">
               <span
                 className={cn(
-                  "mt-2 text-xs font-medium transition-colors",
-                  isCurrent ? "text-foreground" : "text-muted-foreground",
-                  isClickable && "group-hover:text-foreground"
+                  "w-10 text-center text-[11px] font-medium whitespace-nowrap",
+                  isCurrent || isPast ? "text-foreground" : "text-muted-foreground"
                 )}
               >
                 {step.label}
               </span>
-            </button>
-
-            {/* Connector line */}
-            {!isLast && (
-              <div className="w-16 h-0.5 mx-2 -mt-6 bg-muted-foreground/30" />
-            )}
-          </div>
-        );
-      })}
+              {!isLast && <div className="w-20" />}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 export const DRAFT_STEPS: DraftStep[] = [
   { id: "draft", label: "Draft" },
-  { id: "recipients", label: "Choose Recipients" },
-  { id: "schedule", label: "Schedule Sending" },
+  { id: "recipients", label: "Recipients" },
+  { id: "schedule", label: "Schedule" },
   { id: "sent", label: "Send" },
 ];

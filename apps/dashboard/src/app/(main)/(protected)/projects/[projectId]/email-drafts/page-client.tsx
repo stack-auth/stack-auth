@@ -749,10 +749,10 @@ function TemplateSelectDialog({
 
         {step === "variables" && selectedTemplate && (
           <div className="mt-4 space-y-4">
-            <Alert>
-              <WarningCircle className="h-4 w-4" />
-              <AlertTitle>This template uses variables</AlertTitle>
-              <AlertDescription>
+            <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
+              <WarningCircle className="h-4 w-4 text-amber-500" weight="regular" />
+              <AlertTitle className="text-amber-600 dark:text-amber-400">This template uses variables</AlertTitle>
+              <AlertDescription className="text-muted-foreground">
                 Enter values for the template variables below. These will be used when sending the email.
               </AlertDescription>
             </Alert>
