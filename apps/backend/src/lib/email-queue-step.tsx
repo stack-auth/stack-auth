@@ -555,16 +555,21 @@ async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]
 
   const plan: TenancySendBatch[] = [];
   for (const entry of tenancyIds) {
-    const [stats, boostExpiresAt] = await Promise.all([
-      getEmailDeliveryStatsForTenancy(entry.tenancyId),
-      getEmailCapacityBoostExpiresAt(entry.tenancyId),
-    ]);
-    const capacity = calculateCapacityRate(stats, boostExpiresAt);
-    const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
-    if (quota <= 0) continue;
-    const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);
-    if (rows.length === 0) continue;
-    plan.push({ tenancyId: entry.tenancyId, rows, capacityRatePerSecond: capacity.ratePerSecond });
+    try {
+      const [stats, boostExpiresAt] = await Promise.all([
+        getEmailDeliveryStatsForTenancy(entry.tenancyId),
+        getEmailCapacityBoostExpiresAt(entry.tenancyId),
+      ]);
+      const capacity = calculateCapacityRate(stats, boostExpiresAt);
+      const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
+      if (quota <= 0) continue;
+      const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);
+      if (rows.length === 0) continue;
+      plan.push({ tenancyId: entry.tenancyId, rows, capacityRatePerSecond: capacity.ratePerSecond });
+    } catch (error) {
+      captureError("email-queue-step-prepare-send-plan-for-tenancy-error", error);
+      continue;
+    }
   }
   return plan;
 }

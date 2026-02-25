@@ -1548,6 +1548,17 @@ const RequiresCustomEmailServer = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const EmailCapacityBoostAlreadyActive = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_CAPACITY_BOOST_ALREADY_ACTIVE",
+  (expiresAt: string) => [
+    409,
+    `Email capacity boost is already active until ${expiresAt}.`,
+    { expires_at: expiresAt },
+  ] as const,
+  (json: any) => [json.expires_at] as const,
+);
+
 const EmailNotEditable = createKnownErrorConstructor(
   KnownError,
   "EMAIL_NOT_EDITABLE",
@@ -1919,6 +1930,7 @@ export const KnownErrors = {
   WrongApiKeyType,
   EmailRenderingError,
   RequiresCustomEmailServer,
+  EmailCapacityBoostAlreadyActive,
   EmailNotEditable,
   ItemNotFound,
   ItemCustomerTypeDoesNotMatch,

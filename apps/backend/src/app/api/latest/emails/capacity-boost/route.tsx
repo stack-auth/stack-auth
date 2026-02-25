@@ -1,5 +1,6 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const BOOST_DURATION_HOURS = 4;
@@ -25,6 +26,15 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
+    const tenancy = await globalPrismaClient.tenancy.findUniqueOrThrow({
+      where: { id: auth.tenancy.id },
+      select: { emailCapacityBoostExpiresAt: true },
+    });
+
+    if (tenancy.emailCapacityBoostExpiresAt && tenancy.emailCapacityBoostExpiresAt > new Date()) {
+      throw new KnownErrors.EmailCapacityBoostAlreadyActive(tenancy.emailCapacityBoostExpiresAt.toISOString());
+    }
+
     const expiresAt = new Date(Date.now() + BOOST_DURATION_HOURS * 60 * 60 * 1000);
 
     await globalPrismaClient.tenancy.update({

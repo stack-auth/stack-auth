@@ -41,6 +41,30 @@ describe("capacity-boost", () => {
     expect(afterResponse.body.capacity.rate_per_second).toBe(baseRate * 4);
   });
 
+  it("should reject double activation while boost is active", async ({ expect }) => {
+    await Auth.Otp.signIn();
+    await Project.createAndSwitch({
+      display_name: "Test Double Boost Project",
+    }, true);
+
+    // First activation should succeed
+    const firstResponse = await niceBackendFetch("/api/v1/emails/capacity-boost", {
+      method: "POST",
+      accessType: "server",
+      body: {},
+    });
+    expect(firstResponse.status).toBe(200);
+
+    // Second activation while boost is active should fail
+    const secondResponse = await niceBackendFetch("/api/v1/emails/capacity-boost", {
+      method: "POST",
+      accessType: "server",
+      body: {},
+    });
+    expect(secondResponse.status).toBe(409);
+    expect(secondResponse.body.code).toBe("EMAIL_CAPACITY_BOOST_ALREADY_ACTIVE");
+  });
+
   it("should require server access type", async ({ expect }) => {
     await Auth.Otp.signIn();
     await Project.createAndSwitch({
