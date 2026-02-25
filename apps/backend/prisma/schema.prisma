@@ -62,9 +62,47 @@ model Tenancy {
   emailOutboxes     EmailOutbox[]
   sessionReplays SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
+  managedEmailDomains ManagedEmailDomain[]
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
+}
+
+enum ManagedEmailDomainStatus {
+  PENDING_DNS
+  PENDING_VERIFICATION
+  VERIFIED
+  APPLIED
+  FAILED
+}
+
+model ManagedEmailDomain {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenancyId String @db.Uuid
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  projectId String
+  branchId String
+
+  subdomain String
+  senderLocalPart String
+  resendDomainId String @unique
+  nameServerRecords Json
+
+  status ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
+  providerStatusRaw String?
+  isActive Boolean @default(true)
+  lastError String?
+  verifiedAt DateTime?
+  appliedAt DateTime?
+  lastWebhookAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenancyId, subdomain])
+  @@index([tenancyId, status, isActive], map: "ManagedEmailDomain_tenancy_status_active_idx")
 }
 
 model BranchConfigOverride {
