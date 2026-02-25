@@ -110,15 +110,25 @@ export function DesignListItemRow({
   onClick,
   className,
 }: DesignListItemRowProps) {
-  const Wrapper = onClick ? "button" : "div";
+  const interactiveProps = onClick ? {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onClick();
+      }
+    },
+  } : {};
 
   if (size === "sm") {
     return (
-      <Wrapper
-        {...(onClick ? { onClick, type: "button" as const } : {})}
+      <div
+        {...interactiveProps}
         className={cn(
           "w-full flex items-center justify-between gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
-          onClick && "hover:bg-foreground/[0.04]",
+          onClick && "hover:bg-foreground/[0.04] cursor-pointer",
           className,
         )}
       >
@@ -136,18 +146,19 @@ export function DesignListItemRow({
           </div>
         </div>
         {buttons && buttons.length > 0 && <ListItemButtons buttons={buttons} />}
-      </Wrapper>
+      </div>
     );
   }
 
   // size === "lg"
   return (
-    <Wrapper
-      {...(onClick ? { onClick, type: "button" as const } : {})}
+    <div
+      {...interactiveProps}
       className={cn(
         "w-full group relative flex items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none text-left",
         "bg-white/90 dark:bg-background/60 backdrop-blur-xl ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
         "shadow-sm hover:shadow-md",
+        onClick && "cursor-pointer",
         className,
       )}
     >
@@ -166,7 +177,7 @@ export function DesignListItemRow({
         </div>
       </div>
       {buttons && buttons.length > 0 && <ListItemButtons buttons={buttons} />}
-    </Wrapper>
+    </div>
   );
 }
 
