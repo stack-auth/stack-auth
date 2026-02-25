@@ -116,8 +116,8 @@ export function DesignCard({
             "ring-1 ring-black/[0.06] dark:ring-white/[0.06]",
             "shadow-sm",
           ],
-          (glassmorphic || isClickable) && "transition-all duration-150 hover:transition-none",
-          (glassmorphic || isClickable) && !suppressHover && "hover:ring-black/[0.1] dark:hover:ring-white/[0.1] hover:shadow-md",
+          isClickable && "transition-all duration-150 hover:transition-none",
+          isClickable && !suppressHover && "hover:ring-black/[0.1] dark:hover:ring-white/[0.1] hover:shadow-md",
           isClickable && !glassmorphic && [
             "ring-1 ring-black/[0.06] dark:ring-white/[0.06] shadow-sm",
           ],
