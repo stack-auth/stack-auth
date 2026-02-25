@@ -176,9 +176,6 @@ export const ALL_APPS_FRONTEND = {
       { displayName: "Drafts", href: "../email-drafts", getBreadcrumbItems: getEmailDraftBreadcrumbItems },
       { displayName: "Templates", href: "../email-templates", getBreadcrumbItems: getEmailTemplatesBreadcrumbItems },
       { displayName: "Email Settings", href: "../email-settings" },
-      // Old items kept for reference:
-      { displayName: "Emails (old)", href: "../emails" },
-      { displayName: "Themes (old)", href: "../email-themes", getBreadcrumbItems: getEmailThemeBreadcrumbItems },
     ],
     screenshots: getScreenshots('emails', 8),
     storeDescription: (
@@ -442,25 +439,3 @@ async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>,
   ];
 }
 
-async function getEmailThemeBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relativePart: string) {
-  const baseCrumbs = [{ item: "Themes", href: "." }];
-  const match = relativePart.match(/^\/([^/]+)(?:\/.*)?$/);
-  if (!match) {
-    return baseCrumbs;
-  }
-
-  const themeId = decodeURIComponent(match[1]);
-  const themes = await stackAdminApp.listEmailThemes();
-  const theme = themes.find(({ id }) => id === themeId);
-  if (!theme) {
-    return baseCrumbs;
-  }
-
-  return [
-    ...baseCrumbs,
-    {
-      item: theme.displayName,
-      href: `./${encodeURIComponent(theme.id)}`,
-    },
-  ];
-}
