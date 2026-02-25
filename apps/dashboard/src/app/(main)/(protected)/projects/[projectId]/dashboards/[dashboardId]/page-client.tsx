@@ -201,12 +201,13 @@ function DashboardDetailContent({
         {/* Dashboard iframe panel */}
         <div className={cn(
           "flex-1 min-w-0 flex flex-col transition-all duration-300 ease-in-out",
-          isChatOpen ? "pl-6 pr-2 py-6" : "",
+          "pl-6 pr-5 py-6",
+          !isChatOpen && "dark:p-0",
         )}>
           <div className={cn(
             "flex-1 overflow-hidden transition-all duration-300 ease-in-out",
-            isChatOpen ? "bg-slate-50/90 backdrop-blur-xl dark:bg-background/40" : "bg-transparent",
-            isChatOpen ? "rounded-2xl shadow-xl ring-1 ring-foreground/[0.06]" : "",
+            "bg-slate-50/90 rounded-2xl shadow-xl ring-1 ring-foreground/[0.06]",
+            "dark:bg-transparent dark:rounded-none dark:shadow-none dark:ring-0",
           )}>
             {dashboardPreview}
           </div>
