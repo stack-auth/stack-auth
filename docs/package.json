@@ -55,6 +55,7 @@
     "remark-gfm": "^4.0.1",
     "remark-mdx": "^3.1.0",
     "shiki": "^3.4.2",
+    "2027-track": "^0.1.9",
     "tailwind-merge": "^3.3.0",
     "zod": "^3.23.8"
   },
