@@ -4,11 +4,13 @@ import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[pr
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
+import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { memo, useCallback, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
@@ -52,49 +54,44 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     setErrorText(null);
     setArtifact(null);
 
-    const response = await fetch("/api/ai-call", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId,
+    try {
+      const userMessages: Array<{ role: string, content: string }> = [{ role: "user", content: prompt }];
+      const contextMessages = await buildDashboardMessages(adminApp, userMessages);
+
+      const result = await adminApp.sendAiQuery({
         systemPrompt: "create-dashboard",
         tools: ["update-dashboard"],
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    if (!response.ok) {
-      const responseText = await response.text();
+        messages: [...contextMessages, ...userMessages],
+      });
+
+      const contentArr = Array.isArray(result.content) ? result.content : [];
+      const toolCall = contentArr.find(
+        (block): block is Extract<typeof block, { type: "tool-call" }> =>
+          block.type === "tool-call" && ("toolName" in block && block.toolName === "updateDashboard")
+      );
+
+      if (!toolCall?.args?.content) {
+        setState("error");
+        setErrorText("AI did not return dashboard code");
+        return;
+      }
+
+      setArtifact({
+        prompt,
+        projectId,
+        runtimeCodegen: {
+          title: prompt.slice(0, 120),
+          description: "",
+          uiRuntimeSourceCode: toolCall.args.content,
+        },
+      });
+      setState("ready");
+    } catch (error) {
+      captureError("create-dashboard-preview", error);
       setState("error");
-      setErrorText(responseText || `Request failed with status ${response.status}`);
-      return;
+      setErrorText("Failed to generate dashboard. Please try again.");
     }
-
-    const result = await response.json();
-    const contentArr: Array<{ type: string, toolName?: string, args?: { content?: string }, [key: string]: unknown }> =
-      Array.isArray(result?.content) ? result.content : [];
-    const toolCall = contentArr.find(
-      (block) => block.type === "tool-call" && block.toolName === "updateDashboard"
-    );
-
-    if (!toolCall?.args?.content) {
-      setState("error");
-      setErrorText("AI did not return dashboard code");
-      return;
-    }
-
-    setArtifact({
-      prompt,
-      projectId,
-      runtimeCodegen: {
-        title: prompt.slice(0, 120),
-        description: "",
-        uiRuntimeSourceCode: toolCall.args.content,
-      },
-    });
-    setState("ready");
-  }, [projectId, prompt]);
+  }, [projectId, prompt, adminApp]);
 
   const handleSave = useCallback(async () => {
     if (!artifact) return;

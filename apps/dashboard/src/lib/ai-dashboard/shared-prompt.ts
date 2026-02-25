@@ -1,13 +1,10 @@
 import { BUNDLED_DASHBOARD_UI_TYPES, BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
-
-export type AiEndpointConfig = {
-  backendBaseUrl: string,
-  headers: Record<string, string>,
-};
+import { StackAdminApp } from "@stackframe/stack";
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 
 export async function selectRelevantFiles(
   prompt: string,
-  aiConfig: AiEndpointConfig,
+  adminApp: StackAdminApp,
 ): Promise<string[]> {
   const availableFiles = BUNDLED_TYPE_DEFINITIONS.map((f: { path: string }) => f.path);
 
@@ -29,62 +26,40 @@ ${availableFiles.map(f => `- ${f}`).join('\n')}
 Respond with ONLY a JSON object: { "selectedFiles": ["file1.ts", "file2.ts"] }
 No markdown, no explanation — just the JSON.`;
 
-  const response = await fetch(
-    `${aiConfig.backendBaseUrl}/api/latest/ai/query/generate`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...aiConfig.headers,
-      },
-      body: JSON.stringify({
-        quality: "dumb",
-        speed: "fast",
-        systemPrompt: "command-center-ask-ai",
-        tools: [],
-        messages: [{
-          role: "user",
-          content: `${systemPromptText}\n\nDashboard request: "${prompt}"\n\nWhich type definition files do you need? When uncertain, err on the side of INCLUDING more files rather than fewer.`,
-        }],
-      }),
+  try {
+    const result = await adminApp.sendAiQuery({
+      quality: "dumb",
+      speed: "fast",
+      systemPrompt: "command-center-ask-ai",
+      tools: [],
+      messages: [{
+        role: "user",
+        content: `${systemPromptText}\n\nDashboard request: "${prompt}"\n\nWhich type definition files do you need? When uncertain, err on the side of INCLUDING more files rather than fewer.`,
+      }],
+    });
+
+    const content: ChatContent = Array.isArray(result.content) ? result.content : [];
+    const textBlock = content.find((b): b is Extract<ChatContent[number], { type: "text" }> => b.type === "text");
+    const responseText = textBlock?.text;
+
+    if (!responseText) {
+      return availableFiles;
     }
-  );
 
-  if (!response.ok) {
+    const jsonMatch = responseText.match(/\{[\s\S]*"selectedFiles"[\s\S]*\}/);
+    if (!jsonMatch) {
+      return availableFiles;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as { selectedFiles?: string[] };
+    if (!Array.isArray(parsed.selectedFiles) || parsed.selectedFiles.length === 0) {
+      return availableFiles;
+    }
+
+    return parsed.selectedFiles.filter((f) => availableFiles.includes(f));
+  } catch {
     return availableFiles;
   }
-
-  const result = await response.json();
-
-  // The generate endpoint returns { content: [{ type: "text", text: "..." }, ...] }
-  // but the format may differ when forwarded to production. Extract text from
-  // whichever shape we receive.
-  let responseText: string | undefined;
-
-  if (Array.isArray(result?.content)) {
-    const textBlock = result.content.find((b: { type: string, text?: string }) => b.type === "text" && b.text);
-    responseText = textBlock?.text;
-  } else if (typeof result?.text === "string") {
-    responseText = result.text;
-  } else if (typeof result?.content === "string") {
-    responseText = result.content;
-  }
-
-  if (!responseText) {
-    return availableFiles;
-  }
-
-  const jsonMatch = responseText.match(/\{[\s\S]*"selectedFiles"[\s\S]*\}/);
-  if (!jsonMatch) {
-    return availableFiles;
-  }
-
-  const parsed = JSON.parse(jsonMatch[0]) as { selectedFiles?: string[] };
-  if (!Array.isArray(parsed.selectedFiles) || parsed.selectedFiles.length === 0) {
-    return availableFiles;
-  }
-
-  return parsed.selectedFiles.filter((f) => availableFiles.includes(f));
 }
 
 export function loadSelectedTypeDefinitions(selectedFiles: string[]): string {
@@ -104,6 +79,52 @@ Complete Stack Auth SDK Type Definitions (Selected Files):
 These files show the available methods, types, and interfaces for the Stack SDK.
 ${fileContents.join('\n')}
   `.trim();
+}
+
+function extractUserPromptText(messages: Array<{ role: string, content: unknown }>): string {
+  const lastUserMessage = [...messages].reverse().find(m => m.role === "user");
+  if (typeof lastUserMessage?.content === "string") {
+    return lastUserMessage.content;
+  }
+  if (Array.isArray(lastUserMessage?.content)) {
+    const textPart = (lastUserMessage.content as Array<{ type: string, text?: string }>).find(c => c.type === "text");
+    return textPart?.text ?? "dashboard";
+  }
+  return "dashboard";
+}
+
+export async function buildDashboardMessages(
+  adminApp: StackAdminApp,
+  messages: Array<{ role: string, content: unknown }>,
+  currentSource?: string,
+): Promise<Array<{ role: string, content: string }>> {
+  const promptForFileSelection = extractUserPromptText(messages);
+  const selectedFiles = await selectRelevantFiles(promptForFileSelection, adminApp);
+  const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
+
+  const contextMessages: Array<{ role: string, content: string }> = [];
+
+  if (currentSource != null && currentSource.length > 0) {
+    contextMessages.push({
+      role: "user",
+      content: `Here is the current dashboard source code:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nHere are the type definitions:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}`,
+    });
+    contextMessages.push({
+      role: "assistant",
+      content: "I understand the current dashboard code, type definitions, and available UI components. What changes would you like to make?",
+    });
+  } else {
+    contextMessages.push({
+      role: "user",
+      content: `Here are the type definitions for the Stack SDK:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}`,
+    });
+    contextMessages.push({
+      role: "assistant",
+      content: "I have the type definitions and available UI components. What dashboard would you like me to create?",
+    });
+  }
+
+  return contextMessages;
 }
 
 export { BUNDLED_DASHBOARD_UI_TYPES };

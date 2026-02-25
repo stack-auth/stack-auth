@@ -1,3 +1,4 @@
+import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import {
   type ChatModelAdapter,
   type ExportedMessageRepository,
@@ -5,6 +6,7 @@ import {
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -102,21 +104,22 @@ export function createChatAdapter(
         if (abortSignal.aborted) {
           return {};
         }
-        throw error;
+        captureError("chat-adapter-email", error);
+        throw new Error("Failed to get AI response. Please try again.");
       }
     },
   };
 }
 
 export function createDashboardChatAdapter(
-  projectId: string,
+  adminApp: StackAdminApp,
   currentTsxSource: string,
   onToolCall: (toolCall: ToolCallContent) => void,
 ): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }) {
       try {
-        const formattedMessages = [];
+        const formattedMessages: Array<{ role: string, content: unknown }> = [];
         for (const msg of messages) {
           const textContent = msg.content.filter(c => !isToolCall(c));
           if (textContent.length > 0) {
@@ -124,22 +127,16 @@ export function createDashboardChatAdapter(
           }
         }
 
-        const hasExistingSource = currentTsxSource.length > 0;
-        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = hasExistingSource ? [
-          { role: "user", content: `Here is the current dashboard source:\n\`\`\`tsx\n${currentTsxSource}\n\`\`\`` },
-          { role: "assistant", content: "Got it. What would you like to change?" },
-        ] : [];
+        const contextMessages = await buildDashboardMessages(
+          adminApp,
+          formattedMessages,
+          currentTsxSource.length > 0 ? currentTsxSource : undefined,
+        );
 
-        const response = await fetch("/api/ai-call", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            systemPrompt: "create-dashboard",
-            tools: ["update-dashboard"],
-            messages: [...contextMessages, ...formattedMessages],
-          }),
-          signal: abortSignal,
+        const result = await adminApp.sendAiQuery({
+          systemPrompt: "create-dashboard",
+          tools: ["update-dashboard"],
+          messages: [...contextMessages, ...formattedMessages],
         });
 
         const content: ChatContent = Array.isArray(result.content) ? result.content : [];
@@ -161,64 +158,8 @@ export function createDashboardChatAdapter(
         if (abortSignal.aborted) {
           return {};
         }
-        throw error;
-      }
-    },
-  };
-}
-
-export function createDashboardChatAdapter(
-  projectId: string,
-  currentTsxSource: string,
-  onToolCall: (toolCall: ToolCallContent) => void,
-): ChatModelAdapter {
-  return {
-    async run({ messages, abortSignal }) {
-      try {
-        const formattedMessages = [];
-        for (const msg of messages) {
-          const textContent = msg.content.filter(c => !isToolCall(c));
-          if (textContent.length > 0) {
-            formattedMessages.push({ role: msg.role, content: textContent });
-          }
-        }
-
-        const hasExistingSource = currentTsxSource.length > 0;
-        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = hasExistingSource ? [
-          { role: "user", content: `Here is the current dashboard source:\n\`\`\`tsx\n${currentTsxSource}\n\`\`\`` },
-          { role: "assistant", content: "Got it. What would you like to change?" },
-        ] : [];
-
-        const response = await fetch("/api/ai-call", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            systemPrompt: "create-dashboard",
-            tools: ["update-dashboard"],
-            messages: [...contextMessages, ...formattedMessages],
-          }),
-          signal: abortSignal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`AI request failed: ${response.status}`);
-        }
-
-        const result = await response.json() as { content?: ChatContent };
-        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
-
-        const toolCall = content.find(isToolCall);
-        if (toolCall) {
-          onToolCall(toolCall);
-        }
-
-        return { content };
-      } catch (error) {
-        if (abortSignal.aborted) {
-          return {};
-        }
-        throw error;
+        captureError("chat-adapter-dashboard", error);
+        throw new Error("Failed to get AI response. Please try again.");
       }
     },
   };
