@@ -21,7 +21,7 @@ const MAX_RENDER_BATCH = 50;
 
 const MAX_SEND_ATTEMPTS = 5;
 
-const SEND_RETRY_BACKOFF_BASE_MS = 2000;
+const SEND_RETRY_BACKOFF_BASE_MS = 20000;
 
 const calculateRetryBackoffMs = (attemptCount: number): number => {
   return (Math.random() + 0.5) * SEND_RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
