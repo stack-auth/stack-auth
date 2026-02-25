@@ -43,7 +43,9 @@ export default function PageClient() {
   const dashboardId = useDashboardId();
   const [hasEverExisted, setHasEverExisted] = useState(false);
 
-  const dashboard = config.customDashboards[dashboardId];
+  const dashboard = config.customDashboards[dashboardId] as
+    | typeof config.customDashboards[string]
+    | undefined;
 
   useEffect(() => {
     if (dashboard) {
