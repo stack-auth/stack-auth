@@ -1,7 +1,7 @@
 CREATE TYPE "ManagedEmailDomainStatus" AS ENUM ('PENDING_DNS', 'PENDING_VERIFICATION', 'VERIFIED', 'APPLIED', 'FAILED');
 
 CREATE TABLE "ManagedEmailDomain" (
-  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "id" UUID NOT NULL,
   "tenancyId" UUID NOT NULL,
   "projectId" TEXT NOT NULL,
   "branchId" TEXT NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE "ManagedEmailDomain" (
   "appliedAt" TIMESTAMP(3),
   "lastWebhookAt" TIMESTAMP(3),
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
 
   CONSTRAINT "ManagedEmailDomain_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "ManagedEmailDomain_tenancyId_fkey" FOREIGN KEY ("tenancyId") REFERENCES "Tenancy"("id") ON DELETE CASCADE ON UPDATE CASCADE

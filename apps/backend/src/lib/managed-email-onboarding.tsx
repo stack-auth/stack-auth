@@ -57,11 +57,9 @@ export type ManagedEmailListItem = {
 
 function shouldUseMockManagedEmailOnboarding() {
   const nodeEnvironment = getNodeEnvironment();
-  if (nodeEnvironment === "development") {
+  if (nodeEnvironment === "development" || nodeEnvironment === "test") {
     const resendApiKey = getEnvVariable("STACK_RESEND_API_KEY", "");
-    const dnsimpleApiToken = getEnvVariable("STACK_DNSIMPLE_API_TOKEN", "");
-    const dnsimpleAccountId = getEnvVariable("STACK_DNSIMPLE_ACCOUNT_ID", "");
-    if (resendApiKey.startsWith("mock_") || dnsimpleApiToken.length === 0 || dnsimpleAccountId.length === 0) {
+    if (resendApiKey === "mock_resend_api_key") {
       return true;
     }
   }
