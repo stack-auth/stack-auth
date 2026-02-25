@@ -75,16 +75,6 @@ export function SentEmailsView({ filterFn }: SentEmailsViewProps) {
           <div className="py-1">
             <div className="mb-2 text-sm text-center">
               <span className="font-medium">{filtered.length} email{filtered.length !== 1 ? "s" : ""}</span>
-              {" — "}
-              {stats.sent > 0 && <span className="text-green-600">{stats.sent} delivered</span>}
-              {stats.sent > 0 && (stats.inProgress > 0 || stats.bounced > 0 || stats.spam > 0 || stats.errors > 0) && ", "}
-              {stats.inProgress > 0 && <span className="text-muted-foreground">{stats.inProgress} pending</span>}
-              {stats.inProgress > 0 && (stats.bounced > 0 || stats.spam > 0 || stats.errors > 0) && ", "}
-              {(stats.bounced > 0 || stats.spam > 0 || stats.errors > 0) && (
-                <span className="text-red-600">
-                  {stats.bounced + stats.spam + stats.errors} issue{stats.bounced + stats.spam + stats.errors !== 1 ? "s" : ""}
-                </span>
-              )}
             </div>
             <StatsBar data={stats} />
           </div>
