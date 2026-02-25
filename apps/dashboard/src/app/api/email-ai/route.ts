@@ -84,7 +84,7 @@ export async function POST(req: Request) {
         "content-type": "application/json",
         "x-stack-access-type": "admin",
         "x-stack-project-id": projectId,
-        "x-stack-admin-access-token": accessToken, //TODO not entirely sure
+        "x-stack-admin-access-token": accessToken,
       },
       body: JSON.stringify({ quality, speed, systemPrompt, tools, messages }),
     }
