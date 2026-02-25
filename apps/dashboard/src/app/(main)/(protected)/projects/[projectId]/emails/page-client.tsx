@@ -340,7 +340,7 @@ function ManagedEmailSetupDialog(props: {
       title="Managed Email Setup"
       formSchema={managedEmailSetupSchema}
       defaultValues={{ subdomain: "", senderLocalPart: "updates" }}
-      okButton={{ label: "Start Setup" }}
+      okButton={setupState ? false : { label: "Start Setup" }}
       cancelButton
       onSubmit={async (values) => {
         const setupResult = await stackAdminApp.setupManagedEmailProvider({
@@ -360,21 +360,25 @@ function ManagedEmailSetupDialog(props: {
       }}
       render={(form) => (
         <>
-          <InputField
-            label="Managed subdomain"
-            name="subdomain"
-            control={form.control}
-            type="text"
-            placeholder="emails.example.com"
-            required
-          />
-          <InputField
-            label="Sender local part"
-            name="senderLocalPart"
-            control={form.control}
-            type="text"
-            required
-          />
+          {!setupState && (
+            <>
+              <InputField
+                label="Managed subdomain"
+                name="subdomain"
+                control={form.control}
+                type="text"
+                placeholder="emails.example.com"
+                required
+              />
+              <InputField
+                label="Sender local part"
+                name="senderLocalPart"
+                control={form.control}
+                type="text"
+                required
+              />
+            </>
+          )}
           {setupState && (
             <Alert className="bg-blue-500/5 border-blue-500/20">
               <AlertTitle>Delegate your subdomain with these NS records</AlertTitle>
@@ -414,25 +418,23 @@ function ManagedEmailSetupDialog(props: {
                   await stackAdminApp.applyManagedEmailProvider({
                     domainId: setupState.domainId,
                   });
-                  setSetupState({
-                    ...setupState,
-                    status: "applied",
-                  });
-                  await refreshDomains();
+                  setOpen(false);
                 })}
               >
                 Use This Domain
               </Button>
             </div>
           )}
-          <div className="space-y-2">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Tracked managed domains</Typography>
-            {loadingDomains ? (
-              <Typography variant="secondary" className="text-sm">Loading managed domains...</Typography>
-            ) : domains.length === 0 ? (
-              <Typography variant="secondary" className="text-sm">No managed domains tracked yet.</Typography>
-            ) : (
-              domains.map((domain) => (
+          {(() => {
+            const visibleDomains = setupState ? domains.filter((d) => d.domainId === setupState.domainId) : domains;
+            return <div className="space-y-2">
+              <Typography variant="secondary" className="text-xs uppercase tracking-wider">Tracked managed domains</Typography>
+              {loadingDomains ? (
+                <Typography variant="secondary" className="text-sm">Loading managed domains...</Typography>
+              ) : visibleDomains.length === 0 ? (
+                <Typography variant="secondary" className="text-sm">No managed domains tracked yet.</Typography>
+              ) : (
+              visibleDomains.map((domain) => (
                 <Alert key={domain.domainId} className="bg-slate-500/5 border-slate-500/20">
                   <AlertTitle className="font-mono text-xs">{domain.senderLocalPart}@{domain.subdomain}</AlertTitle>
                   <AlertDescription className="mt-1 flex items-center justify-between gap-2">
@@ -453,8 +455,9 @@ function ManagedEmailSetupDialog(props: {
                   </AlertDescription>
                 </Alert>
               ))
-            )}
-          </div>
+              )}
+            </div>;
+          })()}
           {error && <Alert variant="destructive">{error}</Alert>}
         </>
       )}
