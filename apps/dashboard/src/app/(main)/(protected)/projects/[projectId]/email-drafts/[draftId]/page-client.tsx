@@ -10,13 +10,11 @@ import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/comp
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
-  const { projectId } = useParams() as { projectId: string };
   const { setNeedConfirm } = useRouterConfirm();
   const [saveAlert, setSaveAlert] = useState<{
     variant: "destructive" | "success",
@@ -164,7 +162,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
               chatComponent={
                 <AssistantChat
                   historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-                  chatAdapter={createChatAdapter(projectId, draftId, "email-draft", handleToolUpdate, () => currentCode)}
+                  chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate, () => currentCode)}
                   toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                   useOffWhiteLightMode
                 />
