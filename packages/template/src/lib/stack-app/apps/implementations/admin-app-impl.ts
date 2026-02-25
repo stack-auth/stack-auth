@@ -641,9 +641,11 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   }
 
   async applyManagedEmailProvider(options: { domainId: string }): Promise<{ status: "applied" }> {
-    return await this._interface.applyManagedEmailProvider({
+    const result = await this._interface.applyManagedEmailProvider({
       domain_id: options.domainId,
     });
+    await this._refreshProjectConfig();
+    return result;
   }
 
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {

@@ -131,34 +131,20 @@ export async function createManagedEmailDomain(options: {
   nameServerRecords: string[],
   status: ManagedEmailDomainStatus,
 }): Promise<ManagedEmailDomain> {
-  const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
-    INSERT INTO "ManagedEmailDomain" (
-      "tenancyId",
-      "projectId",
-      "branchId",
-      "subdomain",
-      "senderLocalPart",
-      "resendDomainId",
-      "nameServerRecords",
-      "status",
-      "isActive"
-    ) VALUES (
-      ${options.tenancyId},
-      ${options.projectId},
-      ${options.branchId},
-      ${options.subdomain},
-      ${options.senderLocalPart},
-      ${options.resendDomainId},
-      ${JSON.stringify(options.nameServerRecords)}::jsonb,
-      ${statusToDbStatus(options.status)}::"ManagedEmailDomainStatus",
-      true
-    )
-    RETURNING *
-  `);
-  if (rows.length === 0) {
-    throw new StackAssertionError("Failed to insert ManagedEmailDomain row");
-  }
-  return mapRow(rows[0]!);
+  const row = await globalPrismaClient.managedEmailDomain.create({
+    data: {
+      tenancyId: options.tenancyId,
+      projectId: options.projectId,
+      branchId: options.branchId,
+      subdomain: options.subdomain,
+      senderLocalPart: options.senderLocalPart,
+      resendDomainId: options.resendDomainId,
+      nameServerRecords: options.nameServerRecords,
+      status: statusToDbStatus(options.status),
+      isActive: true
+    }
+  });
+  return mapRow(row);
 }
 
 export async function updateManagedEmailDomainWebhookStatus(options: {
