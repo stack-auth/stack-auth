@@ -57,7 +57,11 @@ export function TableView<TData, TValue>(props: {
               <TableRow key={headerGroup.id} >
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      style={header.column.columnDef.size != null ? { width: header.getSize() } : undefined}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -84,7 +88,10 @@ export function TableView<TData, TValue>(props: {
                   } : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      style={cell.column.columnDef.size != null ? { width: cell.column.getSize() } : undefined}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()

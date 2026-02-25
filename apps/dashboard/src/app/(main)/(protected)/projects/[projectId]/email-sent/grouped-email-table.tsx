@@ -4,7 +4,7 @@ import { DesignDataTable } from "@/components/design-components/table";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
@@ -145,23 +145,23 @@ const groupedTableColumns: ColumnDef<GroupedEmailRow>[] = [
     accessorKey: "displayName",
     header: "Template/Draft",
     cell: ({ row }) => (
-      <div className="font-medium">{row.original.displayName}</div>
+      <span className="font-medium">{row.original.displayName}</span>
     ),
   },
   {
     accessorKey: "recipientCount",
     header: "Recipients",
+    size: 100,
     cell: ({ row }) => (
-      <div className="text-sm">{row.original.recipientCount.toLocaleString()}</div>
+      <span className="text-sm tabular-nums">{row.original.recipientCount.toLocaleString()}</span>
     ),
   },
   {
     accessorKey: "stats",
     header: "Stats",
+    size: 200,
     cell: ({ row }) => (
-      <div className="w-48">
-        <StatsBar data={row.original.stats} />
-      </div>
+      <StatsBar data={row.original.stats} />
     ),
   },
 ];
@@ -195,7 +195,7 @@ export function GroupedEmailTable() {
 
   // Fetch all emails
   useEffect(() => {
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
         // Fetch all emails - TODO: Add pagination if needed for large datasets
@@ -229,13 +229,12 @@ export function GroupedEmailTable() {
       columns={groupedTableColumns}
       defaultSorting={[{ id: "recipientCount", desc: true }]}
       onRowClick={(row) => {
-        // Navigate to list view filtered by this template/draft
         if (row.sourceType === "draft" && row.sourceId) {
-          router.push(`email-sent?draftId=${row.sourceId}`);
+          router.push(`email-drafts/${row.sourceId}?stage=sent`);
         } else if (row.sourceType === "template" && row.sourceId) {
-          router.push(`email-sent?templateId=${row.sourceId}`);
+          router.push(`email-templates/${row.sourceId}/sent`);
         } else {
-          router.push(`email-sent?noSource=true`);
+          router.push(`email-sent/no-source`);
         }
       }}
     />

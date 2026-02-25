@@ -195,17 +195,23 @@ export function DomainReputationCard() {
 
   return (
     <DesignCard
-      title="Domain Reputation"
-      subtitle="Warming up a domain & email server takes time, so Stack Auth automatically buffers your emails over time."
-      icon={Gauge}
       gradient="default"
       glassmorphic
-      className="min-h-[400px] w-72"
+      className="w-72"
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+          <Gauge className="h-3 w-3 text-foreground/70 dark:text-muted-foreground" />
+        </div>
+        <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+          Domain Reputation
+        </span>
+      </div>
+      <div className="flex flex-col gap-4">
         {/* Email Capacity */}
         <div>
-          <Typography className="text-base font-medium mb-2">Email Capacity</Typography>
+          <Typography className="text-sm font-medium mb-1">Email Capacity</Typography>
+          <Typography variant="secondary" className="text-[11px] mb-1.5">Stack Auth automatically buffers your emails as your domain warms up.</Typography>
           <ProgressBar
             value={hourlyUsed}
             max={hourlyCapacity}
@@ -234,8 +240,8 @@ export function DomainReputationCard() {
 
         {/* Bounce Rate */}
         <div>
-          <div className="flex items-center gap-1 mb-2">
-            <Typography className="text-base font-medium">Bounce Rate</Typography>
+          <div className="flex items-center gap-1 mb-1.5">
+            <Typography className="text-sm font-medium">Bounce Rate</Typography>
             <SimpleTooltip
               type="info"
               tooltip="Percentage of emails that couldn't be delivered. High bounce rates can hurt your sender reputation and deliverability."
@@ -251,8 +257,8 @@ export function DomainReputationCard() {
 
         {/* Spam Complaint */}
         <div>
-          <div className="flex items-center gap-1 mb-2">
-            <Typography className="text-base font-medium">Spam Complaint</Typography>
+          <div className="flex items-center gap-1 mb-1.5">
+            <Typography className="text-sm font-medium">Spam Complaint</Typography>
             <SimpleTooltip
               type="info"
               tooltip="Percentage of recipients who marked your emails as spam. Keep this low to maintain good deliverability."

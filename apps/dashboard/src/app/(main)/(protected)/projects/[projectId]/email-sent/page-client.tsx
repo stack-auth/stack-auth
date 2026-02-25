@@ -1,82 +1,22 @@
 "use client";
 
-import { DesignBadge, DesignBadgeColor } from "@/components/design-components/badge";
-import { DesignButton } from "@/components/design-components/button";
+import { DesignBadge } from "@/components/design-components/badge";
 import { DesignCard } from "@/components/design-components/card";
 import { DesignPillToggle } from "@/components/design-components/pill-toggle";
 import { DesignDataTable } from "@/components/design-components/table";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
-import { Envelope, X } from "@phosphor-icons/react";
-import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Envelope } from "@phosphor-icons/react";
+import { AdminEmailOutbox } from "@stackframe/stack";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
+import { STATUS_LABELS, getStatusBadgeColor } from "./email-status-utils";
 import { GroupedEmailTable } from "./grouped-email-table";
-
-// Status labels for display
-const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
-  "paused": "Paused",
-  "preparing": "Preparing",
-  "rendering": "Rendering",
-  "render-error": "Render Error",
-  "scheduled": "Scheduled",
-  "queued": "Queued",
-  "sending": "Sending",
-  "server-error": "Server Error",
-  "skipped": "Skipped",
-  "bounced": "Bounced",
-  "delivery-delayed": "Delivery Delayed",
-  "sent": "Sent",
-  "opened": "Opened",
-  "clicked": "Clicked",
-  "marked-as-spam": "Marked as Spam",
-};
-
-// Badge colors matching schema colors:
-// 🟢 sent → green
-// 🔵 opened → blue
-// 🟣 clicked → purple
-// 🟡 marked-as-spam → orange (warning)
-// 🔴 bounced, server-error, render-error → red
-// 🔵 paused, preparing, rendering, scheduled, queued, sending, delivery-delayed, skipped → cyan (neutral/in-progress)
-function getStatusBadgeColor(status: AdminEmailOutboxStatus): DesignBadgeColor {
-  switch (status) {
-    case "sent": {
-      return "green";
-    }
-    case "opened": {
-      return "blue";
-    }
-    case "clicked": {
-      return "purple";
-    }
-    case "bounced":
-    case "server-error":
-    case "render-error": {
-      return "red";
-    }
-    case "marked-as-spam": {
-      return "orange";
-    }
-    case "paused":
-    case "skipped":
-    case "preparing":
-    case "rendering":
-    case "scheduled":
-    case "queued":
-    case "sending":
-    case "delivery-delayed":
-    default: {
-      return "cyan";
-    }
-  }
-}
 
 function getRecipientDisplay(email: AdminEmailOutbox): string {
   const to = email.to;
@@ -145,20 +85,14 @@ const emailTableColumns: ColumnDef<AdminEmailOutbox>[] = [
   },
 ];
 
-type EmailFilter = {
-  draftId?: string,
-  templateId?: string,
-  noSource?: boolean,
-};
-
-function EmailSendDataTable({ filter }: { filter?: EmailFilter }) {
+function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
   const [emailLogs, setEmailLogs] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
         const result = await stackAdminApp.listOutboxEmails();
@@ -168,30 +102,6 @@ function EmailSendDataTable({ filter }: { filter?: EmailFilter }) {
       }
     });
   }, [stackAdminApp]);
-
-  // Apply filter if provided
-  const filteredEmails = useMemo(() => {
-    if (!filter) {
-      return emailLogs;
-    }
-
-    return emailLogs.filter((email) => {
-      if (filter.draftId) {
-        return email.emailDraftId === filter.draftId;
-      }
-      if (filter.templateId) {
-        return email.emailProgrammaticCallTemplateId === filter.templateId;
-      }
-      if (filter.noSource) {
-        // Emails without template or draft
-        return (
-          (email.createdWith === "programmatic-call" && !email.emailProgrammaticCallTemplateId) ||
-          (email.createdWith === "draft" && !email.emailDraftId)
-        );
-      }
-      return true;
-    });
-  }, [emailLogs, filter]);
 
   if (loading) {
     return (
@@ -204,7 +114,7 @@ function EmailSendDataTable({ filter }: { filter?: EmailFilter }) {
 
   return (
     <DesignDataTable
-      data={filteredEmails}
+      data={emailLogs}
       defaultColumnFilters={[]}
       columns={emailTableColumns}
       defaultSorting={[{ id: "scheduledAt", desc: true }]}
@@ -216,45 +126,7 @@ function EmailSendDataTable({ filter }: { filter?: EmailFilter }) {
 }
 
 export default function PageClient() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-
-  // Check for filter params - if present, show list view with filter
-  const draftId = searchParams.get("draftId");
-  const templateId = searchParams.get("templateId");
-  const noSource = searchParams.get("noSource") === "true";
-
-  const hasFilter = draftId || templateId || noSource;
-  const filter: EmailFilter | undefined = hasFilter ? {
-    draftId: draftId ?? undefined,
-    templateId: templateId ?? undefined,
-    noSource: noSource || undefined,
-  } : undefined;
-
-  // Get display name for the filter
-  const stackAdminApp = useAdminApp();
-  const drafts = stackAdminApp.useEmailDrafts();
-  const templates = stackAdminApp.useEmailTemplates();
-
-  const filterDisplayName = useMemo(() => {
-    if (draftId) {
-      const draft = drafts.find((d) => d.id === draftId);
-      return draft?.displayName ?? `Draft (${draftId.slice(0, 8)}...)`;
-    }
-    if (templateId) {
-      const template = templates.find((t) => t.id === templateId);
-      return template?.displayName ?? `Template (${templateId.slice(0, 8)}...)`;
-    }
-    if (noSource) {
-      return "(No template/draft)";
-    }
-    return null;
-  }, [draftId, templateId, noSource, drafts, templates]);
-
-  const clearFilter = () => {
-    router.push("email-sent");
-  };
 
   return (
     <AppEnabledGuard appId="emails">
@@ -263,24 +135,22 @@ export default function PageClient() {
         description="View email logs and domain reputation"
       >
         <div className="flex gap-6">
-          {/* Left side: Email Log with toggle above right corner */}
+          {/* Left side: Email Log with toggle inside card */}
           <div className="flex-1 flex flex-col gap-4">
-            <div className="flex justify-between items-center">
-              {/* Filter indicator */}
-              {hasFilter && filterDisplayName ? (
+            <DesignCard
+              contentClassName="p-3"
+              gradient="default"
+              glassmorphic
+            >
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Typography className="text-sm text-muted-foreground">
-                    Filtering by: <span className="font-medium text-foreground">{filterDisplayName}</span>
-                  </Typography>
-                  <DesignButton variant="ghost" size="sm" onClick={clearFilter}>
-                    <X className="h-4 w-4" />
-                  </DesignButton>
+                  <div className="p-1 rounded-md bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                    <Envelope className="h-3 w-3 text-foreground/70 dark:text-muted-foreground" />
+                  </div>
+                  <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                    Email Log
+                  </span>
                 </div>
-              ) : (
-                <div />
-              )}
-              {/* Toggle - only show when not filtering */}
-              {!hasFilter && (
                 <DesignPillToggle
                   options={[...VIEW_MODE_OPTIONS]}
                   selected={viewMode}
@@ -288,21 +158,8 @@ export default function PageClient() {
                   size="sm"
                   gradient="default"
                 />
-              )}
-            </div>
-            <DesignCard
-              title="Email Log"
-              subtitle={hasFilter ? `Emails from ${filterDisplayName}` : "Manage email sending history"}
-              icon={Envelope}
-              gradient="default"
-              glassmorphic
-            >
-              {/* Show list view if filtering OR if viewMode is list, otherwise show grouped */}
-              {hasFilter || viewMode === "list" ? (
-                <EmailSendDataTable filter={filter} />
-              ) : (
-                <GroupedEmailTable />
-              )}
+              </div>
+              {viewMode === "list" ? <EmailSendDataTable /> : <GroupedEmailTable />}
             </DesignCard>
           </div>
 
