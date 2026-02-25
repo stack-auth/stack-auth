@@ -727,9 +727,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.17.2
         version: 1.17.2
-      '@openrouter/ai-sdk-provider':
-        specifier: 0.7.5
-        version: 0.7.5(ai@6.0.81(zod@3.25.76))(zod@3.25.76)
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -4889,13 +4886,6 @@ packages:
 
   '@one-ini/wasm@0.1.1':
     resolution: {integrity: sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw==}
-
-  '@openrouter/ai-sdk-provider@0.7.5':
-    resolution: {integrity: sha512-zm8vBhQ+GhxN03Y41xviB0nDa20uN77QnMXsIwDeJPqsul8+KycrYFxY4ulXpumeKxjKyOhfyA7a7CJpcYq2ng==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      ai: ^4.3.17
-      zod: ^3.25.34
 
   '@openrouter/ai-sdk-provider@2.2.3':
     resolution: {integrity: sha512-NovC+BaCfEeJwhToDrs8JeDYXXlJdEyz7lcxkjtyePSE4eoAKik872SyDK0MzXKcz8MRkv7XlNhPI6zz4TQp0g==}
@@ -19072,13 +19062,6 @@ snapshots:
   '@nolyfill/is-core-module@1.0.39': {}
 
   '@one-ini/wasm@0.1.1': {}
-
-  '@openrouter/ai-sdk-provider@0.7.5(ai@6.0.81(zod@3.25.76))(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider': 1.1.3
-      '@ai-sdk/provider-utils': 2.2.8(zod@3.25.76)
-      ai: 6.0.81(zod@3.25.76)
-      zod: 3.25.76
 
   '@openrouter/ai-sdk-provider@2.2.3(ai@6.0.81(zod@3.25.76))(zod@3.25.76)':
     dependencies:
