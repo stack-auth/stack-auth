@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
   CaretRightIcon,
+  ChartBarIcon,
   CubeIcon,
   GearIcon,
   GlobeIcon,
@@ -98,6 +99,14 @@ const overviewItem: Item = {
   regex: /^\/projects\/[^\/]+\/?$/,
   icon: GlobeIcon,
   type: 'item'
+};
+
+const dashboardsItem: Item = {
+  name: "Dashboards",
+  href: "/dashboards",
+  regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
+  icon: ChartBarIcon,
+  type: 'item',
 };
 
 function NavItem({
@@ -449,6 +458,12 @@ function SidebarContent({
             href={`/projects/${projectId}${overviewItem.href}`}
             isCollapsed={isCollapsed}
           />
+          <NavItem
+            item={dashboardsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${dashboardsItem.href}`}
+            isCollapsed={isCollapsed}
+          />
         </div>
 
         <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>
@@ -559,6 +574,9 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const projectId = useProjectId();
+  const pathname = usePathname();
+  // Custom dashboard detail pages have a transparent iframe background; the companion should match.
+  const isCustomDashboardPage = /\/dashboards\/[^/]+/.test(pathname);
 
   const toggleCollapsed = useCallback(() => {
     setIsCollapsed(prev => !prev);
@@ -682,7 +700,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
           {/* Stack Companion - overlay with reserved content gutter */}
           <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
-            <StackCompanion className="pointer-events-auto" />
+            <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
           </div>
         </div>
       </div>

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { DotsThree } from "@phosphor-icons/react";
-import { DesignButton } from "./button";
+import { DesignButton } from "@stackframe/dashboard-ui-components";
 
 type DesignMenuTrigger = "button" | "icon";
 type DesignMenuItemVariant = "default" | "destructive";

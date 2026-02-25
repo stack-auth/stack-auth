@@ -12,6 +12,7 @@ import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/
 import Image from "next/image";
 import React, { memo, useEffect, useMemo } from "react";
 import { AIChatPreview } from "./commands/ask-ai";
+import { CreateDashboardPreview } from "./commands/create-dashboard/create-dashboard-preview";
 import { RunQueryPreview } from "./commands/run-query";
 
 export type CmdKPreviewProps = {
@@ -25,43 +26,13 @@ export type CmdKPreviewProps = {
   registerNestedCommands: (commands: CmdKCommand[]) => void,
   /** Navigate into the nested column (call after registering commands) */
   navigateToNested: () => void,
+  /** Close the command center dialog */
+  onClose: () => void,
   /** Current nesting depth (0 = first preview) */
   depth: number,
   /** Current pathname for checking active state */
   pathname: string,
 };
-
-// Create Dashboard Preview Component - shows a TODO message for now
-const CreateDashboardPreview = memo(function CreateDashboardPreview({
-  query,
-}: CmdKPreviewProps) {
-  return (
-    <div className="flex flex-col h-full w-full items-center justify-center p-6">
-      <div className="flex flex-col items-center gap-4 max-w-md text-center">
-        <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 flex items-center justify-center">
-          <LayoutIcon className="h-8 w-8 text-cyan-500" />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-foreground mb-2">Create Dashboard</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Generate custom dashboards for your users.
-          </p>
-        </div>
-        <div className="w-full p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20">
-          <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium mb-2">Your query:</p>
-          <p className="text-sm text-foreground italic">&ldquo;{query}&rdquo;</p>
-        </div>
-        <div className="mt-4 p-4 rounded-xl bg-muted/50 border border-border">
-          <p className="text-xs text-muted-foreground">
-            🚧 <span className="font-medium">Coming Soon</span> — This feature is under development.
-            Soon you&apos;ll be able to create custom dashboards like &ldquo;analytics overview&rdquo;,
-            &ldquo;user management panel&rdquo;, or &ldquo;team activity feed&rdquo;.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-});
 
 // Available App Preview Component - shows app store page in preview panel
 const AvailableAppPreview = memo(function AvailableAppPreview({

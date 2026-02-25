@@ -1,7 +1,7 @@
 "use client";
 
 import Loading from "@/app/loading";
-import { CursorBlastEffect } from "@/components/design-components/cursor-blast-effect";
+import { CursorBlastEffect } from "@stackframe/dashboard-ui-components";
 import { ConfigUpdateDialogProvider } from "@/lib/config-update";
 import { getPublicEnvVar } from '@/lib/env';
 import { useStackApp, useUser } from "@stackframe/stack";

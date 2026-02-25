@@ -1,7 +1,7 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { Card } from "@stackframe/stack-ui";
+import { cn } from "@stackframe/stack-ui";
 import React from "react";
 
 // ─── Card nesting context ────────────────────────────────────────────────────

@@ -600,6 +600,15 @@ export const emailTemplateListSchema = yupRecord(
   })
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
 
+// Custom dashboards
+export const customDashboardsSchema = yupRecord(
+  yupString().uuid(),
+  yupObject({
+    displayName: yupString().meta({ openapiField: { description: 'Custom dashboard name', exampleValue: 'User Growth Dashboard' } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: 'Custom dashboard source code tsx component' } }).defined(),
+  })
+).meta({ openapiField: { description: 'Record of custom dashboard IDs to their display name and source code' } });
+
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
 const validateHasAtLeastOneSupportedCurrency = (value: Record<string, unknown> | null, context: any) => {

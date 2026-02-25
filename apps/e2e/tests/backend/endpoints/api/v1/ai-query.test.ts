@@ -293,7 +293,7 @@ describeWithAi("AI Query Endpoint - Tools", () => {
     "create-email-theme",
     "create-email-template",
     "create-email-draft",
-    "create-dashboard",
+    "update-dashboard",
   ];
 
   for (const tool of validTools) {
@@ -322,7 +322,7 @@ describeWithAi("AI Query Endpoint - Tools", () => {
       body: {
         quality: "dumb",
         speed: "fast",
-        tools: ["docs", "create-email-theme", "create-dashboard"],
+        tools: ["docs", "create-email-theme", "update-dashboard"],
         systemPrompt: "command-center-ask-ai",
         messages: [{ role: "user", content: "test" }],
       },

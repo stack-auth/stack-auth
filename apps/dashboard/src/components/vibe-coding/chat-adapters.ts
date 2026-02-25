@@ -1,10 +1,13 @@
+import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import {
   type ChatModelAdapter,
+  type ChatModelRunOptions,
   type ExportedMessageRepository,
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -13,7 +16,7 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
 };
 
 /**
- * Sanitizes AI-generated JSX/TSX code before it is applied to the email renderer.
+ * Sanitizes AI-generated JSX/TSX code before it is applied to the renderer.
  *
  * Handles four common model output issues:
  * 1. Markdown code fences (```tsx ... ```) wrapping the output despite instructions
@@ -47,39 +50,30 @@ function sanitizeGeneratedCode(code: string): string {
   return result;
 }
 
-const CONTEXT_MAP = {
-  "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
-  "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
-  "email-draft": { systemPrompt: "email-assistant-draft", tools: ["create-email-draft"] },
-} as const;
-
-export function createChatAdapter(
+function createGenericChatAdapter(options: {
   adminApp: StackAdminApp,
-  contextType: "email-theme" | "email-template" | "email-draft",
+  systemPrompt: string,
+  tools: string[],
+  buildContextMessages: (formattedMessages: Array<{ role: string, content: unknown }>) => Promise<Array<{ role: string, content: unknown }>>,
   onToolCall: (toolCall: ToolCallContent) => void,
-  getCurrentSource?: () => string,
-): ChatModelAdapter {
+  errorTag: string,
+}): ChatModelAdapter {
   return {
-    async run({ messages, abortSignal }) {
+    async run({ messages, abortSignal }: ChatModelRunOptions) {
       try {
-        const formattedMessages = [];
+        const formattedMessages: Array<{ role: string, content: unknown }> = [];
         for (const msg of messages) {
           const textContent = msg.content.filter(c => !isToolCall(c));
           if (textContent.length > 0) {
             formattedMessages.push({ role: msg.role, content: textContent });
           }
         }
-        const currentSource = getCurrentSource?.() ?? "";
-        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = currentSource ? [
-          { role: "user", content: `Here is the current source:\n\`\`\`tsx\n${currentSource}\n\`\`\`` },
-          { role: "assistant", content: "Got it. What would you like to change?" },
-        ] : [];
 
-        const { systemPrompt, tools } = CONTEXT_MAP[contextType];
+        const contextMessages = await options.buildContextMessages(formattedMessages);
 
-        const result = await adminApp.sendAiQuery({
-          systemPrompt,
-          tools: [...tools],
+        const result = await options.adminApp.sendAiQuery({
+          systemPrompt: options.systemPrompt,
+          tools: options.tools,
           messages: [...contextMessages, ...formattedMessages],
         });
 
@@ -94,7 +88,7 @@ export function createChatAdapter(
 
         const toolCall = sanitizedContent.find(isToolCall);
         if (toolCall) {
-          onToolCall(toolCall);
+          options.onToolCall(toolCall);
         }
 
         return { content: sanitizedContent };
@@ -102,10 +96,62 @@ export function createChatAdapter(
         if (abortSignal.aborted) {
           return {};
         }
-        throw error;
+        captureError(options.errorTag, error);
+        throw new Error("Failed to get AI response. Please try again.");
       }
     },
   };
+}
+
+const EMAIL_CONTEXT_MAP = {
+  "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
+  "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
+  "email-draft": { systemPrompt: "email-assistant-draft", tools: ["create-email-draft"] },
+} as const;
+
+export function createChatAdapter(
+  adminApp: StackAdminApp,
+  contextType: "email-theme" | "email-template" | "email-draft",
+  onToolCall: (toolCall: ToolCallContent) => void,
+  getCurrentSource?: () => string,
+): ChatModelAdapter {
+  const { systemPrompt, tools } = EMAIL_CONTEXT_MAP[contextType];
+  return createGenericChatAdapter({
+    adminApp,
+    systemPrompt,
+    tools: [...tools],
+    buildContextMessages: async () => {
+      const currentSource = getCurrentSource?.() ?? "";
+      if (!currentSource) return [];
+      return [
+        { role: "user", content: `Here is the current source:\n\`\`\`tsx\n${currentSource}\n\`\`\`` },
+        { role: "assistant", content: "Got it. What would you like to change?" },
+      ];
+    },
+    onToolCall,
+    errorTag: "chat-adapter-email",
+  });
+}
+
+export function createDashboardChatAdapter(
+  adminApp: StackAdminApp,
+  currentTsxSource: string,
+  onToolCall: (toolCall: ToolCallContent) => void,
+): ChatModelAdapter {
+  return createGenericChatAdapter({
+    adminApp,
+    systemPrompt: "create-dashboard",
+    tools: ["update-dashboard"],
+    buildContextMessages: async (formattedMessages) => {
+      return await buildDashboardMessages(
+        adminApp,
+        formattedMessages,
+        currentTsxSource.length > 0 ? currentTsxSource : undefined,
+      );
+    },
+    onToolCall,
+    errorTag: "chat-adapter-dashboard",
+  });
 }
 
 export function createHistoryAdapter(
