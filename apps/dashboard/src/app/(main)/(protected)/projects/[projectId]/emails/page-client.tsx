@@ -309,9 +309,12 @@ function ManagedEmailSetupDialog(props: {
 
   const refreshDomains = async () => {
     setLoadingDomains(true);
-    const result = await stackAdminApp.listManagedEmailDomains();
-    setDomains(result);
-    setLoadingDomains(false);
+    try {
+      const result = await stackAdminApp.listManagedEmailDomains();
+      setDomains(result);
+    } finally {
+      setLoadingDomains(false);
+    }
   };
 
   return (
