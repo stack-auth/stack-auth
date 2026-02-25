@@ -1,19 +1,20 @@
 import { trackVisit } from '2027-track';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 
 export default function middleware(request: NextRequest, event: NextFetchEvent) {
   const { pathname } = request.nextUrl;
 
   // Track AI agent visits
-  event.waitUntil(
-    trackVisit({
-      host: request.headers.get('host') || request.nextUrl.host,
-      path: pathname,
-      userAgent: request.headers.get('user-agent') || '',
-      accept: request.headers.get('accept') || '',
-      country: request.headers.get('x-vercel-ip-country') || undefined,
-    }).catch(() => {})
-  );
+  const trackPromise = trackVisit({
+    host: request.headers.get('host') ?? request.nextUrl.host,
+    path: pathname,
+    userAgent: request.headers.get('user-agent') ?? '',
+    accept: request.headers.get('accept') ?? '',
+    country: request.headers.get('x-vercel-ip-country') ?? undefined,
+  });
+  runAsynchronously(trackPromise);
+  event.waitUntil(trackPromise);
 
   // Redirect old concepts paths to new apps paths
   const movedToApps = [
@@ -40,7 +41,7 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
   const isApiPath = pathname === '/api' || pathname.startsWith('/api/');
 
   if ((isDocsPath || isApiPath) && !pathname.endsWith('.mdx')) {
-    const acceptHeader = request.headers.get('accept') || '';
+    const acceptHeader = request.headers.get('accept') ?? '';
 
     // Parse Accept header by splitting on commas to properly handle MIME type ordering
     const acceptTypes = acceptHeader.split(',').map((t: string) => t.trim().split(';')[0]);
