@@ -1027,3 +1027,138 @@ it("should not allow get, update, delete oauth providers with wrong user id and 
     }
   `);
 });
+
+it("should still list and read OAuth providers after the provider is disabled on the project", async ({ expect }) => {
+  const { adminAccessToken, createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  await Auth.fastSignUp();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
+  expect(providerConfig).toBeDefined();
+
+  const createResponse = await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_config_id: providerConfig.id,
+      account_id: "test_spotify_user_123",
+      email: "test@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+  expect(createResponse.status).toBe(201);
+  const providerId = createResponse.body.id;
+
+  // Disable the OAuth provider on the project
+  await Project.updateCurrent(adminAccessToken, {
+    config: {
+      oauth_providers: [],
+    },
+  });
+
+  // List should still work and include the provider
+  const listResponse = await niceBackendFetch("/api/v1/oauth-providers?user_id=me", {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": false,
+        "items": [
+          {
+            "account_id": "test_spotify_user_123",
+            "allow_connected_accounts": true,
+            "allow_sign_in": true,
+            "email": "test@example.com",
+            "id": "<stripped UUID>",
+            "provider_config_id": "spotify",
+            "type": "spotify",
+            "user_id": "<stripped UUID>",
+          },
+        ],
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Read should still work
+  const readResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${providerId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(readResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "account_id": "test_spotify_user_123",
+        "allow_connected_accounts": true,
+        "allow_sign_in": true,
+        "email": "test@example.com",
+        "id": "<stripped UUID>",
+        "provider_config_id": "spotify",
+        "type": "spotify",
+        "user_id": "<stripped UUID>",
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Delete should still work
+  const deleteResponse = await niceBackendFetch(`/api/v1/oauth-providers/me/${providerId}`, {
+    method: "DELETE",
+    accessType: "server",
+  });
+  expect(deleteResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // After delete, list should return empty
+  const listAfterDelete = await niceBackendFetch("/api/v1/oauth-providers?user_id=me", {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(listAfterDelete.body.items).toHaveLength(0);
+});
+
+it("should still return the user when their OAuth provider is disabled on the project", async ({ expect }) => {
+  const { adminAccessToken, createProjectResponse } = await createAndSwitchToOAuthEnabledProject();
+  const { userId } = await Auth.fastSignUp();
+
+  const providerConfig = createProjectResponse.body.config.oauth_providers.find((p: any) => p.provider_config_id === "spotify");
+  expect(providerConfig).toBeDefined();
+
+  await niceBackendFetch("/api/v1/oauth-providers", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      user_id: "me",
+      provider_config_id: providerConfig.id,
+      account_id: "test_spotify_user_123",
+      email: "test@example.com",
+      allow_sign_in: true,
+      allow_connected_accounts: true,
+    },
+  });
+
+  // Disable the OAuth provider on the project
+  await Project.updateCurrent(adminAccessToken, {
+    config: {
+      oauth_providers: [],
+    },
+  });
+
+  // User endpoint should still work
+  const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(userResponse.status).toBe(200);
+  expect(userResponse.body.id).toBe(userId);
+});

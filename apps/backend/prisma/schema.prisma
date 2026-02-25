@@ -1111,6 +1111,16 @@ model Subscription {
   @@unique([tenancyId, stripeSubscriptionId])
 }
 
+model ProductVersion {
+  tenancyId        String   @db.Uuid
+  productVersionId String
+  productId        String?
+  productJson      Json
+  createdAt        DateTime @default(now())
+
+  @@id([tenancyId, productVersionId])
+}
+
 model ItemQuantityChange {
   id           String       @default(uuid()) @db.Uuid
   tenancyId    String       @db.Uuid
