@@ -30,6 +30,8 @@ export type EmailOutboxUpdateOptions = {
   isPaused?: boolean,
   scheduledAtMillis?: number,
   cancel?: boolean,
+  tsxSource?: string,
+  themeId?: string | null,
 };
 
 import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";

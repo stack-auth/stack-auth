@@ -55,6 +55,8 @@ type AdminEmailOutboxBase = {
   id: string,
   createdAt: Date,
   updatedAt: Date,
+  tsxSource: string,
+  themeId: string | null,
   to: AdminEmailOutboxRecipient,
   scheduledAt: Date,
   // Source tracking for grouping emails by template/draft

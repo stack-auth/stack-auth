@@ -20,7 +20,7 @@ import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, Interna
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
-import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
+import { EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
@@ -806,6 +806,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: crud.id as string,
       createdAt: new Date(crud.created_at_millis),
       updatedAt: new Date(crud.updated_at_millis),
+      tsxSource: crud.tsx_source as string,
+      themeId: (crud.theme_id as string | null) ?? null,
       to,
       scheduledAt: new Date(crud.scheduled_at_millis),
       // Source tracking for grouping emails by template/draft
@@ -1029,11 +1031,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return this._emailOutboxCrudToAdmin(response);
   }
 
-  async updateOutboxEmail(id: string, options: { isPaused?: boolean, scheduledAtMillis?: number, cancel?: boolean }): Promise<AdminEmailOutbox> {
+  async updateOutboxEmail(id: string, options: EmailOutboxUpdateOptions): Promise<AdminEmailOutbox> {
     const response = await this._interface.updateOutboxEmail(id, {
       is_paused: options.isPaused,
       scheduled_at_millis: options.scheduledAtMillis,
       cancel: options.cancel,
+      tsx_source: options.tsxSource,
+      theme_id: options.themeId,
     });
     return this._emailOutboxCrudToAdmin(response);
   }

@@ -1,15 +1,19 @@
 "use client";
 
-import { SettingCard } from "@/components/settings";
-import { ActionDialog, Badge, Button, Input, Label, Spinner, Typography, useToast } from "@/components/ui";
+import EmailPreview from "@/components/email-preview";
+import { EmailThemeSelector } from "@/components/email-theme-selector";
+import { DesignButton } from "@/components/design-components/button";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Spinner, Typography, useToast } from "@/components/ui";
+import { CodeEditor, VibeCodeLayout, type ViewportMode } from "@/components/vibe-coding";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, Info, PauseIcon, PencilSimple, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useRouter } from "@/components/router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { EmailTimeline } from "./email-timeline";
 
 // Status labels for display
 const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
@@ -30,11 +34,19 @@ const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
   "marked-as-spam": "Marked as Spam",
 };
 
-// Editable statuses - emails in these states can be modified
-// TODO: Confirm whether 'queued' should be editable - it may be too late in the pipeline
+// Editable statuses - emails that haven't finished sending can be modified
 const EDITABLE_STATUSES: AdminEmailOutboxStatus[] = [
-  "paused", "preparing", "rendering", "render-error", "scheduled", "queued",
+  "paused", "preparing", "rendering", "render-error", "scheduled", "queued", "server-error",
 ];
+
+function toLocalDatetimeString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${d}T${h}:${min}`;
+}
 
 function isEditable(email: AdminEmailOutbox): boolean {
   return EDITABLE_STATUSES.includes(email.status);
@@ -172,20 +184,27 @@ export default function PageClient({ emailId }: { emailId: string }) {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [infoExpanded, setInfoExpanded] = useState(false);
 
   // Editable fields state
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [isPaused, setIsPaused] = useState(false);
 
+  // Code editor state
+  const [editMode, setEditMode] = useState(false);
+  const [currentCode, setCurrentCode] = useState<string>("");
+  const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(undefined);
+  const [viewport, setViewport] = useState<ViewportMode>("desktop");
+  const [autoPausedByEditor, setAutoPausedByEditor] = useState(false);
+
   // Fetch email on mount
   useEffect(() => {
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
         const fetchedEmail = await stackAdminApp.getOutboxEmail(emailId);
         setEmail(fetchedEmail);
-        // Initialize editable fields
-        setScheduledAt(fetchedEmail.scheduledAt.toISOString().slice(0, 16));
+        setScheduledAt(toLocalDatetimeString(fetchedEmail.scheduledAt));
         setIsPaused(isEmailPaused(fetchedEmail));
       } catch (error) {
         toast({
@@ -199,11 +218,11 @@ export default function PageClient({ emailId }: { emailId: string }) {
     });
   }, [emailId, stackAdminApp, toast]);
 
-  const refreshEmail = async () => {
+  const refreshEmail = useCallback(async () => {
     try {
       const fetchedEmail = await stackAdminApp.getOutboxEmail(emailId);
       setEmail(fetchedEmail);
-      setScheduledAt(fetchedEmail.scheduledAt.toISOString().slice(0, 16));
+      setScheduledAt(toLocalDatetimeString(fetchedEmail.scheduledAt));
       setIsPaused(isEmailPaused(fetchedEmail));
     } catch (error) {
       toast({
@@ -212,37 +231,65 @@ export default function PageClient({ emailId }: { emailId: string }) {
         variant: "destructive",
       });
     }
-  };
+  }, [emailId, stackAdminApp, toast]);
 
-  const handleSave = async () => {
+  const enterEditMode = useCallback(async () => {
+    if (!email) return;
+    setCurrentCode(email.tsxSource);
+    setSelectedThemeId(email.themeId ?? undefined);
+    if (!isEmailPaused(email)) {
+      await stackAdminApp.pauseOutboxEmail(email.id);
+      setAutoPausedByEditor(true);
+      await refreshEmail();
+    }
+    setEditMode(true);
+  }, [email, stackAdminApp, refreshEmail]);
+
+  const handleEditorSave = useCallback(async () => {
+    if (!email) return;
+    await stackAdminApp.updateOutboxEmail(email.id, {
+      tsxSource: currentCode,
+      themeId: selectedThemeId === false ? null : (selectedThemeId ?? null),
+    });
+    if (autoPausedByEditor) {
+      await stackAdminApp.unpauseOutboxEmail(email.id);
+      setAutoPausedByEditor(false);
+    }
+    setEditMode(false);
+    await refreshEmail();
+  }, [email, stackAdminApp, currentCode, selectedThemeId, autoPausedByEditor, refreshEmail]);
+
+  const handleEditorDiscard = useCallback(async () => {
+    if (!email) return;
+    if (autoPausedByEditor) {
+      await stackAdminApp.unpauseOutboxEmail(email.id);
+      setAutoPausedByEditor(false);
+    }
+    setEditMode(false);
+    await refreshEmail();
+  }, [email, stackAdminApp, autoPausedByEditor, refreshEmail]);
+
+  const scheduledAtDirty = email ? scheduledAt !== toLocalDatetimeString(email.scheduledAt) : false;
+
+  const handleScheduleSave = async () => {
     if (!email) return;
     setIsSaving(true);
     try {
-      const updates: { isPaused?: boolean, scheduledAtMillis?: number } = {};
-      if (isPaused !== isEmailPaused(email)) {
-        updates.isPaused = isPaused;
-      }
-      const newScheduledAt = new Date(scheduledAt);
-      if (newScheduledAt.getTime() !== email.scheduledAt.getTime()) {
-        updates.scheduledAtMillis = newScheduledAt.getTime();
-      }
-      if (Object.keys(updates).length > 0) {
-        await stackAdminApp.updateOutboxEmail(email.id, updates);
-        toast({
-          title: "Email updated",
-          description: "The email has been updated successfully.",
-          variant: "success",
-        });
-        await refreshEmail();
-      }
-    } catch (error) {
-      toast({
-        title: "Failed to update email",
-        description: String(error),
-        variant: "destructive",
+      await stackAdminApp.updateOutboxEmail(email.id, {
+        scheduledAtMillis: new Date(scheduledAt).getTime(),
       });
+      toast({ title: "Schedule updated", variant: "success" });
+      await refreshEmail();
+    } catch (error) {
+      toast({ title: "Failed to update schedule", description: String(error), variant: "destructive" });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleScheduleDiscard = () => {
+    if (email) {
+      setScheduledAt(toLocalDatetimeString(email.scheduledAt));
     }
   };
 
@@ -338,19 +385,24 @@ export default function PageClient({ emailId }: { emailId: string }) {
   return (
     <PageLayout
       title="Email Details"
-      description="View and manage this email"
       actions={
-        <Button variant="outline" onClick={() => router.back()}>
+        <DesignButton variant="outline" className="hover:bg-accent" onClick={() => router.back()}>
           <ArrowLeftIcon className="mr-2 h-4 w-4" />
           Back
-        </Button>
+        </DesignButton>
       }
     >
-      <div className="space-y-6">
-        {/* Status and Actions */}
-        <SettingCard title="Status" description="Current email status and actions">
+      <div className="flex gap-6">
+        {/* Left column: Vertical Timeline -- pushed down to align below status/scheduled rows */}
+        <div className="shrink-0 pt-24" style={{ width: 220 }}>
+          <EmailTimeline email={email} />
+        </div>
+
+        {/* Right column: Content + Controls */}
+        <div className="flex-1 min-w-0 space-y-5">
+          {/* Status row */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Badge variant={getStatusBadgeVariant(email.status)} className="text-sm">
                 {STATUS_LABELS[email.status]}
               </Badge>
@@ -362,210 +414,179 @@ export default function PageClient({ emailId }: { emailId: string }) {
               )}
             </div>
             <div className="flex items-center gap-2">
-              {canPause && (
-                <Button variant="outline" size="sm" onClick={handlePause}>
-                  <PauseIcon className="mr-2 h-4 w-4" />
+              {canPause && !editMode && (
+                <DesignButton variant="outline" size="sm" className="hover:bg-accent" onClick={handlePause}>
+                  <PauseIcon className="mr-1.5 h-3.5 w-3.5" />
                   Pause
-                </Button>
+                </DesignButton>
               )}
-              {canUnpause && (
-                <Button variant="outline" size="sm" onClick={handleUnpause}>
-                  <PlayIcon className="mr-2 h-4 w-4" />
+              {canUnpause && !editMode && (
+                <DesignButton variant="outline" size="sm" className="hover:bg-accent" onClick={handleUnpause}>
+                  <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
                   Unpause
-                </Button>
+                </DesignButton>
               )}
-              {canCancel && (
-                <Button variant="destructive" size="sm" onClick={() => setCancelDialogOpen(true)}>
-                  <XCircleIcon className="mr-2 h-4 w-4" />
+              {canCancel && !editMode && (
+                <DesignButton variant="destructive" size="sm" onClick={() => setCancelDialogOpen(true)}>
+                  <XCircleIcon className="mr-1.5 h-3.5 w-3.5" />
                   Cancel
-                </Button>
+                </DesignButton>
               )}
             </div>
           </div>
-        </SettingCard>
 
-        {/* Basic Info */}
-        <SettingCard title="Basic Information" description="Email metadata and scheduling">
-          <div className="grid grid-cols-2 gap-4">
-            <PropertyRow label="ID" value={<code className="text-xs bg-muted px-1 py-0.5 rounded break-all">{email.id}</code>} />
-            <PropertyRow label="Created" value={email.createdAt.toLocaleString()} />
-            <PropertyRow label="Updated" value={email.updatedAt.toLocaleString()} />
-            {editable ? (
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Scheduled At</Label>
-                <Input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className="h-8 text-sm"
+          {/* Scheduled At (with inline save/cancel) */}
+          {editable && !editMode ? (
+            <div className="flex items-center gap-3">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0 w-[100px]">Scheduled At</Label>
+              <Input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                className="h-8 text-sm max-w-[240px]"
+              />
+              {scheduledAtDirty && (
+                <div className="flex items-center gap-1.5">
+                  <DesignButton size="sm" variant="secondary" className="h-7 text-xs" onClick={handleScheduleDiscard}>Cancel</DesignButton>
+                  <DesignButton size="sm" className="h-7 text-xs" loading={isSaving} onClick={() => runAsynchronouslyWithAlert(handleScheduleSave)}>Save</DesignButton>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0 w-[100px]">Scheduled At</Label>
+              <Typography className="text-sm">{email.scheduledAt.toLocaleString()}</Typography>
+            </div>
+          )}
+
+          {/* Email Content */}
+          {editMode ? (
+            <>
+              <Alert>
+                <PauseIcon className="h-4 w-4" />
+                <AlertTitle>Email paused for editing</AlertTitle>
+                <AlertDescription>Save your changes or discard to resume.</AlertDescription>
+              </Alert>
+              <div className="h-[500px] rounded-xl overflow-hidden border border-border">
+                <VibeCodeLayout
+                  viewport={viewport}
+                  onViewportChange={setViewport}
+                  onSave={handleEditorSave}
+                  saveLabel="Save & resume"
+                  isDirty={currentCode !== email.tsxSource}
+                  editorTitle="Email Source"
+                  headerAction={
+                    <EmailThemeSelector
+                      selectedThemeId={selectedThemeId}
+                      onThemeChange={setSelectedThemeId}
+                    />
+                  }
+                  primaryAction={{
+                    label: "Discard",
+                    onClick: handleEditorDiscard,
+                    disabled: false,
+                  }}
+                  previewComponent={
+                    <EmailPreview
+                      themeId={selectedThemeId}
+                      templateTsxSource={currentCode}
+                      viewport={viewport === "desktop" ? undefined : (viewport === "tablet" ? { id: "tablet", name: "Tablet", width: 820, height: 1180, type: "tablet" } : { id: "phone", name: "Phone", width: 390, height: 844, type: "phone" })}
+                    />
+                  }
+                  editorComponent={
+                    <CodeEditor
+                      code={currentCode}
+                      onCodeChange={setCurrentCode}
+                    />
+                  }
+                  chatComponent={<div />}
                 />
               </div>
-            ) : (
-              <PropertyRow label="Scheduled At" value={email.scheduledAt.toLocaleString()} />
-            )}
-          </div>
-        </SettingCard>
-
-        {/* Recipient Info */}
-        <SettingCard title="Recipient" description="Email recipient information">
-          <div className="grid grid-cols-2 gap-4">
-            <PropertyRow label="Type" value={email.to.type} />
-            {email.to.type === "user-primary-email" && (
-              <PropertyRow label="User ID" value={<code className="text-xs bg-muted px-1 py-0.5 rounded break-all">{email.to.userId}</code>} />
-            )}
-            {email.to.type === "user-custom-emails" && (
-              <>
-                <PropertyRow label="User ID" value={<code className="text-xs bg-muted px-1 py-0.5 rounded break-all">{email.to.userId}</code>} />
-                <PropertyRow label="Emails" value={email.to.emails.join(", ") || "None"} className="col-span-2" />
-              </>
-            )}
-            {email.to.type === "custom-emails" && (
-              <PropertyRow label="Emails" value={email.to.emails.join(", ") || "None"} className="col-span-2" />
-            )}
-          </div>
-        </SettingCard>
-
-        {/* Rendering Info */}
-        {displayData.startedRenderingAt && (
-          <SettingCard title="Rendering" description="Email rendering details">
-            <div className="grid grid-cols-2 gap-4">
-              <PropertyRow label="Started Rendering" value={displayData.startedRenderingAt.toLocaleString()} />
-              {displayData.renderedAt && (
-                <PropertyRow label="Rendered At" value={displayData.renderedAt.toLocaleString()} />
-              )}
-              {displayData.subject && (
-                <PropertyRow label="Subject" value={displayData.subject} className="col-span-2" />
-              )}
-              {displayData.isTransactional !== undefined && (
-                <PropertyRow label="Transactional" value={displayData.isTransactional ? "Yes" : "No"} />
-              )}
-              {displayData.isHighPriority !== undefined && (
-                <PropertyRow label="High Priority" value={displayData.isHighPriority ? "Yes" : "No"} />
-              )}
+            </>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide shrink-0 w-[100px]">Subject</Label>
+                  {displayData.subject ? (
+                    <Typography className="text-sm font-medium truncate">{displayData.subject}</Typography>
+                  ) : (
+                    <Typography variant="secondary" className="text-sm italic">Not yet rendered</Typography>
+                  )}
+                </div>
+                {editable && (
+                  <DesignButton variant="outline" size="sm" className="hover:bg-accent" onClick={() => runAsynchronouslyWithAlert(enterEditMode)}>
+                    <PencilSimple className="mr-1.5 h-3.5 w-3.5" />
+                    Edit Code
+                  </DesignButton>
+                )}
+              </div>
+              <div className="h-[400px] rounded-lg overflow-hidden border border-border">
+                {displayData.html ? (
+                  <iframe
+                    srcDoc={displayData.html}
+                    className="w-full h-full border-0"
+                    sandbox="allow-same-origin"
+                    title="Email HTML Preview"
+                  />
+                ) : (
+                  <EmailPreview
+                    themeId={email.themeId ?? undefined}
+                    templateTsxSource={email.tsxSource}
+                    disableResizing
+                  />
+                )}
+              </div>
             </div>
-          </SettingCard>
-        )}
+          )}
 
-        {/* Render Error */}
-        {displayData.renderError && (
-          <SettingCard title="Render Error" description="Error that occurred during rendering">
-            <pre className="text-xs bg-destructive/10 text-destructive p-3 rounded overflow-x-auto whitespace-pre-wrap break-words">
-              {displayData.renderError}
-            </pre>
-          </SettingCard>
-        )}
+          {/* Info toggle */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setInfoExpanded(!infoExpanded)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 hover:transition-none"
+            >
+              <Info size={14} weight={infoExpanded ? "fill" : "regular"} />
+              <span>{infoExpanded ? "Hide details" : "More details"}</span>
+            </button>
 
-        {/* Sending Info */}
-        {displayData.startedSendingAt && (
-          <SettingCard title="Sending" description="Email sending details">
-            <div className="grid grid-cols-2 gap-4">
-              <PropertyRow label="Started Sending" value={displayData.startedSendingAt.toLocaleString()} />
-              {displayData.deliveredAt && (
-                <PropertyRow label="Delivered At" value={displayData.deliveredAt.toLocaleString()} />
-              )}
-            </div>
-          </SettingCard>
-        )}
-
-        {/* Server Error */}
-        {displayData.serverError && (
-          <SettingCard title="Server Error" description="Error that occurred during sending">
-            <pre className="text-xs bg-destructive/10 text-destructive p-3 rounded overflow-x-auto whitespace-pre-wrap break-words">
-              {displayData.serverError}
-            </pre>
-          </SettingCard>
-        )}
-
-        {/* Skipped Info */}
-        {displayData.skippedAt && (
-          <SettingCard title="Skipped" description="Email was skipped">
-            <div className="grid grid-cols-2 gap-4">
-              <PropertyRow label="Skipped At" value={displayData.skippedAt.toLocaleString()} />
-              {displayData.skippedReason && <PropertyRow label="Reason" value={displayData.skippedReason} />}
-              {displayData.skippedDetails && Object.keys(displayData.skippedDetails).length > 0 && (
-                <PropertyRow
-                  label="Details"
-                  value={<pre className="text-xs bg-muted p-2 rounded overflow-x-auto whitespace-pre-wrap break-words">{JSON.stringify(displayData.skippedDetails, null, 2)}</pre>}
-                  className="col-span-2"
-                />
-              )}
-            </div>
-          </SettingCard>
-        )}
-
-        {/* Bounce Info */}
-        {displayData.bouncedAt && (
-          <SettingCard title="Bounced" description="Email bounced">
-            <div className="grid grid-cols-2 gap-4">
-              <PropertyRow label="Bounced At" value={displayData.bouncedAt.toLocaleString()} />
-            </div>
-          </SettingCard>
-        )}
-
-        {/* Delivery Delayed Info */}
-        {displayData.deliveryDelayedAt && (
-          <SettingCard title="Delivery Delayed" description="Email delivery was delayed">
-            <div className="grid grid-cols-2 gap-4">
-              <PropertyRow label="Delayed At" value={displayData.deliveryDelayedAt.toLocaleString()} />
-            </div>
-          </SettingCard>
-        )}
-
-        {/* Delivery Tracking */}
-        {(displayData.openedAt || displayData.clickedAt || displayData.markedAsSpamAt) && (
-          <SettingCard title="Delivery Tracking" description="Email engagement tracking">
-            <div className="grid grid-cols-2 gap-4">
-              {displayData.openedAt && (
-                <PropertyRow label="Opened At" value={displayData.openedAt.toLocaleString()} />
-              )}
-              {displayData.clickedAt && (
-                <PropertyRow label="Clicked At" value={displayData.clickedAt.toLocaleString()} />
-              )}
-              {displayData.markedAsSpamAt && (
-                <PropertyRow label="Marked as Spam At" value={displayData.markedAsSpamAt.toLocaleString()} />
-              )}
-            </div>
-          </SettingCard>
-        )}
-
-        {/* Email Content Preview */}
-        {displayData.subject && (
-          <SettingCard title="Email Content" description="Preview of the email content">
-            <div className="space-y-4">
-              <PropertyRow label="Subject" value={displayData.subject} />
-              {displayData.html && (
-                <div>
-                  <Typography className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">HTML Preview</Typography>
-                  <div className="border rounded-lg p-4 bg-white dark:bg-zinc-900 max-h-96 overflow-auto">
-                    <iframe
-                      srcDoc={displayData.html}
-                      className="w-full h-64 border-0"
-                      sandbox="allow-same-origin"
-                      title="Email HTML Preview"
-                    />
+            {infoExpanded && (
+              <div className="mt-3 p-3 rounded-lg bg-muted/30 space-y-2">
+                <PropertyRow label="Email ID" value={<code className="text-xs bg-muted px-1 py-0.5 rounded break-all">{email.id}</code>} />
+                <PropertyRow label="Recipient" value={getRecipientDisplay(email)} />
+                {email.to.type !== "custom-emails" && (
+                  <PropertyRow label="User ID" value={
+                    <code className="text-xs bg-muted px-1 py-0.5 rounded break-all">{email.to.userId}</code>
+                  } />
+                )}
+                <PropertyRow label="Created" value={email.createdAt.toLocaleString()} />
+                <PropertyRow label="Updated" value={email.updatedAt.toLocaleString()} />
+                {displayData.isTransactional !== undefined && (
+                  <PropertyRow label="Transactional" value={displayData.isTransactional ? "Yes" : "No"} />
+                )}
+                {displayData.isHighPriority !== undefined && (
+                  <PropertyRow label="High Priority" value={displayData.isHighPriority ? "Yes" : "No"} />
+                )}
+                {displayData.renderError && (
+                  <div>
+                    <Typography className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Render Error</Typography>
+                    <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto whitespace-pre-wrap break-words">{displayData.renderError}</pre>
                   </div>
-                </div>
-              )}
-              {displayData.text && (
-                <div>
-                  <Typography className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Text Version</Typography>
-                  <pre className="text-xs bg-muted p-3 rounded overflow-x-auto whitespace-pre-wrap break-words max-h-48">
-                    {displayData.text}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </SettingCard>
-        )}
-
-        {/* Save Button (only show if editable and has changes) */}
-        {editable && (
-          <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Changes"}
-            </Button>
+                )}
+                {displayData.serverError && (
+                  <div>
+                    <Typography className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Server Error</Typography>
+                    <pre className="text-xs bg-destructive/10 text-destructive p-2 rounded overflow-x-auto whitespace-pre-wrap break-words">{displayData.serverError}</pre>
+                  </div>
+                )}
+                {displayData.skippedReason && (
+                  <PropertyRow label="Skipped Reason" value={displayData.skippedReason} />
+                )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Cancel Dialog */}
