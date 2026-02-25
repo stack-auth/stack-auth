@@ -68,7 +68,7 @@ function shouldUseMockManagedEmailOnboarding() {
 }
 
 function assertValidManagedSubdomain(subdomain: string) {
-  if (!/^[a-zA-Z0-9.-]+$/.test(subdomain) || !subdomain.includes(".")) {
+  if (!/^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,63}$/.test(subdomain)) {
     throw new StatusError(400, "subdomain must be a fully-qualified domain name like mail.example.com");
   }
 }

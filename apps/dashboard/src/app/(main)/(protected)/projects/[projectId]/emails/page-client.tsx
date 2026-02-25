@@ -392,7 +392,7 @@ function ManagedEmailSetupDialog(props: {
             <div className="flex items-center gap-2">
               <Button
                 variant="secondary"
-                onClick={async () => {
+                onClick={() => runAsynchronouslyWithAlert(async () => {
                   const result = await stackAdminApp.checkManagedEmailStatus({
                     domainId: setupState.domainId,
                     subdomain: setupState.subdomain,
@@ -403,14 +403,14 @@ function ManagedEmailSetupDialog(props: {
                     status: result.status,
                   });
                   await refreshDomains();
-                }}
+                })}
               >
                 Refresh Status
               </Button>
               <Button
                 variant="default"
                 disabled={setupState.status !== "verified"}
-                onClick={async () => {
+                onClick={() => runAsynchronouslyWithAlert(async () => {
                   await stackAdminApp.applyManagedEmailProvider({
                     domainId: setupState.domainId,
                   });
@@ -419,7 +419,7 @@ function ManagedEmailSetupDialog(props: {
                     status: "applied",
                   });
                   await refreshDomains();
-                }}
+                })}
               >
                 Use This Domain
               </Button>
@@ -441,12 +441,12 @@ function ManagedEmailSetupDialog(props: {
                       size="sm"
                       variant="secondary"
                       disabled={domain.status !== "verified"}
-                      onClick={async () => {
+                      onClick={() => runAsynchronouslyWithAlert(async () => {
                         await stackAdminApp.applyManagedEmailProvider({
                           domainId: domain.domainId,
                         });
                         await refreshDomains();
-                      }}
+                      })}
                     >
                       Use This Domain
                     </Button>
@@ -627,8 +627,10 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   } else if (emailConfig.provider === 'managed') {
     return {
-      type: 'resend',
-      senderEmail: emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}` : emailConfig.senderEmail,
+      type: 'managed',
+      senderEmail: emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
+        ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
+        : emailConfig.senderEmail,
       senderName: emailConfig.senderName ?? project.displayName,
       password: emailConfig.password,
     } as const;
@@ -646,7 +648,7 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
 };
 
 const emailServerSchema = yup.object({
-  type: yup.string().oneOf(['shared', 'standard', 'resend']).defined(),
+  type: yup.string().oneOf(['shared', 'standard', 'resend', 'managed']).defined(),
   host: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Host is required"),
   port: definedWhenTypeIsOneOf(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), ["standard"], "Port is required"),
   username: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Username is required"),
@@ -782,6 +784,13 @@ function EditEmailServerDialog(props: {
           },
           pushable: false,
         });
+      } else if (values.type === 'managed') {
+        // Managed config is set through the ManagedEmailSetupDialog; just close
+        toast({
+          title: "Email server unchanged",
+          description: "Managed email configuration is controlled through the managed domain setup.",
+          variant: 'success',
+        });
       } else if (values.type === 'resend') {
         if (!values.password || !values.senderEmail || !values.senderName) {
           throwErr("Missing email server config for Resend");
@@ -826,6 +835,7 @@ function EditEmailServerDialog(props: {
           control={form.control}
           options={[
             { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: "Managed (via managed domain setup)", value: 'managed' },
             { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },
           ]}
@@ -858,6 +868,21 @@ function EditEmailServerDialog(props: {
             <Typography variant="secondary" className="text-sm">
               <strong>Note:</strong> Your API key will be encrypted and securely stored in the database.
             </Typography>
+          </Alert>
+        </>}
+        {form.watch('type') === 'managed' && <>
+          <Alert className="bg-blue-500/5 border-blue-500/20">
+            <AlertTitle>Managed Email Domain</AlertTitle>
+            <AlertDescription>
+              <Typography variant="secondary" className="text-sm">
+                This email server was configured through the managed domain setup flow. To change the domain or sender, use the managed email setup dialog above.
+              </Typography>
+              {defaultValues.type === 'managed' && defaultValues.senderEmail && (
+                <Typography variant="secondary" className="text-sm mt-2">
+                  <strong>Sender:</strong> {defaultValues.senderName ? `${defaultValues.senderName} <${defaultValues.senderEmail}>` : defaultValues.senderEmail}
+                </Typography>
+              )}
+            </AlertDescription>
           </Alert>
         </>}
         {form.watch('type') === 'standard' && <>
