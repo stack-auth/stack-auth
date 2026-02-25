@@ -691,12 +691,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     speed?: string,
     mode?: "generate" | "stream",
   }): Promise<{ content: ChatContent } | Response> {
-    // TypeScript cannot resolve overload-to-overload delegation for `sendAiQuery` on the interface
-    // (the implementation signature is wider than any single overload).  The cast is safe because
-    // all callers are still validated against the strongly-typed overloads declared above; the `any`
-    // only escapes the internal forwarding call.
-    // eslint-disable-next-line `@typescript-eslint/no-explicit-any` -- see comment above
-    return (this._interface.sendAiQuery as (...args: any[]) => Promise<{ content: ChatContent } | Response>)(options);
+    return await (this._interface.sendAiQuery as (opts: typeof options) => Promise<{ content: ChatContent } | Response>)(options);
   }
 
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
