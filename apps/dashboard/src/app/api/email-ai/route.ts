@@ -47,7 +47,23 @@ function sanitizeGeneratedCode(code: string): string {
 
 
 export async function POST(req: Request) {
-  const payload = await req.json() as {
+  const rawPayload: unknown = await req.json();
+
+  if (
+    typeof rawPayload !== "object" || rawPayload == null ||
+    typeof (rawPayload as Record<string, unknown>).projectId !== "string" ||
+    typeof (rawPayload as Record<string, unknown>).systemPrompt !== "string" ||
+    !Array.isArray((rawPayload as Record<string, unknown>).tools) ||
+    !Array.isArray((rawPayload as Record<string, unknown>).messages)
+  ) {
+    return new Response(JSON.stringify({ error: "Invalid request payload: projectId, systemPrompt, tools, and messages are required" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  // Safe to destructure after runtime validation above
+  const { projectId, systemPrompt, tools, messages, quality = "smartest", speed = "fast" } = rawPayload as {
     projectId: string,
     systemPrompt: string,
     tools: string[],
@@ -56,15 +72,13 @@ export async function POST(req: Request) {
     speed?: string,
   };
 
-  const { projectId, systemPrompt, tools, messages, quality = "smartest", speed = "fast" } = payload;
-
   const user = await stackServerApp.getUser({ or: "redirect" });
   const accessToken = await user.getAccessToken();
 
   const projects = await user.listOwnedProjects();
   const hasProjectAccess = projects.some((p) => p.id === projectId);
 
-  if (!hasProjectAccess || !accessToken) {
+  if (!hasProjectAccess || accessToken == null) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 403,
       headers: { "content-type": "application/json" },
@@ -98,9 +112,11 @@ export async function POST(req: Request) {
     });
   }
 
-  const result = await backendResponse.json() as { content: Array<{ type: string, args?: { content?: string, [key: string]: unknown }, [key: string]: unknown }> };
+  const result: unknown = await backendResponse.json();
+  const contentArr: Array<{ type: string, args?: { content?: string, [key: string]: unknown }, [key: string]: unknown }> =
+    Array.isArray((result as Record<string, unknown> | null)?.content) ? (result as Record<string, unknown>).content as typeof contentArr : [];
   const sanitized = {
-    content: result.content.map((item) => {
+    content: contentArr.map((item) => {
       if (item.type === "tool-call" && typeof item.args?.content === "string") {
         return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
       }
