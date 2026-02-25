@@ -850,6 +850,13 @@ export class StackAdminInterface extends StackServerInterface {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    if (params?.user_ids && params.user_ids.length > 0) qs.set("user_ids", params.user_ids.join(","));
+    if (params?.team_ids && params.team_ids.length > 0) qs.set("team_ids", params.team_ids.join(","));
+    if (typeof params?.duration_ms_min === "number") qs.set("duration_ms_min", String(params.duration_ms_min));
+    if (typeof params?.duration_ms_max === "number") qs.set("duration_ms_max", String(params.duration_ms_max));
+    if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
+    if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
+    if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
     const response = await this.sendAdminRequest(
       `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
