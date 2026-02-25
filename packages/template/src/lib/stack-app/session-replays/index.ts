@@ -26,6 +26,13 @@ export type AdminSessionReplayChunk = {
 export type ListSessionReplaysOptions = {
   limit?: number,
   cursor?: string,
+  userIds?: string[],
+  teamIds?: string[],
+  durationMsMin?: number,
+  durationMsMax?: number,
+  lastEventAtFromMillis?: number,
+  lastEventAtToMillis?: number,
+  clickCountMin?: number,
 };
 
 export type ListSessionReplaysResult = {
