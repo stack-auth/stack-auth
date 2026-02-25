@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignCard } from "@/components/design-components/card";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
@@ -79,60 +80,6 @@ function coerceVariableValue(value: string, type: "string" | "number"): string |
     return n;
   }
   return value;
-}
-
-// Glassmorphic card component following design guide
-function GlassCard({
-  children,
-  className,
-  gradientColor = "blue"
-}: {
-  children: React.ReactNode,
-  className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate" | "cyan",
-}) {
-  const hoverTints: Record<string, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
-    slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
-  };
-
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
-      <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
-      <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-        {title}
-      </span>
-    </div>
-  );
 }
 
 // Draft item card component
@@ -411,26 +358,29 @@ export default function PageClient() {
         }
       >
         {/* Active Drafts Section */}
-        <GlassCard gradientColor="slate" className="overflow-hidden">
-          <div className="p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <SectionHeader icon={FileText} title="Drafts" />
-                <Typography variant="secondary" className="text-sm mt-1">
-                  Compose and manage your email drafts
-                </Typography>
+        <DesignCard
+          gradient="default"
+          glassmorphic
+          contentClassName="p-0"
+        >
+          <div className="p-5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                <FileText className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
               </div>
-              {activeDrafts.length > 0 && (
-                <div className="text-xs text-muted-foreground tabular-nums">
-                  {activeDrafts.length} {activeDrafts.length === 1 ? 'draft' : 'drafts'}
-                </div>
-              )}
+              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Active Drafts
+              </span>
             </div>
+            {activeDrafts.length > 0 && (
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {activeDrafts.length} {activeDrafts.length === 1 ? 'draft' : 'drafts'}
+              </div>
+            )}
           </div>
-
           {/* Shared SMTP Warning */}
           {emailConfig.isShared && (
-            <div className="border-t border-foreground/[0.05] px-5 py-4">
+            <div className="px-5 py-4">
               <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
                 <WarningCircle className="h-4 w-4 text-amber-500" weight="regular" />
                 <AlertTitle className="text-amber-600 dark:text-amber-400">Using shared email server</AlertTitle>
@@ -442,29 +392,27 @@ export default function PageClient() {
           )}
 
           {/* Active Drafts List */}
-          <div className="border-t border-foreground/[0.05]">
-            {activeDrafts.length === 0 ? (
-              <EmptyState
-                onCreateFromScratch={() => setNewDraftDialogOpen(true)}
-                onCreateFromTemplate={() => setTemplateSelectDialogOpen(true)}
-              />
-            ) : (
-              <div className="p-4 space-y-2">
-                {activeDrafts.map((draft) => (
-                  <DraftCard
-                    key={draft.id}
-                    draft={draft}
-                    onOpen={() => handleOpenDraft(draft.id)}
-                    onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          {activeDrafts.length === 0 ? (
+            <EmptyState
+              onCreateFromScratch={() => setNewDraftDialogOpen(true)}
+              onCreateFromTemplate={() => setTemplateSelectDialogOpen(true)}
+            />
+          ) : (
+            <div className="p-4 space-y-2">
+              {activeDrafts.map((draft) => (
+                <DraftCard
+                  key={draft.id}
+                  draft={draft}
+                  onOpen={() => handleOpenDraft(draft.id)}
+                  onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Add New Draft Button (when active drafts exist) */}
           {activeDrafts.length > 0 && (
-            <div className="border-t border-foreground/[0.05] p-4">
+            <div className="border-t border-black/[0.12] dark:border-white/[0.06] p-4">
               <NewDraftDropdown
                 onCreateFromScratch={() => setNewDraftDialogOpen(true)}
                 onCreateFromTemplate={() => setTemplateSelectDialogOpen(true)}
@@ -472,39 +420,40 @@ export default function PageClient() {
               />
             </div>
           )}
-        </GlassCard>
+        </DesignCard>
 
         {/* Draft History Section (only show if there are sent drafts) */}
         {historyDrafts.length > 0 && (
-          <GlassCard gradientColor="slate" className="overflow-hidden mt-6">
-            <div className="p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <SectionHeader icon={ClockCounterClockwise} title="Draft History" />
-                  <Typography variant="secondary" className="text-sm mt-1">
-                    Previously sent drafts
-                  </Typography>
+          <DesignCard
+            gradient="default"
+            glassmorphic
+            contentClassName="p-0"
+            className="mt-6"
+          >
+            <div className="p-5 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                  <ClockCounterClockwise className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
                 </div>
-                <div className="text-xs text-muted-foreground tabular-nums">
-                  {historyDrafts.length} sent
-                </div>
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Draft History
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {historyDrafts.length} sent
               </div>
             </div>
-
-            {/* History Drafts List */}
-            <div className="border-t border-foreground/[0.05]">
-              <div className="p-4 space-y-2">
-                {historyDrafts.map((draft) => (
-                  <HistoryDraftCard
-                    key={draft.id}
-                    draft={draft as typeof draft & { sentAt: Date }}
-                    onOpen={() => handleOpenHistoryDraft(draft.id)}
-                    onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
-                  />
-                ))}
-              </div>
+            <div className="p-4 space-y-2">
+              {historyDrafts.map((draft) => (
+                <HistoryDraftCard
+                  key={draft.id}
+                  draft={draft as typeof draft & { sentAt: Date }}
+                  onOpen={() => handleOpenHistoryDraft(draft.id)}
+                  onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
+                />
+              ))}
             </div>
-          </GlassCard>
+          </DesignCard>
         )}
 
         {/* Shared SMTP Warning Dialog */}

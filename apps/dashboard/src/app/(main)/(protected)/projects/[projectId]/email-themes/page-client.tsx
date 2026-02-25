@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignCard } from "@/components/design-components/card";
 import EmailPreview, { DEVICE_VIEWPORTS, DeviceViewport } from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
@@ -16,46 +17,6 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-// Glassmorphic card component following design guide
-function GlassCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode,
-  className?: string,
-}) {
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
-      <div className="absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden group-hover:bg-slate-500/[0.02]" />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
-      <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-        {title}
-      </span>
-    </div>
-  );
-}
 
 // Device icon component
 function DeviceIcon({ type, className }: { type: DeviceViewport['type'], className?: string }) {
@@ -188,70 +149,78 @@ export default function PageClient() {
       >
         <div className="flex flex-col gap-5">
           {/* Active Theme Card */}
-          <GlassCard>
-            <div className="p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <SectionHeader icon={Palette} title="Active Theme" />
-                  <span className="text-sm text-muted-foreground">
-                    Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
-                  </span>
+          <DesignCard glassmorphic gradient="default">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                  <Palette className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
                 </div>
-                <ActionDialog
-                  trigger={
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-8 px-3 text-xs gap-1.5"
-                      onClick={handleOpenDialog}
-                    >
-                      Change Theme
-                    </Button>
-                  }
-                  open={dialogOpen}
-                  onOpenChange={setDialogOpen}
-                  title="Select Email Theme"
-                  cancelButton
-                  okButton={{
-                    label: "Save Theme",
-                    onClick: handleSaveTheme
-                  }}
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    {themes.map((theme) => (
-                      <ThemeOption
-                        key={theme.id}
-                        theme={theme}
-                        isSelected={dialogSelectedThemeId === theme.id}
-                        onSelect={handleThemeSelect}
-                        dialogSelectedThemeId={dialogSelectedThemeId}
-                        onDialogThemeDeleted={(deletedThemeId) => {
-                          if (deletedThemeId === dialogSelectedThemeId) {
-                            setDialogSelectedThemeId(DEFAULT_EMAIL_THEME_ID);
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {dialogError && (
-                    <div className="mt-4">
-                      <Alert variant="destructive">
-                        <AlertTitle>Theme not saved</AlertTitle>
-                        <AlertDescription>{dialogError}</AlertDescription>
-                      </Alert>
-                    </div>
-                  )}
-                </ActionDialog>
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Active Theme
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
+                </span>
               </div>
+              <ActionDialog
+                trigger={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 px-3 text-xs gap-1.5"
+                    onClick={handleOpenDialog}
+                  >
+                    Change Theme
+                  </Button>
+                }
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                title="Select Email Theme"
+                cancelButton
+                okButton={{
+                  label: "Save Theme",
+                  onClick: handleSaveTheme
+                }}
+              >
+                <div className="grid grid-cols-2 gap-4">
+                  {themes.map((theme) => (
+                    <ThemeOption
+                      key={theme.id}
+                      theme={theme}
+                      isSelected={dialogSelectedThemeId === theme.id}
+                      onSelect={handleThemeSelect}
+                      dialogSelectedThemeId={dialogSelectedThemeId}
+                      onDialogThemeDeleted={(deletedThemeId) => {
+                        if (deletedThemeId === dialogSelectedThemeId) {
+                          setDialogSelectedThemeId(DEFAULT_EMAIL_THEME_ID);
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+                {dialogError && (
+                  <div className="mt-4">
+                    <Alert variant="destructive">
+                      <AlertTitle>Theme not saved</AlertTitle>
+                      <AlertDescription>{dialogError}</AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+              </ActionDialog>
             </div>
-          </GlassCard>
+          </DesignCard>
 
           {/* Device Preview Card */}
-          <GlassCard className="overflow-hidden">
+          <DesignCard glassmorphic gradient="default" contentClassName="p-0">
             {/* Header with viewport selector */}
-            <div className="p-5 flex items-center justify-between gap-4 border-b border-foreground/[0.05]">
+            <div className="p-5 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <SectionHeader icon={Monitor} title="Preview" />
+                <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                  <Monitor className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
+                </div>
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Preview
+                </span>
                 <span className="text-[11px] text-muted-foreground font-mono tabular-nums bg-foreground/[0.04] px-2 py-1 rounded">
                   {selectedViewport.width} × {selectedViewport.height}
                 </span>
@@ -281,7 +250,7 @@ export default function PageClient() {
                 senderEmail={`noreply@${project.displayName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}
               />
             </div>
-          </GlassCard>
+          </DesignCard>
         </div>
       </PageLayout>
     </AppEnabledGuard>
