@@ -124,7 +124,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate, () => currentCode)}
+                chatAdapter={createChatAdapter(stackAdminApp, "email-theme", handleThemeUpdate, () => currentCode)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
                 toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode

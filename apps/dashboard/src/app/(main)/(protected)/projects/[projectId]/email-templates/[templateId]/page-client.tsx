@@ -271,7 +271,7 @@ export default function PageClient(props: { templateId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(stackAdminApp, template.id, "email-template", handleCodeUpdate, () => currentCode)}
+                chatAdapter={createChatAdapter(stackAdminApp, "email-template", handleCodeUpdate, () => currentCode)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode

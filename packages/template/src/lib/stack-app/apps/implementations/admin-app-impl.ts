@@ -691,7 +691,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     speed?: string,
     mode?: "generate" | "stream",
   }): Promise<{ content: ChatContent } | Response> {
-    // any: overload implementation signature is intentionally broader than individual overloads
     return (this._interface.sendAiQuery as any)(options);
   }
 
