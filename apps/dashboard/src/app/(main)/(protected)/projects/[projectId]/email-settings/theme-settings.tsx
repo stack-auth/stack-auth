@@ -14,7 +14,7 @@ import { useAdminApp } from "../use-admin-app";
 
 const PREVIEW_SCALE = 0.50;
 
-function ThemePreviewFrame({ children, className, active, style }: { children: React.ReactNode, className?: string, active?: boolean, style?: React.CSSProperties }) {
+function ThemePreviewFrame({ children, className, active, activeLabel, style }: { children: React.ReactNode, className?: string, active?: boolean, activeLabel?: string, style?: React.CSSProperties }) {
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -49,6 +49,13 @@ function ThemePreviewFrame({ children, className, active, style }: { children: R
       {active && (
         <div className="absolute top-3 left-3 z-10 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-md">
           <CheckIcon className="w-3.5 h-3.5 text-white" weight="bold" />
+        </div>
+      )}
+      {activeLabel && (
+        <div className="absolute bottom-0 left-0 right-0 z-10 px-3 pb-3 pt-16 rounded-b-xl" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.12) 40%, transparent 100%)" }}>
+          <Typography className="text-white text-sm font-semibold text-center drop-shadow-md">
+            Active: {activeLabel}
+          </Typography>
         </div>
       )}
     </div>
@@ -88,6 +95,7 @@ export function ThemeSettings() {
   return (
     <DesignCard
       gradient="default"
+      className="overflow-visible"
     >
       {/* Header row -- no divider, showcase overlaps below */}
       <div className="flex items-center justify-between">
@@ -113,30 +121,28 @@ export function ThemeSettings() {
         </DesignButton>
       </div>
 
-      {/* Showcase -- pulls up into the header area with negative margin */}
-      <div className="relative h-[280px] -mt-2">
+      {/* Showcase -- center theme overflows card bottom */}
+      <div className="relative h-[240px] -mt-2">
         {flankingThemes[0] && (
           <ThemePreviewFrame className="absolute left-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[220px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
             <EmailPreview themeId={flankingThemes[0].id} templateTsxSource={previewTemplateSource} disableResizing />
           </ThemePreviewFrame>
         )}
 
-        <ThemePreviewFrame className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-[45%] h-[270px] shadow-xl border-border" style={{ zIndex: 2 }} active>
+        <ThemePreviewFrame
+          className="absolute left-1/2 -translate-x-1/2 w-[45%] h-[280px] shadow-xl border-border"
+          style={{ zIndex: 2, top: "-10px" }}
+          active
+          activeLabel={activeTheme.displayName}
+        >
           <EmailPreview themeId={activeTheme.id} templateTsxSource={previewTemplateSource} disableResizing />
         </ThemePreviewFrame>
 
         {flankingThemes[1] && (
-          <ThemePreviewFrame className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[220px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+          <ThemePreviewFrame className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[210px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
             <EmailPreview themeId={flankingThemes[1].id} templateTsxSource={previewTemplateSource} disableResizing />
           </ThemePreviewFrame>
         )}
-      </div>
-
-      {/* Active theme label */}
-      <div className="text-center -mt-1">
-        <Typography variant="secondary" className="text-xs">
-          Active: <span className="font-medium text-foreground">{activeTheme.displayName}</span>
-        </Typography>
       </div>
     </DesignCard>
   );
