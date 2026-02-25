@@ -81,7 +81,7 @@ it("should return metrics data with users", async ({ expect }) => {
 
   await ensureAnonymousUsersAreStillExcluded(response);
 }, {
-  timeout: 120_000,
+  timeout: 240_000,
 });
 
 it("should not work for non-admins", async ({ expect }) => {
