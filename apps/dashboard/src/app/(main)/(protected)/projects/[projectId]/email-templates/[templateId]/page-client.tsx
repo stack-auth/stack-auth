@@ -18,14 +18,13 @@ import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
-  const { projectId } = useParams() as { projectId: string };
   const templates = stackAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
   const templateFromHook = templates.find((t) => t.id === props.templateId);
@@ -272,7 +271,7 @@ export default function PageClient(props: { templateId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(projectId, template.id, "email-template", handleCodeUpdate, () => currentCode)}
+                chatAdapter={createChatAdapter(stackAdminApp, "email-template", handleCodeUpdate, () => currentCode)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode

@@ -12,6 +12,41 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
   return content.type === "tool-call";
 };
 
+/**
+ * Sanitizes AI-generated JSX/TSX code before it is applied to the email renderer.
+ *
+ * Handles four common model output issues:
+ * 1. Markdown code fences (```tsx ... ```) wrapping the output despite instructions
+ * 2. HTML-encoded angle brackets (&lt;Component&gt; instead of <Component>)
+ * 3. Bare & in JSX text content (invalid JSX; must be &amp; or {"&"})
+ * 4. Semicolons used as property separators in JS object literals instead of commas
+ *    (the AI confuses TypeScript interface syntax with JS object syntax).
+ *    TypeScript also accepts commas in interfaces/types, so replacing ; → , is always safe.
+ */
+function sanitizeGeneratedCode(code: string): string {
+  let result = code.trim();
+
+  if (result.startsWith("```")) {
+    const lines = result.split("\n");
+    lines.shift();
+    if (lines[lines.length - 1]?.trim() === "```") {
+      lines.pop();
+    }
+    result = lines.join("\n").trim();
+  }
+
+  result = result
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+
+  result = result.replace(/;(\s*\n\s*[A-Za-z_$][\w$]*\s*:)/g, ",$1");
+
+  return result;
+}
+
 const CONTEXT_MAP = {
   "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
   "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
@@ -19,8 +54,7 @@ const CONTEXT_MAP = {
 } as const;
 
 export function createChatAdapter(
-  projectId: string,
-  threadId: string,
+  adminApp: StackAdminApp,
   contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,
@@ -43,31 +77,86 @@ export function createChatAdapter(
 
         const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
+        const result = await adminApp.sendAiQuery({
+          systemPrompt,
+          tools: [...tools],
+          messages: [...contextMessages, ...formattedMessages],
+        });
+
+        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
+
+        const sanitizedContent: ChatContent = content.map((item) => {
+          if (item.type === "tool-call" && typeof item.args?.content === "string") {
+            return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
+          }
+          return item;
+        });
+
+        const toolCall = sanitizedContent.find(isToolCall);
+        if (toolCall) {
+          onToolCall(toolCall);
+        }
+
+        return { content: sanitizedContent };
+      } catch (error) {
+        if (abortSignal.aborted) {
+          return {};
+        }
+        throw error;
+      }
+    },
+  };
+}
+
+export function createDashboardChatAdapter(
+  projectId: string,
+  currentTsxSource: string,
+  onToolCall: (toolCall: ToolCallContent) => void,
+): ChatModelAdapter {
+  return {
+    async run({ messages, abortSignal }) {
+      try {
+        const formattedMessages = [];
+        for (const msg of messages) {
+          const textContent = msg.content.filter(c => !isToolCall(c));
+          if (textContent.length > 0) {
+            formattedMessages.push({ role: msg.role, content: textContent });
+          }
+        }
+
+        const hasExistingSource = currentTsxSource.length > 0;
+        const contextMessages: Array<{ role: "user" | "assistant", content: string }> = hasExistingSource ? [
+          { role: "user", content: `Here is the current dashboard source:\n\`\`\`tsx\n${currentTsxSource}\n\`\`\`` },
+          { role: "assistant", content: "Got it. What would you like to change?" },
+        ] : [];
+
         const response = await fetch("/api/ai-call", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             projectId,
-            systemPrompt,
-            tools: [...tools],
+            systemPrompt: "create-dashboard",
+            tools: ["update-dashboard"],
             messages: [...contextMessages, ...formattedMessages],
           }),
           signal: abortSignal,
         });
 
-        if (!response.ok) {
-          throw new Error(`AI request failed: ${response.status}`);
-        }
-
-        const result = await response.json() as { content?: ChatContent };
         const content: ChatContent = Array.isArray(result.content) ? result.content : [];
 
-        const toolCall = content.find(isToolCall);
+        const sanitizedContent: ChatContent = content.map((item) => {
+          if (item.type === "tool-call" && typeof item.args?.content === "string") {
+            return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
+          }
+          return item;
+        });
+
+        const toolCall = sanitizedContent.find(isToolCall);
         if (toolCall) {
           onToolCall(toolCall);
         }
 
-        return { content };
+        return { content: sanitizedContent };
       } catch (error) {
         if (abortSignal.aborted) {
           return {};

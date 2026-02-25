@@ -1,3 +1,4 @@
+import type { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -105,6 +106,22 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       domPath: Array<{ tagName: string, index: number }>,
       htmlContext: string,
     }): Promise<{ updatedSource: string }>,
+    sendAiQuery(options: {
+      systemPrompt: string,
+      tools: string[],
+      messages: Array<{ role: string, content: unknown }>,
+      quality?: string,
+      speed?: string,
+      mode: "stream",
+    }): Promise<Response>,
+    sendAiQuery(options: {
+      systemPrompt: string,
+      tools: string[],
+      messages: Array<{ role: string, content: unknown }>,
+      quality?: string,
+      speed?: string,
+      mode?: "generate",
+    }): Promise<{ content: ChatContent }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,

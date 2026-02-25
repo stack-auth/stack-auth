@@ -475,6 +475,54 @@ export class StackAdminInterface extends StackServerInterface {
     return { updatedSource: result.updated_source };
   }
 
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode: "stream",
+  }): Promise<Response>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate",
+  }): Promise<{ content: ChatContent }>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate" | "stream",
+  }): Promise<{ content: ChatContent } | Response> {
+    const mode = options.mode ?? "generate";
+    const response = await this.sendAdminRequest(
+      `/ai/query/${mode}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          systemPrompt: options.systemPrompt,
+          tools: options.tools,
+          messages: options.messages,
+          quality: options.quality ?? "smartest",
+          speed: options.speed ?? "fast",
+        }),
+      },
+      null,
+    );
+    if (mode === "stream") {
+      return response;
+    }
+    return await response.json();
+  }
+
   async renderEmailPreview(options: {
     themeId?: string | null | false,
     themeTsxSource?: string,

@@ -12,14 +12,12 @@ import {
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 
 export default function PageClient({ themeId }: { themeId: string }) {
   const stackAdminApp = useAdminApp();
-  const { projectId } = useParams() as { projectId: string };
   const theme = stackAdminApp.useEmailTheme(themeId);
   const { setNeedConfirm } = useRouterConfirm();
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
@@ -126,7 +124,7 @@ export default function PageClient({ themeId }: { themeId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(projectId, themeId, "email-theme", handleThemeUpdate, () => currentCode)}
+                chatAdapter={createChatAdapter(stackAdminApp, "email-theme", handleThemeUpdate, () => currentCode)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
                 toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode

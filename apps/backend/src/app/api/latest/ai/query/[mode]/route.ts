@@ -75,13 +75,15 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120_000);
       const result = await generateText({
         model,
         system: systemPrompt,
         messages,
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
-      });
+      }).finally(() => clearTimeout(timeoutId));
 
       const contentBlocks: Array<
         | { type: "text", text: string }

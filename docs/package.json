@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.0",
-    "@openrouter/ai-sdk-provider": "0.7.5",
     "@modelcontextprotocol/sdk": "^1.17.2",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-collapsible": "^1.1.11",

@@ -667,6 +667,33 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.applyWysiwygEdit(options);
   }
 
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode: "stream",
+  }): Promise<Response>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate",
+  }): Promise<{ content: ChatContent }>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate" | "stream",
+  }): Promise<{ content: ChatContent } | Response> {
+    return await (this._interface.sendAiQuery as (opts: typeof options) => Promise<{ content: ChatContent } | Response>)(options);
+  }
+
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
     const result = await this._interface.createEmailTheme(displayName);
     await this._adminEmailThemesCache.refresh([]);
