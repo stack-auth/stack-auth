@@ -76,6 +76,63 @@ function formatTimeRemaining(expiresAt: Date): string {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
+const CONFETTI_COLORS = ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#9b59b6", "#ff85a2", "#00d2d3"];
+const PARTICLE_COUNT = 24;
+
+function buildConfettiKeyframes(): string {
+  let css = "";
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const angleRad = (i / PARTICLE_COUNT) * 2 * Math.PI;
+    const radius = 50 + (i % 5) * 12;
+    const dx = Math.cos(angleRad) * radius;
+    const dy = Math.sin(angleRad) * (radius * 0.7);
+    const spin = (i * 47) % 360;
+    css += `
+      @keyframes boost-confetti-${i} {
+        0% { opacity: 0; transform: translate(-50%, -50%) rotate(0deg); }
+        8% { opacity: 0.8; }
+        100% { opacity: 0; transform: translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) rotate(${spin}deg); }
+      }
+    `;
+  }
+  return css;
+}
+
+const confettiKeyframesCSS = buildConfettiKeyframes();
+
+function BoostConfetti() {
+  return (
+    <>
+      {/* eslint-disable-next-line react/no-danger -- static CSS keyframes for confetti particle animations, no user input */}
+      <style dangerouslySetInnerHTML={{ __html: confettiKeyframesCSS }} />
+      {Array.from({ length: PARTICLE_COUNT }, (_, i) => {
+        const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+        const size = 3 + (i % 3);
+        const isSquare = i % 3 === 0;
+        const duration = 2.5 + (i % 4) * 0.5;
+        const delay = (i * 0.25) % duration;
+
+        return (
+          <div
+            key={i}
+            className="absolute pointer-events-none"
+            style={{
+              width: size,
+              height: isSquare ? size : size * 0.6,
+              backgroundColor: color,
+              borderRadius: isSquare ? 1 : size,
+              left: "50%",
+              top: "50%",
+              opacity: 0,
+              animation: `boost-confetti-${i} ${duration}s ease-out ${delay}s infinite`,
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function BoostCountdownTimer({ expiresAt, onExpire }: { expiresAt: Date, onExpire: () => void }) {
   const [timeRemaining, setTimeRemaining] = useState(formatTimeRemaining(expiresAt));
 
@@ -93,49 +150,55 @@ function BoostCountdownTimer({ expiresAt, onExpire }: { expiresAt: Date, onExpir
     return () => clearInterval(interval);
   }, [expiresAt, onExpire]);
 
-  // Bright glare effect rotating around the button border
   return (
     <div className="flex justify-center mt-3">
       <div className="boost-timer-wrapper relative rounded-lg">
-        <div className="relative z-10 bg-zinc-900 rounded-md px-3 py-2 border border-zinc-700 min-w-[200px] flex items-center justify-center">
-          <Typography className="text-slate-200 font-mono text-sm font-bold">
-            {timeRemaining}
-          </Typography>
+        <BoostConfetti />
+        <div className="relative z-10 rounded-md px-3 py-2 border border-white/10 min-w-[200px] overflow-hidden">
+          <div
+            className="absolute inset-0 rounded-md"
+            style={{
+              background: "linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #9b59b6, #ff85a2, #ff6b6b)",
+            }}
+          />
+          <div className="absolute inset-0 rounded-md bg-zinc-900/[0.82]" />
+          <div className="relative flex flex-col items-center justify-center gap-0.5">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-white/50">
+              Capacity boosted for
+            </span>
+            <Typography className="text-white font-mono text-sm font-bold drop-shadow-[0_0_4px_rgba(255,255,255,0.3)]">
+              {timeRemaining}
+            </Typography>
+          </div>
         </div>
       </div>
       <style jsx>{`
         .boost-timer-wrapper {
           --border-angle: 0deg;
           position: relative;
-          animation: pulse-scale 2s ease-in-out infinite;
-        }
-        @keyframes pulse-scale {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
+          overflow: visible;
         }
         .boost-timer-wrapper::before,
         .boost-timer-wrapper::after {
           content: '';
           position: absolute;
-          inset: -1px;
+          inset: -2px;
           border-radius: 9px;
           background: conic-gradient(
             from var(--border-angle),
-            transparent 0%,
-            transparent 70%,
-            #1e3a5f 78%,
-            #3b82f6 84%,
-            #60a5fa 88%,
-            #93c5fd 90%,
-            #60a5fa 92%,
-            #3b82f6 96%,
-            #1e3a5f 100%
+            #ff6b6b,
+            #ffd93d,
+            #6bcb77,
+            #4d96ff,
+            #9b59b6,
+            #ff85a2,
+            #ff6b6b
           );
           animation: rotate-glow 3s linear infinite;
         }
         .boost-timer-wrapper::after {
-          filter: blur(15px);
-          opacity: 0.9;
+          filter: blur(12px);
+          opacity: 0.7;
         }
         @property --border-angle {
           syntax: '<angle>';

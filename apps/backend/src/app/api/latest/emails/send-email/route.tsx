@@ -9,11 +9,6 @@ import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdS
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
-type UserResult = {
-  user_id: string,
-  user_email?: string,
-};
-
 const bodyBase = yupObject({
   user_ids: yupArray(yupString().defined()).optional(),
   all_users: yupBoolean().oneOf([true]).optional(),

@@ -1,9 +1,9 @@
 "use client";
 
+import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
 import EmailPreview from "@/components/email-preview";
 import { useRouter } from "@/components/router";
-import { DesignButton } from "@/components/design-components/button";
 import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowRightIcon, CheckIcon, PaintBrush } from "@phosphor-icons/react";
@@ -12,7 +12,7 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import React, { useMemo } from "react";
 import { useAdminApp } from "../use-admin-app";
 
-const PREVIEW_SCALE = 0.50;
+const PREVIEW_SCALE = 0.42;
 
 function ThemePreviewFrame({ children, className, active, activeLabel, style }: { children: React.ReactNode, className?: string, active?: boolean, activeLabel?: string, style?: React.CSSProperties }) {
   const ref = React.useRef<HTMLDivElement>(null);
@@ -95,7 +95,7 @@ export function ThemeSettings() {
   return (
     <DesignCard
       gradient="default"
-      className="overflow-visible"
+      className="overflow-hidden"
     >
       {/* Header row -- no divider, showcase overlaps below */}
       <div className="flex items-center justify-between">
@@ -121,28 +121,52 @@ export function ThemeSettings() {
         </DesignButton>
       </div>
 
-      {/* Showcase -- center theme overflows card bottom */}
-      <div className="relative h-[240px] -mt-2">
+      {/* Mobile: simple active theme indicator */}
+      <div className="md:hidden flex items-center gap-2 mt-1">
+        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+        <Typography variant="secondary" className="text-sm">
+          Active: <span className="font-medium text-foreground">{activeTheme.displayName}</span>
+        </Typography>
+      </div>
+
+      {/* Desktop: full preview showcase */}
+      <div className="hidden md:block relative h-[240px] -mb-5">
         {flankingThemes[0] && (
-          <ThemePreviewFrame className="absolute left-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[220px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+          <ThemePreviewFrame className="absolute left-[5%] top-[20px] w-[35%] h-[260px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
             <EmailPreview themeId={flankingThemes[0].id} templateTsxSource={previewTemplateSource} disableResizing />
           </ThemePreviewFrame>
         )}
 
         <ThemePreviewFrame
-          className="absolute left-1/2 -translate-x-1/2 w-[45%] h-[280px] shadow-xl border-border"
-          style={{ zIndex: 2, top: "-10px" }}
+          className="absolute left-1/2 -translate-x-1/2 w-[45%] h-[320px] shadow-xl border-border"
+          style={{ zIndex: 2, top: "-16px" }}
           active
-          activeLabel={activeTheme.displayName}
         >
           <EmailPreview themeId={activeTheme.id} templateTsxSource={previewTemplateSource} disableResizing />
         </ThemePreviewFrame>
 
         {flankingThemes[1] && (
-          <ThemePreviewFrame className="absolute right-[5%] top-1/2 -translate-y-1/2 w-[35%] h-[210px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
+          <ThemePreviewFrame className="absolute right-[5%] top-[20px] w-[35%] h-[250px] opacity-60 shadow-sm border-border/40" style={{ zIndex: 1 }}>
             <EmailPreview themeId={flankingThemes[1].id} templateTsxSource={previewTemplateSource} disableResizing />
           </ThemePreviewFrame>
         )}
+
+        <div
+          className="absolute bottom-0 -left-5 -right-5 px-3 pb-2 pt-10 rounded-b-2xl dark:hidden"
+          style={{ zIndex: 3, background: "radial-gradient(ellipse 60% 80% at 50% 100%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.4) 50%, transparent 100%)" }}
+        >
+          <Typography className="text-foreground text-sm font-semibold text-center">
+            Active: {activeTheme.displayName}
+          </Typography>
+        </div>
+        <div
+          className="absolute bottom-0 -left-5 -right-5 px-3 pb-2 pt-10 rounded-b-2xl hidden dark:block"
+          style={{ zIndex: 3, background: "radial-gradient(ellipse 60% 80% at 50% 100%, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.25) 50%, transparent 100%)" }}
+        >
+          <Typography className="text-white text-sm font-semibold text-center drop-shadow-md">
+            Active: {activeTheme.displayName}
+          </Typography>
+        </div>
       </div>
     </DesignCard>
   );
