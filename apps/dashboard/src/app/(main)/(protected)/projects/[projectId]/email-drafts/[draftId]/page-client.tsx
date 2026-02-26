@@ -119,6 +119,13 @@ export default function PageClient({ draftId }: { draftId: string }) {
     window.history.replaceState(null, "", url.pathname + url.search);
   }, []);
 
+  const handleStepClick = useCallback((stepId: string) => {
+    if (!isValidStage(stepId)) {
+      throw new Error(`Invalid draft stage: ${stepId}`);
+    }
+    setStage(stepId);
+  }, [setStage]);
+
   useEffect(() => {
     if (!draft) return;
     if (draft.tsxSource === currentCode && draft.themeId === selectedThemeId) return;
@@ -195,7 +202,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
     if (draft) {
       setCurrentCode(draft.tsxSource);
       setSelectedThemeId(draft.themeId);
-      setEditedVariables(Object.fromEntries(Object.entries(draft.templateVariables ?? {}).map(([k, v]) => [k, String(v)])));
+      setEditedVariables(Object.fromEntries(Object.entries(draft.templateVariables).map(([k, v]) => [k, String(v)])));
     }
   };
 
@@ -227,7 +234,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
               <DraftProgressBar
                 steps={DRAFT_STEPS}
                 currentStep={stage}
-                onStepClick={setStage as (stepId: string) => void}
+                onStepClick={handleStepClick}
               />
             </div>
             {saveAlert && (
@@ -302,14 +309,14 @@ export default function PageClient({ draftId }: { draftId: string }) {
             draftId={draftId}
             onBack={() => setStage("draft")}
             onNext={() => setStage("schedule")}
-            onStepClick={setStage as (stepId: string) => void}
+            onStepClick={handleStepClick}
           />
         ) : stage === "schedule" ? (
           <ScheduleStage
             draftId={draftId}
             onBack={() => setStage("recipients")}
             onSent={() => setStage("sent")}
-            onStepClick={setStage as (stepId: string) => void}
+            onStepClick={handleStepClick}
           />
         ) : (
           <SentStage draftId={draftId} />
@@ -499,12 +506,11 @@ function ScheduleStage({ draftId, onBack, onSent, onStepClick }: ScheduleStagePr
         ? new Date(`${scheduledDate}T${scheduledTime}`)
         : undefined;
 
-      await stackAdminApp.sendEmail(
-        (scope === "users"
-          ? { draftId, userIds: selectedUserIds, scheduledAt }
-          : { draftId, allUsers: true, scheduledAt }
-        ) as Parameters<typeof stackAdminApp.sendEmail>[0]
-      );
+      if (scope === "users") {
+        await stackAdminApp.sendEmail({ draftId, userIds: selectedUserIds, scheduledAt });
+      } else {
+        await stackAdminApp.sendEmail({ draftId, allUsers: true, scheduledAt });
+      }
 
       await stackAdminApp.refreshEmailDrafts();
       resetFlowState();

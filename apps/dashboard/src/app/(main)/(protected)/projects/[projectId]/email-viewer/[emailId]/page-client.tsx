@@ -14,26 +14,8 @@ import { useRouter } from "@/components/router";
 import { useCallback, useEffect, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { STATUS_LABELS } from "../../email-sent/email-status-utils";
 import { EmailTimeline } from "./email-timeline";
-
-// Status labels for display
-const STATUS_LABELS: Record<AdminEmailOutboxStatus, string> = {
-  "paused": "Paused",
-  "preparing": "Preparing",
-  "rendering": "Rendering",
-  "render-error": "Render Error",
-  "scheduled": "Scheduled",
-  "queued": "Queued",
-  "sending": "Sending",
-  "server-error": "Server Error",
-  "skipped": "Skipped",
-  "bounced": "Bounced",
-  "delivery-delayed": "Delivery Delayed",
-  "sent": "Sent",
-  "opened": "Opened",
-  "clicked": "Clicked",
-  "marked-as-spam": "Marked as Spam",
-};
 
 // Editable statuses - emails that haven't finished sending can be modified
 const EDITABLE_STATUSES: AdminEmailOutboxStatus[] = [
