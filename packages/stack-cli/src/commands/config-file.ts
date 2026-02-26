@@ -5,6 +5,14 @@ import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 export function registerConfigCommand(program: Command) {
   const config = program
     .command("config")
@@ -52,11 +60,11 @@ export function registerConfigCommand(program: Command) {
         throw new CliError(`Config file not found: ${filePath}`);
       }
 
-      let configModule: Record<string, unknown>;
+      let configModule: { config?: unknown };
       if (ext === ".ts") {
         const { createJiti } = await import("jiti");
         const jiti = createJiti(import.meta.url);
-        configModule = await jiti.import(filePath) as Record<string, unknown>;
+        configModule = await jiti.import(filePath);
       } else if (ext === ".js") {
         configModule = await import(filePath);
       } else {
@@ -64,11 +72,11 @@ export function registerConfigCommand(program: Command) {
       }
 
       const config = configModule.config;
-      if (!config || typeof config !== "object") {
-        throw new CliError("Config file must export a `config` object. Example: export const config = { ... };");
+      if (!isPlainObject(config)) {
+        throw new CliError("Config file must export a plain `config` object. Example: export const config = { ... };");
       }
 
-      await project.replaceConfigOverride("branch", config as Record<string, unknown>);
+      await project.replaceConfigOverride("branch", config);
       console.log("Config pushed successfully.");
     });
 }

@@ -125,13 +125,13 @@ describe("Stack CLI", () => {
     const { stderr, exitCode } = await runCli(["project", "list"], {
       STACK_CLI_REFRESH_TOKEN: "",
     });
-    expect(exitCode).not.toBe(0);
+    expect(exitCode).toBe(1);
     expect(stderr).toContain("Not logged in");
   });
 
   it("errors when no project ID given", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(["exec", "return 1"]);
-    expect(exitCode).not.toBe(0);
+    expect(exitCode).toBe(1);
     expect(stderr).toContain("No project ID");
   });
 
@@ -184,13 +184,35 @@ describe("Stack CLI", () => {
     expect(stdout.trim()).toBe("2");
   });
 
-  it("has app object available", async ({ expect }) => {
+  it("has stackServerApp object available", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "return typeof app"],
+      ["exec", "return typeof stackServerApp"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe('"object"');
+  });
+
+  it("lists available exec API methods", async ({ expect }) => {
+    const { stdout, exitCode } = await runCli(["exec", "--list-api"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("StackServerApp methods");
+    expect(stdout).toContain("StackClientApp methods");
+    expect(stdout).toContain("createUser(");
+    expect(stdout).toContain("signInWithCredential(");
+    expect(stdout).not.toContain("createInternalApiKey(");
+  });
+
+  it("errors when combining --list-api and javascript", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["exec", "--list-api", "return 1"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Cannot pass JavaScript when using --list-api");
+  });
+
+  it("errors when no javascript is provided", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(["exec"], { STACK_PROJECT_ID: createdProjectId });
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Missing JavaScript argument");
   });
 
   it("reports syntax error", async ({ expect }) => {
@@ -198,7 +220,7 @@ describe("Stack CLI", () => {
       ["exec", "return @@invalid"],
       { STACK_PROJECT_ID: createdProjectId },
     );
-    expect(exitCode).not.toBe(0);
+    expect(exitCode).toBe(1);
     expect(stderr).toContain("Syntax error");
   });
 
@@ -207,8 +229,26 @@ describe("Stack CLI", () => {
       ["exec", "throw new Error('boom')"],
       { STACK_PROJECT_ID: createdProjectId },
     );
-    expect(exitCode).not.toBe(0);
+    expect(exitCode).toBe(1);
     expect(stderr).toContain("boom");
+  });
+
+  it("reports string runtime error", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(
+      ["exec", "throw 'boom-string'"],
+      { STACK_PROJECT_ID: createdProjectId },
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("boom-string");
+  });
+
+  it("reports object runtime error", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli(
+      ["exec", "throw { code: 123 }"],
+      { STACK_PROJECT_ID: createdProjectId },
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('{"code":123}');
   });
 
   it("reports undefined variable", async ({ expect }) => {
@@ -216,7 +256,7 @@ describe("Stack CLI", () => {
       ["exec", "return nonExistentVar"],
       { STACK_PROJECT_ID: createdProjectId },
     );
-    expect(exitCode).not.toBe(0);
+    expect(exitCode).toBe(1);
     expect(stderr).toContain("nonExistentVar");
   });
 
@@ -250,9 +290,9 @@ describe("Stack CLI", () => {
 
   let createdUserEmail: string;
 
-  it("can create user with app", async ({ expect }) => {
+  it("can create user with stackServerApp", async ({ expect }) => {
     createdUserEmail = `exec-test-${crypto.randomUUID()}@stack-generated.example.com`;
-    const code = `const u = await app.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
+    const code = `const u = await stackServerApp.createUser({ primaryEmail: "${createdUserEmail}", password: "test123456" }); return { id: u.id, email: u.primaryEmail }`;
     const { stdout, exitCode } = await runCli(
       ["exec", code],
       { STACK_PROJECT_ID: createdProjectId },
@@ -263,9 +303,9 @@ describe("Stack CLI", () => {
     expect(parsed.email).toBe(createdUserEmail);
   });
 
-  it("can list users with app", async ({ expect }) => {
+  it("can list users with stackServerApp", async ({ expect }) => {
     const { stdout, exitCode } = await runCli(
-      ["exec", "const users = await app.listUsers(); return users.length"],
+      ["exec", "const users = await stackServerApp.listUsers(); return users.length"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
@@ -302,7 +342,18 @@ describe("Stack CLI", () => {
       ["config", "pull", "--config-file", badPath],
       { STACK_PROJECT_ID: createdProjectId },
     );
-    expect(exitCode).not.toBe(0);
+    expect(exitCode).toBe(1);
     expect(stderr).toContain(".js or .ts");
+  });
+
+  it("config push rejects array config export", async ({ expect }) => {
+    const badConfigPath = path.join(tmpDir, "config-array.ts");
+    fs.writeFileSync(badConfigPath, "export const config = [];\n");
+    const { stderr, exitCode } = await runCli(
+      ["config", "push", "--config-file", badConfigPath],
+      { STACK_PROJECT_ID: createdProjectId },
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("plain `config` object");
   });
 });
