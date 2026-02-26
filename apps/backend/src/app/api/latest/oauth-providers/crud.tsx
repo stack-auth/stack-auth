@@ -6,6 +6,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { oauthProviderCrud } from "@stackframe/stack-shared/dist/interface/crud/oauth-providers";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { allProviders, ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 
 // Helper function to check if a provider type is already used for signing in
@@ -107,24 +108,33 @@ async function ensureProviderExists(tenancy: Tenancy, userId: string, providerId
   return provider;
 }
 
-function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
+function findProviderConfig(tenancy: Tenancy, providerConfigId: string) {
   const config = tenancy.config;
-  let providerConfig: (typeof config.auth.oauth.providers)[number] & { id: string } | undefined;
   for (const [providerId, provider] of Object.entries(config.auth.oauth.providers)) {
     if (providerId === providerConfigId) {
-      providerConfig = {
-        id: providerId,
-        ...provider,
-      };
-      break;
+      return { id: providerId, ...provider };
     }
   }
+  return null;
+}
 
-  if (!providerConfig) {
+function getProviderConfig(tenancy: Tenancy, providerConfigId: string) {
+  const config = findProviderConfig(tenancy, providerConfigId);
+  if (!config) {
     throw new StatusError(StatusError.NotFound, `OAuth provider ${providerConfigId} not found or not configured`);
   }
+  return config;
+}
 
-  return providerConfig;
+function resolveProviderType(tenancy: Tenancy, configOAuthProviderId: string): ProviderType | null {
+  const config = findProviderConfig(tenancy, configOAuthProviderId);
+  if (config?.type != null) {
+    return config.type;
+  }
+  if ((allProviders as readonly string[]).includes(configOAuthProviderId)) {
+    return configOAuthProviderId as ProviderType;
+  }
+  return null;
 }
 
 
@@ -148,14 +158,17 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
     await ensureUserExists(prismaClient, { tenancyId: auth.tenancy.id, userId: params.user_id });
     const oauthAccount = await ensureProviderExists(auth.tenancy, params.user_id, params.provider_id);
 
-    const providerConfig = getProviderConfig(auth.tenancy, oauthAccount.configOAuthProviderId);
+    const providerType = resolveProviderType(auth.tenancy, oauthAccount.configOAuthProviderId);
+    if (providerType == null) {
+      throw new StatusError(StatusError.NotFound, `OAuth provider ${oauthAccount.configOAuthProviderId} not found or not configured`);
+    }
 
     return {
       user_id: params.user_id,
       id: oauthAccount.id,
       email: oauthAccount.email || undefined,
       provider_config_id: oauthAccount.configOAuthProviderId,
-      type: providerConfig.type as any, // Type assertion to match schema
+      type: providerType,
       allow_sign_in: oauthAccount.allowSignIn,
       allow_connected_accounts: oauthAccount.allowConnectedAccounts,
       account_id: oauthAccount.providerAccountId,
@@ -187,19 +200,22 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
 
     return {
       items: oauthAccounts
-        .map((oauthAccount) => {
-          const providerConfig = getProviderConfig(auth.tenancy, oauthAccount.configOAuthProviderId);
+        .flatMap((oauthAccount) => {
+          const providerType = resolveProviderType(auth.tenancy, oauthAccount.configOAuthProviderId);
+          if (providerType == null) {
+            return [];
+          }
 
-          return {
+          return [{
             user_id: oauthAccount.projectUserId || throwErr("OAuth account has no project user ID"),
             id: oauthAccount.id,
             email: oauthAccount.email || undefined,
             provider_config_id: oauthAccount.configOAuthProviderId,
-            type: providerConfig.type as any, // Type assertion to match schema
+            type: providerType,
             allow_sign_in: oauthAccount.allowSignIn,
             allow_connected_accounts: oauthAccount.allowConnectedAccounts,
             account_id: oauthAccount.providerAccountId,
-          };
+          }];
         }),
       is_paginated: false,
     };
@@ -299,14 +315,15 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
         },
       });
 
-      const providerConfig = getProviderConfig(auth.tenancy, existingOAuthAccount.configOAuthProviderId);
+      const providerType = resolveProviderType(auth.tenancy, existingOAuthAccount.configOAuthProviderId)
+        ?? throwErr(new StatusError(StatusError.NotFound, `OAuth provider ${existingOAuthAccount.configOAuthProviderId} not found or not configured`));
 
       return {
         user_id: params.user_id,
         id: params.provider_id,
         email: data.email ?? existingOAuthAccount.email ?? undefined,
         provider_config_id: existingOAuthAccount.configOAuthProviderId,
-        type: providerConfig.type as any,
+        type: providerType,
         allow_sign_in: data.allow_sign_in ?? existingOAuthAccount.allowSignIn,
         allow_connected_accounts: data.allow_connected_accounts ?? existingOAuthAccount.allowConnectedAccounts,
         account_id: data.account_id ?? existingOAuthAccount.providerAccountId,
