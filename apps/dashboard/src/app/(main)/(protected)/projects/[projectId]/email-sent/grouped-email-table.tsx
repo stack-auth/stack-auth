@@ -31,9 +31,11 @@ function getStatsCategory(status: AdminEmailOutboxStatus): keyof StatsBarData {
     case "sent":
     case "opened":
     case "clicked":
-    case "delivery-delayed":
-    case "skipped": {
+    case "delivery-delayed": {
       return "sent";
+    }
+    case "skipped": {
+      return "cancelled";
     }
     case "bounced": {
       return "bounced";
@@ -116,6 +118,7 @@ function groupEmails(
       bounced: 0,
       spam: 0,
       errors: 0,
+      cancelled: 0,
       inProgress: 0,
     };
 

@@ -9,6 +9,7 @@ export type StatsBarData = {
   bounced: number,
   spam: number,
   errors: number,
+  cancelled: number,
   inProgress: number,
 };
 
@@ -23,12 +24,13 @@ function buildTooltipLines(data: StatsBarData): { label: string, count: number, 
     { label: "Bounced", count: data.bounced, color: "bg-red-400" },
     { label: "Spam", count: data.spam, color: "bg-yellow-400" },
     { label: "Errors", count: data.errors, color: "bg-red-500" },
+    { label: "Cancelled", count: data.cancelled, color: "bg-muted-foreground/50" },
     { label: "Pending", count: data.inProgress, color: "bg-gray-400" },
   ].filter(l => l.count > 0);
 }
 
 export function StatsBar({ data, className }: StatsBarProps) {
-  const total = data.sent + data.bounced + data.spam + data.errors + data.inProgress;
+  const total = data.sent + data.bounced + data.spam + data.errors + data.cancelled + data.inProgress;
 
   if (total === 0) {
     return (
@@ -42,6 +44,7 @@ export function StatsBar({ data, className }: StatsBarProps) {
   const bouncedPercent = (data.bounced / total) * 100;
   const spamPercent = (data.spam / total) * 100;
   const errorsPercent = (data.errors / total) * 100;
+  const cancelledPercent = (data.cancelled / total) * 100;
   const inProgressPercent = (data.inProgress / total) * 100;
 
   const tooltipLines = buildTooltipLines(data);
@@ -68,6 +71,9 @@ export function StatsBar({ data, className }: StatsBarProps) {
             )}
             {errorsPercent > 0 && (
               <div className="bg-red-500 h-full" style={{ width: `${errorsPercent}%` }} />
+            )}
+            {cancelledPercent > 0 && (
+              <div className="bg-muted-foreground/50 h-full" style={{ width: `${cancelledPercent}%` }} />
             )}
             {inProgressPercent > 0 && (
               <div className="bg-gray-400 h-full" style={{ width: `${inProgressPercent}%` }} />

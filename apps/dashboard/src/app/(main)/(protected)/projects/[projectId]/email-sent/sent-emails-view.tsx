@@ -9,7 +9,7 @@ import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
 import { STATUS_LABELS, computeEmailStats, getStatusBadgeColor } from "./email-status-utils";
@@ -43,26 +43,29 @@ const emailColumns: ColumnDef<AdminEmailOutbox>[] = [
 
 type SentEmailsViewProps = {
   filterFn: (email: AdminEmailOutbox) => boolean,
+  renderActions?: (emails: AdminEmailOutbox[], refresh: () => Promise<void>) => ReactNode,
 };
 
-export function SentEmailsView({ filterFn }: SentEmailsViewProps) {
+export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps) {
   const stackAdminApp = useAdminApp();
   const projectId = useProjectId();
   const router = useRouter();
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    runAsynchronouslyWithAlert(async () => {
-      setLoading(true);
-      try {
-        const result = await stackAdminApp.listOutboxEmails();
-        setEmails(result.items);
-      } finally {
-        setLoading(false);
-      }
-    });
+  const refreshEmails = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await stackAdminApp.listOutboxEmails();
+      setEmails(result.items);
+    } finally {
+      setLoading(false);
+    }
   }, [stackAdminApp]);
+
+  useEffect(() => {
+    runAsynchronouslyWithAlert(refreshEmails);
+  }, [refreshEmails]);
 
   const filtered = useMemo(() => emails.filter(filterFn), [emails, filterFn]);
   const stats = useMemo(() => computeEmailStats(filtered), [filtered]);
@@ -70,6 +73,8 @@ export function SentEmailsView({ filterFn }: SentEmailsViewProps) {
   return (
     <div className="flex gap-4">
       <div className="flex-1 flex flex-col gap-4">
+        {renderActions && !loading && filtered.length > 0 && renderActions(filtered, refreshEmails)}
+
         {/* Delivery Stats */}
         <DesignCard gradient="default" glassmorphic contentClassName="p-3">
           <div className="py-1">

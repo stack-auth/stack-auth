@@ -2,16 +2,18 @@
 
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { DesignBadge, DesignBadgeColor } from "@/components/design-components/badge";
+import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
 import { DesignDataTable } from "@/components/design-components/table";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouter, useRouterConfirm } from "@/components/router";
 import { TemplateVariablesButton, TemplateVariablesDialog } from "@/components/template-variables";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
+import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus, type TemplateVariableInfo } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -612,15 +614,119 @@ function getErrorMessage(error: unknown) {
 }
 
 
+const PAUSABLE_STATUSES: Set<AdminEmailOutboxStatus> = new Set([
+  "preparing", "rendering", "scheduled", "queued", "render-error", "server-error",
+]);
+
+const CANCELLABLE_STATUSES: Set<AdminEmailOutboxStatus> = new Set([
+  "paused", "preparing", "rendering", "scheduled", "queued", "render-error", "server-error",
+]);
+
 function SentStage({ draftId }: { draftId: string }) {
+  const stackAdminApp = useAdminApp();
   const filterFn = useCallback((email: AdminEmailOutbox) => email.emailDraftId === draftId, [draftId]);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelContext, setCancelContext] = useState<{ count: number, emails: AdminEmailOutbox[], refresh: () => Promise<void> } | null>(null);
+
+  const renderActions = useCallback((emails: AdminEmailOutbox[], refresh: () => Promise<void>) => {
+    const pausable = emails.filter(e => PAUSABLE_STATUSES.has(e.status) && !e.isPaused);
+    const paused = emails.filter(e => e.isPaused);
+    const cancellable = emails.filter(e => CANCELLABLE_STATUSES.has(e.status));
+    const delivered = emails.filter(e => !CANCELLABLE_STATUSES.has(e.status) && e.status !== "skipped");
+    const cancelled = emails.filter(e => e.status === "skipped");
+    const unchangeable = delivered.length + cancelled.length;
+
+    if (pausable.length === 0 && paused.length === 0 && cancellable.length === 0 && unchangeable === 0) return null;
+
+    return (
+      <div className="flex flex-col gap-3">
+        {unchangeable > 0 && (
+          <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
+            <AlertTitle className="text-amber-600 dark:text-amber-400">
+              {unchangeable} of {emails.length} email{emails.length !== 1 ? "s" : ""} already {delivered.length > 0 && cancelled.length > 0 ? "delivered or cancelled" : delivered.length > 0 ? "delivered" : "cancelled"}
+            </AlertTitle>
+            <AlertDescription className="text-muted-foreground">
+              Emails that have already been delivered or cancelled cannot be paused or cancelled.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {(pausable.length > 0 || paused.length > 0 || cancellable.length > 0) && (
+          <div className="flex gap-2">
+            {pausable.length > 0 && (
+              <DesignButton
+                variant="outline"
+                size="sm"
+                className="hover:bg-accent"
+                onClick={async () => {
+                  await Promise.allSettled(pausable.map(e => stackAdminApp.pauseOutboxEmail(e.id)));
+                  await refresh();
+                }}
+              >
+                <PauseIcon className="mr-1.5 h-3.5 w-3.5" />
+                Pause {pausable.length} email{pausable.length !== 1 ? "s" : ""}
+              </DesignButton>
+            )}
+            {paused.length > 0 && (
+              <DesignButton
+                variant="outline"
+                size="sm"
+                className="hover:bg-accent"
+                onClick={async () => {
+                  await Promise.allSettled(paused.map(e => stackAdminApp.unpauseOutboxEmail(e.id)));
+                  await refresh();
+                }}
+              >
+                <PlayIcon className="mr-1.5 h-3.5 w-3.5" />
+                Resume {paused.length} email{paused.length !== 1 ? "s" : ""}
+              </DesignButton>
+            )}
+            {cancellable.length > 0 && (
+              <DesignButton
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setCancelContext({ count: cancellable.length, emails: cancellable, refresh });
+                  setCancelDialogOpen(true);
+                }}
+              >
+                <XCircleIcon className="mr-1.5 h-3.5 w-3.5" />
+                Cancel {cancellable.length} email{cancellable.length !== 1 ? "s" : ""}
+              </DesignButton>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }, [stackAdminApp]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-4">
       <DraftProgressBar steps={DRAFT_STEPS} currentStep="sent" disableNavigation />
       <div className="mt-4">
-        <SentEmailsView filterFn={filterFn} />
+        <SentEmailsView filterFn={filterFn} renderActions={renderActions} />
       </div>
+
+      <ActionDialog
+        open={cancelDialogOpen}
+        onClose={() => setCancelDialogOpen(false)}
+        title="Cancel Emails"
+        cancelButton
+        okButton={{
+          label: `Cancel ${cancelContext?.count ?? 0} email${(cancelContext?.count ?? 0) !== 1 ? "s" : ""}`,
+          onClick: async () => {
+            if (!cancelContext) return;
+            await Promise.allSettled(cancelContext.emails.map(e => stackAdminApp.cancelOutboxEmail(e.id)));
+            setCancelDialogOpen(false);
+            await cancelContext.refresh();
+          },
+          props: { variant: "destructive" },
+        }}
+      >
+        <Typography>
+          This will cancel {cancelContext?.count ?? 0} email{(cancelContext?.count ?? 0) !== 1 ? "s" : ""} that {(cancelContext?.count ?? 0) !== 1 ? "haven't" : "hasn't"} been sent yet. This action cannot be undone.
+        </Typography>
+      </ActionDialog>
     </div>
   );
 }

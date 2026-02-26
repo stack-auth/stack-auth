@@ -46,15 +46,18 @@ export function getStatusBadgeColor(status: AdminEmailOutboxStatus): DesignBadge
 }
 
 export function computeEmailStats(emails: { status: AdminEmailOutboxStatus }[]): StatsBarData {
-  let sent = 0, bounced = 0, spam = 0, errors = 0, inProgress = 0;
+  let sent = 0, bounced = 0, spam = 0, errors = 0, cancelled = 0, inProgress = 0;
   for (const email of emails) {
     switch (email.status) {
       case "sent":
       case "opened":
       case "clicked":
-      case "delivery-delayed":
-      case "skipped": {
+      case "delivery-delayed": {
         sent++;
+        break;
+      }
+      case "skipped": {
+        cancelled++;
         break;
       }
       case "bounced": {
@@ -76,5 +79,5 @@ export function computeEmailStats(emails: { status: AdminEmailOutboxStatus }[]):
       }
     }
   }
-  return { sent, bounced, spam, errors, inProgress };
+  return { sent, bounced, spam, errors, cancelled, inProgress };
 }
