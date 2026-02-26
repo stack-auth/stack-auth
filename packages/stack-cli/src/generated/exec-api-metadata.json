@@ -1,0 +1,381 @@
+{
+  "schemaVersion": 1,
+  "stackClientApp": [
+    {
+      "name": "acceptTeamInvitation",
+      "signatures": [
+        "acceptTeamInvitation(code: string): Promise<Result<undefined, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { VERIFICATION_ERROR: true; }; } &..."
+      ]
+    },
+    {
+      "name": "callOAuthCallback",
+      "signatures": [
+        "callOAuthCallback(): Promise<boolean>"
+      ]
+    },
+    {
+      "name": "cancelSubscription",
+      "signatures": [
+        "cancelSubscription(options: { productId: string; subscriptionId?: string | undefined; } | { productId: string; subscriptionId?: string | undefine...): Promise<void>"
+      ]
+    },
+    {
+      "name": "getAccessToken",
+      "signatures": [
+        "getAccessToken(options?: ({} & (HasTokenStore extends false ? { tokenStore: \"cookie\" | \"nextjs-cookie\" | \"memory\" | RequestLike | { accessToke...): Promise<string | null>"
+      ]
+    },
+    {
+      "name": "getAuthHeaders",
+      "signatures": [
+        "getAuthHeaders(options?: ({} & (HasTokenStore extends false ? { tokenStore: \"cookie\" | \"nextjs-cookie\" | \"memory\" | RequestLike | { accessToke...): Promise<{ \"x-stack-auth\": string; }>"
+      ]
+    },
+    {
+      "name": "getAuthJson",
+      "signatures": [
+        "getAuthJson(options?: ({} & (HasTokenStore extends false ? { tokenStore: \"cookie\" | \"nextjs-cookie\" | \"memory\" | RequestLike | { accessToke...): Promise<{ accessToken: string | null; refreshToken: string | null; }>"
+      ]
+    },
+    {
+      "name": "getConvexClientAuth",
+      "signatures": [
+        "getConvexClientAuth(options: HasTokenStore extends false ? { tokenStore: TokenStoreInit; } : { tokenStore?: \"cookie\" | \"nextjs-cookie\" | \"memory\" ...): (args: { forceRefreshToken: boolean; }) => Promise<string | null>"
+      ]
+    },
+    {
+      "name": "getConvexHttpClientAuth",
+      "signatures": [
+        "getConvexHttpClientAuth(options: { tokenStore: TokenStoreInit; }): Promise<string>"
+      ]
+    },
+    {
+      "name": "getItem",
+      "signatures": [
+        "getItem(...args: [{ itemId: string; userId: string; } | { itemId: string; teamId: string; } | { itemId: string; customCustomerId: stri...): Promise<Item>"
+      ]
+    },
+    {
+      "name": "getPartialUser",
+      "signatures": [
+        "getPartialUser(options: { or?: \"return-null\" | \"anonymous\" | undefined; tokenStore?: \"cookie\" | \"nextjs-cookie\" | \"memory\" | RequestLike | { ...): Promise<TokenPartialUser | null>",
+        "getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): Promise<TokenPartialUser | SyncedPartialUser | null>"
+      ]
+    },
+    {
+      "name": "getProject",
+      "signatures": [
+        "getProject(...args: []): Promise<Project>"
+      ]
+    },
+    {
+      "name": "getRefreshToken",
+      "signatures": [
+        "getRefreshToken(options?: ({} & (HasTokenStore extends false ? { tokenStore: \"cookie\" | \"nextjs-cookie\" | \"memory\" | RequestLike | { accessToke...): Promise<string | null>"
+      ]
+    },
+    {
+      "name": "getTeamInvitationDetails",
+      "signatures": [
+        "getTeamInvitationDetails(code: string): Promise<Result<{ teamDisplayName: string; }, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { VERIFICATION_..."
+      ]
+    },
+    {
+      "name": "getUser",
+      "signatures": [
+        "getUser(options: { or?: \"redirect\" | \"throw\" | \"return-null\" | \"anonymous\" | \"anonymous-if-exists[deprecated]\" | undefined; includeRes...): Promise<ProjectCurrentUser<ProjectId>>",
+        "getUser(options?: GetCurrentUserOptions<HasTokenStore> | undefined): Promise<ProjectCurrentUser<ProjectId> | null>"
+      ]
+    },
+    {
+      "name": "listInvoices",
+      "signatures": [
+        "listInvoices(...args: [options: CustomerInvoicesRequestOptions]): Promise<CustomerInvoicesList>"
+      ]
+    },
+    {
+      "name": "listProducts",
+      "signatures": [
+        "listProducts(...args: [options: CustomerProductsRequestOptions]): Promise<CustomerProductsList>"
+      ]
+    },
+    {
+      "name": "promptCliLogin",
+      "signatures": [
+        "promptCliLogin(options: { appUrl: string; expiresInMillis?: number | undefined; }): Promise<Result<string, (KnownError & { [knownErrorConstructorErrorCodeSentinel]: { CLI_AUTH_ERROR: true; }; } & { con..."
+      ]
+    },
+    {
+      "name": "redirectToAccountSettings",
+      "signatures": [
+        "redirectToAccountSettings(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToAfterSignIn",
+      "signatures": [
+        "redirectToAfterSignIn(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToAfterSignOut",
+      "signatures": [
+        "redirectToAfterSignOut(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToAfterSignUp",
+      "signatures": [
+        "redirectToAfterSignUp(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToEmailVerification",
+      "signatures": [
+        "redirectToEmailVerification(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToError",
+      "signatures": [
+        "redirectToError(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToForgotPassword",
+      "signatures": [
+        "redirectToForgotPassword(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToHome",
+      "signatures": [
+        "redirectToHome(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToMagicLinkCallback",
+      "signatures": [
+        "redirectToMagicLinkCallback(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToMfa",
+      "signatures": [
+        "redirectToMfa(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToOAuthCallback",
+      "signatures": [
+        "redirectToOAuthCallback(): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToOnboarding",
+      "signatures": [
+        "redirectToOnboarding(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToPasswordReset",
+      "signatures": [
+        "redirectToPasswordReset(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToSignIn",
+      "signatures": [
+        "redirectToSignIn(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToSignOut",
+      "signatures": [
+        "redirectToSignOut(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToSignUp",
+      "signatures": [
+        "redirectToSignUp(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "redirectToTeamInvitation",
+      "signatures": [
+        "redirectToTeamInvitation(options?: RedirectToOptions | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "resetPassword",
+      "signatures": [
+        "resetPassword(options: { code: string; password: string; }): Promise<Result<undefined, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { VERIFICATION_ERROR: true; }; } &..."
+      ]
+    },
+    {
+      "name": "sendForgotPasswordEmail",
+      "signatures": [
+        "sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string | undefined; } | undefined): Promise<Result<undefined, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { USER_NOT_FOUND: true; }; } & { c..."
+      ]
+    },
+    {
+      "name": "sendMagicLinkEmail",
+      "signatures": [
+        "sendMagicLinkEmail(email: string, options?: { callbackUrl?: string | undefined; } | undefined): Promise<Result<{ nonce: string; }, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { REDIRECT_URL_NOT_WHITEL..."
+      ]
+    },
+    {
+      "name": "signInWithCredential",
+      "signatures": [
+        "signInWithCredential(options: { email: string; password: string; noRedirect?: boolean | undefined; }): Promise<Result<undefined, (KnownError & { [knownErrorConstructorErrorCodeSentinel]: { EMAIL_PASSWORD_MISMATCH: true; ..."
+      ]
+    },
+    {
+      "name": "signInWithMagicLink",
+      "signatures": [
+        "signInWithMagicLink(code: string, options?: { noRedirect?: boolean | undefined; } | undefined): Promise<Result<undefined, (KnownError & { [knownErrorConstructorErrorCodeSentinel]: { INVALID_TOTP_CODE: true; }; } &..."
+      ]
+    },
+    {
+      "name": "signInWithMfa",
+      "signatures": [
+        "signInWithMfa(otp: string, code: string, options?: { noRedirect?: boolean | undefined; } | undefined): Promise<Result<undefined, (KnownError & { [knownErrorConstructorErrorCodeSentinel]: { INVALID_TOTP_CODE: true; }; } &..."
+      ]
+    },
+    {
+      "name": "signInWithOAuth",
+      "signatures": [
+        "signInWithOAuth(provider: string, options?: { returnTo?: string | undefined; } | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "signInWithPasskey",
+      "signatures": [
+        "signInWithPasskey(): Promise<Result<undefined, (KnownError & { [knownErrorConstructorErrorCodeSentinel]: { INVALID_TOTP_CODE: true; }; } &..."
+      ]
+    },
+    {
+      "name": "signOut",
+      "signatures": [
+        "signOut(options?: ({ redirectUrl?: string | URL | undefined; } & (HasTokenStore extends false ? { tokenStore: \"cookie\" | \"nextjs-cookie...): Promise<void>",
+        "signOut(options?: { redirectUrl?: string | URL | undefined; } | undefined): Promise<void>"
+      ]
+    },
+    {
+      "name": "signUpWithCredential",
+      "signatures": [
+        "signUpWithCredential(options: { email: string; password: string; noRedirect?: boolean | undefined; } & ({ noVerificationCallback: true; } | { noVer...): Promise<Result<undefined, (KnownError & { [knownErrorConstructorErrorCodeSentinel]: { USER_EMAIL_ALREADY_EXISTS: true..."
+      ]
+    },
+    {
+      "name": "verifyEmail",
+      "signatures": [
+        "verifyEmail(code: string): Promise<Result<undefined, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { VERIFICATION_ERROR: true; }; } &..."
+      ]
+    },
+    {
+      "name": "verifyPasswordResetCode",
+      "signatures": [
+        "verifyPasswordResetCode(code: string): Promise<Result<undefined, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { VERIFICATION_ERROR: true; }; } &..."
+      ]
+    },
+    {
+      "name": "verifyTeamInvitationCode",
+      "signatures": [
+        "verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { VERIFICATION_ERROR: true; }; } &..."
+      ]
+    }
+  ],
+  "stackServerApp": [
+    {
+      "name": "createOAuthProvider",
+      "signatures": [
+        "createOAuthProvider(options: { userId: string; accountId: string; providerConfigId: string; email: string; allowSignIn: boolean; allowConnectedAcc...): Promise<Result<ServerOAuthProvider, KnownError & { [knownErrorConstructorErrorCodeSentinel]: { OAUTH_PROVIDER_ACCOUNT..."
+      ]
+    },
+    {
+      "name": "createTeam",
+      "signatures": [
+        "createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam>"
+      ]
+    },
+    {
+      "name": "createUser",
+      "signatures": [
+        "createUser(options: ServerUserCreateOptions): Promise<ServerUser>"
+      ]
+    },
+    {
+      "name": "getDataVaultStore",
+      "signatures": [
+        "getDataVaultStore(...args: [id: string]): Promise<DataVaultStore>"
+      ]
+    },
+    {
+      "name": "getEmailDeliveryStats",
+      "signatures": [
+        "getEmailDeliveryStats(): Promise<EmailDeliveryInfo>"
+      ]
+    },
+    {
+      "name": "getItem",
+      "signatures": [
+        "getItem(...args: [{ itemId: string; userId: string; } | { itemId: string; teamId: string; } | { itemId: string; customCustomerId: stri...): Promise<ServerItem>"
+      ]
+    },
+    {
+      "name": "getPartialUser",
+      "signatures": [
+        "getPartialUser(options: GetCurrentPartialUserOptions<HasTokenStore>): Promise<TokenPartialUser | SyncedPartialServerUser | null>"
+      ]
+    },
+    {
+      "name": "getServerUser",
+      "signatures": [
+        "getServerUser(): Promise<ProjectCurrentServerUser<ProjectId> | null>"
+      ]
+    },
+    {
+      "name": "getTeam",
+      "signatures": [
+        "getTeam(id: string): Promise<ServerTeam | null>",
+        "getTeam(options: { apiKey: string; }): Promise<ServerTeam | null>"
+      ]
+    },
+    {
+      "name": "getUser",
+      "signatures": [
+        "getUser(options: { or?: \"redirect\" | \"throw\" | \"return-null\" | \"anonymous\" | \"anonymous-if-exists[deprecated]\" | undefined; includeRes...): Promise<ProjectCurrentServerUser<ProjectId>>",
+        "getUser(options?: GetCurrentUserOptions<HasTokenStore> | undefined): Promise<ProjectCurrentServerUser<ProjectId> | null>",
+        "getUser(id: string): Promise<ServerUser | null>",
+        "getUser(options: { apiKey: string; or?: \"return-null\" | \"anonymous\" | undefined; }): Promise<ServerUser | null>",
+        "getUser(options: { from: \"convex\"; ctx: GenericQueryCtx<any>; or?: \"return-null\" | \"anonymous\" | undefined; }): Promise<ServerUser | null>"
+      ]
+    },
+    {
+      "name": "grantProduct",
+      "signatures": [
+        "grantProduct(options: ({ userId: string; } | { teamId: string; } | { customCustomerId: string; }) & ({ productId: string; } | { product: In...): Promise<void>"
+      ]
+    },
+    {
+      "name": "listTeams",
+      "signatures": [
+        "listTeams(...args: []): Promise<ServerTeam[]>"
+      ]
+    },
+    {
+      "name": "listUsers",
+      "signatures": [
+        "listUsers(options?: ServerListUsersOptions | undefined): Promise<ServerUser[] & { nextCursor: string | null; }>"
+      ]
+    },
+    {
+      "name": "sendEmail",
+      "signatures": [
+        "sendEmail(options: SendEmailOptions): Promise<void>"
+      ]
+    }
+  ]
+}
