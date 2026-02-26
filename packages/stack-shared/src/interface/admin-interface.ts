@@ -529,7 +529,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async extractTemplateVariables(templateTsxSource: string): Promise<{ variables: Array<TemplateVariableInfo> }> {
+  async extractTemplateVariables(templateTsxSource: string): Promise<{ variables: Array<{ name: string, type: string, default_value: TemplateVariableInfo["defaultValue"] }> }> {
     const response = await this.sendAdminRequest(`/emails/template-variables`, {
       method: "POST",
       headers: {
