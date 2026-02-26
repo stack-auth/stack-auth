@@ -405,12 +405,7 @@ export default function PageClient({ emailId }: { emailId: string }) {
       }
     >
       <div className="flex gap-6">
-        {/* Left column: Vertical Timeline -- pushed down to align below status/scheduled rows */}
-        <div className="shrink-0 pt-24" style={{ width: 220 }}>
-          <EmailTimeline email={email} />
-        </div>
-
-        {/* Right column: Content + Controls */}
+        {/* Left column: Content + Controls */}
         <div className="flex-1 min-w-0 space-y-5">
           {/* Status row */}
           <div className="flex items-center justify-between">
@@ -601,6 +596,11 @@ export default function PageClient({ emailId }: { emailId: string }) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Right column: Timeline */}
+        <div className="shrink-0 pt-24" style={{ width: 220 }}>
+          <EmailTimeline email={email} />
         </div>
       </div>
 
