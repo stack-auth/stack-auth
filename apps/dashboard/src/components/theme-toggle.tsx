@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui";
 import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 
 type ViewTransitionWithReady = {
   ready: Promise<void>,
@@ -14,20 +14,10 @@ type DocumentWithViewTransition = globalThis.Document & {
 const TRANSITION_DURATION_MS = 600;
 
 export default function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
-  const isReady = resolvedTheme === "dark" || resolvedTheme === "light";
+  const { resolvedTheme, setTheme, mounted } = useTheme();
 
   const handleToggle = () => {
-    if (!isReady) {
-      return;
-    }
-
     const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
-
-    if (typeof document === "undefined") {
-      setTheme(nextTheme);
-      return;
-    }
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const documentWithTransition: DocumentWithViewTransition = document;
@@ -90,7 +80,7 @@ export default function ThemeToggle() {
       size="icon"
       className="w-8 h-8 hover:bg-muted/50"
       onClick={handleToggle}
-      disabled={!isReady}
+      disabled={!mounted}
       aria-label="Toggle theme"
     >
       <SunIcon className="hidden dark:block w-4 h-4" />
