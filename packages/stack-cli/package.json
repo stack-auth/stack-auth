@@ -1,0 +1,40 @@
+{
+  "name": "@stackframe/stack-cli",
+  "version": "2.8.71",
+  "repository": "https://github.com/stack-auth/stack-auth",
+  "description": "The CLI for Stack Auth. https://stack-auth.com",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "stack": "./dist/index.js"
+  },
+  "scripts": {
+    "clean": "rimraf node_modules && rimraf dist",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint --ext .tsx,.ts .",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "README.md",
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "homepage": "https://stack-auth.com",
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@stackframe/js": "workspace:*",
+    "commander": "^13.1.0",
+    "jiti": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "5.3.3"
+  },
+  "packageManager": "pnpm@10.23.0"
+}
