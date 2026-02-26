@@ -195,7 +195,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
     if (draft) {
       setCurrentCode(draft.tsxSource);
       setSelectedThemeId(draft.themeId);
-      setEditedVariables(Object.fromEntries(Object.entries(draft.templateVariables).map(([k, v]) => [k, String(v)])));
+      setEditedVariables(Object.fromEntries(Object.entries(draft.templateVariables ?? {}).map(([k, v]) => [k, String(v)])));
     }
   };
 
@@ -627,6 +627,7 @@ function SentStage({ draftId }: { draftId: string }) {
   const filterFn = useCallback((email: AdminEmailOutbox) => email.emailDraftId === draftId, [draftId]);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelContext, setCancelContext] = useState<{ count: number, emails: AdminEmailOutbox[], refresh: () => Promise<void> } | null>(null);
+  const [bulkAlert, setBulkAlert] = useState<{ variant: "destructive" | "success", title: string } | null>(null);
 
   const renderActions = useCallback((emails: AdminEmailOutbox[], refresh: () => Promise<void>) => {
     const pausable = emails.filter(e => PAUSABLE_STATUSES.has(e.status) && !e.isPaused);
@@ -659,7 +660,12 @@ function SentStage({ draftId }: { draftId: string }) {
                 size="sm"
                 className="hover:bg-accent"
                 onClick={async () => {
-                  await Promise.allSettled(pausable.map(e => stackAdminApp.pauseOutboxEmail(e.id)));
+                  setBulkAlert(null);
+                  const results = await Promise.allSettled(pausable.map(e => stackAdminApp.pauseOutboxEmail(e.id)));
+                  const failed = results.filter(r => r.status === "rejected").length;
+                  if (failed > 0) {
+                    setBulkAlert({ variant: "destructive", title: `Failed to pause ${failed} of ${pausable.length} emails` });
+                  }
                   await refresh();
                 }}
               >
@@ -673,7 +679,12 @@ function SentStage({ draftId }: { draftId: string }) {
                 size="sm"
                 className="hover:bg-accent"
                 onClick={async () => {
-                  await Promise.allSettled(paused.map(e => stackAdminApp.unpauseOutboxEmail(e.id)));
+                  setBulkAlert(null);
+                  const results = await Promise.allSettled(paused.map(e => stackAdminApp.unpauseOutboxEmail(e.id)));
+                  const failed = results.filter(r => r.status === "rejected").length;
+                  if (failed > 0) {
+                    setBulkAlert({ variant: "destructive", title: `Failed to resume ${failed} of ${paused.length} emails` });
+                  }
                   await refresh();
                 }}
               >
@@ -703,6 +714,13 @@ function SentStage({ draftId }: { draftId: string }) {
   return (
     <div className="mx-auto w-full max-w-6xl p-4">
       <DraftProgressBar steps={DRAFT_STEPS} currentStep="sent" disableNavigation />
+      {bulkAlert && (
+        <div className="mt-4">
+          <Alert variant={bulkAlert.variant}>
+            <AlertTitle>{bulkAlert.title}</AlertTitle>
+          </Alert>
+        </div>
+      )}
       <div className="mt-4">
         <SentEmailsView filterFn={filterFn} renderActions={renderActions} />
       </div>
@@ -716,8 +734,13 @@ function SentStage({ draftId }: { draftId: string }) {
           label: `Cancel ${cancelContext?.count ?? 0} email${(cancelContext?.count ?? 0) !== 1 ? "s" : ""}`,
           onClick: async () => {
             if (!cancelContext) return;
-            await Promise.allSettled(cancelContext.emails.map(e => stackAdminApp.cancelOutboxEmail(e.id)));
+            setBulkAlert(null);
+            const results = await Promise.allSettled(cancelContext.emails.map(e => stackAdminApp.cancelOutboxEmail(e.id)));
+            const failed = results.filter(r => r.status === "rejected").length;
             setCancelDialogOpen(false);
+            if (failed > 0) {
+              setBulkAlert({ variant: "destructive", title: `Failed to cancel ${failed} of ${cancelContext.count} emails` });
+            }
             await cancelContext.refresh();
           },
           props: { variant: "destructive" },
