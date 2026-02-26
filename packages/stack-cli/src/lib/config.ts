@@ -36,18 +36,21 @@ export function writeConfigValue(key: ConfigKey, value: string): void {
   const lines = readConfigFileRaw();
   const newLine = `${key}=${value}`;
   let found = false;
-  const result = lines.map((line) => {
+  const result: string[] = [];
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) {
-      return line;
+      result.push(line);
+      continue;
     }
     const eqIndex = trimmed.indexOf("=");
     if (eqIndex !== -1 && trimmed.slice(0, eqIndex).trim() === key) {
       found = true;
-      return newLine;
+      result.push(newLine);
+    } else {
+      result.push(line);
     }
-    return line;
-  });
+  }
   if (!found) {
     result.push(newLine);
   }
