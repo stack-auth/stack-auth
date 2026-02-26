@@ -234,6 +234,7 @@ type SendEmailOptionsBase = {
   subject?: string,
   notificationCategoryName?: string,
   scheduledAt?: Date,
+  variables?: Record<string, unknown>,
 }
 
 
@@ -244,14 +245,8 @@ export type SendEmailOptions = SendEmailOptionsBase
   ]>
   & XOR<[
     { html: string },
-    {
-      templateId: string,
-      variables?: Record<string, unknown>,
-    },
-    {
-      draftId: string,
-      variables?: Record<string, unknown>,
-    }
+    { templateId: string },
+    { draftId: string }
   ]>
 
 export type EmailDeliveryWindowStats = {
