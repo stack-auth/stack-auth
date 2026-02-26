@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
+import { CliError } from "../lib/errors.js";
 
 export function registerExecCommand(program: Command) {
   program
@@ -13,8 +14,18 @@ export function registerExecCommand(program: Command) {
 
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-      const fn = new AsyncFunction("app", javascript);
-      const result = await fn(project.app);
+      let fn;
+      try {
+        fn = new AsyncFunction("app", javascript);
+      } catch (err: any) {
+        throw new CliError(`Syntax error in exec code: ${err.message}`);
+      }
+      let result;
+      try {
+        result = await fn(project.app);
+      } catch (err: any) {
+        throw new CliError(`Exec error: ${err.message}`);
+      }
 
       if (result !== undefined) {
         console.log(JSON.stringify(result, null, 2));
