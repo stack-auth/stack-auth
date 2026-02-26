@@ -23,6 +23,7 @@ function getDependencyScripts(esmVersion: string): string {
   return html`
     <script type="module">
       import React from 'https://esm.sh/react@18';
+      import * as ReactDOM from 'https://esm.sh/react-dom@18?deps=react@18';
       import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
       import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
       import * as DashboardUIComponents from 'https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@18,react-dom@18';
@@ -30,7 +31,7 @@ function getDependencyScripts(esmVersion: string): string {
       import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${esmVersion}/dist/utils/uuids';
       
       window.React = React;
-      window.ReactDOM = ReactDOMClient;
+      window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
       window.Recharts = Recharts;
       window.DashboardUI = DashboardUIComponents;
       window.StackAdminApp = StackSDK.StackAdminApp;
@@ -178,8 +179,9 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
       // Controls visibility flag — only true in the full dashboard viewer (not cmd+K preview)
       window.__showControls = ${showControls};
       window.__chatOpen = ${initialChatOpen};
+      window.__layoutEditing = false;
 
-      // Theme syncing and chat state from parent window
+      // Theme syncing, chat state, and layout edit from parent window
       window.addEventListener('message', (event) => {
         if (event.data?.type === 'stack-theme-change') {
           const theme = event.data.theme;
@@ -193,6 +195,15 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
           window.__chatOpen = !!event.data.chatOpen;
           window.dispatchEvent(new Event('chat-state-change'));
         }
+        if (event.data?.type === 'dashboard-layout-edit-update') {
+          window.__layoutEditing = !!event.data.editing;
+          window.dispatchEvent(new Event('layout-edit-change'));
+        }
+      });
+
+      // Forward widget edit requests from DashboardUI components to parent
+      window.addEventListener('widget-edit-request', function(e) {
+        window.parent.postMessage({ type: 'dashboard-edit-widget', widgetId: e.detail.widgetId }, '*');
       });
 
       const STACK_CONFIG = {
@@ -355,13 +366,17 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onBack,
   onEditToggle,
   onNavigate,
+  onWidgetEditRequest,
   isChatOpen,
+  layoutEditing,
 }: {
   artifact: DashboardArtifact,
   onBack?: () => void,
   onEditToggle?: () => void,
   onNavigate?: (path: string) => void,
+  onWidgetEditRequest?: (widgetId: string) => void,
   isChatOpen?: boolean,
+  layoutEditing?: boolean,
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onBackRef = useRef(onBack);
@@ -370,6 +385,8 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onEditToggleRef.current = onEditToggle;
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onWidgetEditRequestRef = useRef(onWidgetEditRequest);
+  onWidgetEditRequestRef.current = onWidgetEditRequest;
   const user = useUser({ or: "redirect" });
   const { resolvedTheme } = useTheme();
 
@@ -400,6 +417,15 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       }, '*');
     }
   }, [isChatOpen]);
+
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'dashboard-layout-edit-update',
+        editing: !!layoutEditing,
+      }, '*');
+    }
+  }, [layoutEditing]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -455,6 +481,11 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
         return;
       }
 
+      if (type === "dashboard-edit-widget") {
+        onWidgetEditRequestRef.current?.(event.data.widgetId);
+        return;
+      }
+
       if (type === "stack-ai-dashboard-ready" || type === "stack-ai-dashboard-error") {
         return;
       }
@@ -473,7 +504,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       sandbox="allow-scripts"
       srcDoc={srcDoc}
       className="h-full w-full bg-transparent"
-      allowTransparency={true}
+
     />
   );
 });

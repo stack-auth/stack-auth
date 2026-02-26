@@ -13,7 +13,7 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui";
 
-export const Thread: FC<{ useOffWhiteLightMode?: boolean }> = ({ useOffWhiteLightMode = false }) => {
+export const Thread: FC<{ useOffWhiteLightMode?: boolean, composerPlaceholder?: string }> = ({ useOffWhiteLightMode = false, composerPlaceholder }) => {
   return (
     <ThreadPrimitive.Root
       className={cn(
@@ -51,7 +51,7 @@ export const Thread: FC<{ useOffWhiteLightMode?: boolean }> = ({ useOffWhiteLigh
             : "from-background via-background",
         )}>
           <ThreadScrollToBottom />
-          <Composer />
+          <Composer placeholder={composerPlaceholder} />
         </div>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
@@ -119,13 +119,13 @@ const ThreadWelcomeSuggestions: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+const Composer: FC<{ placeholder?: string }> = ({ placeholder }) => {
   return (
     <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-white dark:bg-background/90 backdrop-blur-xl shadow-sm dark:shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       <ComposerPrimitive.Input
         rows={1}
         autoFocus
-        placeholder="Describe the email design you want..."
+        placeholder={placeholder ?? "Describe what you want..."}
         className="placeholder:text-muted-foreground/60 max-h-32 w-full resize-none border-none bg-transparent px-4 py-3 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed"
       />
       <div className="flex items-center justify-end px-3 pb-2.5">

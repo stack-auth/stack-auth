@@ -528,6 +528,216 @@ OTHER COMPONENTS:
   <DashboardUI.DesignEmptyState title="No data" description="..." icon={...} />
 
 ────────────────────────────────────────
+LAYOUT
+────────────────────────────────────────
+You have FULL FREEDOM over the page layout. Use standard JSX with CSS classes (flexbox, CSS grid,
+spacing, typography) to design the overall page however looks best. You are NOT limited to a
+single grid — mix free-form sections with draggable grid sections as you see fit.
+
+DRAGGABLE GRID (opt-in per section):
+  For groups of cards that should be user-rearrangeable (metric cards, chart groups, etc.),
+  wrap them in SwappableWidgetInstanceGrid. Use it ONLY where drag/resize makes sense — NOT
+  for the entire page. Headers, text, and custom sections should be plain JSX.
+
+  Key APIs (all via DashboardUI.*):
+    DashboardUI.WidgetInstanceGrid           — immutable grid state class
+    DashboardUI.SwappableWidgetInstanceGrid   — React component that renders a draggable grid
+    DashboardUI.SwappableWidgetInstanceGridContext — context for edit mode
+    DashboardUI.createWidgetInstance          — creates a widget instance from a widget definition
+    DashboardUI.useRefState                  — mutable ref + setState hook (required for gridRef)
+
+  Widget definition shape:
+    { id: string, MainComponent: React.ComponentType, defaultSettings: {}, defaultState: {},
+      minWidth?: number, minHeight?: number }
+
+  minWidth / minHeight (optional):
+    Set a per-widget minimum size in grid columns/rows. The widget can never be shrunk below this
+    when the user resizes or when push-resize shrinks neighbors. Must be >= 4 (the global minimum).
+    Choose based on content — a metric card might need minWidth: 5, a chart might need minWidth: 8.
+
+  YOU choose the grid dimensions per section. NOTE: minimum element width is 4 grid columns.
+    IMPORTANT: Use a grid width of 24 and set defaultElementWidth WIDER than the minimum (4).
+    This allows push-resize: when a user resizes one card wider, its neighbor automatically shrinks
+    (down to min width 4). If all elements start at min width, there is no room for push-resize.
+    - width: total columns — always use 24
+    - defaultElementWidth: columns per element — MUST be wider than 4 to allow push-resize
+    - defaultElementHeight: rows per element — pick based on content type:
+        Metric cards: 6-7 rows (120-140px at unitHeight 20)
+        Chart cards: 15-16 rows (300-320px at unitHeight 20)
+        General cards: 10-12 rows
+    - gapPixels: spacing between cells (8-12)
+    - unitHeight: pass unitHeight={20} for fine-grained row sizing
+    Common patterns (all use width: 24):
+      4 items/row: { width: 24, defaultElementWidth: 6 }
+      3 items/row: { width: 24, defaultElementWidth: 8 }
+      2 items/row: { width: 24, defaultElementWidth: 12 }
+
+  Cards MUST use className="h-full" so they fill their grid cell (the grid uses absolute positioning).
+  NEVER call gridRef.current.elements() — SwappableWidgetInstanceGrid handles all rendering.
+
+IMPORTANT data pattern:
+  useRefState only uses its INITIAL value (like useState). If you create widgets that close
+  over loading/data state, the grid will show stale data forever. To avoid this:
+  1. Fetch data in a parent Dashboard() component
+  2. Early-return a loading indicator while data is loading
+  3. Once data is ready, render a child component (e.g. DashboardContent) that creates widgets
+  4. Since the child only mounts AFTER data is available, the closures capture the final data
+
+Example — a dashboard with free-form layout + draggable sections:
+
+  function Dashboard() {
+    const [loading, setLoading] = React.useState(true);
+    const [users, setUsers] = React.useState(null);
+    const [error, setError] = React.useState(null);
+    const [showControls] = React.useState(!!window.__showControls);
+    const [chatOpen, setChatOpen] = React.useState(!!window.__chatOpen);
+
+    React.useEffect(() => {
+      const handler = () => setChatOpen(!!window.__chatOpen);
+      window.addEventListener('chat-state-change', handler);
+      return () => window.removeEventListener('chat-state-change', handler);
+    }, []);
+
+    React.useEffect(() => {
+      stackServerApp.listUsers({ includeAnonymous: true })
+        .then(result => { setUsers(result); setLoading(false); })
+        .catch(err => { setError(String(err)); setLoading(false); });
+    }, []);
+
+    if (loading) return <div className="flex items-center justify-center min-h-[200px] text-muted-foreground">Loading...</div>;
+    if (error) return <div className="p-6 text-red-500">{error}</div>;
+
+    return <DashboardContent users={users} showControls={showControls} chatOpen={chatOpen} />;
+  }
+
+  function DashboardContent({ users, showControls, chatOpen }) {
+    const [isEditing, setIsEditing] = React.useState(false);
+
+    // Listen for layout edit toggle from parent window
+    React.useEffect(() => {
+      const handler = () => setIsEditing(!!window.__layoutEditing);
+      window.addEventListener('layout-edit-change', handler);
+      return () => window.removeEventListener('layout-edit-change', handler);
+    }, []);
+
+    // --- Metric card widgets (4-column grid) ---
+    const metricWidgets = React.useMemo(() => [
+      {
+        id: "total-users",
+        MainComponent: () => (
+          <DashboardUI.DesignMetricCard className="h-full" label="Total Users" value={users.length} />
+        ),
+        defaultSettings: {}, defaultState: {},
+        minWidth: 5,
+      },
+      {
+        id: "verified",
+        MainComponent: () => (
+          <DashboardUI.DesignMetricCard className="h-full" label="Verified" value={users.filter(u => u.primaryEmailVerified).length} />
+        ),
+        defaultSettings: {}, defaultState: {},
+        minWidth: 5,
+      },
+      // ... more metric widgets
+    ], [users]);
+
+    const metricGridRef = DashboardUI.useRefState(
+      DashboardUI.WidgetInstanceGrid.fromWidgetInstances(
+        metricWidgets.map(w => DashboardUI.createWidgetInstance(w)),
+        { width: 24, height: "auto", defaultElementWidth: 6, defaultElementHeight: 7 }
+      )
+    );
+
+    // --- Chart widgets (2-column grid) ---
+    const chartWidgets = React.useMemo(() => [
+      {
+        id: "signups-chart",
+        MainComponent: () => (
+          <DashboardUI.DesignChartCard className="h-full" title="Signups Over Time">
+            <DashboardUI.DesignChartContainer config={{}} maxHeight={300}>
+              {/* Recharts chart */}
+            </DashboardUI.DesignChartContainer>
+          </DashboardUI.DesignChartCard>
+        ),
+        defaultSettings: {}, defaultState: {},
+        minWidth: 8,
+      },
+    ], [users]);
+
+    const chartGridRef = DashboardUI.useRefState(
+      DashboardUI.WidgetInstanceGrid.fromWidgetInstances(
+        chartWidgets.map(w => DashboardUI.createWidgetInstance(w)),
+        { width: 24, height: "auto", defaultElementWidth: 12, defaultElementHeight: 15 }
+      )
+    );
+
+    return (
+      <div className="p-6 space-y-8 max-w-7xl mx-auto">
+        {showControls && !chatOpen && (
+          <div className="flex items-center justify-between">
+            <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+              ← Back
+            </DashboardUI.DesignButton>
+            <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+              Edit ✎
+            </DashboardUI.DesignButton>
+          </div>
+        )}
+
+        {/* Free-form header — plain JSX, no grid */}
+        <div>
+          <h1 className="text-3xl font-bold">User Analytics</h1>
+          <p className="text-muted-foreground mt-1">Overview of your user base and growth trends</p>
+        </div>
+
+        {/* Draggable metric cards — 4-column grid */}
+        <section>
+          <DashboardUI.SwappableWidgetInstanceGridContext.Provider value={{ isEditing }}>
+            <DashboardUI.SwappableWidgetInstanceGrid
+              gridRef={metricGridRef}
+              isSingleColumnMode="auto"
+              allowVariableHeight={false}
+              isStatic={!isEditing}
+              unitHeight={20}
+              gapPixels={8}
+            />
+          </DashboardUI.SwappableWidgetInstanceGridContext.Provider>
+        </section>
+
+        {/* Draggable charts — 2-column grid */}
+        <section>
+          <h2 className="text-lg font-semibold mb-3">Charts</h2>
+          <DashboardUI.SwappableWidgetInstanceGridContext.Provider value={{ isEditing }}>
+            <DashboardUI.SwappableWidgetInstanceGrid
+              gridRef={chartGridRef}
+              isSingleColumnMode="auto"
+              allowVariableHeight={false}
+              isStatic={!isEditing}
+              unitHeight={20}
+              gapPixels={8}
+            />
+          </DashboardUI.SwappableWidgetInstanceGridContext.Provider>
+        </section>
+      </div>
+    );
+  }
+
+IMPORTANT layout rules:
+- Design the full page layout FREELY — use any JSX structure, CSS classes, spacing you want
+- Use SwappableWidgetInstanceGrid ONLY for sections where drag/resize is useful (card groups, chart groups)
+- ALWAYS use width: 24. Set defaultElementWidth WIDER than the min (4) to allow push-resize (e.g. 6 for 4/row, 8 for 3/row, 12 for 2/row)
+- Set defaultElementHeight based on content type (7 for metric cards, 15 for charts — see height guide above)
+- ALWAYS pass unitHeight={20} and gapPixels={8} to SwappableWidgetInstanceGrid
+- Cards inside grid widgets MUST use className="h-full" so they fill the grid cell completely
+- Multiple grids per page are encouraged — each section gets its own grid with its own dimensions
+- Non-grid sections (headers, text, tables, lists) are just normal JSX — no grid needed
+- Always use the two-component pattern: Dashboard (fetches data) → DashboardContent (renders after data is ready)
+- Do NOT render your own "Edit Layout" button — edit mode is controlled by the parent window via messages
+- Listen for layout edit changes: window.addEventListener('layout-edit-change', handler) and read window.__layoutEditing
+- Use isStatic={!isEditing} so drag only works when the parent activates edit mode
+- isSingleColumnMode="auto" auto-switches to single-column on narrow screens
+
+────────────────────────────────────────
 RECHARTS (via Recharts.*)
 ────────────────────────────────────────
 Use via Recharts.* — always wrap in DashboardUI.DesignChartContainer:
@@ -544,7 +754,7 @@ Use "hsl(var(--border))" for CartesianGrid stroke and "hsl(var(--muted-foregroun
 ────────────────────────────────────────
 IMPORTANT IMPLEMENTATION NOTES (HARD RULES)
 ────────────────────────────────────────
-- Always define: function Dashboard() { ... }
+- Always define: function Dashboard() { ... } as the top-level component. You may define additional helper components (e.g. function DashboardContent() { ... }) as needed.
 - Use React.useState / React.useEffect (no imports)
 - No exports, no imports
 - No new StackServerApp(...)

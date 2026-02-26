@@ -97,21 +97,28 @@ export async function buildDashboardMessages(
   adminApp: StackAdminApp,
   messages: Array<{ role: string, content: unknown }>,
   currentSource?: string,
+  editingWidgetId?: string,
 ): Promise<Array<{ role: string, content: string }>> {
   const promptForFileSelection = extractUserPromptText(messages);
   const selectedFiles = await selectRelevantFiles(promptForFileSelection, adminApp);
   const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
+
+  const widgetEditContext = editingWidgetId != null
+    ? `\n\nIMPORTANT: The user wants to edit ONLY the widget with id='${editingWidgetId}'. Modify ONLY that widget's MainComponent and related code. Keep all other widgets, layout, and structure completely unchanged.`
+    : "";
 
   const contextMessages: Array<{ role: string, content: string }> = [];
 
   if (currentSource != null && currentSource.length > 0) {
     contextMessages.push({
       role: "user",
-      content: `Here is the current dashboard source code:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nHere are the type definitions:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}`,
+      content: `Here is the current dashboard source code:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nHere are the type definitions:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}${widgetEditContext}`,
     });
     contextMessages.push({
       role: "assistant",
-      content: "I understand the current dashboard code, type definitions, and available UI components. What changes would you like to make?",
+      content: editingWidgetId != null
+        ? `I understand the current dashboard code and I'll focus my changes on the widget with id='${editingWidgetId}'. What changes would you like to make to it?`
+        : "I understand the current dashboard code, type definitions, and available UI components. What changes would you like to make?",
     });
   } else {
     contextMessages.push({
