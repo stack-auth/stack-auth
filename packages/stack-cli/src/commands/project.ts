@@ -76,7 +76,7 @@ export function registerProjectCommand(program: Command) {
       });
 
       if (program.opts().json) {
-        console.log(JSON.stringify({ id: newProject.id, displayName: newProject.displayName }));
+        console.log(JSON.stringify({ id: newProject.id, displayName: newProject.displayName }, null, 2));
       } else {
         console.log(`Project created: ${newProject.id} (${newProject.displayName})`);
       }

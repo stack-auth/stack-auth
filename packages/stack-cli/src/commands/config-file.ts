@@ -56,6 +56,10 @@ export function registerConfigCommand(program: Command) {
       const filePath = path.resolve(opts.configFile);
       const ext = path.extname(filePath);
 
+      if (ext !== ".js" && ext !== ".ts") {
+        throw new CliError("Config file must have a .js or .ts extension.");
+      }
+
       if (!fs.existsSync(filePath)) {
         throw new CliError(`Config file not found: ${filePath}`);
       }
@@ -65,10 +69,8 @@ export function registerConfigCommand(program: Command) {
         const { createJiti } = await import("jiti");
         const jiti = createJiti(import.meta.url);
         configModule = await jiti.import(filePath);
-      } else if (ext === ".js") {
-        configModule = await import(filePath);
       } else {
-        throw new CliError("Config file must have a .js or .ts extension.");
+        configModule = await import(filePath);
       }
 
       const config = configModule.config;

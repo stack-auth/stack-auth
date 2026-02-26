@@ -21,7 +21,7 @@ function runCli(
       resolve({
         stdout: stdout.toString(),
         stderr: stderr.toString(),
-        exitCode: error ? 1 : 0,
+        exitCode: error ? (error as any).code ?? 1 : 0,
       });
     });
   });
@@ -167,6 +167,7 @@ describe("Stack CLI", () => {
   });
 
   it("lists projects including created one", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
     const { stdout, exitCode } = await runCli(["--json", "project", "list"]);
     expect(exitCode).toBe(0);
     const projects = JSON.parse(stdout);
@@ -176,6 +177,7 @@ describe("Stack CLI", () => {
   });
 
   it("returns basic expression", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
     const { stdout, exitCode } = await runCli(
       ["exec", "return 1+1"],
       { STACK_PROJECT_ID: createdProjectId },
@@ -304,6 +306,8 @@ describe("Stack CLI", () => {
   });
 
   it("can list users with stackServerApp", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+    expect(createdUserEmail).toBeDefined();
     const { stdout, exitCode } = await runCli(
       ["exec", "const users = await stackServerApp.listUsers(); return users.length"],
       { STACK_PROJECT_ID: createdProjectId },
@@ -328,6 +332,7 @@ describe("Stack CLI", () => {
   });
 
   it("config push succeeds", async ({ expect }) => {
+    expect(configTsPath).toBeDefined();
     const { stdout, exitCode } = await runCli(
       ["config", "push", "--config-file", configTsPath],
       { STACK_PROJECT_ID: createdProjectId },

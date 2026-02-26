@@ -6,9 +6,17 @@ const CONFIG_PATH = process.env.STACK_CLI_CONFIG_PATH ?? path.join(os.homedir(),
 
 type ConfigKey = "STACK_CLI_REFRESH_TOKEN" | "STACK_API_URL" | "STACK_DASHBOARD_URL";
 
-function parseConfig(content: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const line of content.split("\n")) {
+function readConfigFileRaw(): string[] {
+  try {
+    return fs.readFileSync(CONFIG_PATH, "utf-8").split("\n");
+  } catch {
+    return [];
+  }
+}
+
+export function readConfigValue(key: ConfigKey): string | undefined {
+  const lines = readConfigFileRaw();
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) {
       continue;
@@ -17,45 +25,47 @@ function parseConfig(content: string): Record<string, string> {
     if (eqIndex === -1) {
       continue;
     }
-    const key = trimmed.slice(0, eqIndex).trim();
-    const value = trimmed.slice(eqIndex + 1).trim();
-    result[key] = value;
+    if (trimmed.slice(0, eqIndex).trim() === key) {
+      return trimmed.slice(eqIndex + 1).trim();
+    }
   }
-  return result;
-}
-
-function serializeConfig(config: Record<string, string>): string {
-  return Object.entries(config)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n") + "\n";
-}
-
-function readConfigFile(): Record<string, string> {
-  try {
-    const content = fs.readFileSync(CONFIG_PATH, "utf-8");
-    return parseConfig(content);
-  } catch {
-    return {};
-  }
-}
-
-function writeConfigFile(config: Record<string, string>): void {
-  fs.writeFileSync(CONFIG_PATH, serializeConfig(config), { mode: 0o600 });
-}
-
-export function readConfigValue(key: ConfigKey): string | undefined {
-  const config = readConfigFile();
-  return config[key];
+  return undefined;
 }
 
 export function writeConfigValue(key: ConfigKey, value: string): void {
-  const config = readConfigFile();
-  config[key] = value;
-  writeConfigFile(config);
+  const lines = readConfigFileRaw();
+  const newLine = `${key}=${value}`;
+  let found = false;
+  const result = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return line;
+    }
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex !== -1 && trimmed.slice(0, eqIndex).trim() === key) {
+      found = true;
+      return newLine;
+    }
+    return line;
+  });
+  if (!found) {
+    result.push(newLine);
+  }
+  fs.writeFileSync(CONFIG_PATH, result.join("\n"), { mode: 0o600 });
 }
 
 export function removeConfigValue(key: ConfigKey): void {
-  const config = readConfigFile();
-  delete config[key];
-  writeConfigFile(config);
+  const lines = readConfigFileRaw();
+  const result = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return true;
+    }
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex !== -1 && trimmed.slice(0, eqIndex).trim() === key) {
+      return false;
+    }
+    return true;
+  });
+  fs.writeFileSync(CONFIG_PATH, result.join("\n"), { mode: 0o600 });
 }
