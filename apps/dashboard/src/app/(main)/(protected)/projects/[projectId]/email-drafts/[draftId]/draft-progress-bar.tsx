@@ -2,6 +2,7 @@
 
 import { Check } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type DraftStep = {
   id: string,
@@ -17,6 +18,9 @@ type DraftProgressBarProps = {
 
 export function DraftProgressBar({ steps, currentStep, onStepClick, disableNavigation }: DraftProgressBarProps) {
   const currentIndex = steps.findIndex((s) => s.id === currentStep);
+  if (currentIndex === -1) {
+    throwErr(`currentStep "${currentStep}" not found in steps [${steps.map(s => s.id).join(", ")}]`);
+  }
 
   return (
     <div className="flex flex-col items-center py-2 gap-1">

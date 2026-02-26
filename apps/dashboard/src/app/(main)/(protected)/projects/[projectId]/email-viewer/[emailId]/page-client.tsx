@@ -273,10 +273,15 @@ export default function PageClient({ emailId }: { emailId: string }) {
 
   const handleScheduleSave = async () => {
     if (!email) return;
+    const parsedMillis = new Date(scheduledAt).getTime();
+    if (Number.isNaN(parsedMillis)) {
+      toast({ title: "Invalid date", description: "Please enter a valid date and time.", variant: "destructive" });
+      return;
+    }
     setIsSaving(true);
     try {
       await stackAdminApp.updateOutboxEmail(email.id, {
-        scheduledAtMillis: new Date(scheduledAt).getTime(),
+        scheduledAtMillis: parsedMillis,
       });
       toast({ title: "Schedule updated", variant: "success" });
       await refreshEmail();

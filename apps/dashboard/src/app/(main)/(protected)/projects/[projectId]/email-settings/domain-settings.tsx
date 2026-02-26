@@ -203,7 +203,13 @@ export function DomainSettings() {
         } : {
           type: "standard",
           host: requireField("host", "Host"),
-          port: Number(formValues.port) || throwErr("Port is required"),
+          port: (() => {
+            const p = Number(formValues.port);
+            if (!Number.isInteger(p) || p < 1 || p > 65535) {
+              throwErr("Port must be an integer between 1 and 65535");
+            }
+            return p;
+          })(),
           username: requireField("username", "Username"),
           password: requireField("password", "Password"),
           senderEmail: requireField("senderEmail", "Sender email"),

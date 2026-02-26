@@ -244,11 +244,11 @@ export type SendEmailOptions = SendEmailOptionsBase
     { html: string },
     {
       templateId: string,
-      variables?: Record<string, any>,
+      variables?: Record<string, unknown>,
     },
     {
       draftId: string,
-      variables?: Record<string, any>,
+      variables?: Record<string, unknown>,
     }
   ]>
 
