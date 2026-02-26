@@ -1,3 +1,4 @@
+import type { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { XOR } from "@stackframe/stack-shared/dist/utils/types";
 
 export type AdminSentEmail = {
@@ -63,6 +64,7 @@ type AdminEmailOutboxBase = {
   createdWith: AdminEmailOutboxCreatedWith,
   emailDraftId: string | null,
   emailProgrammaticCallTemplateId: string | null,
+  variables: Record<string, Json>,
   isPaused: false,
   hasRendered: false,
   hasDelivered: false,

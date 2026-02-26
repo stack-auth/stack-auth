@@ -7,12 +7,12 @@ import { DesignDataTable } from "@/components/design-components/table";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouter, useRouterConfirm } from "@/components/router";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Tooltip, TooltipContent, TooltipTrigger, Typography } from "@/components/ui";
+import { TemplateVariablesButton, TemplateVariablesDialog } from "@/components/template-variables";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
-import { Envelope, GearSix } from "@phosphor-icons/react";
-import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
+import { AdminEmailOutbox, AdminEmailOutboxStatus, type TemplateVariableInfo } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
@@ -72,20 +72,27 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
   const hasTemplateVariables = Object.keys(editedVariables).length > 0;
 
-  // Detect which variables are numbers by inspecting the variablesSchema in the TSX source
+  const [variableMetadata, setVariableMetadata] = useState<TemplateVariableInfo[]>([]);
+
+  useEffect(() => {
+    if (!draft?.tsxSource) return;
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      const vars = await stackAdminApp.extractTemplateVariables(draft.tsxSource);
+      if (!cancelled) setVariableMetadata(vars);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft?.tsxSource, stackAdminApp]);
+
   const variableTypes = useMemo(() => {
-    const types = new Map<string, "string" | "number">();
-    const schemaMatch = currentCode.match(/variablesSchema\s*=\s*type\s*\(\s*\{([\s\S]*?)\}\s*\)/);
-    if (!schemaMatch) return types;
-    const entries = schemaMatch[1].match(/(\w+)\s*:\s*["'](\w+)["']/g) ?? [];
-    for (const entry of entries) {
-      const m = entry.match(/(\w+)\s*:\s*["'](\w+)["']/);
-      if (m) {
-        types.set(m[1], m[2] === "number" ? "number" : "string");
-      }
+    const types = new Map<string, string>();
+    for (const v of variableMetadata) {
+      types.set(v.name, v.type);
     }
     return types;
-  }, [currentCode]);
+  }, [variableMetadata]);
 
   const coercedVariables = useMemo((): Record<string, string | number> => {
     const result: Record<string, string | number> = {};
@@ -244,20 +251,10 @@ export default function PageClient({ draftId }: { draftId: string }) {
                 editorTitle="Draft Source Code"
                 editModeEnabled
                 codeToggleBarExtra={hasTemplateVariables ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => setVariablesDialogOpen(true)}
-                        className="h-full px-3 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60 dark:hover:bg-foreground/[0.06] transition-colors duration-150 hover:transition-none border-l border-border/30 dark:border-foreground/[0.06]"
-                      >
-                        <GearSix size={14} weight={variablesDirty ? "fill" : "regular"} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-xs">
-                      {variablesDirty ? "Template Variables (unsaved)" : "Template Variables"}
-                    </TooltipContent>
-                  </Tooltip>
+                  <TemplateVariablesButton
+                    isDirty={variablesDirty}
+                    onClick={() => setVariablesDialogOpen(true)}
+                  />
                 ) : null}
                 wysiwygDebugInfo={wysiwygDebugInfo}
                 headerAction={
@@ -316,31 +313,13 @@ export default function PageClient({ draftId }: { draftId: string }) {
           <SentStage draftId={draftId} />
         )}
 
-        {/* Template Variables Dialog */}
-        <Dialog open={variablesDialogOpen} onOpenChange={setVariablesDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Template Variables</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 max-h-[400px] overflow-y-auto">
-              {Object.entries(editedVariables).map(([name, value]) => (
-                <div key={name} className="space-y-1.5">
-                  <Label htmlFor={`var-${name}`} className="text-sm font-medium">{name}</Label>
-                  <Input
-                    id={`var-${name}`}
-                    value={value}
-                    onChange={(e) => setEditedVariables(prev => ({ ...prev, [name]: e.target.value }))}
-                  />
-                </div>
-              ))}
-            </div>
-            {variablesDirty && (
-              <Typography variant="secondary" className="text-xs text-orange-500">
-                Unsaved changes — save or click Next to persist.
-              </Typography>
-            )}
-          </DialogContent>
-        </Dialog>
+        <TemplateVariablesDialog
+          open={variablesDialogOpen}
+          onOpenChange={setVariablesDialogOpen}
+          variables={editedVariables}
+          onVariablesChange={setEditedVariables}
+          isDirty={variablesDirty}
+        />
       </DraftFlowProvider>
     </AppEnabledGuard>
   );

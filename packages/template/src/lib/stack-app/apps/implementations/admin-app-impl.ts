@@ -10,6 +10,7 @@ import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import type { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
@@ -823,6 +824,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       createdWith: crud.created_with as "draft" | "programmatic-call",
       emailDraftId: crud.email_draft_id as string | null,
       emailProgrammaticCallTemplateId: crud.email_programmatic_call_template_id as string | null,
+      variables: (crud.variables ?? {}) as Record<string, Json>,
       isPaused: false as const,
       hasRendered: false as const,
       hasDelivered: false as const,
@@ -1047,6 +1049,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       cancel: options.cancel,
       tsx_source: options.tsxSource,
       theme_id: options.themeId,
+      variables: options.variables,
     });
     return this._emailOutboxCrudToAdmin(response);
   }

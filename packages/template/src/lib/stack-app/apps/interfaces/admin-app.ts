@@ -1,4 +1,5 @@
 import { ChatContent, type TemplateVariableInfo } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import type { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -34,6 +35,7 @@ export type EmailOutboxUpdateOptions = {
   cancel?: boolean,
   tsxSource?: string,
   themeId?: string | null,
+  variables?: Record<string, Json>,
 };
 
 import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";

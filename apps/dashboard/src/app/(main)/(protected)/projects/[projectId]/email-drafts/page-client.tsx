@@ -7,7 +7,7 @@ import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Spinner, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { type TemplateVariableInfo } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useMemo, useState } from "react";
@@ -16,68 +16,10 @@ import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
-type TemplateVariable = {
-  name: string,
-  type: "string" | "number",
-  defaultValue: string,
-};
-
-/**
- * Extracts template variable info from TSX source.
- * Returns variable names, their arktype types, and default values from PreviewVariables.
- */
-function extractTemplateVariables(tsxSource: string): TemplateVariable[] {
-  const schemaMatch = tsxSource.match(/variablesSchema\s*=\s*type\s*\(\s*\{([\s\S]*?)\}\s*\)/);
-  if (!schemaMatch) {
-    return [];
-  }
-
-  const schemaContent = schemaMatch[1];
-  const varEntries = schemaContent.match(/(\w+)\s*:\s*["'](\w+)["']/g) ?? [];
-  const parsed = new Map<string, "string" | "number">();
-  for (const entry of varEntries) {
-    const m = entry.match(/(\w+)\s*:\s*["'](\w+)["']/);
-    if (m) {
-      const [, name, typeStr] = m;
-      parsed.set(name, typeStr === "number" ? "number" : "string");
-    }
-  }
-
-  if (parsed.size === 0) {
-    throwErr("Template defines a variablesSchema but no variable names could be parsed from it. The schema format may have changed.");
-  }
-
-  // Extract PreviewVariables defaults (handles both quoted strings and bare numbers/booleans)
-  const previewVarsMatch = tsxSource.match(/EmailTemplate\.PreviewVariables\s*=\s*(\{[\s\S]*?\})\s*satisfies/);
-  const defaults = new Map<string, string>();
-  if (previewVarsMatch) {
-    const objContent = previewVarsMatch[1];
-    const pairs = objContent.match(/(\w+)\s*:\s*(?:["'`]([^"'`]*)["'`]|(\S+?))\s*[,}]/g) ?? [];
-    for (const pair of pairs) {
-      const pairMatch = pair.match(/(\w+)\s*:\s*(?:["'`]([^"'`]*)["'`]|(\S+?))\s*[,}]/);
-      if (pairMatch) {
-        defaults.set(pairMatch[1], pairMatch[2] || pairMatch[3] || "");
-      }
-    }
-  }
-
-  return [...parsed.entries()].map(([name, type]) => ({
-    name,
-    type,
-    defaultValue: defaults.get(name) ?? "",
-  }));
-}
-
-/**
- * Coerce a string input value to the appropriate JSON type based on the variable's schema type.
- */
-function coerceVariableValue(value: string, type: "string" | "number"): string | number {
+function coerceVariableValue(value: string, type: string): string | number {
   if (type === "number") {
     const n = Number(value);
-    if (Number.isNaN(n)) {
-      throwErr(`Variable value "${value}" is not a valid number`);
-    }
-    return n;
+    if (!Number.isNaN(n)) return n;
   }
   return value;
 }
@@ -599,7 +541,7 @@ function NewDraftDialog({
   );
 }
 
-type TemplateDialogStep = "select" | "variables" | "name";
+type TemplateDialogStep = "select" | "loading" | "variables" | "name";
 
 function TemplateSelectDialog({
   open,
@@ -614,14 +556,10 @@ function TemplateSelectDialog({
 
   const [step, setStep] = useState<TemplateDialogStep>("select");
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string, displayName: string, tsxSource: string } | null>(null);
+  const [templateVariables, setTemplateVariables] = useState<TemplateVariableInfo[]>([]);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [draftName, setDraftName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-
-  const templateVariables = useMemo(() => {
-    if (!selectedTemplate) return [];
-    return extractTemplateVariables(selectedTemplate.tsxSource);
-  }, [selectedTemplate]);
 
   const allVariablesFilled = useMemo(() => {
     return templateVariables.every(v => (variableValues[v.name] ?? "").trim() !== "");
@@ -630,6 +568,7 @@ function TemplateSelectDialog({
   const resetDialog = () => {
     setStep("select");
     setSelectedTemplate(null);
+    setTemplateVariables([]);
     setVariableValues({});
     setDraftName("");
     setIsCreating(false);
@@ -642,15 +581,18 @@ function TemplateSelectDialog({
     onOpenChange(newOpen);
   };
 
-  const handleSelectTemplate = (template: { id: string, displayName: string, tsxSource: string }) => {
+  const handleSelectTemplate = async (template: { id: string, displayName: string, tsxSource: string }) => {
     setSelectedTemplate(template);
     setDraftName(`Copy of ${template.displayName}`);
-    const variables = extractTemplateVariables(template.tsxSource);
+    setStep("loading");
+
+    const variables = await stackAdminApp.extractTemplateVariables(template.tsxSource);
+    setTemplateVariables(variables);
 
     if (variables.length > 0) {
       const defaults: Record<string, string> = {};
       for (const v of variables) {
-        defaults[v.name] = v.defaultValue;
+        defaults[v.name] = v.defaultValue != null ? String(v.defaultValue) : "";
       }
       setVariableValues(defaults);
       setStep("variables");
@@ -694,9 +636,18 @@ function TemplateSelectDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {step === "select" ? "Create from Template" : step === "variables" ? "Template Variables" : "Name Your Draft"}
+            {step === "select" || step === "loading" ? "Create from Template" : step === "variables" ? "Template Variables" : "Name Your Draft"}
           </DialogTitle>
         </DialogHeader>
+
+        {step === "loading" && (
+          <div className="flex flex-col items-center justify-center py-8 gap-3">
+            <Spinner className="h-6 w-6" />
+            <Typography variant="secondary" className="text-sm">
+              Analyzing template variables...
+            </Typography>
+          </div>
+        )}
 
         {step === "select" && (
           <div className="mt-4">
@@ -719,7 +670,7 @@ function TemplateSelectDialog({
                     type="button"
                     key={template.id}
                     disabled={isCreating}
-                    onClick={() => handleSelectTemplate(template)}
+                    onClick={() => runAsynchronouslyWithAlert(handleSelectTemplate(template))}
                     className={cn(
                       "w-full flex items-center gap-3 p-3 rounded-lg text-left",
                       "bg-gray-100/50 dark:bg-foreground/[0.03]",
@@ -774,7 +725,7 @@ function TemplateSelectDialog({
                         ...prev,
                         [variable.name]: e.target.value,
                       }))}
-                      placeholder={isLinkVariable ? "https://example.com/..." : (variable.defaultValue || `Enter ${variable.name}`)}
+                      placeholder={isLinkVariable ? "https://example.com/..." : (variable.defaultValue != null ? String(variable.defaultValue) : `Enter ${variable.name}`)}
                     />
                     {isLinkVariable && (
                       <Typography variant="secondary" className="text-xs">

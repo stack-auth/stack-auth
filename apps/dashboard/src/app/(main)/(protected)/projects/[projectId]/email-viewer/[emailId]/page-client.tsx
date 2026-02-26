@@ -3,7 +3,8 @@
 import EmailPreview from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { DesignButton } from "@/components/design-components/button";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Spinner, Typography, useToast } from "@/components/ui";
+import { TemplateVariablesButton } from "@/components/template-variables";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Spinner, Typography, useToast } from "@/components/ui";
 import { CodeEditor, VibeCodeLayout, type ViewportMode } from "@/components/vibe-coding";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, Info, PauseIcon, PencilSimple, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
@@ -196,6 +197,12 @@ export default function PageClient({ emailId }: { emailId: string }) {
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(undefined);
   const [viewport, setViewport] = useState<ViewportMode>("desktop");
   const [autoPausedByEditor, setAutoPausedByEditor] = useState(false);
+
+  // Template variables (read-only — these were set when the email was created)
+  const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variables field exists at runtime but the generated .d.ts may lag behind the source type
+  const emailVariables: Record<string, unknown> = (email as any)?.variables ?? {};
+  const hasVariables = Object.keys(emailVariables).length > 0;
 
   // Fetch email on mount
   useEffect(() => {
@@ -480,6 +487,9 @@ export default function PageClient({ emailId }: { emailId: string }) {
                   saveLabel="Save & resume"
                   isDirty={currentCode !== email.tsxSource}
                   editorTitle="Email Source"
+                  codeToggleBarExtra={hasVariables ? (
+                    <TemplateVariablesButton onClick={() => setVariablesDialogOpen(true)} />
+                  ) : null}
                   headerAction={
                     <EmailThemeSelector
                       selectedThemeId={selectedThemeId}
@@ -593,6 +603,24 @@ export default function PageClient({ emailId }: { emailId: string }) {
           </div>
         </div>
       </div>
+
+      <Dialog open={variablesDialogOpen} onOpenChange={setVariablesDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Template Variables</DialogTitle>
+          </DialogHeader>
+          <div className="divide-y divide-border/40 max-h-[400px] overflow-y-auto -mx-1">
+            {Object.entries(emailVariables).map(([name, value]) => (
+              <div key={name} className="flex items-baseline justify-between gap-6 px-1 py-3">
+                <Typography className="text-sm font-medium shrink-0">{name}</Typography>
+                <Typography variant="secondary" className="text-sm truncate text-right">
+                  {String(value)}
+                </Typography>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Cancel Dialog */}
       <ActionDialog
