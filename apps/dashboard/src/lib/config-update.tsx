@@ -44,6 +44,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     // Fetch the source first
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
+    const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
     let shouldUpdate = true;
     if (source.type !== "unlinked") {
@@ -64,7 +65,9 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
 
     if (shouldUpdate) {
       await project.updatePushedConfig(configUpdate);
-      await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
+      if (!isLocalEmulator) {
+        await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
+      }
       return true;
     }
     return false;
