@@ -1,9 +1,9 @@
 "use client";
 
+import { DashboardSandboxHost } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
 import { Input } from "@/components/ui/input";
-import { DashboardSandboxHost } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
 import {
   AssistantChat,
   createDashboardChatAdapter,
@@ -16,13 +16,14 @@ import { cn } from "@/lib/utils";
 import {
   FloppyDiskIcon,
   PencilSimpleIcon,
+  SquaresFourIcon,
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
 
@@ -93,12 +94,19 @@ function DashboardDetailContent({
   updateConfig: ReturnType<typeof useUpdateConfig>,
   router: ReturnType<typeof useRouter>,
 }) {
+  const composerPlaceholder = useTypingPlaceholder(
+    "Create a dashboard about ",
+    DASHBOARD_PLACEHOLDER_SUFFIXES,
+  );
+
   const hasSource = tsxSource.length > 0;
   const [isChatOpen, setIsChatOpen] = useState(!hasSource);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [currentTsxSource, setCurrentTsxSource] = useState(tsxSource);
   const [savedTsxSource, setSavedTsxSource] = useState(tsxSource);
   const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
+  const [layoutEditing, setLayoutEditing] = useState(false);
+  const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(displayName);
@@ -130,6 +138,11 @@ function DashboardDetailContent({
 
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
     setCurrentTsxSource(toolCall.args.content);
+  }, []);
+
+  const handleWidgetEditRequest = useCallback((widgetId: string) => {
+    setEditingWidgetId(widgetId);
+    setIsChatOpen(true);
   }, []);
 
   const handleSaveDashboard = useCallback(async () => {
@@ -177,7 +190,9 @@ function DashboardDetailContent({
       onBack={handleBack}
       onEditToggle={handleEditToggle}
       onNavigate={handleNavigate}
+      onWidgetEditRequest={handleWidgetEditRequest}
       isChatOpen={isChatOpen}
+      layoutEditing={layoutEditing}
     />
   ) : (
     <div className="flex h-full items-center justify-center">
@@ -207,11 +222,27 @@ function DashboardDetailContent({
           !isChatOpen && "dark:p-0",
         )}>
           <div className={cn(
-            "flex-1 overflow-hidden transition-all duration-300 ease-in-out",
+            "relative flex-1 overflow-hidden transition-all duration-300 ease-in-out",
             "bg-slate-50/90 rounded-2xl shadow-xl ring-1 ring-foreground/[0.06]",
             "dark:bg-transparent dark:rounded-none dark:shadow-none dark:ring-0",
           )}>
             {dashboardPreview}
+            {currentHasSource && (
+              <div className="absolute top-3 right-3 z-10">
+                <Button
+                  variant={layoutEditing ? "default" : "secondary"}
+                  size="sm"
+                  className={cn(
+                    "h-8 gap-1.5 text-xs shadow-md",
+                    !layoutEditing && "bg-white/80 dark:bg-black/40 backdrop-blur-md",
+                  )}
+                  onClick={() => setLayoutEditing(prev => !prev)}
+                >
+                  <SquaresFourIcon className="h-3.5 w-3.5" />
+                  {layoutEditing ? "Done" : "Edit Layout"}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -241,13 +272,16 @@ function DashboardDetailContent({
                 onClose={currentHasSource ? () => setIsChatOpen(false) : undefined}
                 hasUnsavedChanges={hasUnsavedChanges}
                 onSaveDashboard={handleSaveDashboard}
+                editingWidgetId={editingWidgetId}
+                onClearEditingWidget={() => setEditingWidgetId(null)}
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(adminApp, currentTsxSource, handleCodeUpdate)}
+                  chatAdapter={createDashboardChatAdapter(adminApp, currentTsxSource, handleCodeUpdate, editingWidgetId)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
                   useOffWhiteLightMode
+                  composerPlaceholder={currentHasSource ? undefined : composerPlaceholder}
                 />
               </div>
             </div>
@@ -274,6 +308,79 @@ function DashboardDetailContent({
   );
 }
 
+const DASHBOARD_PLACEHOLDER_SUFFIXES = [
+  "user signups and retention",
+  "team activity across projects",
+  "API latency and error rates",
+  "email open rates and clicks",
+  "authentication trends",
+  "revenue and subscription growth",
+];
+
+function useTypingPlaceholder(
+  prefix: string,
+  suffixes: readonly string[],
+  { typeSpeed = 70, deleteSpeed = 40, pauseAfterType = 2000, pauseAfterDelete = 400 } = {},
+): string {
+  const [suffixText, setSuffixText] = useState("");
+  const state = useRef({
+    suffixIndex: 0,
+    charIndex: 0,
+    phase: "typing" as "typing" | "pausing" | "deleting" | "waiting",
+  });
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    function tick() {
+      const s = state.current;
+      const target = suffixes[s.suffixIndex % suffixes.length];
+
+      switch (s.phase) {
+        case "typing": {
+          if (s.charIndex < target.length) {
+            s.charIndex++;
+            setSuffixText(target.slice(0, s.charIndex));
+            timeoutId = setTimeout(tick, typeSpeed);
+          } else {
+            s.phase = "pausing";
+            timeoutId = setTimeout(tick, pauseAfterType);
+          }
+          break;
+        }
+        case "pausing": {
+          s.phase = "deleting";
+          timeoutId = setTimeout(tick, deleteSpeed);
+          break;
+        }
+        case "deleting": {
+          if (s.charIndex > 0) {
+            s.charIndex--;
+            setSuffixText(target.slice(0, s.charIndex));
+            timeoutId = setTimeout(tick, deleteSpeed);
+          } else {
+            s.phase = "waiting";
+            timeoutId = setTimeout(tick, pauseAfterDelete);
+          }
+          break;
+        }
+        case "waiting": {
+          s.suffixIndex = (s.suffixIndex + 1) % suffixes.length;
+          s.charIndex = 0;
+          s.phase = "typing";
+          timeoutId = setTimeout(tick, typeSpeed);
+          break;
+        }
+      }
+    }
+
+    timeoutId = setTimeout(tick, 500);
+    return () => clearTimeout(timeoutId);
+  }, [suffixes, typeSpeed, deleteSpeed, pauseAfterType, pauseAfterDelete]);
+
+  return prefix + suffixText;
+}
+
 function ChatPanelHeader({
   displayName,
   isEditingName,
@@ -286,6 +393,8 @@ function ChatPanelHeader({
   onClose,
   hasUnsavedChanges,
   onSaveDashboard,
+  editingWidgetId,
+  onClearEditingWidget,
 }: {
   displayName: string,
   isEditingName: boolean,
@@ -298,73 +407,93 @@ function ChatPanelHeader({
   onClose?: () => void,
   hasUnsavedChanges: boolean,
   onSaveDashboard: () => Promise<void>,
+  editingWidgetId?: string | null,
+  onClearEditingWidget?: () => void,
 }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30 dark:border-foreground/[0.06] shrink-0">
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        {isEditingName ? (
-          <Input
-            value={editedName}
-            onChange={(e) => onEditedNameChange(e.target.value)}
-            className="h-7 text-sm flex-1"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                runAsynchronouslyWithAlert(onSaveName);
-              }
-              if (e.key === "Escape") {
-                onCancelEditName();
-              }
-            }}
-            onBlur={() => runAsynchronouslyWithAlert(onSaveName)}
-          />
-        ) : (
-          <button
-            onClick={onStartEditName}
-            className="flex items-center gap-1.5 group min-w-0"
-          >
-            <span className={cn(
-              "text-sm font-semibold text-foreground truncate",
-            )}>
-              {displayName}
-            </span>
-            <PencilSimpleIcon className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:transition-none shrink-0" />
-          </button>
-        )}
-      </div>
+    <div className="flex flex-col shrink-0">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30 dark:border-foreground/[0.06]">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {isEditingName ? (
+            <Input
+              value={editedName}
+              onChange={(e) => onEditedNameChange(e.target.value)}
+              className="h-7 text-sm flex-1"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  runAsynchronouslyWithAlert(onSaveName);
+                }
+                if (e.key === "Escape") {
+                  onCancelEditName();
+                }
+              }}
+              onBlur={() => runAsynchronouslyWithAlert(onSaveName)}
+            />
+          ) : (
+            <button
+              onClick={onStartEditName}
+              className="flex items-center gap-1.5 group min-w-0"
+            >
+              <span className={cn(
+                "text-sm font-semibold text-foreground truncate",
+              )}>
+                {displayName}
+              </span>
+              <PencilSimpleIcon className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:transition-none shrink-0" />
+            </button>
+          )}
+        </div>
 
-      <div className="flex items-center gap-1 shrink-0">
-        {hasUnsavedChanges && (
-          <Button
-            size="sm"
-            className="h-7 gap-1.5 text-xs min-w-[60px]"
-            onClick={onSaveDashboard}
-          >
-            <span className="flex items-center gap-1.5">
-              <FloppyDiskIcon className="h-3.5 w-3.5" />
-              Save
-            </span>
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-          onClick={onDelete}
-        >
-          <TrashIcon className="h-3.5 w-3.5" />
-        </Button>
-        {onClose && (
+        <div className="flex items-center gap-1 shrink-0">
+          {hasUnsavedChanges && (
+            <Button
+              size="sm"
+              className="h-7 gap-1.5 text-xs min-w-[60px]"
+              onClick={onSaveDashboard}
+            >
+              <span className="flex items-center gap-1.5">
+                <FloppyDiskIcon className="h-3.5 w-3.5" />
+                Save
+              </span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-            onClick={onClose}
+            className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+            onClick={onDelete}
           >
-            <XIcon className="h-3.5 w-3.5" />
+            <TrashIcon className="h-3.5 w-3.5" />
           </Button>
-        )}
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={onClose}
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
+      {editingWidgetId != null && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-b border-border/30 dark:border-foreground/[0.06]">
+          <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />
+          <span className="text-xs text-primary truncate flex-1">
+            Editing: {editingWidgetId}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 text-primary hover:text-primary/80"
+            onClick={onClearEditingWidget}
+          >
+            <XIcon className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
