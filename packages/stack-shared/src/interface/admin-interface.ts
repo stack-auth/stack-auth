@@ -3,6 +3,7 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
+import type { Json } from "../utils/json";
 import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
@@ -26,6 +27,12 @@ import { ServerAuthApplicationOptions, StackServerInterface } from "./server-int
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
+
+export type TemplateVariableInfo = {
+  name: string,
+  type: string,
+  defaultValue: Json,
+};
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -517,6 +524,19 @@ export class StackAdminInterface extends StackServerInterface {
         template_tsx_source: options.templateTsxSource,
         editable_markers: options.editableMarkers,
         editable_source: options.editableSource,
+      }),
+    }, null);
+    return await response.json();
+  }
+
+  async extractTemplateVariables(templateTsxSource: string): Promise<{ variables: Array<TemplateVariableInfo> }> {
+    const response = await this.sendAdminRequest(`/emails/template-variables`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        template_tsx_source: templateTsxSource,
       }),
     }, null);
     return await response.json();

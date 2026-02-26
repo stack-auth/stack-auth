@@ -1,4 +1,4 @@
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ChatContent, type TemplateVariableInfo } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -13,6 +13,8 @@ import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectP
 import { AdminProject } from "../../projects";
 import { _StackAdminAppImpl } from "../implementations";
 import { StackServerApp, StackServerAppConstructorOptions } from "./server-app";
+
+export type { TemplateVariableInfo };
 
 export type EmailOutboxListOptions = {
   status?: string,
@@ -115,6 +117,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       domPath: Array<{ tagName: string, index: number }>,
       htmlContext: string,
     }): Promise<{ updatedSource: string }>,
+    extractTemplateVariables(templateTsxSource: string): Promise<TemplateVariableInfo[]>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,

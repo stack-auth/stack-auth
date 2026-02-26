@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderEmailsForTenancyBatched, renderEmailWithTemplate, type RenderEmailRequestForTenancy } from './email-rendering';
+import { extractTemplateVariables, renderEmailsForTenancyBatched, renderEmailWithTemplate, type RenderEmailRequestForTenancy } from './email-rendering';
 
 describe('renderEmailsForTenancyBatched', () => {
   const createSimpleTemplateSource = (content: string) => `
@@ -683,5 +683,161 @@ describe('renderEmailWithTemplate', () => {
         "status": "ok",
       }
     `);
+  });
+});
+
+describe('extractTemplateVariables', () => {
+  it('should extract string variables with defaults', async () => {
+    const result = await extractTemplateVariables(`
+      import { type } from "arktype";
+      export const variablesSchema = type({ greeting: "string" });
+      export function EmailTemplate({ variables }: any) {
+        return <div>{variables.greeting}</div>;
+      }
+      EmailTemplate.PreviewVariables = { greeting: "Hello!" } satisfies typeof variablesSchema.infer;
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toEqual([
+        { name: 'greeting', type: 'string', defaultValue: 'Hello!' },
+      ]);
+    }
+  });
+
+  it('should extract number variables with defaults', async () => {
+    const result = await extractTemplateVariables(`
+      import { type } from "arktype";
+      export const variablesSchema = type({ count: "number" });
+      export function EmailTemplate({ variables }: any) {
+        return <div>{variables.count}</div>;
+      }
+      EmailTemplate.PreviewVariables = { count: 42 } satisfies typeof variablesSchema.infer;
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toEqual([
+        { name: 'count', type: 'number', defaultValue: 42 },
+      ]);
+    }
+  });
+
+  it('should extract mixed types', async () => {
+    const result = await extractTemplateVariables(`
+      import { type } from "arktype";
+      export const variablesSchema = type({ name: "string", age: "number" });
+      export function EmailTemplate({ variables }: any) {
+        return <div>{variables.name} is {variables.age}</div>;
+      }
+      EmailTemplate.PreviewVariables = { name: "Alice", age: 30 } satisfies typeof variablesSchema.infer;
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toHaveLength(2);
+      expect(result.data.find(v => v.name === 'name')).toEqual({ name: 'name', type: 'string', defaultValue: 'Alice' });
+      expect(result.data.find(v => v.name === 'age')).toEqual({ name: 'age', type: 'number', defaultValue: 30 });
+    }
+  });
+
+  it('should return empty array when no variablesSchema export', async () => {
+    const result = await extractTemplateVariables(`
+      export function EmailTemplate() {
+        return <div>No variables</div>;
+      }
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toEqual([]);
+    }
+  });
+
+  it('should return null defaults when no PreviewVariables', async () => {
+    const result = await extractTemplateVariables(`
+      import { type } from "arktype";
+      export const variablesSchema = type({ link: "string" });
+      export function EmailTemplate({ variables }: any) {
+        return <div>{variables.link}</div>;
+      }
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toEqual([
+        { name: 'link', type: 'string', defaultValue: null },
+      ]);
+    }
+  });
+
+  it('should return error for invalid TSX that cannot compile', async () => {
+    const result = await extractTemplateVariables(`
+      this is not valid typescript at all {{{
+    `);
+
+    expect(result.status).toBe('error');
+  });
+
+  it('should extract nested object variables', async () => {
+    const result = await extractTemplateVariables(`
+      import { type } from "arktype";
+      export const variablesSchema = type({
+        user: { name: "string", age: "number" },
+        message: "string",
+      });
+      export function EmailTemplate({ variables }: any) {
+        return <div>{variables.message} to {variables.user.name}</div>;
+      }
+      EmailTemplate.PreviewVariables = {
+        user: { name: "Bob", age: 25 },
+        message: "Hello",
+      } satisfies typeof variablesSchema.infer;
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toHaveLength(2);
+      const userVar = result.data.find(v => v.name === 'user');
+      expect(userVar).toBeDefined();
+      expect(userVar!.type).toBe('object');
+      expect(userVar!.defaultValue).toEqual({ name: 'Bob', age: 25 });
+
+      const msgVar = result.data.find(v => v.name === 'message');
+      expect(msgVar).toEqual({ name: 'message', type: 'string', defaultValue: 'Hello' });
+    }
+  });
+
+  it('should handle array variables', async () => {
+    const result = await extractTemplateVariables(`
+      import { type } from "arktype";
+      export const variablesSchema = type({ tags: "string[]" });
+      export function EmailTemplate({ variables }: any) {
+        return <div>{variables.tags.join(", ")}</div>;
+      }
+      EmailTemplate.PreviewVariables = { tags: ["a", "b"] } satisfies typeof variablesSchema.infer;
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].name).toBe('tags');
+      expect(result.data[0].type).toBe('array');
+      expect(result.data[0].defaultValue).toEqual(['a', 'b']);
+    }
+  });
+
+  it('should handle variablesSchema that is not an arktype Type', async () => {
+    const result = await extractTemplateVariables(`
+      export const variablesSchema = { notAFunction: true };
+      export function EmailTemplate() {
+        return <div>Plain object schema</div>;
+      }
+    `);
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data).toEqual([]);
+    }
   });
 });
