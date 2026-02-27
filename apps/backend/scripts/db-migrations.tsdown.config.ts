@@ -13,12 +13,13 @@ const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 const basePlugin: Rolldown.Plugin = createBasePlugin({});
 
 export default defineConfig({
-  entry: ['scripts/db-migrations.ts'],
+  entry: ['db-migrations.ts'],
   format: ['esm'],
   outDir: 'dist',
   target: 'node22',
   platform: 'node',
   noExternal: [...customNoExternal],
+  inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
   external: nodeBuiltins,
   clean: true,
