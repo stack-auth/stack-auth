@@ -10,8 +10,8 @@
   },
   "scripts": {
     "clean": "rimraf node_modules && rimraf dist",
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "generate:exec-api-metadata": "pnpx --package=tsx tsx ./scripts/generate-exec-api-metadata.ts",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit"
@@ -34,8 +34,8 @@
   "devDependencies": {
     "@types/node": "20.17.6",
     "rimraf": "^6.0.1",
-    "tsup": "^8.4.0",
-    "typescript": "5.3.3"
+    "tsdown": "^0.20.3",
+    "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.23.0"
 }
