@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { defineConfig, type Rolldown } from 'tsdown';
-import { createBasePlugin } from './plugins';
+import { createBasePlugin } from './plugins.ts';
 
 
 const customNoExternal = new Set([
