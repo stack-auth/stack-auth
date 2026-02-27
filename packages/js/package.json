@@ -40,8 +40,8 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
-    "build": "rimraf dist && tsup-node",
-    "dev": "rimraf dist && tsup-node --watch"
+    "build": "rimraf dist && tsdown",
+    "dev": "rimraf dist && tsdown --watch"
   },
   "files": [
     "README.md",
@@ -83,7 +83,7 @@
     "react": "^19.0.0",
     "rimraf": "^5.0.5",
     "tailwindcss": "^3.4.4",
-    "tsup": "^8.0.2",
+    "tsdown": "^0.20.3",
     "convex": "^1.27.0"
   }
 }

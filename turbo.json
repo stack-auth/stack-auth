@@ -19,6 +19,7 @@
   ],
   "tasks": {
     "build": {
+      "cache": false,
       "inputs": [
         "$TURBO_DEFAULT$",
         ".env",
@@ -26,7 +27,8 @@
         ".env.development",
         ".env.development.local",
         ".env.production",
-        ".env.production.local"
+        ".env.production.local",
+        "tsdown.config.ts"
       ],
       "dependsOn": [
         "^build"
@@ -69,11 +71,6 @@
         "codegen"
       ]
     },
-    "@stackframe/stack-backend#codegen": {
-      "dependsOn": [
-        "^build"
-      ]
-    },
     "clean": {
       "cache": false
     },
@@ -89,6 +86,9 @@
       "dependsOn": []
     },
     "codegen": {
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false
     },
     "typecheck": {

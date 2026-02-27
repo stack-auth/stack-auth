@@ -34,10 +34,10 @@
     }
   },
   "scripts": {
-    "build": "rimraf dist && tsup-node",
+    "build": "rimraf dist && tsdown",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsup-node --watch",
+    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [

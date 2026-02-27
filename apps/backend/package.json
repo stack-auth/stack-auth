@@ -16,7 +16,7 @@
     "dev:profile": "STACK_BACKEND_DEV_EXTRA_ARGS=\"--experimental-cpu-prof\" pnpm run dev",
     "build": "pnpm run codegen && next build",
     "docker-build": "pnpm run codegen && next build --experimental-build-mode compile",
-    "build-self-host-migration-script": "tsup --config scripts/db-migrations.tsup.config.ts",
+    "build-self-host-migration-script": "tsdown --config scripts/db-migrations.tsdown.config.ts",
     "analyze-bundle": "next experimental-analyze",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02",
     "codegen-prisma": "STACK_DATABASE_CONNECTION_STRING=\"${STACK_DATABASE_CONNECTION_STRING:-placeholder-database-connection-string}\" pnpm run prisma generate",
@@ -127,14 +127,8 @@
     "prisma": "^7.0.0",
     "require-in-the-middle": "^7.4.0",
     "rimraf": "^5.0.5",
-    "tsup": "^8.3.0",
+    "tsdown": "^0.20.3",
     "tsx": "^4.7.2"
-  },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "19.2.7",
-      "@types/react-dom": "19.2.3"
-    }
   },
   "packageManager": "pnpm@10.23.0"
 }

@@ -8,8 +8,8 @@
   "bin": "./dist/index.js",
   "scripts": {
     "clean": "rimraf test-run-output && rimraf node_modules && rimraf dist",
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit",
     "init-stack": "node dist/index.js",
@@ -52,7 +52,7 @@
     "@types/inquirer": "^9.0.7",
     "@types/node": "20.17.6",
     "rimraf": "^6.0.1",
-    "tsup": "^8.4.0",
+    "tsdown": "^0.20.3",
     "typescript": "5.3.3"
   },
   "packageManager": "pnpm@10.23.0"
