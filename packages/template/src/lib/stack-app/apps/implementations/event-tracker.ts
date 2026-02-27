@@ -168,7 +168,7 @@ export class EventTracker {
       event_at_ms: Date.now(),
       data: {
         tag_name: target.tagName.toLowerCase(),
-        text: target.textContent?.trim().substring(0, 200) ?? null,
+        text: target.textContent.trim().substring(0, 200),
         href: this._findNearestAnchorHref(target),
         selector: this._buildSelector(target),
         x: event.clientX,
