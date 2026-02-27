@@ -19,7 +19,6 @@
   ],
   "tasks": {
     "build": {
-      "cache": false,
       "inputs": [
         "$TURBO_DEFAULT$",
         ".env",

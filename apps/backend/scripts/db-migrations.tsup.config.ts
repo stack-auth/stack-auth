@@ -1,6 +1,6 @@
 import { builtinModules } from 'node:module';
 import { defineConfig, type Rolldown, type UserConfig } from 'tsdown';
-import { createBasePlugin } from '../../../configs/tsdown/plugins';
+import { createBasePlugin } from '../../../configs/tsdown/plugins.ts';
 import packageJson from '../package.json';
 
 const customNoExternal = new Set([

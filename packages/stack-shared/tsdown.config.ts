@@ -1,3 +1,3 @@
-import createJsLibraryTsupConfig from '../../configs/tsdown/js-library';
+import createJsLibraryTsupConfig from '../../configs/tsdown/js-library.ts';
 
 export default createJsLibraryTsupConfig({});
