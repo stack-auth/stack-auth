@@ -3,9 +3,9 @@
   "version": "2.8.71",
   "repository": "https://github.com/stack-auth/stack-auth",
   "description": "The setup wizard for Stack. https://stack-auth.com",
-  "main": "dist/index.js",
+  "main": "dist/index.mjs",
   "type": "module",
-  "bin": "./dist/index.js",
+  "bin": "./dist/index.mjs",
   "scripts": {
     "clean": "rimraf test-run-output && rimraf node_modules && rimraf dist",
     "build": "tsdown",

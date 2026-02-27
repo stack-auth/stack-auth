@@ -1,8 +1,8 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip } from "@/components/ui";
 import { ServerTeam, ServerUser } from '@stackframe/stack';
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip } from "@/components/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
@@ -75,14 +75,14 @@ function EditPermissionDialog(props: {
     formSchema={formSchema}
     okButton={{ label: "Save" }}
     onSubmit={async (values) => {
-      const promises = permissions.map(p => {
+      const promises = permissions.map(async (p) => {
         if (values.permissions.includes(p.id)) {
-          return props.user.grantPermission(props.team, p.id);
+          return await props.user.grantPermission(props.team, p.id);
         } else if (props.user.permissions.includes(p.id)) {
-          return props.user.revokePermission(props.team, p.id);
+          return await props.user.revokePermission(props.team, p.id);
         }
       });
-      await Promise.all(promises);
+      await Promise.allSettled(promises);
       props.onSubmit();
     }}
     cancelButton
