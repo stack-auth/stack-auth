@@ -4,12 +4,14 @@ import { BranchConfigOverride, BranchConfigOverrideOverride, BranchIncompleteCon
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { branchConfigSourceSchema, yupBoolean, yupMixed, yupObject, yupRecord, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { isTruthy } from "@stackframe/stack-shared/dist/utils/booleans";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
+import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorEnabled, isLocalEmulatorProject } from "./local-emulator";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
@@ -138,8 +140,7 @@ export function getProjectConfigOverrideQuery(options: ProjectOptions): RawQuery
 }
 
 export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<Promise<BranchConfigOverride>> {
-  // fetch branch config from DB
-  return {
+  const fetchFromDbQuery: RawQuery<Promise<BranchConfigOverride>> = {
     supportedPrismaClients: ["global"],
     readOnlyQuery: true,
     sql: Prisma.sql`
@@ -155,6 +156,41 @@ export function getBranchConfigOverrideQuery(options: BranchOptions): RawQuery<P
       return migrateConfigOverride("branch", queryResult[0]?.config ?? {});
     },
   };
+  const fetchFromLocalEmulatorQuery: RawQuery<Promise<BranchConfigOverride | null>> = {
+    supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
+    sql: Prisma.sql`SELECT "LocalEmulatorProject"."absoluteFilePath" FROM "LocalEmulatorProject" WHERE "LocalEmulatorProject"."projectId" = ${options.projectId}`,
+    postProcess: async (queryResult) => {
+      if (!queryResult[0]) {
+        return null;
+      }
+      return migrateConfigOverride("branch", {
+        auth: {
+          signUpRules: {
+            "local-emulator-placeholder-sign-up-rule": {
+              enabled: true,
+              displayName: "Local Emulator File Path: " + queryResult[0].absoluteFilePath,
+              priority: 0,
+              condition: "true",
+              action: { type: "allow" },
+            },
+          },
+        },
+      });
+    },
+  };
+
+  if (isLocalEmulatorEnabled()) {
+    return RawQuery.then(
+      RawQuery.all([fetchFromDbQuery, fetchFromLocalEmulatorQuery] as const),
+      async ([dbConfig, localEmulatorConfig]) => {
+        return await localEmulatorConfig ?? await dbConfig;
+      },
+    );
+  } else {
+    // fetch branch config from DB
+    return fetchFromDbQuery;
+  }
 }
 
 export function getEnvironmentConfigOverrideQuery(options: EnvironmentOptions): RawQuery<Promise<EnvironmentConfigOverride>> {
@@ -346,6 +382,17 @@ export async function setEnvironmentConfigOverride(options: {
   branchId: string,
   environmentConfigOverride: EnvironmentConfigOverride,
 }): Promise<void> {
+  if (
+    isLocalEmulatorEnabled() &&
+    getEnvVariable("STACK_SEED_MODE", "false") !== "true" &&
+    await isLocalEmulatorProject(options.projectId)
+  ) {
+    throw new StackAssertionError(LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, {
+      projectId: options.projectId,
+      branchId: options.branchId,
+    });
+  }
+
   const newConfig = migrateConfigOverride("environment", options.environmentConfigOverride);
 
   // large configs make our DB slow; let's prevent them early
@@ -1027,6 +1074,37 @@ import.meta.vitest?.test('_validateConfigOverrideSchemaImpl(...)', async ({ expe
       "status": "ok",
     }
   `);
+});
+
+import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes in local emulator mode', async ({ expect }) => {
+  const vi = import.meta.vitest?.vi;
+  if (!vi) {
+    throw new StackAssertionError("Vitest context is required for in-source tests.");
+  }
+
+  const envUtils = await import("@stackframe/stack-shared/dist/utils/env");
+  const localEmulator = await import("./local-emulator");
+
+  const getEnvVariableSpy = vi.spyOn(envUtils, "getEnvVariable").mockImplementation((name: string, defaultValue?: string) => {
+    if (name === "STACK_SEED_MODE") {
+      return "false";
+    }
+    return defaultValue ?? "test-value";
+  });
+  const isLocalEmulatorEnabledSpy = vi.spyOn(localEmulator, "isLocalEmulatorEnabled").mockReturnValue(true);
+  const isLocalEmulatorProjectSpy = vi.spyOn(localEmulator, "isLocalEmulatorProject").mockResolvedValue(true);
+
+  try {
+    await expect(setEnvironmentConfigOverride({
+      projectId: "project-id",
+      branchId: "main",
+      environmentConfigOverride: {},
+    })).rejects.toThrow(LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
+  } finally {
+    isLocalEmulatorProjectSpy.mockRestore();
+    isLocalEmulatorEnabledSpy.mockRestore();
+    getEnvVariableSpy.mockRestore();
+  }
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

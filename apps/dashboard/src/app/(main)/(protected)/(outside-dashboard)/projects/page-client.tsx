@@ -4,8 +4,10 @@ import { ProjectCard } from "@/components/project-card";
 import { useRouter } from "@/components/router";
 import { SearchBar } from "@/components/search-bar";
 import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography, toast } from "@/components/ui";
+import { getPublicEnvVar } from "@/lib/env";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -15,19 +17,106 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { inviteUser, listInvitations, revokeInvitation } from "./actions";
 
+type StackAppInternals = {
+  sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
+};
+
+function isStackAppInternals(value: unknown): value is StackAppInternals {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    "sendRequest" in value &&
+    typeof value.sendRequest === "function"
+  );
+}
+
 export default function PageClient() {
+  const app = useStackApp();
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
+  const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
+  const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
+  const [openingConfigFile, setOpeningConfigFile] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    if (rawProjects.length === 0) {
+    if (rawProjects.length === 0 && !isLocalEmulator) {
       router.push('/new-project');
     }
-  }, [router, rawProjects]);
+  }, [isLocalEmulator, router, rawProjects]);
+
+  const handleOpenConfigFile = async () => {
+    const trimmedPath = absoluteConfigFilePath.trim();
+    if (trimmedPath.length === 0) {
+      throw new Error("Please enter an absolute config file path.");
+    }
+
+    const hasUnixAbsolutePath = trimmedPath.startsWith("/");
+    const hasWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(trimmedPath);
+    const hasWindowsUncPath = trimmedPath.startsWith("\\\\");
+    if (!hasUnixAbsolutePath && !hasWindowsAbsolutePath && !hasWindowsUncPath) {
+      throw new Error("Config file path must be absolute.");
+    }
+
+    setOpeningConfigFile(true);
+    try {
+      const appInternals = Reflect.get(app, stackAppInternalsSymbol);
+      if (!isStackAppInternals(appInternals)) {
+        throw new Error("The Stack client app cannot send internal requests.");
+      }
+
+      const response = await appInternals.sendRequest(
+        "/internal/local-emulator/project",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            absolute_file_path: trimmedPath,
+          }),
+        },
+        "client",
+      );
+      const responseBody = await response.json();
+
+      if (!response.ok) {
+        if (typeof responseBody === "string" && responseBody.length > 0) {
+          throw new Error(responseBody);
+        }
+        if (
+          responseBody != null &&
+          typeof responseBody === "object" &&
+          "error" in responseBody &&
+          typeof responseBody.error === "string" &&
+          responseBody.error.length > 0
+        ) {
+          throw new Error(responseBody.error);
+        }
+        throw new Error("Failed to open config file project in local emulator.");
+      }
+
+      if (
+        responseBody == null ||
+        typeof responseBody !== "object" ||
+        !("project_id" in responseBody) ||
+        typeof responseBody.project_id !== "string"
+      ) {
+        throw new Error("Local emulator endpoint returned an invalid response.");
+      }
+
+      setOpenConfigFileDialog(false);
+      setAbsoluteConfigFilePath("");
+      router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+      await wait(2000);
+    } finally {
+      setOpeningConfigFile(false);
+    }
+  };
 
   const teamIdMap = useMemo(() => {
     return new Map(teams.map((team) => [team.id, team.displayName]));
@@ -87,13 +176,52 @@ export default function PageClient() {
 
           <Button
             onClick={async () => {
-              router.push('/new-project');
+              if (isLocalEmulator) {
+                setOpenConfigFileDialog(true);
+                return;
+              }
+              router.push("/new-project");
               return await wait(2000);
             }}
-          >Create Project
+          >{isLocalEmulator ? "Open config file" : "Create Project"}
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={openConfigFileDialog}
+        onOpenChange={(open) => {
+          setOpenConfigFileDialog(open);
+          if (!open) {
+            setAbsoluteConfigFilePath("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Open config file</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Typography variant="secondary">
+              Enter the absolute path to your local Stack config file. The local emulator will create or reuse the mapped project and open it in the dashboard.
+            </Typography>
+            <Input
+              autoFocus
+              placeholder="/Users/you/project/stack.config.ts"
+              value={absoluteConfigFilePath}
+              onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
+              Cancel
+            </Button>
+            <Button onClick={handleOpenConfigFile} loading={openingConfigFile}>
+              Open project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {projectsByTeam.map(({ teamId, projects }) => {
         const team = teamId ? teams.find((t) => t.id === teamId) : undefined;

@@ -2,6 +2,7 @@
 
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import React, { createContext, useCallback, useContext, useState } from "react";
@@ -43,6 +44,7 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     // Fetch the source first
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
+    const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
     let shouldUpdate = true;
     if (source.type !== "unlinked") {
@@ -63,7 +65,9 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
 
     if (shouldUpdate) {
       await project.updatePushedConfig(configUpdate);
-      await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
+      if (!isLocalEmulator) {
+        await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
+      }
       return true;
     }
     return false;
@@ -259,6 +263,7 @@ export type UpdateConfigOptions = {
  */
 export function useUpdateConfig() {
   const { showPushableDialog } = useConfigUpdateDialog();
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return useCallback(async (options: UpdateConfigOptions): Promise<boolean> => {
     const { adminApp, configUpdate, pushable } = options;
@@ -267,13 +272,17 @@ export function useUpdateConfig() {
       // Show dialog (or save directly if unlinked) based on source type
       return await showPushableDialog(adminApp, configUpdate);
     } else {
+      if (isLocalEmulator) {
+        alert("These settings are read-only in the local emulator. Update them in your production deployment instead.");
+        return false;
+      }
       // Update environment config directly
       const project = await adminApp.getProject();
       // eslint-disable-next-line no-restricted-syntax -- this is the hook implementation itself
       await project.updateConfig(configUpdate);
       return true;
     }
-  }, [showPushableDialog]);
+  }, [isLocalEmulator, showPushableDialog]);
 }
 
 /**

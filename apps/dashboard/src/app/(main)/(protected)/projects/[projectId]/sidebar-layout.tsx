@@ -20,7 +20,6 @@ import {
 } from "@/components/ui";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
-import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
@@ -610,11 +609,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               <div className="hidden lg:flex items-center gap-2">
                 <Logo height={24} href="/" />
                 <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
-                {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-                  <Logo full width={96} href="/projects" />
-                ) : (
-                  <ProjectSwitcher currentProjectId={projectId} />
-                )}
+                <ProjectSwitcher currentProjectId={projectId} />
               </div>
 
               {/* Mobile: Logo */}
@@ -632,14 +627,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
             {/* Right section: Search, Theme toggle and User button */}
             <div className="flex grow-1 gap-2 items-center">
-              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-                <ThemeToggle />
-              ) : (
-                <>
-                  <ThemeToggle />
-                  <UserButton />
-                </>
-              )}
+              <ThemeToggle />
+              <UserButton />
             </div>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { getPublicEnvVar } from "@/lib/env";
 import { stackServerApp } from "@/stack";
 import { redirect } from "next/navigation";
 import Footer from "./footer";
@@ -10,7 +11,8 @@ export const metadata = {
 export default async function Page() {
   const user = await stackServerApp.getUser({ or: "redirect" });
   const projects = await user.listOwnedProjects();
-  if (projects.length === 0) {
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  if (projects.length === 0 && !isLocalEmulator) {
     redirect("/new-project");
   }
 
