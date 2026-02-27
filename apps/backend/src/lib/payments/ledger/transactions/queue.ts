@@ -1,3 +1,4 @@
+
 export class EventQueue<T extends { at: number }> {
   private readonly heap: Array<{ seq: number, value: T }> = [];
   private seq = 0;
@@ -10,8 +11,7 @@ export class EventQueue<T extends { at: number }> {
   pop(): T | null {
     if (this.heap.length === 0) return null;
     const root = this.heap[0];
-    const tail = this.heap.pop();
-    if (!tail) return root.value;
+    const tail = this.heap.pop()!;
     if (this.heap.length > 0) {
       this.heap[0] = tail;
       this.bubbleDown(0);

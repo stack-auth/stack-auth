@@ -1,4 +1,4 @@
-import { getTransactionsPaginatedList } from "@/lib/payments/ledger/transactions";
+import { getTransactions } from "@/lib/payments/ledger/transactions";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TRANSACTION_TYPES } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -32,26 +32,21 @@ export const GET = createSmartRouteHandler({
     const limit = Math.max(1, Math.min(200, Number.isFinite(parsedLimit) ? parsedLimit : 50));
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const list = getTransactionsPaginatedList(prisma, auth.tenancy.id);
-    const cursor = query.cursor ?? list.getFirstCursor();
-
-    const result = await list.next({
-      after: cursor,
-      limit,
-      filter: {
-        type: query.type,
-        customerType: query.customer_type,
-      },
-      orderBy: "createdAt-desc",
-      limitPrecision: "approximate",
+    const all = await getTransactions(prisma, auth.tenancy.id, {
+      type: query.type,
+      customerType: query.customer_type,
     });
+
+    const start = query.cursor ? Math.max(0, all.findIndex((tx) => tx.id === query.cursor) + 1) : 0;
+    const page = all.slice(start, start + limit);
+    const isLast = start + limit >= all.length;
 
     return {
       statusCode: 200,
       bodyType: "json",
       body: {
-        transactions: result.items.map((entry) => entry.item),
-        next_cursor: result.isLast ? null : result.cursor,
+        transactions: page,
+        next_cursor: isLast ? null : page[page.length - 1]?.id ?? null,
       },
     };
   },

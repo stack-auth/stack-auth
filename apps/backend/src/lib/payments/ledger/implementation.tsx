@@ -6,7 +6,7 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { deepPlainEquals, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { ensureCustomerExists, OwnedProduct } from "../implementation";
 import { computeLedgerBalanceAtNow, type LedgerTransaction } from "./algo";
-import { getTransactionsPaginatedList } from "./transactions";
+import { getTransactions } from "./transactions";
 
 /**
  * Lazily ensures the DefaultProductsSnapshot table is up-to-date with the
@@ -40,25 +40,7 @@ async function ensureDefaultProductsSnapshotUpToDate(prisma: PrismaClientTransac
 }
 
 export async function getAllTransactionsForCustomer(prisma: PrismaClientTransaction, tenancy: Tenancy, customerType: "user" | "team" | "custom", customerId: string): Promise<Transaction[]> {
-  const list = getTransactionsPaginatedList(prisma, tenancy.id);
-  const allTransactions: Transaction[] = [];
-  let cursor = list.getFirstCursor();
-  let done = false;
-  while (!done) {
-    const page = await list.next({
-      after: cursor,
-      limit: 200,
-      filter: { customerType, customerId },
-      orderBy: "createdAt-desc",
-      limitPrecision: "exact",
-    });
-    for (const entry of page.items) {
-      allTransactions.push(entry.item);
-    }
-    cursor = page.cursor;
-    done = page.isLast;
-  }
-  return allTransactions;
+  return await getTransactions(prisma, tenancy.id, { customerType, customerId });
 }
 
 /**

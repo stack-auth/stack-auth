@@ -7,7 +7,6 @@ export type FullTransactionFilter = {
   type?: Transaction["type"],
 };
 
-export type TransactionOrderBy = "createdAt-desc";
 export type RepeatInterval = [number, "minute" | "hour" | "day" | "week" | "month" | "year"];
 
 export type GrantSlice = {

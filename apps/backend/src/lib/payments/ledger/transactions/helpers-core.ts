@@ -11,12 +11,27 @@ export function toCustomerType(value: CustomerType): "user" | "team" | "custom" 
 export function addInterval(baseMillis: number, interval: RepeatInterval): number {
   const [value, unit] = interval;
   const date = new Date(baseMillis);
-  if (unit === "minute") date.setMinutes(date.getMinutes() + value);
-  else if (unit === "hour") date.setHours(date.getHours() + value);
-  else if (unit === "day") date.setDate(date.getDate() + value);
-  else if (unit === "week") date.setDate(date.getDate() + value * 7);
-  else if (unit === "month") date.setMonth(date.getMonth() + value);
-  else date.setFullYear(date.getFullYear() + value);
+  if (unit === "minute") {
+    date.setUTCMinutes(date.getUTCMinutes() + value);
+  } else if (unit === "hour") {
+    date.setUTCHours(date.getUTCHours() + value);
+  } else if (unit === "day") {
+    date.setUTCDate(date.getUTCDate() + value);
+  } else if (unit === "week") {
+    date.setUTCDate(date.getUTCDate() + value * 7);
+  } else if (unit === "month") {
+    const day = date.getUTCDate();
+    date.setUTCMonth(date.getUTCMonth() + value, 1);
+    const maxDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, maxDay));
+  } else {
+    const day = date.getUTCDate();
+    const month = date.getUTCMonth();
+    date.setUTCDate(1);
+    date.setUTCFullYear(date.getUTCFullYear() + value);
+    const maxDay = new Date(Date.UTC(date.getUTCFullYear(), month + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, maxDay));
+  }
   return date.getTime();
 }
 

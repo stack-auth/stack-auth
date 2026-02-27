@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getTransactionsPaginatedList } from "./index";
+import { getTransactions } from "./index";
 
 function createMockPrisma(data: {
   defaultProductsSnapshots?: any[],
@@ -87,15 +87,7 @@ describe("transactions list builder", () => {
     const prisma = createMockPrisma({
       subscriptions: [subscription],
     });
-    const list = getTransactionsPaginatedList(prisma, "tenancy-1");
-    const page = await list.next({
-      after: list.getFirstCursor(),
-      limit: 50,
-      filter: { customerType: "custom", customerId: "cust-1" },
-      orderBy: "createdAt-desc",
-      limitPrecision: "exact",
-    });
-    const txs = page.items.map((i) => i.item);
+    const txs = await getTransactions(prisma, "tenancy-1", { customerType: "custom", customerId: "cust-1" });
     const start = txs.find((tx) => tx.id === "sub-1");
     const end = txs.find((tx) => tx.id === "sub-1:end");
     expect(start).toBeDefined();
@@ -149,15 +141,7 @@ describe("transactions list builder", () => {
     const prisma = createMockPrisma({
       oneTimePurchases: [purchase],
     });
-    const list = getTransactionsPaginatedList(prisma, "tenancy-1");
-    const page = await list.next({
-      after: list.getFirstCursor(),
-      limit: 50,
-      filter: { customerType: "custom", customerId: "cust-1" },
-      orderBy: "createdAt-desc",
-      limitPrecision: "exact",
-    });
-    const txs = page.items.map((i) => i.item);
+    const txs = await getTransactions(prisma, "tenancy-1", { customerType: "custom", customerId: "cust-1" });
     const renewalTxs = txs.filter((tx) => tx.type === "item-grant-renewal").sort((a, b) => a.created_at_millis - b.created_at_millis);
     expect(renewalTxs.length).toBeGreaterThanOrEqual(2);
     const firstRenewalExpire = renewalTxs[0].entries.find((e) => e.type === "item-quantity-expire") as any;
@@ -190,15 +174,7 @@ describe("transactions list builder", () => {
       }],
     });
 
-    const list = getTransactionsPaginatedList(prisma, "tenancy-1");
-    const page = await list.next({
-      after: list.getFirstCursor(),
-      limit: 50,
-      filter: {},
-      orderBy: "createdAt-desc",
-      limitPrecision: "exact",
-    });
-    const txs = page.items.map((i) => i.item);
+    const txs = await getTransactions(prisma, "tenancy-1", {});
     expect(txs.some((tx) => tx.type === "default-products-change")).toBe(true);
     expect(txs.some((tx) => tx.type === "default-product-item-grant-repeat")).toBe(true);
   });
