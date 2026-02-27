@@ -1,5 +1,5 @@
 {
-  "name": "@stackframe/stack-backend",
+  "name": "@stackframe/backend",
   "version": "2.8.71",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
