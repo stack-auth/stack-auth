@@ -1,6 +1,6 @@
-import { defineConfig, Options } from 'tsdown';
+import { defineConfig, type UserConfig } from 'tsdown';
 
-const config: Options = {
+const config: UserConfig = {
   entry: ['src/index.ts'],
   sourcemap: true,
   clean: false,

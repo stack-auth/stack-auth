@@ -19,7 +19,6 @@
   ],
   "tasks": {
     "build": {
-      "cache": false,
       "inputs": [
         "$TURBO_DEFAULT$",
         ".env",
@@ -66,7 +65,7 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/stack-backend#build": {
+    "@stackframe/backend#build": {
       "dependsOn": [
         "codegen"
       ]

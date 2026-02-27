@@ -43,6 +43,7 @@
   ],
   "exclude": [
     "node_modules",
-    ".next/dev"
+    ".next/dev",
+    "scripts/*.tsdown.config.ts"
   ]
 }

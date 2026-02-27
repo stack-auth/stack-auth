@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { defineConfig, type Rolldown } from 'tsdown';
-import { createBasePlugin } from './plugins';
+import { createBasePlugin } from './plugins.ts';
 
 
 const customNoExternal = new Set([
@@ -48,6 +48,7 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
     sourcemap: true,
     clean: false,
     noExternal: [...customNoExternal],
+    inlineOnly: false,
     dts: true,
     format: {
       esm: {

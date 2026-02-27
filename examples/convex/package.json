@@ -38,7 +38,7 @@
     "prettier": "^3.5.3",
     "rimraf": "^5.0.5",
     "tailwindcss": "^4",
-    "typescript": "5.3.3",
+    "typescript": "5.9.3",
     "wait-on": "^8.0.1"
   },
   "packageManager": "pnpm@10.23.0"
