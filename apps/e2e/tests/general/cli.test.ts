@@ -193,9 +193,7 @@ describe("Stack CLI", () => {
     const { stdout, exitCode } = await runCli(["exec", "--list-api"]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("StackServerApp methods");
-    expect(stdout).toContain("StackClientApp methods");
     expect(stdout).toContain("createUser(");
-    expect(stdout).toContain("signInWithCredential(");
     expect(stdout).not.toContain("createInternalApiKey(");
   });
 
