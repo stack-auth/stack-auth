@@ -63,6 +63,9 @@ model Tenancy {
   sessionReplays SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
 
+  // Email capacity boost - when set and in the future, email capacity is multiplied by 4
+  emailCapacityBoostExpiresAt DateTime?
+
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
 }
@@ -969,6 +972,10 @@ model EmailDraft {
   themeId     String?
   tsxSource   String
   sentAt      DateTime?
+
+  /// Key-value pairs for template variables (e.g. { "passwordResetLink": "https://..." }).
+  /// Only expected to be populated when the draft was created from a template that uses variables.
+  templateVariables Json? @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

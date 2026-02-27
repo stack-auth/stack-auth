@@ -9,11 +9,6 @@ import { adaptSchema, jsonSchema, serverOrHigherAuthTypeSchema, templateThemeIdS
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
-type UserResult = {
-  user_id: string,
-  user_email?: string,
-};
-
 const bodyBase = yupObject({
   user_ids: yupArray(yupString().defined()).optional(),
   all_users: yupBoolean().oneOf([true]).optional(),
@@ -24,6 +19,9 @@ const bodyBase = yupObject({
   }),
   is_high_priority: yupBoolean().optional().meta({
     openapiField: { description: "Marks the email as high priority so it jumps the queue." }
+  }),
+  scheduled_at_millis: yupNumber().optional().meta({
+    openapiField: { description: "When to send the email. If not specified, the email will be sent immediately." }
   }),
 });
 
@@ -48,6 +46,7 @@ export const POST = createSmartRouteHandler({
       })),
       bodyBase.concat(yupObject({
         draft_id: yupString().defined(),
+        variables: yupRecord(yupString(), jsonSchema.defined()).optional(),
       })),
     ).defined(),
     method: yupString().oneOf(["POST"]).defined(),
@@ -83,7 +82,7 @@ export const POST = createSmartRouteHandler({
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const variables = "variables" in body ? body.variables ?? {} : {};
+    let variables: Record<string, any> = "variables" in body ? body.variables ?? {} : {};
 
     let overrideSubject: string | undefined = undefined;
     if (body.subject) {
@@ -117,6 +116,10 @@ export const POST = createSmartRouteHandler({
       const draft = await getEmailDraft(prisma, auth.tenancy.id, body.draft_id) ?? throwErr(400, "No draft found with given draft_id");
       tsxSource = draft.tsxSource;
       createdWith = { type: "draft", draftId: draft.id } as const;
+
+      // Merge: DB-stored template variables as base, request body variables override
+      const draftVars = (draft.templateVariables as Record<string, string> | null) ?? {};
+      variables = { ...draftVars, ...variables };
 
       if (body.theme_id === undefined) {
         const draftThemeId = themeModeToTemplateThemeId(draft.themeMode, draft.themeId);
@@ -159,6 +162,8 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    const scheduledAt = body.scheduled_at_millis ? new Date(body.scheduled_at_millis) : new Date();
+
     await sendEmailToMany({
       createdWith: createdWith,
       tenancy: auth.tenancy,
@@ -168,7 +173,7 @@ export const POST = createSmartRouteHandler({
       themeId: selectedThemeId === null ? null : (selectedThemeId === undefined ? auth.tenancy.config.emails.selectedThemeId : selectedThemeId),
       isHighPriority: isHighPriority,
       shouldSkipDeliverabilityCheck: false,
-      scheduledAt: new Date(),
+      scheduledAt: scheduledAt,
       overrideSubject: overrideSubject,
       overrideNotificationCategoryId: overrideNotificationCategoryId,
     });

@@ -1,9 +1,10 @@
 "use client";
 
+import { DesignCard } from "@/components/design-components/card";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, toast, Typography } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, toast, Typography } from "@/components/ui";
 import { DotsThree, EnvelopeSimpleIcon, PlusIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import * as yup from "yup";
@@ -54,66 +55,62 @@ export default function PageClient() {
 
         <div className="flex flex-col gap-3">
           {emailTemplates.map((template) => (
-            <div
+            <DesignCard
               key={template.id}
-              className={cn(
-                "group relative flex items-center justify-between p-4 rounded-2xl transition-all duration-150 hover:transition-none",
-                "bg-background/60 backdrop-blur-xl ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-                "shadow-sm hover:shadow-md"
-              )}
+              glassmorphic
+              gradient="default"
+              contentClassName="p-4"
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-
-              <div className="relative flex items-center gap-4">
-                <div className="p-2.5 rounded-xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] transition-colors duration-150 group-hover:bg-foreground/[0.08] group-hover:transition-none">
-                  <EnvelopeSimpleIcon className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
-                </div>
-                <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 rounded-xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+                    <EnvelopeSimpleIcon className="h-5 w-5 text-muted-foreground" />
+                  </div>
                   <Typography className="font-semibold text-foreground">
                     {template.displayName}
                   </Typography>
                 </div>
-              </div>
 
-              <div className="relative flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-all duration-150 hover:transition-none rounded-lg"
-                  onClick={() => {
-                    if (emailConfig.isShared) {
-                      setSharedSmtpWarningDialogOpen(template.id);
-                    } else {
-                      router.push(`email-templates/${template.id}`);
-                    }
-                  }}
-                >
-                  Edit Template
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none rounded-lg"
+                    onClick={() => {
+                      if (emailConfig.isShared) {
+                        setSharedSmtpWarningDialogOpen(template.id);
+                      } else {
+                        router.push(`email-templates/${template.id}`);
+                      }
+                    }}
+                  >
+                    Edit Template
+                  </Button>
 
-                {!emailConfig.isShared && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-all duration-150 hover:transition-none rounded-lg"
-                      >
-                        <DotsThree size={20} weight="bold" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-[180px]">
-                      <DropdownMenuItem
-                        onClick={() => setDeleteDialogOpen(template.id)}
-                        className="py-2.5 text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-500/10 cursor-pointer justify-center"
-                      >
-                        <span className="font-medium">Delete Template</span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
+                  {!emailConfig.isShared && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05] transition-colors duration-150 hover:transition-none rounded-lg"
+                        >
+                          <DotsThree size={20} weight="bold" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-[180px]">
+                        <DropdownMenuItem
+                          onClick={() => setDeleteDialogOpen(template.id)}
+                          className="py-2.5 text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-500/10 cursor-pointer justify-center"
+                        >
+                          <span className="font-medium">Delete Template</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
               </div>
-            </div>
+            </DesignCard>
           ))}
         </div>
 

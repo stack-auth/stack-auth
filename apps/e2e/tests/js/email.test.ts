@@ -196,6 +196,9 @@ it("should provide delivery statistics", async ({ expect }) => {
   expect(info).toMatchInlineSnapshot(`
     {
       "capacity": {
+        "boost_expires_at": null,
+        "boost_multiplier": 1,
+        "is_boost_active": false,
         "penalty_factor": 1,
         "rate_per_second": 2.7777793209876545,
       },

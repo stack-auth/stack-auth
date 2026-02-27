@@ -626,6 +626,9 @@ describe("email outbox API", () => {
               "status": 200,
               "body": {
                 "created_at_millis": <stripped field 'created_at_millis'>,
+                "created_with": "draft",
+                "email_draft_id": "<stripped UUID>",
+                "email_programmatic_call_template_id": null,
                 "has_delivered": false,
                 "has_rendered": false,
                 "id": "<stripped UUID>",

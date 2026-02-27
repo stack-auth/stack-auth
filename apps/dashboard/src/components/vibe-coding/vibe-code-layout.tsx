@@ -49,6 +49,8 @@ type VibeCodeEditorLayoutProps = {
   },
   /** Whether edit mode is enabled (shows pencil icon in viewport switcher) */
   editModeEnabled?: boolean,
+  /** Extra buttons to render in the code toggle bar (next to the debug button) */
+  codeToggleBarExtra?: React.ReactNode,
   /** Debug info for WYSIWYG editing (dev mode only) */
   wysiwygDebugInfo?: WysiwygDebugInfo,
   /** Use off-white light mode chrome (page-specific opt-in) */
@@ -71,6 +73,7 @@ export default function VibeCodeLayout({
   defaultViewport = 'desktop',
   primaryAction,
   editModeEnabled = false,
+  codeToggleBarExtra,
   wysiwygDebugInfo,
   useOffWhiteLightChrome = false,
 }: VibeCodeEditorLayoutProps) {
@@ -624,6 +627,7 @@ export default function VibeCodeLayout({
                         <CaretUp size={12} className="text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
                       )}
                     </button>
+                    {codeToggleBarExtra}
                     {/* Debug button - only in development */}
                     {process.env.NODE_ENV === 'development' && wysiwygDebugInfo && (
                       <Tooltip>

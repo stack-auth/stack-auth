@@ -1,7 +1,7 @@
 import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { jsonSchema, templateThemeIdSchema, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
@@ -22,6 +22,7 @@ export const GET = createSmartRouteHandler({
       tsx_source: yupString().defined(),
       theme_id: templateThemeIdSchema,
       sent_at_millis: yupNumber().nullable().optional(),
+      template_variables: yupRecord(yupString(), jsonSchema.defined()).defined(),
     }).defined(),
   }),
   async handler({ auth: { tenancy }, params }) {
@@ -39,6 +40,7 @@ export const GET = createSmartRouteHandler({
         tsx_source: d.tsxSource,
         theme_id: themeModeToTemplateThemeId(d.themeMode, d.themeId),
         sent_at_millis: d.sentAt ? d.sentAt.getTime() : null,
+        template_variables: (d.templateVariables as Record<string, string> | null) ?? {},
       },
     };
   },
@@ -56,6 +58,7 @@ export const PATCH = createSmartRouteHandler({
       display_name: yupString().optional(),
       theme_id: templateThemeIdSchema.optional(),
       tsx_source: yupString().optional(),
+      template_variables: yupRecord(yupString(), jsonSchema.defined()).optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -72,6 +75,7 @@ export const PATCH = createSmartRouteHandler({
         themeMode: templateThemeIdToThemeMode(body.theme_id),
         themeId: body.theme_id === false ? null : body.theme_id,
         tsxSource: body.tsx_source,
+        ...(body.template_variables !== undefined ? { templateVariables: body.template_variables } : {}),
       },
     });
     return {
