@@ -1,8 +1,9 @@
-import { builtinModules } from 'node:module';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { builtinModules } from 'node:module';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, type Rolldown, type UserConfig } from 'tsdown';
+// @ts-expect-error - this is a workaround to allow the import of the plugins.ts file
 import { createBasePlugin } from '../../../configs/tsdown/plugins.ts';
 
 const __filename = fileURLToPath(import.meta.url);

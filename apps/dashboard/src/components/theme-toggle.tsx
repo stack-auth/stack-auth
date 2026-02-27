@@ -3,14 +3,6 @@ import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useTheme } from "@/lib/theme";
 
-type ViewTransitionWithReady = {
-  ready: Promise<void>,
-};
-
-type DocumentWithViewTransition = globalThis.Document & {
-  startViewTransition?: (callback: () => void) => ViewTransitionWithReady,
-};
-
 const TRANSITION_DURATION_MS = 600;
 
 export default function ThemeToggle() {
@@ -20,17 +12,15 @@ export default function ThemeToggle() {
     const nextTheme = resolvedTheme === "dark" ? "light" : "dark";
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const documentWithTransition: DocumentWithViewTransition = document;
 
-    if (!documentWithTransition.startViewTransition || prefersReducedMotion) {
+    if (prefersReducedMotion) {
       setTheme(nextTheme);
       return;
     }
 
-    // Temporarily kill component-level CSS transitions so colors flip instantly.
     document.documentElement.classList.add("vt-disable-transitions");
 
-    const transition = documentWithTransition.startViewTransition(() => {
+    const transition = document.startViewTransition(() => {
       setTheme(nextTheme);
     });
 

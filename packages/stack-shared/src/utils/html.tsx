@@ -55,6 +55,6 @@ export function htmlToText(untrustedHtml: string): string {
 
   const doc = new DOMParser().parseFromString(untrustedHtml, 'text/html');
 
-  return doc.body.textContent ?? '';
+  return doc.body.textContent;
 
 }
