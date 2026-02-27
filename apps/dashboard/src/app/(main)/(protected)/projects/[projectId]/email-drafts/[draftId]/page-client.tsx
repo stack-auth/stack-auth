@@ -162,7 +162,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
               chatComponent={
                 <AssistantChat
                   historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-                  chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
+                  chatAdapter={createChatAdapter(stackAdminApp, "email-draft", handleToolUpdate, () => currentCode)}
                   toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                   useOffWhiteLightMode
                 />

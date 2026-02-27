@@ -647,16 +647,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
     await this._adminEmailDraftsCache.refresh([]);
   }
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    return await this._interface.sendChatMessage(threadId, contextType, messages, abortSignal);
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this._interface.saveChatMessage(threadId, message);
   }
@@ -675,6 +665,33 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     htmlContext: string,
   }): Promise<{ updatedSource: string }> {
     return await this._interface.applyWysiwygEdit(options);
+  }
+
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode: "stream",
+  }): Promise<Response>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate",
+  }): Promise<{ content: ChatContent }>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate" | "stream",
+  }): Promise<{ content: ChatContent } | Response> {
+    return await (this._interface.sendAiQuery as (opts: typeof options) => Promise<{ content: ChatContent } | Response>)(options);
   }
 
   async createEmailTheme(displayName: string): Promise<{ id: string }> {

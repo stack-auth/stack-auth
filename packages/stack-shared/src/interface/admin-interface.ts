@@ -420,28 +420,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ context_type: contextType, messages }),
-        signal: abortSignal,
-      },
-      null,
-    );
-    return await response.json();
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/ai-chat/${threadId}`,
@@ -495,6 +473,54 @@ export class StackAdminInterface extends StackServerInterface {
     );
     const result = await response.json();
     return { updatedSource: result.updated_source };
+  }
+
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode: "stream",
+  }): Promise<Response>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate",
+  }): Promise<{ content: ChatContent }>;
+  async sendAiQuery(options: {
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    quality?: string,
+    speed?: string,
+    mode?: "generate" | "stream",
+  }): Promise<{ content: ChatContent } | Response> {
+    const mode = options.mode ?? "generate";
+    const response = await this.sendAdminRequest(
+      `/ai/query/${mode}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          systemPrompt: options.systemPrompt,
+          tools: options.tools,
+          messages: options.messages,
+          quality: options.quality ?? "smartest",
+          speed: options.speed ?? "fast",
+        }),
+      },
+      null,
+    );
+    if (mode === "stream") {
+      return response;
+    }
+    return await response.json();
   }
 
   async renderEmailPreview(options: {

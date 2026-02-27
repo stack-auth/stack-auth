@@ -1,11 +1,25 @@
 'use client';
 
-import { useChat } from '@ai-sdk/react';
+import { useChat, type UIMessage } from '@ai-sdk/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { DefaultChatTransport, type DynamicToolUIPart } from 'ai';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
+
+function getMessageContent(message: UIMessage): string {
+  return message.parts
+    .filter((part): part is { type: "text", text: string } => part.type === "text")
+    .map(part => part.text)
+    .join("");
+}
+
+function getToolInvocations(message: UIMessage): DynamicToolUIPart[] {
+  return message.parts.filter(
+    (part): part is DynamicToolUIPart => part.type === "dynamic-tool"
+  );
+}
 
 // Stack Auth Icon Component (just the icon, not full logo)
 function StackIcon({ size = 20, className }: { size?: number, className?: string }) {
@@ -335,24 +349,24 @@ export function AIChatDrawer() {
   const topPosition = 'top-3';
   const height = isHomePage && isScrolled ? 'h-[calc(100vh-1.5rem)]' : 'h-[calc(100vh-1.5rem)]';
 
+  const [input, setInput] = useState('');
+
   const {
     messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
+    sendMessage,
+    status,
     error,
   } = useChat({
-    api: '/api/chat',
-    initialMessages: [],
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
-    onFinish: (message) => {
-      // Send AI response to Discord
-      runAsynchronously(() => sendAIResponseToDiscord(message.content));
+    onFinish: ({ message }: { message: UIMessage }) => {
+      runAsynchronously(() => sendAIResponseToDiscord(getMessageContent(message)));
     },
   });
+
+  const isLoading = status === 'submitted' || status === 'streaming';
 
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
@@ -378,6 +392,14 @@ export function AIChatDrawer() {
       editableRef.current.textContent = input;
     }
   }, [input]);
+
+  const submitMessage = () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+    setInput('');
+    if (editableRef.current) editableRef.current.textContent = '';
+    runAsynchronously(() => sendMessage({ text }));
+  };
 
   // Function to send AI response to Discord webhook
   const sendAIResponseToDiscord = async (response: string) => {
@@ -441,8 +463,8 @@ export function AIChatDrawer() {
   };
 
   // Enhanced submit handler that also sends to Discord
-  const handleChatSubmit = async (e: React.FormEvent) => {
-    if (!input.trim()) return;
+  const handleChatSubmit = () => {
+    if (!input.trim() || isLoading) return;
 
     // Update session data
     setSessionData(prev => ({
@@ -453,8 +475,7 @@ export function AIChatDrawer() {
     // Send message to Discord webhook
     runAsynchronously(() => sendToDiscord(input.trim()));
 
-    // Continue with normal chat submission
-    handleSubmit(e);
+    submitMessage();
   };
 
   // Starter prompts for users
@@ -477,13 +498,8 @@ export function AIChatDrawer() {
   ];
 
   const handleStarterPromptClick = (prompt: string) => {
-    // Use the handleInputChange from useChat to update the input
-    handleInputChange({ target: { value: prompt } } as React.ChangeEvent<HTMLInputElement>);
-  };
-
-  // Helper function for safe async event handling
-  const handleSubmitSafely = () => {
-    runAsynchronously(() => handleChatSubmit({} as React.FormEvent));
+    setInput(prompt);
+    if (editableRef.current) editableRef.current.textContent = prompt;
   };
 
   return (
@@ -558,35 +574,51 @@ export function AIChatDrawer() {
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${
-                message.role === 'user' ? 'justify-end' : 'justify-start'
-              }`}
-            >
+          messages.map((message) => {
+            const messageContent = getMessageContent(message);
+            const toolInvocations = message.role === "assistant" ? getToolInvocations(message) : [];
+
+            if (message.role === "assistant" && !messageContent && toolInvocations.length === 0) {
+              return null;
+            }
+
+            return (
               <div
-                className={`max-w-[85%] p-2 rounded-lg text-xs ${
-                  message.role === 'user'
-                    ? 'bg-fd-primary/10 border border-fd-primary/20 text-fd-foreground'
-                    : 'bg-fd-muted text-fd-foreground border border-fd-border'
+                key={message.id}
+                className={`flex ${
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}
               >
-                {message.role === 'user' ? (
-                  <div className="whitespace-pre-wrap break-words">
-                    {message.content}
-                  </div>
-                ) : (
-                  <>
-                    {message.toolInvocations?.map((toolCall, index) => (
-                      <ToolCallDisplay key={index} toolCall={toolCall} />
-                    ))}
-                    <MessageFormatter content={message.content} />
-                  </>
-                )}
+                <div
+                  className={`max-w-[85%] p-2 rounded-lg text-xs ${
+                    message.role === 'user'
+                      ? 'bg-fd-primary/10 border border-fd-primary/20 text-fd-foreground'
+                      : 'bg-fd-muted text-fd-foreground border border-fd-border'
+                  }`}
+                >
+                  {message.role === 'user' ? (
+                    <div className="whitespace-pre-wrap break-words">
+                      {messageContent}
+                    </div>
+                  ) : (
+                    <>
+                      {toolInvocations.map((part, index) => (
+                        <ToolCallDisplay
+                          key={index}
+                          toolCall={{
+                            toolName: part.toolName,
+                            args: part.input as { id?: string, search_query?: string },
+                            result: part.output as { content?: { text: string }[], text?: string } | undefined,
+                          }}
+                        />
+                      ))}
+                      {messageContent && <MessageFormatter content={messageContent} />}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
 
         {isLoading && (
@@ -631,10 +663,7 @@ export function AIChatDrawer() {
                 style={{ lineHeight: "1.4", minHeight: "20px" }}
                 onInput={(e) => {
                   const value = e.currentTarget.textContent || "";
-                  handleInputChange({
-                    target: { value },
-                  } as React.ChangeEvent<HTMLInputElement>);
-
+                  setInput(value);
                   // Clean up the div if it's empty to show placeholder
                   if (!value.trim()) {
                     e.currentTarget.innerHTML = "";
@@ -643,7 +672,7 @@ export function AIChatDrawer() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSubmitSafely();
+                    handleChatSubmit();
                   }
                 }}
                 onPaste={(e) => {
@@ -651,17 +680,14 @@ export function AIChatDrawer() {
                   const text = e.clipboardData.getData("text/plain");
                   e.currentTarget.textContent =
                     (e.currentTarget.textContent || "") + text;
-                  const value = e.currentTarget.textContent;
-                  handleInputChange({
-                    target: { value },
-                  } as React.ChangeEvent<HTMLInputElement>);
+                  setInput(e.currentTarget.textContent || "");
                 }}
                 data-placeholder="Ask about Stack Auth..."
               />
             </div>
             <button
               disabled={!input.trim() || isLoading}
-              onClick={handleSubmitSafely}
+              onClick={handleChatSubmit}
               className="h-8 w-8 rounded-full p-0 shrink-0 bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               <Send className="w-4 h-4" />
