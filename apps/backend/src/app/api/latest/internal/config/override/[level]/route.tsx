@@ -285,7 +285,7 @@ export const PATCH = createSmartRouteHandler({
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig);
 
-    await levelConfig.override({
+    const newConfig = await levelConfig.override({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
       config: parsedConfig,
@@ -294,7 +294,7 @@ export const PATCH = createSmartRouteHandler({
     await warnOnValidationFailure(levelConfig, {
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
-      config: parsedConfig,
+      config: newConfig,
     });
 
     if (req.params.level === "environment" && shouldEnqueueExternalDbSync(parsedConfig)) {

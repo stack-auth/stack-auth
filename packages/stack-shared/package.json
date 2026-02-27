@@ -3,11 +3,11 @@
   "version": "2.8.71",
   "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
-    "build": "rimraf dist && tsup-node",
+    "build": "rimraf dist && tsdown",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsup-node --watch",
+    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -86,7 +86,7 @@
     "@types/uuid": "^9.0.8",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "rimraf": "^5.0.5"
+    "rimraf": "^6.1.2"
   },
   "packageManager": "pnpm@10.23.0"
 }

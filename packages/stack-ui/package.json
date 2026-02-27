@@ -6,10 +6,10 @@
   "types": "./dist/index.d.ts",
   "sideEffects": false,
   "scripts": {
-    "build": "rimraf dist && tsup-node",
+    "build": "rimraf dist && tsdown",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
-    "dev": "tsup-node --watch",
+    "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts ."
   },
   "files": [
@@ -96,7 +96,7 @@
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "rimraf": "^5.0.10"
+    "rimraf": "^6.1.2"
   },
   "packageManager": "pnpm@10.23.0"
 }

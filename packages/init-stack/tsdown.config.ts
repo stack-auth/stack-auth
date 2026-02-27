@@ -1,7 +1,7 @@
-import { defineConfig, Options } from 'tsup';
+import { defineConfig, type UserConfig } from 'tsdown';
 
-const config: Options = {
-  entryPoints: ['src/index.ts'],
+const config: UserConfig = {
+  entry: ['src/index.ts'],
   sourcemap: true,
   clean: false,
   dts: true,

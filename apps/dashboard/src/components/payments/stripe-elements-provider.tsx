@@ -3,7 +3,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 import { useMemo } from "react";
 import { appearanceVariablesForTheme } from "./stripe-theme-variables";
 

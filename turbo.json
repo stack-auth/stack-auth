@@ -26,7 +26,8 @@
         ".env.development",
         ".env.development.local",
         ".env.production",
-        ".env.production.local"
+        ".env.production.local",
+        "tsdown.config.ts"
       ],
       "dependsOn": [
         "^build"
@@ -64,14 +65,9 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/stack-backend#build": {
+    "@stackframe/backend#build": {
       "dependsOn": [
         "codegen"
-      ]
-    },
-    "@stackframe/stack-backend#codegen": {
-      "dependsOn": [
-        "^build"
       ]
     },
     "clean": {
@@ -89,6 +85,9 @@
       "dependsOn": []
     },
     "codegen": {
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false
     },
     "typecheck": {

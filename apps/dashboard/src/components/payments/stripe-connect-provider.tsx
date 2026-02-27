@@ -8,7 +8,7 @@ import { loadConnectAndInitialize } from "@stripe/connect-js";
 import {
   ConnectComponentsProvider,
 } from "@stripe/react-connect-js";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 import { useEffect } from "react";
 import { appearanceVariablesForTheme } from "./stripe-theme-variables";
 
