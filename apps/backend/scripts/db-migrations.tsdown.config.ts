@@ -1,7 +1,9 @@
 import { builtinModules } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { defineConfig, type Rolldown, type UserConfig } from 'tsdown';
 import { createBasePlugin } from '../../../configs/tsdown/plugins.ts';
-import packageJson from '../package.json';
+
+const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
 
 const customNoExternal = new Set([
   ...Object.keys(packageJson.dependencies),
