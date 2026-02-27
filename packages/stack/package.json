@@ -40,8 +40,8 @@
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist && rimraf node_modules",
     "lint": "eslint --ext .tsx,.ts .",
-    "build": "rimraf dist && pnpm run css && tsup-node",
-    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsup-node --watch\" \"pnpm run codegen:watch\"",
+    "build": "rimraf dist && pnpm run css && tsdown",
+    "dev": "rimraf dist && concurrently -n \"build,codegen\" -k \"tsdown --watch\" \"pnpm run codegen:watch\"",
     "codegen": "pnpm run css",
     "codegen:watch": "pnpm run css:watch",
     "css": "pnpm run css-tw && pnpm run css-sc",
@@ -117,7 +117,7 @@
     "react-dom": "^19.0.0",
     "rimraf": "^5.0.5",
     "tailwindcss": "^3.4.4",
-    "tsup": "^8.0.2",
+    "tsdown": "^0.20.3",
     "convex": "^1.27.0"
   }
 }

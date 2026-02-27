@@ -1,6 +1,6 @@
 import { builtinModules } from 'node:module';
-import { defineConfig, type Options } from 'tsup';
-import { createBasePlugin } from '../../../configs/tsup/plugins';
+import { defineConfig, type Options } from 'tsdown';
+import { createBasePlugin } from '../../../configs/tsdown/plugins';
 import packageJson from '../package.json';
 
 const customNoExternal = new Set([
@@ -10,7 +10,7 @@ const customNoExternal = new Set([
 // Node.js built-in modules that should not be bundled
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
-// tsup config to build the self-hosting migration script so it can be
+// tsdown config to build the self-hosting migration script so it can be
 // run in the Docker container with no extra dependencies.
 type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
 const basePlugin = createBasePlugin({}) as unknown as EsbuildPlugin;
@@ -35,6 +35,6 @@ const __filename = __fileURLToPath(import.meta.url);
 const __dirname = __dirname_fn(__filename);
 const require = __createRequire(import.meta.url);`,
   },
-  // Cast to tsup's esbuild plugin type to avoid esbuild version mismatch in typecheck.
+  // Cast to tsdown's esbuild plugin type to avoid esbuild version mismatch in typecheck.
   esbuildPlugins: [basePlugin],
 } satisfies Options);

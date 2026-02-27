@@ -1,7 +1,7 @@
-import { defineConfig, Options } from 'tsup';
+import { defineConfig, Options } from 'tsdown';
 
 const config: Options = {
-  entryPoints: ['src/index.ts'],
+  entry: ['src/index.ts'],
   sourcemap: true,
   clean: false,
   dts: true,
