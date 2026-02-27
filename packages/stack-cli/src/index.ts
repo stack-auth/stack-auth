@@ -9,7 +9,6 @@ import { registerExecCommand } from "./commands/exec.js";
 import { registerConfigCommand } from "./commands/config-file.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerProjectCommand } from "./commands/project.js";
-import { registerUpdateCommand } from "./commands/update.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -22,8 +21,6 @@ program
   .description("Stack Auth CLI")
   .version(pkg.version)
   .option("--project-id <id>", "Project ID")
-  .option("--api-url <url>", "Stack Auth API URL")
-  .option("--dashboard-url <url>", "Stack Auth Dashboard URL")
   .option("--json", "Output in JSON format");
 
 registerLoginCommand(program);
@@ -32,7 +29,6 @@ registerExecCommand(program);
 registerConfigCommand(program);
 registerInitCommand(program);
 registerProjectCommand(program);
-registerUpdateCommand(program);
 
 async function main() {
   try {

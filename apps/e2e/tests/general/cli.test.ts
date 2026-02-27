@@ -115,12 +115,6 @@ describe("Stack CLI", () => {
     expect(stdout.trim()).toBe(pkg.version);
   });
 
-  it("shows update info", async ({ expect }) => {
-    const { stdout, exitCode } = await runCli(["update"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("stack-cli version:");
-  });
-
   it("errors when not logged in", async ({ expect }) => {
     const { stderr, exitCode } = await runCli(["project", "list"], {
       STACK_CLI_REFRESH_TOKEN: "",

@@ -7,8 +7,6 @@ export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_
 
 type Flags = {
   projectId?: string,
-  apiUrl?: string,
-  dashboardUrl?: string,
 };
 
 export type LoginConfig = {
@@ -24,16 +22,14 @@ export type ProjectAuth = SessionAuth & {
   projectId: string,
 };
 
-function resolveApiUrl(flags: Flags): string {
-  return flags.apiUrl
-    ?? process.env.STACK_API_URL
+function resolveApiUrl(): string {
+  return process.env.STACK_API_URL
     ?? readConfigValue("STACK_API_URL")
     ?? DEFAULT_API_URL;
 }
 
-function resolveDashboardUrl(flags: Flags): string {
-  return flags.dashboardUrl
-    ?? process.env.STACK_DASHBOARD_URL
+function resolveDashboardUrl(): string {
+  return process.env.STACK_DASHBOARD_URL
     ?? readConfigValue("STACK_DASHBOARD_URL")
     ?? DEFAULT_DASHBOARD_URL;
 }
@@ -57,8 +53,8 @@ function resolveProjectId(flags: Flags): string {
 
 export function resolveLoginConfig(flags: Flags): LoginConfig {
   return {
-    apiUrl: resolveApiUrl(flags),
-    dashboardUrl: resolveDashboardUrl(flags),
+    apiUrl: resolveApiUrl(),
+    dashboardUrl: resolveDashboardUrl(),
   };
 }
 
