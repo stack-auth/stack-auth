@@ -7,7 +7,7 @@ import { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
-import { AdminOwnedProject, Team, useUser } from "@stackframe/stack";
+import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -17,11 +17,11 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { inviteUser, listInvitations, revokeInvitation } from "./actions";
 
-type AdminAppInternals = {
+type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
 };
 
-function isAdminAppInternals(value: unknown): value is AdminAppInternals {
+function isStackAppInternals(value: unknown): value is StackAppInternals {
   return (
     value != null &&
     typeof value === "object" &&
@@ -31,6 +31,7 @@ function isAdminAppInternals(value: unknown): value is AdminAppInternals {
 }
 
 export default function PageClient() {
+  const app = useStackApp();
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
@@ -63,14 +64,9 @@ export default function PageClient() {
 
     setOpeningConfigFile(true);
     try {
-      const internalProject = rawProjects.find((project) => project.id === "internal");
-      if (internalProject == null) {
-        throw new Error("The internal project client app is not available.");
-      }
-
-      const appInternals = Reflect.get(internalProject.app, stackAppInternalsSymbol);
-      if (!isAdminAppInternals(appInternals)) {
-        throw new Error("The internal project client app cannot send internal requests.");
+      const appInternals = Reflect.get(app, stackAppInternalsSymbol);
+      if (!isStackAppInternals(appInternals)) {
+        throw new Error("The Stack client app cannot send internal requests.");
       }
 
       const response = await appInternals.sendRequest(
@@ -84,9 +80,9 @@ export default function PageClient() {
             absolute_file_path: trimmedPath,
           }),
         },
-        "admin",
+        "client",
       );
-      const responseBody = await response.json().catch(() => null);
+      const responseBody = await response.json();
 
       if (!response.ok) {
         if (typeof responseBody === "string" && responseBody.length > 0) {

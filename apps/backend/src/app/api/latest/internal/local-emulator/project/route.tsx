@@ -13,17 +13,11 @@ import { clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { createHash } from "crypto";
 import * as path from "path";
 
 type LocalEmulatorProjectMappingRow = {
   projectId: string,
 };
-
-function getDeterministicProjectIdFromPath(absoluteFilePath: string): string {
-  const hash = createHash("sha256").update(absoluteFilePath).digest("hex");
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-}
 
 async function assertLocalEmulatorOwnerTeamReadiness() {
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
@@ -68,15 +62,13 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     WHERE "absoluteFilePath" = ${absoluteFilePath}
     LIMIT 1
   `);
-  const projectId = existingRows[0] ? existingRows[0].projectId : getDeterministicProjectIdFromPath(absoluteFilePath);
+  const projectId = existingRows[0] ? existingRows[0].projectId : generateUuid();
 
   await globalPrismaClient.project.upsert({
     where: {
       id: projectId,
     },
-    update: {
-      ownerTeamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
-    },
+    update: {},
     create: {
       id: projectId,
       displayName: `Local Emulator: ${path.basename(absoluteFilePath) || "Project"}`,
