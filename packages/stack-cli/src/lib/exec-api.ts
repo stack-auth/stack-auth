@@ -33,7 +33,5 @@ export function formatExecApiHelp(): string {
   lines.push("Available methods on `app`:");
   lines.push("");
   lines.push(...section("StackServerApp methods", metadata.stackServerApp));
-  lines.push("");
-  lines.push(...section("StackClientApp methods", metadata.stackClientApp));
   return lines.join("\n");
 }
