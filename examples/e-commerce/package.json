@@ -24,7 +24,7 @@
     "eslint": "^8",
     "eslint-config-next": "14.2.5",
     "rimraf": "^5.0.5",
-    "typescript": "5.3.3"
+    "typescript": "5.9.3"
   },
   "packageManager": "pnpm@10.23.0"
 }

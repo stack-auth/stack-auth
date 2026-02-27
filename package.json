@@ -90,7 +90,7 @@
     "rimraf": "^5.0.10",
     "tsdown": "^0.20.3",
     "turbo": "^2.2.3",
-    "typescript": "5.3.3",
+    "typescript": "5.9.3",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^1.6.0",
     "wait-on": "^8.0.1",

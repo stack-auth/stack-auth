@@ -48,6 +48,7 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
     sourcemap: true,
     clean: false,
     noExternal: [...customNoExternal],
+    inlineOnly: false,
     dts: true,
     format: {
       esm: {

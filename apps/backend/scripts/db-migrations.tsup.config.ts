@@ -1,5 +1,5 @@
 import { builtinModules } from 'node:module';
-import { defineConfig, type Options } from 'tsdown';
+import { defineConfig, type Rolldown, type UserConfig } from 'tsdown';
 import { createBasePlugin } from '../../../configs/tsdown/plugins';
 import packageJson from '../package.json';
 
@@ -10,10 +10,7 @@ const customNoExternal = new Set([
 // Node.js built-in modules that should not be bundled
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
-// tsdown config to build the self-hosting migration script so it can be
-// run in the Docker container with no extra dependencies.
-type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
-const basePlugin = createBasePlugin({}) as unknown as EsbuildPlugin;
+const basePlugin: Rolldown.Plugin = createBasePlugin({});
 
 export default defineConfig({
   entry: ['scripts/db-migrations.ts'],
@@ -35,6 +32,5 @@ const __filename = __fileURLToPath(import.meta.url);
 const __dirname = __dirname_fn(__filename);
 const require = __createRequire(import.meta.url);`,
   },
-  // Cast to tsdown's esbuild plugin type to avoid esbuild version mismatch in typecheck.
-  esbuildPlugins: [basePlugin],
-} satisfies Options);
+  plugins: [basePlugin],
+} satisfies UserConfig);
