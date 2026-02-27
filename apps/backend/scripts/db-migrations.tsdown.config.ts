@@ -1,9 +1,15 @@
 import { builtinModules } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { defineConfig, type Rolldown, type UserConfig } from 'tsdown';
 import { createBasePlugin } from '../../../configs/tsdown/plugins.ts';
 
-const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const backendDir = resolve(__dirname, '..');
+
+const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
 
 const customNoExternal = new Set([
   ...Object.keys(packageJson.dependencies),
@@ -15,9 +21,9 @@ const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 const basePlugin: Rolldown.Plugin = createBasePlugin({});
 
 export default defineConfig({
-  entry: ['db-migrations.ts'],
+  entry: [resolve(backendDir, 'scripts/db-migrations.ts')],
   format: ['esm'],
-  outDir: 'dist',
+  outDir: resolve(backendDir, 'dist'),
   target: 'node22',
   platform: 'node',
   noExternal: [...customNoExternal],
