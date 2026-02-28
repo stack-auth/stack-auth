@@ -1538,12 +1538,12 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
-const TemplateVariableExtractionError = createKnownErrorConstructor(
+const TemplateSourceRewriteError = createKnownErrorConstructor(
   KnownError,
-  "TEMPLATE_VARIABLE_EXTRACTION_ERROR",
+  "TEMPLATE_SOURCE_REWRITE_ERROR",
   (error: string) => [
     400,
-    `Failed to extract template variables: ${error}`,
+    `Failed to rewrite template source: ${error}`,
     { error },
   ] as const,
   (json: any) => [json.error] as const,
@@ -1940,7 +1940,7 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
-  TemplateVariableExtractionError,
+  TemplateSourceRewriteError,
   RequiresCustomEmailServer,
   EmailCapacityBoostAlreadyActive,
   EmailNotEditable,

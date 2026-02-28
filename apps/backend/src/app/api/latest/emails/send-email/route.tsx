@@ -46,7 +46,6 @@ export const POST = createSmartRouteHandler({
       })),
       bodyBase.concat(yupObject({
         draft_id: yupString().defined(),
-        variables: yupRecord(yupString(), jsonSchema.defined()).optional(),
       })),
     ).defined(),
     method: yupString().oneOf(["POST"]).defined(),
@@ -116,10 +115,6 @@ export const POST = createSmartRouteHandler({
       const draft = await getEmailDraft(prisma, auth.tenancy.id, body.draft_id) ?? throwErr(400, "No draft found with given draft_id");
       tsxSource = draft.tsxSource;
       createdWith = { type: "draft", draftId: draft.id } as const;
-
-      // Merge: DB-stored template variables as base, request body variables override
-      const draftVars = (draft.templateVariables as Record<string, string> | null) ?? {};
-      variables = { ...draftVars, ...variables };
 
       if (body.theme_id === undefined) {
         const draftThemeId = themeModeToTemplateThemeId(draft.themeMode, draft.themeId);

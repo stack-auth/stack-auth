@@ -1025,13 +1025,8 @@ describe("template variables", () => {
                     ]\\\`.
                   Schema 2:
                     body.draft_id must be defined
-                    body.variables must be a \\\`object\\\` type, but the final value was: \\\`[
-                      "\\\\"not\\\\"",
-                      "\\\\"an\\\\"",
-                      "\\\\"object\\\\""
-                    ]\\\`.
-                    body contains unknown properties: template_id
-                    body contains unknown properties: template_id
+                    body contains unknown properties: template_id, variables
+                    body contains unknown properties: template_id, variables
             \`,
           },
           "error": deindent\`
@@ -1049,13 +1044,8 @@ describe("template variables", () => {
                   ]\\\`.
                 Schema 2:
                   body.draft_id must be defined
-                  body.variables must be a \\\`object\\\` type, but the final value was: \\\`[
-                    "\\\\"not\\\\"",
-                    "\\\\"an\\\\"",
-                    "\\\\"object\\\\""
-                  ]\\\`.
-                  body contains unknown properties: template_id
-                  body contains unknown properties: template_id
+                  body contains unknown properties: template_id, variables
+                  body contains unknown properties: template_id, variables
           \`,
         },
         "headers": Headers {
@@ -1140,9 +1130,8 @@ describe("template variables", () => {
                     body.variables must be a \\\`object\\\` type, but the final value was: \\\`"not an object"\\\`.
                   Schema 2:
                     body.draft_id must be defined
-                    body.variables must be a \\\`object\\\` type, but the final value was: \\\`"not an object"\\\`.
-                    body contains unknown properties: template_id
-                    body contains unknown properties: template_id
+                    body contains unknown properties: template_id, variables
+                    body contains unknown properties: template_id, variables
             \`,
           },
           "error": deindent\`
@@ -1156,9 +1145,8 @@ describe("template variables", () => {
                   body.variables must be a \\\`object\\\` type, but the final value was: \\\`"not an object"\\\`.
                 Schema 2:
                   body.draft_id must be defined
-                  body.variables must be a \\\`object\\\` type, but the final value was: \\\`"not an object"\\\`.
-                  body contains unknown properties: template_id
-                  body contains unknown properties: template_id
+                  body contains unknown properties: template_id, variables
+                  body contains unknown properties: template_id, variables
           \`,
         },
         "headers": Headers {

@@ -8,15 +8,13 @@ import { DesignDataTable } from "@/components/design-components/table";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouter, useRouterConfirm } from "@/components/router";
-import { TemplateVariablesButton, TemplateVariablesDialog } from "@/components/template-variables";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
-import { AdminEmailOutbox, AdminEmailOutboxStatus, type TemplateVariableInfo } from "@stackframe/stack";
+import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -64,50 +62,8 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const [currentCode, setCurrentCode] = useState<string>(draft?.tsxSource ?? "");
   const [stage, setStageInternal] = useState<DraftStage>(initialStage);
   const [selectedThemeId, setSelectedThemeId] = useState<string | undefined | false>(draft?.themeId);
-  const [editedVariables, setEditedVariables] = useState<Record<string, string>>(() => {
-    const vars = draft?.templateVariables ?? {};
-    return Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, String(v)]));
-  });
-  const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
   const [viewport, setViewport] = useState<ViewportMode>('edit');
   const [wysiwygDebugInfo, setWysiwygDebugInfo] = useState<WysiwygDebugInfo | undefined>(undefined);
-
-  const hasTemplateVariables = Object.keys(editedVariables).length > 0;
-
-  const [variableMetadata, setVariableMetadata] = useState<TemplateVariableInfo[]>([]);
-
-  useEffect(() => {
-    if (!draft?.tsxSource) return;
-    let cancelled = false;
-    runAsynchronouslyWithAlert(async () => {
-      const vars = await stackAdminApp.extractTemplateVariables(draft.tsxSource);
-      if (!cancelled) setVariableMetadata(vars);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [draft?.tsxSource, stackAdminApp]);
-
-  const variableTypes = useMemo(() => {
-    const types = new Map<string, string>();
-    for (const v of variableMetadata) {
-      types.set(v.name, v.type);
-    }
-    return types;
-  }, [variableMetadata]);
-
-  const coercedVariables = useMemo((): Record<string, string | number> => {
-    const result: Record<string, string | number> = {};
-    for (const [k, v] of Object.entries(editedVariables)) {
-      if (variableTypes.get(k) === "number") {
-        const n = Number(v);
-        result[k] = Number.isNaN(n) ? v : n;
-      } else {
-        result[k] = v;
-      }
-    }
-    return result;
-  }, [editedVariables, variableTypes]);
 
   // Wrapper to update stage and URL together
   // Uses window.history.replaceState directly to avoid triggering the router's confirmation dialog
@@ -145,7 +101,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
       await stackAdminApp.updateEmailDraft(draftId, {
         tsxSource: currentCode,
         themeId: selectedThemeId,
-        ...(hasTemplateVariables ? { templateVariables: coercedVariables } : {}),
       });
       setSaveAlert({ variant: "success", title: "Draft saved" });
     } catch (error) {
@@ -164,24 +119,10 @@ export default function PageClient({ draftId }: { draftId: string }) {
   const handleNext = async () => {
     setSaveAlert(null);
 
-    if (hasTemplateVariables) {
-      const emptyVars = Object.entries(editedVariables).filter(([, v]) => !v.trim());
-      if (emptyVars.length > 0) {
-        setSaveAlert({
-          variant: "destructive",
-          title: "Missing template variables",
-          description: `Please fill in: ${emptyVars.map(([k]) => k).join(", ")}`,
-        });
-        setVariablesDialogOpen(true);
-        return;
-      }
-    }
-
     try {
       await stackAdminApp.updateEmailDraft(draftId, {
         tsxSource: currentCode,
         themeId: selectedThemeId,
-        ...(hasTemplateVariables ? { templateVariables: coercedVariables } : {}),
       });
       setNeedConfirm(false);
       setStage("recipients");
@@ -202,13 +143,11 @@ export default function PageClient({ draftId }: { draftId: string }) {
     if (draft) {
       setCurrentCode(draft.tsxSource);
       setSelectedThemeId(draft.themeId);
-      setEditedVariables(Object.fromEntries(Object.entries(draft.templateVariables).map(([k, v]) => [k, String(v)])));
     }
   };
 
   const previewActions = null;
-  const variablesDirty = hasTemplateVariables && draft ? JSON.stringify(coercedVariables) !== JSON.stringify(draft.templateVariables) : false;
-  const isDirty = draft ? (currentCode !== draft.tsxSource || selectedThemeId !== draft.themeId || variablesDirty) : false;
+  const isDirty = draft ? (currentCode !== draft.tsxSource || selectedThemeId !== draft.themeId) : false;
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
@@ -259,12 +198,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
                 previewActions={previewActions}
                 editorTitle="Draft Source Code"
                 editModeEnabled
-                codeToggleBarExtra={hasTemplateVariables ? (
-                  <TemplateVariablesButton
-                    isDirty={variablesDirty}
-                    onClick={() => setVariablesDialogOpen(true)}
-                  />
-                ) : null}
                 wysiwygDebugInfo={wysiwygDebugInfo}
                 headerAction={
                   <EmailThemeSelector
@@ -321,14 +254,6 @@ export default function PageClient({ draftId }: { draftId: string }) {
         ) : (
           <SentStage draftId={draftId} />
         )}
-
-        <TemplateVariablesDialog
-          open={variablesDialogOpen}
-          onOpenChange={setVariablesDialogOpen}
-          variables={editedVariables}
-          onVariablesChange={setEditedVariables}
-          isDirty={variablesDirty}
-        />
       </DraftFlowProvider>
     </AppEnabledGuard>
   );

@@ -21,6 +21,5 @@ export {
 export type {
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
-  TemplateVariableInfo,
 } from "./interfaces/admin-app";
 

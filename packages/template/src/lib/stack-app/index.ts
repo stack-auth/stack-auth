@@ -10,7 +10,6 @@ export type {
   StackClientAppJson,
   StackServerAppConstructor,
   StackServerAppConstructorOptions,
-  TemplateVariableInfo,
 } from "./apps";
 
 export type {

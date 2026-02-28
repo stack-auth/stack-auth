@@ -7,7 +7,6 @@ import { useRouter } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, Spinner, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
-import { type TemplateVariableInfo } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useMemo, useState } from "react";
@@ -15,14 +14,6 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-function coerceVariableValue(value: string, type: string): string | number {
-  if (type === "number") {
-    const n = Number(value);
-    if (!Number.isNaN(n)) return n;
-  }
-  return value;
-}
 
 // Draft item card component
 function DraftCard({
@@ -541,7 +532,7 @@ function NewDraftDialog({
   );
 }
 
-type TemplateDialogStep = "select" | "loading" | "variables" | "name";
+type TemplateDialogStep = "select" | "name";
 
 function TemplateSelectDialog({
   open,
@@ -556,20 +547,12 @@ function TemplateSelectDialog({
 
   const [step, setStep] = useState<TemplateDialogStep>("select");
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string, displayName: string, tsxSource: string } | null>(null);
-  const [templateVariables, setTemplateVariables] = useState<TemplateVariableInfo[]>([]);
-  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [draftName, setDraftName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-
-  const allVariablesFilled = useMemo(() => {
-    return templateVariables.every(v => (variableValues[v.name] ?? "").trim() !== "");
-  }, [templateVariables, variableValues]);
 
   const resetDialog = () => {
     setStep("select");
     setSelectedTemplate(null);
-    setTemplateVariables([]);
-    setVariableValues({});
     setDraftName("");
     setIsCreating(false);
   };
@@ -584,25 +567,6 @@ function TemplateSelectDialog({
   const handleSelectTemplate = async (template: { id: string, displayName: string, tsxSource: string }) => {
     setSelectedTemplate(template);
     setDraftName(`Copy of ${template.displayName}`);
-    setStep("loading");
-
-    const variables = await stackAdminApp.extractTemplateVariables(template.tsxSource);
-    setTemplateVariables(variables);
-
-    if (variables.length > 0) {
-      const defaults: Record<string, string> = {};
-      for (const v of variables) {
-        defaults[v.name] = v.defaultValue != null ? String(v.defaultValue) : "";
-      }
-      setVariableValues(defaults);
-      setStep("variables");
-    } else {
-      setStep("name");
-    }
-  };
-
-  const handleVariablesContinue = () => {
-    if (!allVariablesFilled) return;
     setStep("name");
   };
 
@@ -610,18 +574,10 @@ function TemplateSelectDialog({
     if (!selectedTemplate || !draftName.trim()) return;
     setIsCreating(true);
     try {
-      const coercedVars: Record<string, string | number> = {};
-      for (const v of templateVariables) {
-        const raw = variableValues[v.name] ?? "";
-        if (raw.trim()) {
-          coercedVars[v.name] = coerceVariableValue(raw, v.type);
-        }
-      }
-
+      const rewritten = await stackAdminApp.rewriteTemplateSourceWithAI(selectedTemplate.tsxSource);
       const draft = await stackAdminApp.createEmailDraft({
         displayName: draftName.trim(),
-        tsxSource: selectedTemplate.tsxSource,
-        templateVariables: Object.keys(coercedVars).length > 0 ? coercedVars : undefined,
+        tsxSource: rewritten.tsxSource,
       });
 
       handleOpenChange(false);
@@ -636,18 +592,9 @@ function TemplateSelectDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {step === "select" || step === "loading" ? "Create from Template" : step === "variables" ? "Template Variables" : "Name Your Draft"}
+            {step === "select" ? "Create from Template" : "Name Your Draft"}
           </DialogTitle>
         </DialogHeader>
-
-        {step === "loading" && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3">
-            <Spinner className="h-6 w-6" />
-            <Typography variant="secondary" className="text-sm">
-              Analyzing template variables...
-            </Typography>
-          </div>
-        )}
 
         {step === "select" && (
           <div className="mt-4">
@@ -698,66 +645,6 @@ function TemplateSelectDialog({
           </div>
         )}
 
-        {step === "variables" && selectedTemplate && (
-          <div className="mt-4 space-y-4">
-            <Alert variant="default" className="bg-amber-500/5 border-amber-500/20">
-              <WarningCircle className="h-4 w-4 text-amber-500" weight="regular" />
-              <AlertTitle className="text-amber-600 dark:text-amber-400">This template uses variables</AlertTitle>
-              <AlertDescription className="text-muted-foreground">
-                Enter values for the template variables below. These will be used when sending the email.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-4">
-              {templateVariables.map((variable) => {
-                const isLinkVariable = variable.name.toLowerCase().includes("link") || variable.name.toLowerCase().includes("url");
-                return (
-                  <div key={variable.name} className="space-y-2">
-                    <Label htmlFor={`var-${variable.name}`} className="text-sm font-medium">
-                      {variable.name}
-                      <span className="text-muted-foreground font-normal ml-1.5">({variable.type})</span>
-                    </Label>
-                    <Input
-                      id={`var-${variable.name}`}
-                      type={variable.type === "number" ? "number" : "text"}
-                      value={variableValues[variable.name] ?? ""}
-                      onChange={(e) => setVariableValues(prev => ({
-                        ...prev,
-                        [variable.name]: e.target.value,
-                      }))}
-                      placeholder={isLinkVariable ? "https://example.com/..." : (variable.defaultValue != null ? String(variable.defaultValue) : `Enter ${variable.name}`)}
-                    />
-                    {isLinkVariable && (
-                      <Typography variant="secondary" className="text-xs">
-                        Enter a full URL including https://
-                      </Typography>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setStep("select")}
-              >
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Back
-              </Button>
-              <Button
-                type="button"
-                onClick={handleVariablesContinue}
-                disabled={!allVariablesFilled}
-                className="flex-1"
-              >
-                Continue
-              </Button>
-            </div>
-          </div>
-        )}
-
         {step === "name" && (
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
@@ -775,7 +662,7 @@ function TemplateSelectDialog({
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setStep(templateVariables.length > 0 ? "variables" : "select")}
+                onClick={() => setStep("select")}
                 disabled={isCreating}
               >
                 <ArrowLeft className="h-4 w-4 mr-1" />
