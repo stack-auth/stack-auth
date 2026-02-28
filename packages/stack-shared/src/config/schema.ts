@@ -315,13 +315,27 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
-      provider: yupString().oneOf(['resend', 'smtp']).optional(),
+      provider: yupString().oneOf(['resend', 'smtp', 'managed']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
-      password: schemaFields.emailPasswordSchema.optional().nonEmpty(),
+      password: schemaFields.emailPasswordSchema.optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
+        then: (schema) => schema.defined("Password is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
       senderName: schemaFields.emailSenderNameSchema.optional().nonEmpty(),
       senderEmail: schemaFields.emailSenderEmailSchema.optional().nonEmpty(),
+      managedSubdomain: yupString().optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
+        then: (schema) => schema.defined("Managed subdomain is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
+      managedSenderLocalPart: yupString().optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
+        then: (schema) => schema.defined("Managed sender local part is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
     }),
   })),
 
@@ -635,6 +649,8 @@ const organizationConfigDefaults = {
       password: undefined,
       senderName: undefined,
       senderEmail: undefined,
+      managedSubdomain: undefined,
+      managedSenderLocalPart: undefined,
     },
     selectedThemeId: DEFAULT_EMAIL_THEME_ID,
     themes: typedAssign((key: string) => ({

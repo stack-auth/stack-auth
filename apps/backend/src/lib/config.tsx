@@ -1090,6 +1090,16 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
 
     email_config: renderedConfig.emails.server.isShared ? {
       type: 'shared',
+    } : renderedConfig.emails.server.provider === "managed" ? {
+      type: 'standard',
+      host: "smtp.resend.com",
+      port: 465,
+      username: "resend",
+      password: renderedConfig.emails.server.password,
+      sender_name: renderedConfig.emails.server.senderName,
+      sender_email: renderedConfig.emails.server.managedSubdomain && renderedConfig.emails.server.managedSenderLocalPart
+        ? `${renderedConfig.emails.server.managedSenderLocalPart}@${renderedConfig.emails.server.managedSubdomain}`
+        : renderedConfig.emails.server.senderEmail,
     } : {
       type: 'standard',
       host: renderedConfig.emails.server.host,

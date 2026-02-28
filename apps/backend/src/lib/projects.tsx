@@ -224,6 +224,8 @@ export async function createOrUpdateProjectWithLegacyConfig(
       senderName: dataOptions.email_config.sender_name,
       senderEmail: dataOptions.email_config.sender_email,
       provider: "smtp",
+      managedSubdomain: undefined,
+      managedSenderLocalPart: undefined,
     } satisfies CompleteConfig['emails']['server'] : undefined,
     'emails.selectedThemeId': dataOptions.email_theme,
     // ======================= rbac =======================
