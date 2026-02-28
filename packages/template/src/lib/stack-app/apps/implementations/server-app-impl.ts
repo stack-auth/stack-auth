@@ -1539,6 +1539,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
     await this._interface.sendEmail(options);
+    await this._emailDeliveryInfoCache.refresh([]);
   }
 
   async getEmailDeliveryStats(): Promise<EmailDeliveryInfo> {
@@ -1550,10 +1551,6 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return useAsyncCache(this._emailDeliveryInfoCache, [], "stackServerApp.useEmailDeliveryStats()");
   }
   // END_PLATFORM
-
-  async refreshEmailDeliveryStats(): Promise<void> {
-    await this._emailDeliveryInfoCache.refresh([]);
-  }
 
   async activateEmailCapacityBoost(): Promise<void> {
     await this._interface.activateEmailCapacityBoost();

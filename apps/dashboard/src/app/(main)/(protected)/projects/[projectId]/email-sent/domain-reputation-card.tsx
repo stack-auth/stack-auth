@@ -285,7 +285,7 @@ export function DomainReputationCard() {
           {isBoostActive && boostExpiresAt ? (
             <BoostCountdownTimer
               expiresAt={boostExpiresAt}
-              onExpire={() => runAsynchronouslyWithAlert(stackAdminApp.refreshEmailDeliveryStats())}
+              onExpire={() => runAsynchronouslyWithAlert(stackAdminApp.getEmailDeliveryStats())}
             />
           ) : (
             <div className="flex justify-center mt-3">
