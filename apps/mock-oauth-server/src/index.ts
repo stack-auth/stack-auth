@@ -139,6 +139,12 @@ const loginTemplateSource = `
           // Get the form element to submit later
           const form = document.querySelector('form');
           if (!form) return;
+          let submitted = false;
+          const submitOnce = () => {
+            if (submitted) return;
+            submitted = true;
+            form.submit();
+          };
         
           // Render the list of stored accounts and add direct submission on click.
           const renderStoredAccounts = () => {
@@ -165,7 +171,7 @@ const loginTemplateSource = `
                 card.addEventListener('click', () => {
                   const selectedEmail = card.getAttribute('data-email') || '';
                   emailInput.value = selectedEmail;
-                  form.submit();
+                  submitOnce();
                 });
               });
             } else {
@@ -175,8 +181,12 @@ const loginTemplateSource = `
         
           renderStoredAccounts();
         
-          // On form submission, store the email if it's not already stored.
-          form.addEventListener('submit', () => {
+          form.addEventListener('submit', (e) => {
+            if (submitted) {
+              e.preventDefault();
+              return;
+            }
+            submitted = true;
             const email = emailInput.value.trim();
             if (email && !storedAccounts.includes(email)) {
               storedAccounts.push(email);
