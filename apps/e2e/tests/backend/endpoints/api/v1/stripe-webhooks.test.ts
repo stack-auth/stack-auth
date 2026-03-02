@@ -710,6 +710,7 @@ it("updates a user's subscriptions via webhook (add then remove)", async ({ expe
   const canceledSubscription = {
     ...activeSubscription,
     status: "canceled",
+    ended_at: Math.floor(Date.now() / 1000),
     items: {
       data: [
         {

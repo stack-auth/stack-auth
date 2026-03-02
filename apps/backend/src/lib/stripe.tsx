@@ -172,6 +172,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodEnd: sanitizedDates.end,
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        endedAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : null,
+        billingCycleAnchor: subscription.billing_cycle_anchor ? new Date(subscription.billing_cycle_anchor * 1000) : null,
         priceId: priceId ?? null,
       },
       create: {
@@ -187,6 +189,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodEnd: sanitizedDates.end,
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        endedAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : null,
+        billingCycleAnchor: subscription.billing_cycle_anchor ? new Date(subscription.billing_cycle_anchor * 1000) : null,
         creationSource: "PURCHASE_PAGE"
       },
     });

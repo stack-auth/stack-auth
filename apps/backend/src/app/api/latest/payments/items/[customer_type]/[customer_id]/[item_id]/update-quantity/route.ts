@@ -1,4 +1,4 @@
-import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
+import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments/index";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";

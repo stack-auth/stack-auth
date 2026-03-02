@@ -1,13 +1,14 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getCustomerPurchaseContext } from "@/lib/payments";
+import { CustomerType } from "@/generated/prisma/client";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct } from "@/lib/payments/index";
+import { getOwnedProductsForCustomer } from "@/lib/payments/ledger";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getStackStripe, getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { purchaseUrlVerificationCodeHandler } from "../verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -91,14 +92,13 @@ export const POST = createSmartRouteHandler({
 
     if (req.body.product_id && productConfig.stackable !== true) {
       const prisma = await getPrismaClientForTenancy(tenancy);
-      const { alreadyOwnsProduct } = await getCustomerPurchaseContext({
+      const ownedProducts = await getOwnedProductsForCustomer({
         prisma,
         tenancy,
         customerType,
         customerId: req.body.customer_id,
-        productId: req.body.product_id,
       });
-      if (alreadyOwnsProduct) {
+      if (ownedProducts.some((p) => p.id === req.body.product_id)) {
         throw new KnownErrors.ProductAlreadyGranted(req.body.product_id, req.body.customer_id);
       }
     }

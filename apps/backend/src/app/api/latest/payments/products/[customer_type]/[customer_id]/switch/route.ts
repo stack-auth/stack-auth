@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments/index";
+import { getOwnedProductsForCustomer } from "@/lib/payments/ledger";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -86,17 +87,15 @@ export const POST = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const { existingOneTimePurchases } = await getCustomerPurchaseContext({
+    const ownedProducts = await getOwnedProductsForCustomer({
       prisma,
       tenancy: auth.tenancy,
       customerType: params.customer_type,
       customerId: params.customer_id,
-      productId: body.to_product_id,
     });
-    const hasOneTimeInProductLine = existingOneTimePurchases.some((purchase) => {
-      const product = purchase.product as typeof toProduct;
-      return product.productLineId === fromProduct.productLineId;
-    });
+    const hasOneTimeInProductLine = ownedProducts.some((p) =>
+      p.type === "one_time" && p.product.product_line_id === fromProduct.productLineId
+    );
     if (hasOneTimeInProductLine) {
       throw new StatusError(400, "Customer already has a one-time purchase in this product line");
     }
