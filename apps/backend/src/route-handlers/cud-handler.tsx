@@ -164,7 +164,7 @@ export function createCudHandlers<
           return false;
         }
         if (operation === "Read" || operation === "List") {
-          return crud[accessType].readSchema !== undefined;
+          return (crud[accessType] as any).readSchema !== undefined;
         }
         return crud[accessType][`${typedToLowercase(operation)}Schema`] !== undefined;
       });

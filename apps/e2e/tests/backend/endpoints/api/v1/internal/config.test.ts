@@ -146,6 +146,32 @@ describe("basic config operations", () => {
     expect(updatedConfig.teams.createPersonalTeamOnSignUp).toBe(true);
   });
 
+  it("updates project-level config override", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    const updateResponse = await niceBackendFetch("/api/v1/internal/config/override/project", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          "project.requirePublishableClientKey": true,
+        }),
+      },
+    });
+    expect(updateResponse.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(updateResponse.status).toBe(200);
+
+    const verifyResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    expect(verifyResponse.status).toBe(200);
+    const updatedConfig = JSON.parse(verifyResponse.body.config_string);
+    expect(updatedConfig.project.requirePublishableClientKey).toBe(true);
+  });
+
   it("returns an error when config override contains non-existent fields", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
@@ -508,7 +534,7 @@ describe("domain config", () => {
     expect(configWithUpdatedDomain.domains.trustedDomains['domain-2']).toBeDefined();
   });
 
-  it("supports both nested object and dot notation formats for trusted domains", async ({ expect }) => {
+  it("supports only nested object, not dot notation format, for trusted domains", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch();
 
     // Test nested object format
@@ -567,7 +593,6 @@ describe("domain config", () => {
 
     expect(dotNotationResponse.status).toBe(200);
 
-    // Verify the dot notation format was applied correctly
     const configResponse2 = await niceBackendFetch("/api/v1/internal/config", {
       method: "GET",
       accessType: "admin",
@@ -575,12 +600,7 @@ describe("domain config", () => {
     });
     const config2 = JSON.parse(configResponse2.body.config_string);
     expect(config2.domains.trustedDomains).toMatchInlineSnapshot(`
-      {
-        "2": {
-          "baseUrl": "https://example.com",
-          "handlerPath": "/handler",
-        },
-      }
+      {}
     `);
 
     // Test mixing both formats in a single request
@@ -601,9 +621,14 @@ describe("domain config", () => {
       },
     });
 
-    expect(mixedFormatResponse.status).toBe(200);
+    expect(mixedFormatResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": { "success": true },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
 
-    // Verify both formats work together
     const configResponse3 = await niceBackendFetch("/api/v1/internal/config", {
       method: "GET",
       accessType: "admin",
@@ -615,10 +640,6 @@ describe("domain config", () => {
         "3": {
           "baseUrl": "http://nested.example.com",
           "handlerPath": "/nested",
-        },
-        "4": {
-          "baseUrl": "http://dotted.example.com",
-          "handlerPath": "/dotted",
         },
       }
     `);
@@ -853,7 +874,7 @@ describe("branch and environment levels", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("SCHEMA_ERROR");
-    expect(response.body.error).toContain("params.level must be one of the following values: branch, environment");
+    expect(response.body.error).toContain("params.level must be one of the following values: project, branch, environment");
   });
 });
 
@@ -1330,6 +1351,270 @@ describe("test helpers", () => {
     const branchConfig2 = JSON.parse(branchResponse2.body.config_string);
     expect(branchConfig2["teams.allowClientTeamCreation"]).toBeUndefined();
     expect(branchConfig2["auth.passkey.allowSignIn"]).toBe(true);
+  });
+});
+
+
+// =============================================================================
+// RESET CONFIG OVERRIDE KEYS TESTS
+// =============================================================================
+
+describe("reset config override keys", () => {
+  it("resets a flat key from environment config override", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set some environment config
+    await Project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+      'users.allowClientUserDeletion': true,
+    });
+
+    // Reset one key
+    await Project.resetConfigOverrideKeys("environment", ["teams.allowClientTeamCreation"]);
+
+    // Verify only the reset key is removed
+    const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const envConfig = JSON.parse(envResponse.body.config_string);
+    expect(envConfig["teams.allowClientTeamCreation"]).toBeUndefined();
+    expect(envConfig["users.allowClientUserDeletion"]).toBe(true);
+  });
+
+  it("resets a parent key which also removes children", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set some environment config
+    await Project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+      'teams.createPersonalTeamOnSignUp': true,
+      'users.allowClientUserDeletion': true,
+    });
+
+    // Reset the parent "teams" key — should remove both teams.* keys
+    await Project.resetConfigOverrideKeys("environment", ["teams"]);
+
+    const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const envConfig = JSON.parse(envResponse.body.config_string);
+    expect(envConfig["teams.allowClientTeamCreation"]).toBeUndefined();
+    expect(envConfig["teams.createPersonalTeamOnSignUp"]).toBeUndefined();
+    expect(envConfig["users.allowClientUserDeletion"]).toBe(true);
+  });
+
+  it("resets keys from branch config override", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set some branch config
+    await Project.updatePushedConfig({
+      'teams.allowClientTeamCreation': true,
+      'users.allowClientUserDeletion': true,
+    });
+
+    // Reset one key from branch level
+    await Project.resetConfigOverrideKeys("branch", ["teams.allowClientTeamCreation"]);
+
+    const branchResponse = await niceBackendFetch("/api/v1/internal/config/override/branch", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const branchConfig = JSON.parse(branchResponse.body.config_string);
+    expect(branchConfig["teams.allowClientTeamCreation"]).toBeUndefined();
+    expect(branchConfig["users.allowClientUserDeletion"]).toBe(true);
+  });
+
+  it("resetting keys causes branch config to take effect over environment", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set branch config
+    await Project.updatePushedConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // Set environment config override that overrides the branch value
+    await Project.updateConfig({
+      'teams.allowClientTeamCreation': false,
+    });
+
+    // Verify environment takes precedence
+    let configResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    let config = JSON.parse(configResponse.body.config_string);
+    expect(config.teams.allowClientTeamCreation).toBe(false);
+
+    // Reset the key from environment — branch config should now win
+    await Project.resetConfigOverrideKeys("environment", ["teams.allowClientTeamCreation"]);
+
+    configResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    config = JSON.parse(configResponse.body.config_string);
+    expect(config.teams.allowClientTeamCreation).toBe(true);
+  });
+
+  it("resetting non-existent keys is a no-op", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set some config
+    await Project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // Reset a key that doesn't exist
+    await Project.resetConfigOverrideKeys("environment", ["nonExistent.key"]);
+
+    // Config should be unchanged
+    const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const envConfig = JSON.parse(envResponse.body.config_string);
+    expect(envConfig["teams.allowClientTeamCreation"]).toBe(true);
+  });
+
+  it("resetting with empty keys array is a no-op", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set some config
+    await Project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+    });
+
+    // Reset with empty array
+    await Project.resetConfigOverrideKeys("environment", []);
+
+    // Config should be unchanged
+    const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const envConfig = JSON.parse(envResponse.body.config_string);
+    expect(envConfig["teams.allowClientTeamCreation"]).toBe(true);
+  });
+
+  it("resets multiple keys at once", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set some config
+    await Project.updateConfig({
+      'teams.allowClientTeamCreation': true,
+      'teams.createPersonalTeamOnSignUp': true,
+      'users.allowClientUserDeletion': true,
+      'auth.passkey.allowSignIn': true,
+    });
+
+    // Reset multiple keys at once
+    await Project.resetConfigOverrideKeys("environment", [
+      "teams.allowClientTeamCreation",
+      "auth.passkey.allowSignIn",
+    ]);
+
+    const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const envConfig = JSON.parse(envResponse.body.config_string);
+    expect(envConfig["teams.allowClientTeamCreation"]).toBeUndefined();
+    expect(envConfig["auth.passkey.allowSignIn"]).toBeUndefined();
+    expect(envConfig["teams.createPersonalTeamOnSignUp"]).toBe(true);
+    expect(envConfig["users.allowClientUserDeletion"]).toBe(true);
+  });
+
+  it("rejects invalid level", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    const response = await niceBackendFetch("/api/v1/internal/config/override/invalid-level/reset-keys", {
+      method: "POST",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: { keys: ["teams.allowClientTeamCreation"] },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("SCHEMA_ERROR");
+  });
+
+  it("rejects non-admin access", async ({ expect }) => {
+    await Project.createAndSwitch();
+
+    const clientResponse = await niceBackendFetch("/api/v1/internal/config/override/environment/reset-keys", {
+      accessType: "client",
+      method: "POST",
+      body: { keys: ["teams.allowClientTeamCreation"] },
+    });
+    expect(clientResponse.status).toBe(401);
+
+    const serverResponse = await niceBackendFetch("/api/v1/internal/config/override/environment/reset-keys", {
+      accessType: "server",
+      method: "POST",
+      body: { keys: ["teams.allowClientTeamCreation"] },
+    });
+    expect(serverResponse.status).toBe(401);
+  });
+
+  it("handles nested object config with reset", async ({ expect }) => {
+    const { adminAccessToken } = await Project.createAndSwitch();
+
+    // Set config using nested object format
+    await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "PATCH",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+      body: {
+        config_override_string: JSON.stringify({
+          auth: {
+            oauth: {
+              providers: {
+                google: {
+                  type: 'google',
+                  isShared: false,
+                  clientId: 'google-client-id',
+                  clientSecret: 'google-client-secret',
+                  allowSignIn: true,
+                  allowConnectedAccounts: true,
+                },
+              },
+            },
+          },
+          'teams.allowClientTeamCreation': true,
+        }),
+      },
+    });
+
+    // Reset the oauth provider key
+    await Project.resetConfigOverrideKeys("environment", ["auth.oauth.providers.google"]);
+
+    const envResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const envConfig = JSON.parse(envResponse.body.config_string);
+    // teams key should still be there
+    expect(envConfig["teams.allowClientTeamCreation"]).toBe(true);
+    // google provider should be removed from nested object (entire auth structure might be cleaned up)
+    const configResponse = await niceBackendFetch("/api/v1/internal/config", {
+      method: "GET",
+      accessType: "admin",
+      headers: adminHeaders(adminAccessToken),
+    });
+    const config = JSON.parse(configResponse.body.config_string);
+    expect(config.auth.oauth.providers.google).toBeUndefined();
+    expect(config.teams.allowClientTeamCreation).toBe(true);
   });
 });
 

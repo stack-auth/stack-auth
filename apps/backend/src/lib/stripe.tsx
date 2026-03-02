@@ -2,11 +2,12 @@ import { CustomerType } from "@/generated/prisma/client";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
-import { InputJsonValue } from "@prisma/client/runtime/client";
+import type { productSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import Stripe from "stripe";
+import type * as yup from "yup";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
@@ -18,43 +19,169 @@ const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   port: Number(`${stackPortPrefix}23`),
 } : {};
 
+/** Product type as stored in Stripe metadata (same as config product schema) */
+export type StripeMetadataProduct = yup.InferType<typeof productSchema>;
+
 /**
  * Sanitizes subscription period dates from Stripe.
  *
  * The Stripe mock returns hardcoded fixture dates that are invalid (e.g., start in 2030, end in 2000).
- * This function detects invalid dates and replaces them with sensible defaults.
+ * This function detects when end <= start and replaces with sensible defaults.
+ *
+ * We only check the ordering constraint to avoid interfering with legitimate Stripe dates
+ * (e.g., long trials, future billing anchors).
  *
  * @param startTimestamp - Unix timestamp in seconds for period start
  * @param endTimestamp - Unix timestamp in seconds for period end
- * @param intervalMonths - Billing interval in months (default: 1)
+ * @param context - Optional context for error reporting (subscriptionId, tenancyId)
  * @returns Sanitized Date objects for start and end
  */
 export function sanitizeStripePeriodDates(
   startTimestamp: number,
   endTimestamp: number,
-  intervalMonths: number = 1
+  context?: { subscriptionId?: string, tenancyId?: string },
 ): { start: Date, end: Date } {
-  const now = new Date();
   const startDate = new Date(startTimestamp * 1000);
   const endDate = new Date(endTimestamp * 1000);
 
-  const tenYearsMs = 10 * 365 * 24 * 60 * 60 * 1000;
-  const isStartValid = startDate.getTime() > 0 && Math.abs(startDate.getTime() - now.getTime()) < tenYearsMs;
-  const isEndValid = endDate.getTime() > 0 && Math.abs(endDate.getTime() - now.getTime()) < tenYearsMs;
-  const isOrderValid = startDate < endDate;
-
-  if (isStartValid && isEndValid && isOrderValid) {
+  if (startDate < endDate) {
     return { start: startDate, end: endDate };
   }
 
-  // Dates are invalid (likely from Stripe mock), use sensible defaults
-  const defaultStart = now;
-  const defaultEnd = new Date(now);
-  defaultEnd.setMonth(defaultEnd.getMonth() + intervalMonths);
+  // Dates are invalid (likely from Stripe mock where end <= start), use sensible defaults
+  captureError("sanitize-stripe-period-dates", new StackAssertionError(
+    "Invalid Stripe period dates detected (end <= start), using fallback dates",
+    { startTimestamp, endTimestamp, startDate, endDate, useStripeMock, ...context }
+  ));
 
-  return { start: defaultStart, end: defaultEnd };
+  const now = new Date();
+  const defaultEnd = new Date(now);
+  defaultEnd.setMonth(defaultEnd.getMonth() + 1);
+
+  return { start: now, end: defaultEnd };
 }
 
+/**
+ * Resolves product JSON from Stripe metadata with backward compatibility.
+ *
+ * Resolution order:
+ * 1. productVersionId - new approach, looks up ProductVersion table
+ * 2. product - older approach, JSON string in metadata
+ * 3. offer - oldest approach, JSON string in metadata (legacy naming)
+ *
+ * @throws StackAssertionError if none of the above are found
+ */
+export async function resolveProductFromStripeMetadata(options: {
+  prisma: Parameters<typeof getProductVersion>[0]['prisma'],
+  tenancyId: string,
+  metadata: Record<string, string | undefined>,
+  context?: { subscriptionId?: string, paymentIntentId?: string },
+}): Promise<StripeMetadataProduct> {
+  const productVersionId = options.metadata.productVersionId;
+  if (productVersionId) {
+    const version = await getProductVersion({
+      prisma: options.prisma,
+      tenancyId: options.tenancyId,
+      productVersionId,
+    });
+    return version.productJson as StripeMetadataProduct;
+  }
+
+  const productString = options.metadata.product ?? options.metadata.offer;
+  if (productString) {
+    try {
+      return JSON.parse(productString) as StripeMetadataProduct;
+    } catch (error) {
+      throw new StackAssertionError(
+        "Failed to parse product JSON from Stripe metadata. The 'product' or 'offer' field contains invalid JSON.",
+        {
+          ...options.context,
+          tenancyId: options.tenancyId,
+          productString,
+          metadata: options.metadata,
+          error,
+        }
+      );
+    }
+  }
+
+  throw new StackAssertionError(
+    "Stripe metadata is missing product information. Expected one of: 'productVersionId' (current), 'product' (legacy), or 'offer' (oldest). This may indicate the purchase was created before product tracking was implemented, or the metadata was corrupted.",
+    {
+      ...options.context,
+      tenancyId: options.tenancyId,
+      metadata: options.metadata,
+    }
+  );
+}
+
+import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
+  const mockProduct = { displayName: "Test Product", customerType: "team" as const };
+
+  // Note: productVersionId path is tested via E2E tests since it requires database mocking
+
+  test("falls back to 'product' metadata (legacy format)", async ({ expect }) => {
+    const result = await resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: { product: JSON.stringify(mockProduct) },
+    });
+
+    expect(result).toEqual(mockProduct);
+  });
+
+  test("falls back to 'offer' metadata (oldest format)", async ({ expect }) => {
+    const result = await resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: { offer: JSON.stringify(mockProduct) },
+    });
+
+    expect(result).toEqual(mockProduct);
+  });
+
+  test("prefers 'product' over 'offer' when both present", async ({ expect }) => {
+    const offerProduct = { displayName: "Offer Product", customerType: "user" as const };
+
+    const result = await resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: {
+        product: JSON.stringify(mockProduct),
+        offer: JSON.stringify(offerProduct),
+      },
+    });
+
+    expect(result).toEqual(mockProduct);
+  });
+
+  test("throws on invalid JSON in product field", async ({ expect }) => {
+    await expect(resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: { product: "not valid json" },
+    })).rejects.toThrow("Failed to parse product JSON");
+  });
+
+  test("throws when no product info in metadata", async ({ expect }) => {
+    await expect(resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: {},
+    })).rejects.toThrow("Stripe metadata is missing product information");
+  });
+
+  test("includes context in error when provided", async ({ expect }) => {
+    await expect(resolveProductFromStripeMetadata({
+      prisma: {} as any,
+      tenancyId: "tenant-1",
+      metadata: {},
+      context: { subscriptionId: "sub-123" },
+    })).rejects.toMatchObject({
+      message: expect.stringContaining("missing product information"),
+    });
+  });
+});
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
     throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
@@ -130,33 +257,19 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       continue;
     }
     const item = subscription.items.data[0];
-    const sanitizedDates = sanitizeStripePeriodDates(item.current_period_start, item.current_period_end);
+    const sanitizedDates = sanitizeStripePeriodDates(
+      item.current_period_start,
+      item.current_period_end,
+      { subscriptionId: subscription.id, tenancyId: tenancy.id }
+    );
     const priceId = subscription.metadata.priceId as string | undefined;
 
-    let productJson: InputJsonValue;
-    const productVersionId = subscription.metadata.productVersionId as string | undefined;
-    if (productVersionId) {
-      const version = await getProductVersion({
-        prisma,
-        tenancyId: tenancy.id,
-        productVersionId,
-      });
-      productJson = version.productJson as InputJsonValue;
-    } else {
-      // Backward compat: old subscriptions have product JSON directly in metadata or even older subscriptions were created with offer metadata
-      const productString = subscription.metadata.product as string | undefined ?? subscription.metadata.offer as string | undefined;
-      if (!productString) {
-        throw new StackAssertionError("Stripe subscription metadata missing productVersionId, product, or offer", {
-          subscriptionId: subscription.id,
-          tenancyId: tenancy.id,
-        });
-      }
-      try {
-        productJson = JSON.parse(productString);
-      } catch (error) {
-        throw new StackAssertionError("Invalid JSON in Stripe subscription metadata", { subscriptionId: subscription.id, productString, error });
-      }
-    }
+    const product = await resolveProductFromStripeMetadata({
+      prisma,
+      tenancyId: tenancy.id,
+      metadata: subscription.metadata as Record<string, string | undefined>,
+      context: { subscriptionId: subscription.id },
+    });
 
     await prisma.subscription.upsert({
       where: {
@@ -167,7 +280,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       },
       update: {
         status: subscription.status,
-        product: productJson,
+        product,
         quantity: item.quantity ?? 1,
         currentPeriodEnd: sanitizedDates.end,
         currentPeriodStart: sanitizedDates.start,
@@ -180,7 +293,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         customerType,
         productId: subscription.metadata.productId as string | undefined ?? subscription.metadata.offerId,
         priceId: priceId ?? null,
-        product: productJson,
+        product,
         quantity: item.quantity ?? 1,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,

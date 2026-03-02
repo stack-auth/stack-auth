@@ -86,7 +86,7 @@ export function getDefaultProjectId() {
 }
 
 export function getDefaultPublishableClientKey() {
-  return process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || process.env.STACK_PUBLISHABLE_CLIENT_KEY || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a publishable client key. Please create an API key for your project on the Stack dashboard at https://app.stack-auth.com and copy your publishable client key into the NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY environment variable."));
+  return process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || process.env.STACK_PUBLISHABLE_CLIENT_KEY;
 }
 
 export function getDefaultSecretServerKey() {
@@ -144,6 +144,11 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 export const defaultBaseUrl = "https://api.stack-auth.com";
+export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
+
+export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
+  return regularBaseUrl === defaultBaseUrl ? defaultAnalyticsBaseUrl : regularBaseUrl;
+}
 
 export type TokenObject = {
   accessToken: string | null,

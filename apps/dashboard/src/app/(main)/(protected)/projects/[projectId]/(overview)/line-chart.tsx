@@ -1,11 +1,11 @@
 import { useRouter } from "@/components/router";
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { UserAvatar } from '@stackframe/stack';
-import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import {
   cn,
   Typography
 } from "@/components/ui";
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { UserAvatar } from '@stackframe/stack';
+import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
@@ -41,7 +41,7 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
     : data.date;
 
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]">
+    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
           {formattedDate}
@@ -115,7 +115,7 @@ function ActivityBarChart({
           }}
           offset={20}
           allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 9999 }}
+          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
         <Bar
           dataKey="activity"
@@ -182,32 +182,45 @@ export function ChartCard({
   gradientColor?: GradientColor,
 }) {
   const hoverTints: Record<GradientColor, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
+    blue: "group-hover:bg-slate-500/[0.02]",
+    purple: "group-hover:bg-slate-500/[0.02]",
+    green: "group-hover:bg-slate-500/[0.02]",
+    orange: "group-hover:bg-slate-500/[0.02]",
     slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
+    cyan: "group-hover:bg-slate-500/[0.02]",
   };
 
   return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md hover:z-10",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
+    <>
+      <style>
+        {`
+          .chart-card-tooltip-escape .recharts-tooltip-wrapper {
+            z-index: 9999 !important;
+            overflow: visible !important;
+          }
+          .chart-card-tooltip-escape .recharts-tooltip-wrapper > * {
+            overflow: visible !important;
+          }
+        `}
+      </style>
       <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative h-full flex flex-col">
-        {children}
+        "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
+        "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
+        "shadow-sm hover:shadow-md hover:z-10",
+        className
+      )}>
+        {/* Subtle glassmorphic background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.02] dark:from-foreground/[0.03] dark:via-foreground/[0.01] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
+        {/* Accent hover tint */}
+        <div className={cn(
+          "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
+          hoverTints[gradientColor]
+        )} />
+        <div className="relative h-full flex flex-col">
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -225,7 +238,7 @@ export function TimeRangeToggle({
   ];
 
   return (
-    <div className="flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
+    <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
       {options.map((option) => (
         <button
           key={option.value}
@@ -559,7 +572,7 @@ export function DonutChartDisplay({
                   cursor={false}
                   offset={20}
                   allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ zIndex: 9999 }}
+                  wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
                   content={
                     <ChartTooltipContent
                       className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"

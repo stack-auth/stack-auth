@@ -22,11 +22,15 @@ export function canonicalJsonStringify(obj: unknown): string {
 }
 
 /**
- * Computes a deterministic version ID from a product JSON object.
+ * Computes a deterministic version ID from a productId and product JSON object.
  * Uses SHA-256 hash of the canonical JSON representation.
+ *
+ * Including productId ensures different products with identical JSON get separate rows.
+ * Inline products (null productId) with identical JSON will still share a row,
+ * which is acceptable since if they have the same productJson, semantically they are the same product.
  */
-export function computeProductVersionId(productJson: unknown): string {
-  const canonical = canonicalJsonStringify(productJson);
+export function computeProductVersionId(productId: string | null, productJson: unknown): string {
+  const canonical = canonicalJsonStringify({ productId, productJson });
   const hash = crypto.createHash("sha256").update(canonical).digest();
   return encodeBase64(hash);
 }
@@ -41,7 +45,7 @@ export async function upsertProductVersion(options: {
   productId: string | null,
   productJson: unknown,
 }): Promise<string> {
-  const productVersionId = computeProductVersionId(options.productJson);
+  const productVersionId = computeProductVersionId(options.productId, options.productJson);
 
   await options.prisma.productVersion.upsert({
     where: {
@@ -129,25 +133,44 @@ import.meta.vitest?.describe("canonicalJsonStringify", (test) => {
 });
 
 import.meta.vitest?.describe("computeProductVersionId", (test) => {
-  test("produces same hash for same object with different key order", ({ expect }) => {
+  test("produces same hash for same productId and object with different key order", ({ expect }) => {
     const obj1 = { b: 2, a: 1, c: 3 };
     const obj2 = { a: 1, b: 2, c: 3 };
 
-    expect(computeProductVersionId(obj1)).toBe(computeProductVersionId(obj2));
+    expect(computeProductVersionId("prod-1", obj1)).toBe(computeProductVersionId("prod-1", obj2));
   });
 
   test("produces different hash for different objects", ({ expect }) => {
     const obj1 = { a: 1 };
     const obj2 = { a: 2 };
 
-    expect(computeProductVersionId(obj1)).not.toBe(computeProductVersionId(obj2));
+    expect(computeProductVersionId("prod-1", obj1)).not.toBe(computeProductVersionId("prod-1", obj2));
+  });
+
+  test("produces different hash for different productIds with same object", ({ expect }) => {
+    const obj = { a: 1 };
+
+    expect(computeProductVersionId("prod-1", obj)).not.toBe(computeProductVersionId("prod-2", obj));
+  });
+
+  test("produces same hash for null productIds with same object", ({ expect }) => {
+    const obj = { a: 1 };
+
+    expect(computeProductVersionId(null, obj)).toBe(computeProductVersionId(null, obj));
+  });
+
+  test("produces different hash for null productIds with different objects", ({ expect }) => {
+    const obj1 = { a: 1 };
+    const obj2 = { a: 2 };
+
+    expect(computeProductVersionId(null, obj1)).not.toBe(computeProductVersionId(null, obj2));
   });
 
   test("hash is deterministic", ({ expect }) => {
     const obj = { foo: "bar", nested: { x: 1, y: 2 } };
 
-    const hash1 = computeProductVersionId(obj);
-    const hash2 = computeProductVersionId(obj);
+    const hash1 = computeProductVersionId("prod-1", obj);
+    const hash2 = computeProductVersionId("prod-1", obj);
 
     expect(hash1).toBe(hash2);
   });
