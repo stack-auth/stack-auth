@@ -164,9 +164,18 @@ export type RefState<T> = ReadonlyRef<T> & {
  *
  * If you don't want this, you can wrap the result in a useMemo call.
  */
-export function useRefState<T>(initialValue: T): RefState<T> {
-  const [, setState] = React.useState(initialValue);
-  const ref = React.useRef(initialValue);
+export function useRefState<T>(initialValue: T | (() => T)): RefState<T> {
+  // Support lazy initialization like React.useState does: if initialValue is a function,
+  // call it once to get the actual initial value (React.useRef does NOT do this automatically).
+  const lazyInitRef = React.useRef<{ v: T } | null>(null);
+  if (lazyInitRef.current === null) {
+    lazyInitRef.current = {
+      v: typeof initialValue === "function" ? (initialValue as () => T)() : initialValue,
+    };
+  }
+  const resolvedInitialValue = lazyInitRef.current.v;
+  const [, setState] = React.useState<T>(() => resolvedInitialValue);
+  const ref = React.useRef(resolvedInitialValue);
   const setValue = React.useCallback((updater: SetStateAction<T>) => {
     const value: T = typeof updater === "function" ? (updater as any)(ref.current) : updater;
     ref.current = value;
