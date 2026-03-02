@@ -86,7 +86,7 @@
     "@types/uuid": "^9.0.8",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "rimraf": "^5.0.5"
+    "rimraf": "^6.1.2"
   },
   "packageManager": "pnpm@10.23.0"
 }
