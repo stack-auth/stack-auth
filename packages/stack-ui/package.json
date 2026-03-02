@@ -96,7 +96,7 @@
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "rimraf": "^5.0.10"
+    "rimraf": "^6.1.2"
   },
   "packageManager": "pnpm@10.23.0"
 }
