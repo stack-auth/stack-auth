@@ -289,6 +289,7 @@ export type TokenPartialUser = Pick<
   | "primaryEmail"
   | "primaryEmailVerified"
   | "isAnonymous"
+  | "isMultiFactorRequired"
   | "isRestricted"
   | "restrictedReason"
 >

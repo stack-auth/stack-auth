@@ -378,6 +378,7 @@ TokenPartialUser:
   primaryEmail: string | null
   primaryEmailVerified: bool
   isAnonymous: bool
+  isMultiFactorRequired: bool
   isRestricted: bool
   restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null
 

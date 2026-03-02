@@ -1,7 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
-import { defineConfig, type Options } from 'tsup';
-import { createBasePlugin } from '../../../configs/tsup/plugins';
-import packageJson from '../package.json';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, type Rolldown, type UserConfig } from 'tsdown';
+// @ts-expect-error - this is a workaround to allow the import of the plugins.ts file
+import { createBasePlugin } from '../../../configs/tsdown/plugins.ts';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const backendDir = resolve(__dirname, '..');
+
+const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
 
 const customNoExternal = new Set([
   ...Object.keys(packageJson.dependencies),
@@ -10,18 +19,16 @@ const customNoExternal = new Set([
 // Node.js built-in modules that should not be bundled
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
-// tsup config to build the self-hosting migration script so it can be
-// run in the Docker container with no extra dependencies.
-type EsbuildPlugin = NonNullable<Options["esbuildPlugins"]>[number];
-const basePlugin = createBasePlugin({}) as unknown as EsbuildPlugin;
+const basePlugin: Rolldown.Plugin = createBasePlugin({});
 
 export default defineConfig({
-  entry: ['scripts/db-migrations.ts'],
+  entry: [resolve(backendDir, 'scripts/db-migrations.ts')],
   format: ['esm'],
-  outDir: 'dist',
+  outDir: resolve(backendDir, 'dist'),
   target: 'node22',
   platform: 'node',
   noExternal: [...customNoExternal],
+  inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
   external: nodeBuiltins,
   clean: true,
@@ -35,6 +42,5 @@ const __filename = __fileURLToPath(import.meta.url);
 const __dirname = __dirname_fn(__filename);
 const require = __createRequire(import.meta.url);`,
   },
-  // Cast to tsup's esbuild plugin type to avoid esbuild version mismatch in typecheck.
-  esbuildPlugins: [basePlugin],
-} satisfies Options);
+  plugins: [basePlugin],
+} satisfies UserConfig);

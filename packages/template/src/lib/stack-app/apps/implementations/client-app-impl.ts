@@ -2418,6 +2418,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       displayName: accessToken.payload.name,
       primaryEmailVerified: accessToken.payload.email_verified,
       isAnonymous,
+      isMultiFactorRequired: accessToken.payload.requires_totp_mfa,
       isRestricted: accessToken.payload.is_restricted,
       restrictedReason: accessToken.payload.restricted_reason,
     } satisfies TokenPartialUser;
@@ -2434,6 +2435,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmail: auth.email ?? null,
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
+      isMultiFactorRequired: auth.requires_totp_mfa as boolean,
       isRestricted: auth.is_restricted as boolean,
       restrictedReason: (auth.restricted_reason as RestrictedReason | null) ?? null,
     };
