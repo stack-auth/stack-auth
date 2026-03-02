@@ -126,6 +126,10 @@ const getColumns = (showPublishableClientKey: boolean): ColumnDef<ExtendedIntern
 
 export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPublishableClientKey?: boolean }) {
   const showPublishableClientKey = props.showPublishableClientKey ?? true;
+  const columns = useMemo(
+    () => getColumns(showPublishableClientKey),
+    [showPublishableClientKey],
+  );
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,
