@@ -138,6 +138,7 @@ export function createDashboardChatAdapter(
   currentTsxSource: string,
   onToolCall: (toolCall: ToolCallContent) => void,
   editingWidgetId?: string | null,
+  addingWidgetPosition?: { x: number, y: number, width: number, height: number } | null,
 ): ChatModelAdapter {
   return createGenericChatAdapter({
     adminApp,
@@ -149,6 +150,7 @@ export function createDashboardChatAdapter(
         formattedMessages,
         currentTsxSource.length > 0 ? currentTsxSource : undefined,
         editingWidgetId ?? undefined,
+        addingWidgetPosition ?? undefined,
       );
     },
     onToolCall,

@@ -671,6 +671,11 @@ export class WidgetInstanceGrid {
     return new WidgetInstanceGrid(newNonEmptyElements, this._varHeights, this.width, this._fixedHeight);
   }
 
+  public withAddedElementInstance(instance: WidgetInstance<any, any>, x: number, y: number, width: number, height: number) {
+    const newNonEmptyElements = [...this._nonEmptyElements, { instance, x, y, width, height }];
+    return new WidgetInstanceGrid(newNonEmptyElements, this._varHeights, this.width, this._fixedHeight);
+  }
+
   private _withUpdatedElementInstance(x: number, y: number, updater: (element: GridElement) => WidgetInstance<any, any> | null) {
     const elementToUpdate = this.getElementAt(x, y);
     const newNonEmptyElements = this._nonEmptyElements

@@ -1,6 +1,6 @@
 "use client";
 
-import { DndContext, PointerSensor, closestCenter, pointerWithin, useDroppable, useSensor, useSensors, type CollisionDetection } from '@dnd-kit/core';
+import { DndContext, PointerSensor, closestCenter, pointerWithin, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import useResizeObserver from '@react-hook/resize-observer';
 import { range } from '@stackframe/stack-shared/dist/utils/arrays';
 import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -52,19 +52,9 @@ export function SwappableWidgetInstanceGrid(props: {
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [overVarHeightSlot, setOverVarHeightSlot] = useState<["before", string] | ["end-of", number] | null>(null);
   const [activeWidgetId, setActiveInstanceId] = useState<string | null>(null);
-  const activeSourceSlotRef = useRef<string | null>(null);
-  const originalGridRef = useRef<WidgetInstanceGrid | null>(null);
-  const lastDragTargetRef = useRef<string | null>(null);
+  const [hoverElementSwap, setHoverElementSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
+  const [activeElementInitialRect, setActiveElementInitialRect] = useState<{ left: number, top: number, width: number, height: number } | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
-
-  const elementCollisionDetection: CollisionDetection = React.useCallback((args) => {
-    const collisions = pointerWithin(args);
-    if (activeSourceSlotRef.current != null) {
-      const filtered = collisions.filter((c) => String(c.id) !== activeSourceSlotRef.current);
-      if (filtered.length > 0) return filtered;
-    }
-    return collisions;
-  }, []);
   const context = React.useContext(SwappableWidgetInstanceGridContext);
 
   // Built-in listener for window.__layoutEditing (set by iframe boilerplate).
@@ -238,71 +228,82 @@ export function SwappableWidgetInstanceGrid(props: {
         <DndContext
           sensors={sensors}
           onDragStart={(event) => {
-            const id = event.active.id as string;
-          setActiveInstanceId(id);
-          setDraggingType("element");
-          originalGridRef.current = props.gridRef.current;
-          lastDragTargetRef.current = null;
-          const el = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === id);
-          activeSourceSlotRef.current = el ? JSON.stringify([el.x, el.y]) : null;
+            setActiveInstanceId(event.active.id as string);
+            setDraggingType("element");
+            setActiveElementInitialRect((event.activatorEvent.target as any).getBoundingClientRect());
           }}
           onDragAbort={() => {
-            if (originalGridRef.current) {
-            props.gridRef.set(originalGridRef.current);
-            }
-          setActiveInstanceId(null);
-          setOverElementPosition(null);
-          setDraggingType(null);
-          activeSourceSlotRef.current = null;
-          originalGridRef.current = null;
-          lastDragTargetRef.current = null;
+            setHoverElementSwap(null);
+            setActiveInstanceId(null);
+            setOverElementPosition(null);
+            setDraggingType(null);
+            setActiveElementInitialRect(null);
           }}
           onDragCancel={() => {
-            if (originalGridRef.current) {
-            props.gridRef.set(originalGridRef.current);
-            }
-          setActiveInstanceId(null);
-          setOverElementPosition(null);
-          setDraggingType(null);
-          activeSourceSlotRef.current = null;
-          originalGridRef.current = null;
-          lastDragTargetRef.current = null;
+            setHoverElementSwap(null);
+            setActiveInstanceId(null);
+            setOverElementPosition(null);
+            setDraggingType(null);
+            setActiveElementInitialRect(null);
           }}
-          onDragEnd={() => {
-          // Grid is already in the correct state from live onDragOver updates
-          setActiveInstanceId(null);
-          setOverElementPosition(null);
-          setDraggingType(null);
-          activeSourceSlotRef.current = null;
-          originalGridRef.current = null;
-          lastDragTargetRef.current = null;
+          onDragEnd={(event) => {
+            setHoverElementSwap(null);
+            setActiveInstanceId(null);
+            setOverElementPosition(null);
+            setDraggingType(null);
+            setActiveElementInitialRect(null);
+
+            const widgetId = event.active.id;
+            const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
+            if (!widgetElement) {
+              throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
+            }
+            if (event.over) {
+              const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+              const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
+              if (props.gridRef.current.canSwap(...swapArgs)) {
+                props.gridRef.set(props.gridRef.current.withSwappedElements(...swapArgs));
+              } else {
+                alert("Cannot swap elements; make sure the new locations are big enough for the widgets");
+              }
+            }
           }}
           onDragOver={(event) => {
-            if (!event.over || !originalGridRef.current) {
-              setOverElementPosition(null);
-              return;
+            const widgetId = event.active.id;
+            const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
+            if (!widgetElement) {
+              throw new StackAssertionError(`Widget instance ${widgetId} not found in grid`);
             }
-
-            const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
-            const targetKey = `${overCoordinates[0]},${overCoordinates[1]}`;
-            setOverElementPosition(overCoordinates);
-
-            // Skip if we already computed for this target
-            if (lastDragTargetRef.current === targetKey) return;
-            lastDragTargetRef.current = targetKey;
-
-            const widgetElement = [...originalGridRef.current.elements()].find(
-              ({ instance }) => instance?.id === activeWidgetId,
-            );
-            if (!widgetElement) return;
-
-            const newGrid = originalGridRef.current.withMovedElementTo(
-              widgetElement.x, widgetElement.y,
-              overCoordinates[0], overCoordinates[1],
-            );
-            props.gridRef.set(newGrid);
+            if (event.over) {
+              if (!event.active.rect.current.initial) {
+                // not sure when this happens, if ever — skip silently
+              } else {
+                const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+                if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
+                  setOverElementPosition(overCoordinates);
+                } else {
+                  setOverElementPosition(null);
+                }
+                const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
+                if (overId && overId !== widgetId && activeElementInitialRect) {
+                  setHoverElementSwap([overId, [
+                    event.over.rect.left - activeElementInitialRect.left,
+                    event.over.rect.top - activeElementInitialRect.top,
+                    activeElementInitialRect.width,
+                    activeElementInitialRect.height,
+                    event.over.rect.width,
+                    event.over.rect.height,
+                  ]]);
+                } else {
+                  setHoverElementSwap(null);
+                }
+              }
+            } else {
+              setOverElementPosition(null);
+              setHoverElementSwap(null);
+            }
           }}
-          collisionDetection={elementCollisionDetection}
+          collisionDetection={pointerWithin}
         >
           {props.gridRef.current.elements().map(({ instance, x, y, width, height }) => {
             if (isSingleColumnMode && !instance) {
@@ -315,6 +316,7 @@ export function SwappableWidgetInstanceGrid(props: {
                 isSingleColumnMode={isSingleColumnMode}
                 key={instance?.id ?? JSON.stringify({ x, y })}
                 isEmpty={!instance}
+                isEditing={effectiveIsEditing}
                 isOver={overElementPosition?.[0] === x && overElementPosition[1] === y}
                 x={x}
                 y={y}
@@ -330,15 +332,11 @@ export function SwappableWidgetInstanceGrid(props: {
                       : undefined
                 }
                 isActive={instance?.id === activeWidgetId}
-                onAddWidget={props.availableWidgets ? () => {
-                  const availableWidgets = props.allowVariableHeight ? props.availableWidgets! : props.availableWidgets!.filter((widget) => !widget.isHeightVariable);
-                  const widget = availableWidgets[Math.floor(Math.random() * availableWidgets.length)];
-                  if (widget.isHeightVariable) {
-                  props.gridRef.set(props.gridRef.current.withAddedVarHeightWidget(0, widget));
-                  } else {
-                  props.gridRef.set(props.gridRef.current.withAddedElement(widget, x, y, width, height));
-                  }
-                } : undefined}
+                onAddWidget={props.isStatic ? undefined : () => {
+                  window.dispatchEvent(new CustomEvent('widget-add-request', {
+                    detail: { x, y, width, height }
+                  }));
+                }}
               >
                 {instance && (() => {
                   const elementFitContent = props.fitContent && !resizedElements.has(instance.id);
@@ -350,7 +348,24 @@ export function SwappableWidgetInstanceGrid(props: {
                       widgetInstance={instance}
                       activeWidgetId={activeWidgetId}
                       isEditing={effectiveIsEditing}
-                      style={{}}
+                      style={(() => {
+                        if (!hoverElementSwap) return {};
+                        const [dx, dy, activeW, activeH, overW, overH] = hoverElementSwap[1];
+                        const isHoverSwap = hoverElementSwap[0] === instance.id;
+                        if (isHoverSwap) {
+                          return {
+                            transform: `translate(${-dx}px, ${-dy}px) scale(${activeW / overW}, ${activeH / overH})`,
+                          };
+                        }
+                        if (activeWidgetId === instance.id) {
+                          return {
+                            alignSelf: 'flex-start' as const,
+                            minWidth: `${Math.min(activeW, overW)}px`,
+                            minHeight: `${Math.min(activeH, overH)}px`,
+                          };
+                        }
+                        return {};
+                      })()}
                       isSingleColumnMode={isSingleColumnMode}
                       onDeleteWidget={async () => {
                     props.gridRef.set(props.gridRef.current.withRemovedElement(x, y));
@@ -408,6 +423,35 @@ export function SwappableWidgetInstanceGrid(props: {
           })}
         </DndContext>
       </div>
+      {effectiveIsEditing && !props.isStatic && (
+        <div
+          style={{
+            margin: effectiveGapPixels / 2,
+            minHeight: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT * effectiveUnitHeight,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '8px dotted #88888822',
+            borderRadius: '16px',
+            opacity: 0,
+            animation: 'stack-animation-fade-in 400ms 50ms ease forwards',
+          }}
+        >
+          <BigIconButton
+            icon={<Plus size={24} weight="bold" />}
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('widget-add-request', {
+                detail: {
+                  x: 0,
+                  y: props.gridRef.current.height,
+                  width: props.gridRef.current.width,
+                  height: WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT,
+                },
+              }));
+            }}
+          />
+        </div>
+      )}
     </TooltipProvider>
   );
 }
@@ -432,7 +476,7 @@ export function VarHeightSlot(props: { isOver: boolean, location: readonly ["bef
   );
 }
 
-export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, gapPixels?: number, minHeight?: number, onAddWidget?: () => void, isActive?: boolean }) {
+export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolean, isEditing?: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, gapPixels?: number, minHeight?: number, onAddWidget?: () => void, isActive?: boolean }) {
   const { setNodeRef } = useDroppable({
     id: JSON.stringify([props.x, props.y]),
   });
@@ -478,7 +522,9 @@ export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolea
   }, [props.x, props.y, props.width, props.height]);
 
   const gap = props.gapPixels ?? gridGapPixels;
-  const shouldRenderAddWidget = props.isEmpty && props.onAddWidget && props.width >= WidgetInstanceGrid.MIN_ELEMENT_WIDTH && props.height >= WidgetInstanceGrid.MIN_ELEMENT_HEIGHT;
+  const meetsMinSize = props.width >= WidgetInstanceGrid.MIN_ELEMENT_WIDTH && props.height >= WidgetInstanceGrid.MIN_ELEMENT_HEIGHT;
+  const shouldRenderEmptyIndicator = props.isEmpty && props.isEditing && meetsMinSize;
+  const shouldShowPlusButton = shouldRenderEmptyIndicator && !!props.onAddWidget;
 
   return (
     <div
@@ -506,7 +552,7 @@ export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolea
           }
         }
     `}</style>
-      {shouldRenderAddWidget && (<>
+      {shouldRenderEmptyIndicator && (<>
         <div
           style={{
             position: 'absolute',
@@ -522,9 +568,11 @@ export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolea
             opacity: 0,
           }}
         >
-          <BigIconButton icon={<Plus size={24} weight="bold" />} onClick={() => {
-            props.onAddWidget!();
-          }} />
+          {shouldShowPlusButton && (
+            <BigIconButton icon={<Plus size={24} weight="bold" />} onClick={() => {
+              props.onAddWidget!();
+            }} />
+          )}
         </div>
       </>)}
       {props.children}

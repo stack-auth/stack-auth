@@ -75,6 +75,8 @@ export {
   SwappableWidgetInstanceGrid,
   VarHeightSlot,
   ElementSlot,
+  sectionHeadingWidget,
+  createSectionHeadingInstance,
 } from "./components/grid-layout";
 
 export { useRefState, mapRefState } from "@stackframe/stack-shared/dist/utils/react";

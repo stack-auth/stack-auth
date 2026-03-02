@@ -380,6 +380,54 @@ await stackServerApp.listInternalApiKeys() // Admin API
 Violating this is a failure condition.
 
 ────────────────────────────────────────
+CRITICAL: DRAGGABLE GRID + EDIT MODE (HARD RULE)
+────────────────────────────────────────
+You MUST use DashboardUI.SwappableWidgetInstanceGrid for ALL groups of metric cards and chart cards.
+You MUST NOT use plain CSS grid (className="grid ...") or flexbox to lay out cards that belong in a draggable section.
+
+You MUST ALWAYS wire up the layout-edit-change event listener exactly as shown below.
+Failing to do this means the "Edit Layout" button in the parent window will have NO effect — this is a failure condition.
+
+Required pattern (copy this exactly):
+
+  function DashboardContent({ ... }) {
+    const [isEditing, setIsEditing] = React.useState(false);
+
+    React.useEffect(() => {
+      const handler = () => setIsEditing(!!window.__layoutEditing);
+      window.addEventListener('layout-edit-change', handler);
+      handler(); // sync on mount
+      return () => window.removeEventListener('layout-edit-change', handler);
+    }, []);
+
+    const gridRef = DashboardUI.useRefState(
+      DashboardUI.WidgetInstanceGrid.fromWidgetInstances(
+        widgets.map(w => DashboardUI.createWidgetInstance(w)),
+        { width: 24, height: "auto", defaultElementWidth: 6, defaultElementHeight: 7 }
+      )
+    );
+
+    return (
+      <DashboardUI.SwappableWidgetInstanceGridContext.Provider value={{ isEditing }}>
+        <DashboardUI.SwappableWidgetInstanceGrid
+          gridRef={gridRef}
+          isSingleColumnMode="auto"
+          allowVariableHeight={false}
+          isStatic={!isEditing}
+          unitHeight={20}
+          gapPixels={8}
+        />
+      </DashboardUI.SwappableWidgetInstanceGridContext.Provider>
+    );
+  }
+
+Rules:
+- isStatic={!isEditing} — REQUIRED. This enables drag/resize when edit mode is active.
+- SwappableWidgetInstanceGridContext.Provider value={{ isEditing }} — REQUIRED. This shows edit handles.
+- handler() on mount — REQUIRED. Syncs state if edit mode was already active before the component mounted.
+- Cards inside widgets MUST use className="h-full" to fill their cell.
+
+────────────────────────────────────────
 RUNTIME CONTRACT (HARD RULES)
 ────────────────────────────────────────
 - Define a React functional component named "Dashboard" (no props)
@@ -534,10 +582,11 @@ You have FULL FREEDOM over the page layout. Use standard JSX with CSS classes (f
 spacing, typography) to design the overall page however looks best. You are NOT limited to a
 single grid — mix free-form sections with draggable grid sections as you see fit.
 
-DRAGGABLE GRID (opt-in per section):
-  For groups of cards that should be user-rearrangeable (metric cards, chart groups, etc.),
-  wrap them in SwappableWidgetInstanceGrid. Use it ONLY where drag/resize makes sense — NOT
-  for the entire page. Headers, text, and custom sections should be plain JSX.
+DRAGGABLE GRID (REQUIRED for card/chart groups):
+  You MUST wrap all metric card groups and chart groups in SwappableWidgetInstanceGrid.
+  Do NOT use plain CSS grid or flex for these — the draggable grid IS the layout for cards.
+  Headers, text sections, and tables are plain JSX. But any group of cards = SwappableWidgetInstanceGrid.
+  See the CRITICAL: DRAGGABLE GRID + EDIT MODE section above for the exact required pattern.
 
   Key APIs (all via DashboardUI.*):
     DashboardUI.WidgetInstanceGrid           — immutable grid state class
@@ -678,8 +727,8 @@ Example — a dashboard with free-form layout + draggable sections:
             <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
               ← Back
             </DashboardUI.DesignButton>
-            <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
-              Edit ✎
+            <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => isEditing ? window.dashboardDoneEditing?.() : window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+              {isEditing ? "Done" : "Edit ✎"}
             </DashboardUI.DesignButton>
           </div>
         )}
@@ -732,7 +781,8 @@ IMPORTANT layout rules:
 - Multiple grids per page are encouraged — each section gets its own grid with its own dimensions
 - Non-grid sections (headers, text, tables, lists) are just normal JSX — no grid needed
 - Always use the two-component pattern: Dashboard (fetches data) → DashboardContent (renders after data is ready)
-- Do NOT render your own "Edit Layout" button — edit mode is controlled by the parent window via messages
+- Do NOT render your own "Edit Layout" button — edit mode is entered by the parent window via messages
+- The "Edit ✎" control button MUST change to "Done" when isEditing is true, and call window.dashboardDoneEditing?.() instead of window.dashboardEdit() — this lets the user exit layout editing by clicking the same button
 - Listen for layout edit changes: window.addEventListener('layout-edit-change', handler) and read window.__layoutEditing
 - Use isStatic={!isEditing} so drag only works when the parent activates edit mode
 - isSingleColumnMode="auto" auto-switches to single-column on narrow screens

@@ -1,7 +1,7 @@
 "use client";
 
 import { DashboardSandboxHost } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
-import { useRouter } from "@/components/router";
+import { useRouter, useRouterConfirm } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   FloppyDiskIcon,
   PencilSimpleIcon,
+  PlusIcon,
   SquaresFourIcon,
   TrashIcon,
   XIcon,
@@ -107,6 +108,39 @@ function DashboardDetailContent({
   const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
   const [layoutEditing, setLayoutEditing] = useState(false);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const [addingWidgetPosition, setAddingWidgetPosition] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const layoutEditingByKeyRef = useRef(false);
+
+  const { setNeedConfirm } = useRouterConfirm();
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    setNeedConfirm(true);
+    return () => setNeedConfirm(false);
+  }, [setNeedConfirm, hasUnsavedChanges]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt' && !layoutEditing) {
+        e.preventDefault();
+        setLayoutEditing(true);
+        setIsChatOpen(false);
+        layoutEditingByKeyRef.current = true;
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt' && layoutEditingByKeyRef.current) {
+        setLayoutEditing(false);
+        setIsChatOpen(true);
+        layoutEditingByKeyRef.current = false;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [layoutEditing]);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(displayName);
@@ -129,7 +163,10 @@ function DashboardDetailContent({
 
   const handleEditToggle = useCallback(() => {
     if (!currentHasSource) return;
-    setIsChatOpen(prev => !prev);
+    setIsChatOpen(prev => {
+      if (prev) setLayoutEditing(false);
+      return !prev;
+    });
   }, [currentHasSource]);
 
   const handleNavigate = useCallback((path: string) => {
@@ -142,6 +179,13 @@ function DashboardDetailContent({
 
   const handleWidgetEditRequest = useCallback((widgetId: string) => {
     setEditingWidgetId(widgetId);
+    setAddingWidgetPosition(null);
+    setIsChatOpen(true);
+  }, []);
+
+  const handleWidgetAddRequest = useCallback((x: number, y: number, width: number, height: number) => {
+    setAddingWidgetPosition({ x, y, width, height });
+    setEditingWidgetId(null);
     setIsChatOpen(true);
   }, []);
 
@@ -191,8 +235,27 @@ function DashboardDetailContent({
       onEditToggle={handleEditToggle}
       onNavigate={handleNavigate}
       onWidgetEditRequest={handleWidgetEditRequest}
+      onWidgetAddRequest={handleWidgetAddRequest}
       isChatOpen={isChatOpen}
       layoutEditing={layoutEditing}
+      onDoneEditing={() => {
+        setLayoutEditing(false);
+        setIsChatOpen(true);
+      }}
+      onAltKeyDown={() => {
+        if (!layoutEditing) {
+          setLayoutEditing(true);
+          setIsChatOpen(false);
+          layoutEditingByKeyRef.current = true;
+        }
+      }}
+      onAltKeyUp={() => {
+        if (layoutEditingByKeyRef.current) {
+          setLayoutEditing(false);
+          setIsChatOpen(true);
+          layoutEditingByKeyRef.current = false;
+        }
+      }}
     />
   ) : (
     <div className="flex h-full items-center justify-center">
@@ -227,19 +290,19 @@ function DashboardDetailContent({
             "dark:bg-transparent dark:rounded-none dark:shadow-none dark:ring-0",
           )}>
             {dashboardPreview}
-            {currentHasSource && (
+            {currentHasSource && isChatOpen && !layoutEditing && (
               <div className="absolute top-3 right-3 z-10">
                 <Button
-                  variant={layoutEditing ? "default" : "secondary"}
+                  variant="secondary"
                   size="sm"
-                  className={cn(
-                    "h-8 gap-1.5 text-xs shadow-md",
-                    !layoutEditing && "bg-white/80 dark:bg-black/40 backdrop-blur-md",
-                  )}
-                  onClick={() => setLayoutEditing(prev => !prev)}
+                  className="h-8 gap-1.5 text-xs shadow-md bg-white/80 dark:bg-black/40 backdrop-blur-md"
+                  onClick={() => {
+                    setLayoutEditing(true);
+                    setIsChatOpen(false);
+                  }}
                 >
                   <SquaresFourIcon className="h-3.5 w-3.5" />
-                  {layoutEditing ? "Done" : "Edit Layout"}
+                  Edit Layout
                 </Button>
               </div>
             )}
@@ -274,10 +337,12 @@ function DashboardDetailContent({
                 onSaveDashboard={handleSaveDashboard}
                 editingWidgetId={editingWidgetId}
                 onClearEditingWidget={() => setEditingWidgetId(null)}
+                addingWidgetPosition={addingWidgetPosition}
+                onClearAddingWidget={() => setAddingWidgetPosition(null)}
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(adminApp, currentTsxSource, handleCodeUpdate, editingWidgetId)}
+                  chatAdapter={createDashboardChatAdapter(adminApp, currentTsxSource, handleCodeUpdate, editingWidgetId, addingWidgetPosition)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
                   useOffWhiteLightMode
@@ -395,6 +460,8 @@ function ChatPanelHeader({
   onSaveDashboard,
   editingWidgetId,
   onClearEditingWidget,
+  addingWidgetPosition,
+  onClearAddingWidget,
 }: {
   displayName: string,
   isEditingName: boolean,
@@ -409,6 +476,8 @@ function ChatPanelHeader({
   onSaveDashboard: () => Promise<void>,
   editingWidgetId?: string | null,
   onClearEditingWidget?: () => void,
+  addingWidgetPosition?: { x: number, y: number, width: number, height: number } | null,
+  onClearAddingWidget?: () => void,
 }) {
   return (
     <div className="flex flex-col shrink-0">
@@ -489,6 +558,22 @@ function ChatPanelHeader({
             size="icon"
             className="h-5 w-5 text-primary hover:text-primary/80"
             onClick={onClearEditingWidget}
+          >
+            <XIcon className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+      {addingWidgetPosition != null && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-b border-border/30 dark:border-foreground/[0.06]">
+          <PlusIcon className="h-3 w-3 text-primary shrink-0" />
+          <span className="text-xs text-primary truncate flex-1">
+            Adding widget at ({addingWidgetPosition.x}, {addingWidgetPosition.y})
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 text-primary hover:text-primary/80"
+            onClick={onClearAddingWidget}
           >
             <XIcon className="h-3 w-3" />
           </Button>

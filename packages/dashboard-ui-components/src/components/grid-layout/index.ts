@@ -26,3 +26,5 @@ export {
   VarHeightSlot,
   ElementSlot,
 } from './grid';
+
+export { sectionHeadingWidget, createSectionHeadingInstance } from './heading-widget';

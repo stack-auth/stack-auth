@@ -19,7 +19,41 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
   return strings.reduce<string>((result, str, i) => result + str + (values[i] ?? ''), '');
 }
 
-function getDependencyScripts(esmVersion: string): string {
+const isDev = process.env.NODE_ENV === "development";
+
+function getDependencyScripts(esmVersion: string, dashboardUrl: string): string {
+  if (isDev) {
+    return html`
+      <script type="module">
+        import React from 'https://esm.sh/react@18';
+        import * as ReactDOM from 'https://esm.sh/react-dom@18?deps=react@18';
+        import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
+        import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
+        import * as StackSDK from 'https://esm.sh/@stackframe/js@${esmVersion}';
+        import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${esmVersion}/dist/utils/uuids';
+
+        window.React = React;
+        window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
+        window.Recharts = Recharts;
+        window.StackAdminApp = StackSDK.StackAdminApp;
+        window.StackServerApp = StackSDK.StackServerApp;
+        window.StackSDK = StackSDK;
+        window.generateUuid = generateUuid;
+
+        // Load local IIFE for dashboard-ui-components (after globals are set)
+        const script = document.createElement('script');
+        script.src = '${dashboardUrl}/dashboard-ui-components.iife.js';
+        script.onload = () => {
+          window.__depsReady = true;
+          window.dispatchEvent(new Event('deps-ready'));
+        };
+        script.onerror = (e) => {
+          console.error('Failed to load dashboard-ui-components IIFE bundle', e);
+        };
+        document.head.appendChild(script);
+      </script>`;
+  }
+
   return html`
     <script type="module">
       import React from 'https://esm.sh/react@18';
@@ -44,17 +78,19 @@ function getDependencyScripts(esmVersion: string): string {
     </script>`;
 }
 
-function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
+function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = packageJson.version;
+  const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
+  const devConnectSrc = isDev ? ` ${dashboardUrl} http://127.0.0.1:7322` : '';
 
   return html`<!doctype html>
 <html class="${darkClass}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://esm.sh https://js.stripe.com; style-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src data:; connect-src ${baseUrl} https://unpkg.com https://cdn.jsdelivr.net https://esm.sh https://api.stripe.com https://m.stripe.com https://m.stripe.network; font-src 'none'; frame-src https://js.stripe.com https://hooks.stripe.com https://m.stripe.network; worker-src 'none';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://esm.sh https://js.stripe.com${devScriptSrc}; style-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https:; connect-src ${baseUrl} https://unpkg.com https://cdn.jsdelivr.net https://esm.sh https://api.stripe.com https://m.stripe.com https://m.stripe.network${devConnectSrc}; font-src 'none'; frame-src https://js.stripe.com https://hooks.stripe.com https://m.stripe.network; worker-src 'none';" />
     
     <!-- Tailwind CSS Play CDN (for on-the-fly processing) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -162,7 +198,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
     <!-- Babel (for JSX transpilation) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    ${getDependencyScripts(esmVersion)}
+    ${getDependencyScripts(esmVersion, dashboardUrl)}
     
     <script type="text/babel">
       // Navigation API for AI-generated code
@@ -175,6 +211,20 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
       window.dashboardEdit = function() {
         window.parent.postMessage({ type: 'dashboard-edit' }, '*');
       };
+      window.dashboardDoneEditing = function() {
+        window.parent.postMessage({ type: 'dashboard-done-editing' }, '*');
+      };
+      window.addEventListener('keydown', function(e) {
+        if (e.key === 'Alt') {
+          e.preventDefault();
+          window.parent.postMessage({ type: 'dashboard-alt-key-down' }, '*');
+        }
+      });
+      window.addEventListener('keyup', function(e) {
+        if (e.key === 'Alt') {
+          window.parent.postMessage({ type: 'dashboard-alt-key-up' }, '*');
+        }
+      });
 
       // Controls visibility flag — only true in the full dashboard viewer (not cmd+K preview)
       window.__showControls = ${showControls};
@@ -204,6 +254,17 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, initia
       // Forward widget edit requests from DashboardUI components to parent
       window.addEventListener('widget-edit-request', function(e) {
         window.parent.postMessage({ type: 'dashboard-edit-widget', widgetId: e.detail.widgetId }, '*');
+      });
+
+      // Forward widget add requests from DashboardUI components to parent
+      window.addEventListener('widget-add-request', function(e) {
+        window.parent.postMessage({
+          type: 'dashboard-add-widget',
+          x: e.detail.x,
+          y: e.detail.y,
+          width: e.detail.width,
+          height: e.detail.height
+        }, '*');
       });
 
       const STACK_CONFIG = {
@@ -365,16 +426,24 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   artifact,
   onBack,
   onEditToggle,
+  onDoneEditing,
+  onAltKeyDown,
+  onAltKeyUp,
   onNavigate,
   onWidgetEditRequest,
+  onWidgetAddRequest,
   isChatOpen,
   layoutEditing,
 }: {
   artifact: DashboardArtifact,
   onBack?: () => void,
   onEditToggle?: () => void,
+  onDoneEditing?: () => void,
+  onAltKeyDown?: () => void,
+  onAltKeyUp?: () => void,
   onNavigate?: (path: string) => void,
   onWidgetEditRequest?: (widgetId: string) => void,
+  onWidgetAddRequest?: (x: number, y: number, width: number, height: number) => void,
   isChatOpen?: boolean,
   layoutEditing?: boolean,
 }) {
@@ -383,10 +452,18 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onBackRef.current = onBack;
   const onEditToggleRef = useRef(onEditToggle);
   onEditToggleRef.current = onEditToggle;
+  const onDoneEditingRef = useRef(onDoneEditing);
+  onDoneEditingRef.current = onDoneEditing;
+  const onAltKeyDownRef = useRef(onAltKeyDown);
+  onAltKeyDownRef.current = onAltKeyDown;
+  const onAltKeyUpRef = useRef(onAltKeyUp);
+  onAltKeyUpRef.current = onAltKeyUp;
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
   const onWidgetEditRequestRef = useRef(onWidgetEditRequest);
   onWidgetEditRequestRef.current = onWidgetEditRequest;
+  const onWidgetAddRequestRef = useRef(onWidgetAddRequest);
+  onWidgetAddRequestRef.current = onWidgetAddRequest;
   const user = useUser({ or: "redirect" });
   const { resolvedTheme } = useTheme();
 
@@ -394,10 +471,15 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
     return getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? 'http://localhost:8102';
   }, []);
 
+  const dashboardUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return window.location.origin;
+  }, []);
+
   const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
   const initialChatOpenRef = useRef(!!isChatOpen);
   const showControls = onBack != null || onEditToggle != null;
-  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, initialThemeRef.current, showControls, initialChatOpenRef.current), [artifact, baseUrl, showControls]);
+  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, dashboardUrl, initialThemeRef.current, showControls, initialChatOpenRef.current), [artifact, baseUrl, dashboardUrl, showControls]);
 
   // Send theme changes to iframe dynamically (without full reload)
   useEffect(() => {
@@ -481,8 +563,28 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
         return;
       }
 
+      if (type === "dashboard-done-editing") {
+        onDoneEditingRef.current?.();
+        return;
+      }
+
+      if (type === "dashboard-alt-key-down") {
+        onAltKeyDownRef.current?.();
+        return;
+      }
+
+      if (type === "dashboard-alt-key-up") {
+        onAltKeyUpRef.current?.();
+        return;
+      }
+
       if (type === "dashboard-edit-widget") {
         onWidgetEditRequestRef.current?.(event.data.widgetId);
+        return;
+      }
+
+      if (type === "dashboard-add-widget") {
+        onWidgetAddRequestRef.current?.(event.data.x, event.data.y, event.data.width, event.data.height);
         return;
       }
 

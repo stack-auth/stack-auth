@@ -7,7 +7,7 @@ import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@stackframe
 import { RefState } from '@stackframe/stack-shared/dist/utils/react';
 import { cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, SimpleTooltip } from '@stackframe/stack-ui';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowsOutCardinal, GridFour, PencilSimple, Trash } from '@phosphor-icons/react';
+import { GridFour, PencilSimple, Trash } from '@phosphor-icons/react';
 import { DesignButton } from '../button';
 import type { DesignButtonProps } from '../button';
 import { WidgetInstance, getSettings } from './types';
@@ -111,6 +111,7 @@ export function Draggable(props: {
   }, [props.isEditing]);
 
   const isFixedHeight = !props.fitContent && !props.isSingleColumnMode && props.type === "element";
+  const isCompact = props.height <= 3;
 
   useEffect(() => {
     let cancelled = false;
@@ -197,7 +198,7 @@ export function Draggable(props: {
           minWidth: '100%',
           minHeight: '100%',
           display: 'flex',
-
+          transformOrigin: '0 0 0',
           zIndex: isDragging ? 100000 : 1,
 
           transition: [
@@ -336,21 +337,13 @@ export function Draggable(props: {
                 <div
                   {...listeners}
                   {...attributes}
-                  role="button"
-                  tabIndex={0}
-                  className={cn(
-                    "inline-flex items-center justify-center",
-                    "h-20 w-20 p-1 rounded-full backdrop-blur-md",
-                    "bg-slate-200/20 dark:bg-black/20",
-                    "border border-input",
-                    "hover:bg-white dark:hover:bg-accent hover:text-accent-foreground",
-                    "transition-colors hover:transition-none",
-                    "select-none",
-                  )}
-                  style={{ cursor: isEditing ? 'grab' : undefined, touchAction: 'none' }}
-                >
-                  <ArrowsOutCardinal size={24} />
-                </div>
+                  style={{
+                    cursor: isEditing ? 'move' : undefined,
+                    position: 'absolute',
+                    inset: 0,
+                    touchAction: 'none',
+                  }}
+                />
                 <BigIconButton icon={<PencilSimple size={24} />} onClick={async () => {
                   if (props.widgetInstance.widget.SettingsComponent) {
                     setIsSettingsOpen(true);
