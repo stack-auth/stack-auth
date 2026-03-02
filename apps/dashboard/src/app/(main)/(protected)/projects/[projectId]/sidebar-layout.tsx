@@ -623,12 +623,10 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               </div>
             </div>
 
-            {/* Middle section: Control Center (development only) */}
-            {process.env.NODE_ENV === "development" && (
-              <div className="grow-1">
-                <CmdKTrigger />
-              </div>
-            )}
+            {/* Middle section: Control Center */}
+            <div className="grow-1">
+              <CmdKTrigger />
+            </div>
 
             {/* Right section: Search, Theme toggle and User button */}
             <div className="flex grow-1 gap-2 items-center">
@@ -644,10 +642,8 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Spotlight Search (development only) */}
-        {process.env.NODE_ENV === "development" && (
-          <SpotlightSearchWrapper projectId={projectId} />
-        )}
+        {/* Spotlight Search */}
+        <SpotlightSearchWrapper projectId={projectId} />
 
         {/* Body Layout (Left Sidebar + Content + Right Companion) */}
         <div className="relative flex flex-1 items-start w-full">
