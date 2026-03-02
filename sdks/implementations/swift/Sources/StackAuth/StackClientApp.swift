@@ -713,6 +713,7 @@ public actor StackClientApp {
             primaryEmail: json["email"] as? String,
             primaryEmailVerified: json["email_verified"] as? Bool ?? false,
             isAnonymous: json["is_anonymous"] as? Bool ?? false,
+            isMultiFactorRequired: json["requires_totp_mfa"] as? Bool ?? false,
             isRestricted: json["is_restricted"] as? Bool ?? false,
             restrictedReason: restrictedReason
         )
