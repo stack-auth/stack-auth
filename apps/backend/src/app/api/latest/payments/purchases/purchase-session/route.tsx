@@ -1,9 +1,10 @@
+import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
+import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { SubscriptionStatus } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -73,6 +74,13 @@ export const POST = createSmartRouteHandler({
       throw new StackAssertionError("Price not resolved for purchase session");
     }
 
+    const productVersionId = await upsertProductVersion({
+      prisma,
+      tenancyId: tenancy.id,
+      productId: data.productId ?? null,
+      productJson: data.product,
+    });
+
     if (conflictingProductLineSubscriptions.length > 0) {
       const conflicting = conflictingProductLineSubscriptions[0];
       if (conflicting.stripeSubscriptionId) {
@@ -99,7 +107,7 @@ export const POST = createSmartRouteHandler({
             }],
             metadata: {
               productId: data.productId ?? null,
-              product: JSON.stringify(data.product),
+              productVersionId,
               priceId: price_id,
             },
           });
@@ -136,7 +144,7 @@ export const POST = createSmartRouteHandler({
         automatic_payment_methods: { enabled: true },
         metadata: {
           productId: data.productId || "",
-          product: JSON.stringify(data.product),
+          productVersionId,
           customerId: data.customerId,
           customerType: data.product.customerType,
           purchaseQuantity: String(quantity),
@@ -175,7 +183,7 @@ export const POST = createSmartRouteHandler({
       }],
       metadata: {
         productId: data.productId ?? null,
-        product: JSON.stringify(data.product),
+        productVersionId,
         priceId: price_id,
       },
     });

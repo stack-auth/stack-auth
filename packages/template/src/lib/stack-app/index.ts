@@ -93,6 +93,8 @@ export type {
   ServerListUsersOptions,
   ServerTeam,
   ServerTeamCreateOptions,
+  ReceivedTeamInvitation,
+  SentTeamInvitation,
   ServerTeamMemberProfile,
   ServerTeamUpdateOptions,
   ServerTeamUser,

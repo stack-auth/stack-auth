@@ -28,11 +28,18 @@ const nameClasses = "text-green-600 dark:text-green-500";
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
   const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
-  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey: string, secretServerKey: string } | null>(null);
+  const [keys, setKeys] = useState<{ projectId: string, publishableClientKey?: string, secretServerKey: string } | null>(null);
+  const projectConfig = adminApp.useProject().useConfig();
+  const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
+  const publishableClientKeyValue = keys?.publishableClientKey ?? "...";
+  const optionalPublishableClientKeyProp = (indent: string) =>
+    requirePublishableClientKey ? `\n${indent}publishableClientKey: "${publishableClientKeyValue}",` : "";
+  const optionalPublishableClientKeyHeader = (indent: string) =>
+    requirePublishableClientKey ? `\n${indent}'x-stack-publishable-client-key': "${publishableClientKeyValue}",` : "";
 
   const onGenerateKeys = async () => {
     const newKey = await adminApp.createInternalApiKey({
-      hasPublishableClientKey: true,
+      hasPublishableClientKey: requirePublishableClientKey,
       hasSecretServerKey: true,
       hasSuperSecretAdminKey: false,
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200),
@@ -41,7 +48,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
     setKeys({
       projectId: adminApp.projectId,
-      publishableClientKey: newKey.publishableClientKey!,
+      publishableClientKey: newKey.publishableClientKey ?? undefined,
       secretServerKey: newKey.secretServerKey!,
     });
   };
@@ -129,8 +136,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
             
             export const stackClientApp = new StackClientApp({
               // You should store these in environment variables
-              projectId: "${keys?.projectId ?? "..."}",
-              publishableClientKey: "${keys?.publishableClientKey ?? "..."}",
+              projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
               tokenStore: "cookie",
               redirectMethod: {
                 useNavigate,
@@ -245,8 +251,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
                 const stackServerApp = new StackServerApp({
                   // You should store these in environment variables based on your project setup
-                  projectId: "${keys?.projectId ?? "..."}",
-                  publishableClientKey: "${keys?.publishableClientKey ?? "..."}",
+                  projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
                   secretServerKey: "${keys?.secretServerKey ?? "..."}",
                   tokenStore: "memory",
                 });
@@ -263,8 +268,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
 
                 const stackClientApp = new StackClientApp({
                   // You should store these in environment variables
-                  projectId: "your-project-id",
-                  publishableClientKey: "your-publishable-client-key",
+                  projectId: "your-project-id",${optionalPublishableClientKeyProp("  ")}
                   tokenStore: "cookie",
                 });
               `}
@@ -379,8 +383,7 @@ export default function SetupPage(props: { toMetrics: () => void }) {
                 headers={
                   'x-stack-access-type': 'server',
                   # You should store these in environment variables
-                  'x-stack-project-id': "${keys?.projectId ?? "..."}",
-                  'x-stack-publishable-client-key': "${keys?.publishableClientKey ?? "..."}",
+                  'x-stack-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("  ")}
                   'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
                   **kwargs.pop('headers', {}),
                 },
@@ -607,7 +610,7 @@ function GlobeIllustrationInner() {
 }
 
 function StackAuthKeys(props: {
-  keys: { projectId: string, publishableClientKey: string, secretServerKey: string } | null,
+  keys: { projectId: string, publishableClientKey?: string, secretServerKey: string } | null,
   onGenerateKeys: () => Promise<void>,
   type: 'next' | 'raw',
 }) {

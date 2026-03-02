@@ -4,18 +4,21 @@ import { DesignAlert, DesignButton } from "@/components/design-components";
 import { EnvKeys } from "@/components/env-keys";
 import { SmartFormDialog } from "@/components/form-dialog";
 import { SelectField } from "@/components/form-fields";
+import { SettingSwitch } from "@/components/settings";
+import { ActionDialog, Button, Typography } from "@/components/ui";
 import { InternalApiKeyFirstView } from "@stackframe/stack";
-import { ActionDialog } from "@/components/ui";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as yup from "yup";
-import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
 
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const requirePublishableClientKey = config.project.requirePublishableClientKey;
   const apiKeySets = stackAdminApp.useInternalApiKeys();
   const params = useSearchParams();
   const create = params.get("create") === "true";
@@ -32,12 +35,27 @@ export default function PageClient() {
         </DesignButton>
       }
     >
-      <InternalApiKeyTable apiKeys={apiKeySets} />
+      <InternalApiKeyTable
+        apiKeys={apiKeySets}
+        showPublishableClientKey={requirePublishableClientKey}
+      />
+
+      <SettingSwitch
+        label="[Advanced] Require publishable client keys"
+        hint="When enabled, client requests must include a publishable client key."
+        checked={requirePublishableClientKey}
+        onCheckedChange={async (checked) => {
+          await project.update({
+            requirePublishableClientKey: checked,
+          });
+        }}
+      />
 
       <CreateDialog
         open={isNewApiKeyDialogOpen}
         onOpenChange={setIsNewApiKeyDialogOpen}
         onKeyCreated={setReturnedApiKey}
+        requirePublishableClientKey={requirePublishableClientKey}
       />
       <ShowKeyDialog
         apiKey={returnedApiKey || undefined}
@@ -62,6 +80,7 @@ function CreateDialog(props: {
   open: boolean,
   onOpenChange: (open: boolean) => void,
   onKeyCreated?: (key: InternalApiKeyFirstView) => void,
+  requirePublishableClientKey: boolean,
 }) {
   const stackAdminApp = useAdminApp();
   const params = useSearchParams();
@@ -85,7 +104,7 @@ function CreateDialog(props: {
     onSubmit={async (values) => {
       const expiresIn = parseInt(values.expiresIn);
       const newKey = await stackAdminApp.createInternalApiKey({
-        hasPublishableClientKey: true,
+        hasPublishableClientKey: props.requirePublishableClientKey,
         hasSecretServerKey: true,
         hasSuperSecretAdminKey: false,
         expiresAt: new Date(Date.now() + expiresIn),

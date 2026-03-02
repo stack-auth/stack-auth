@@ -15,6 +15,8 @@ import {
 import {
   cn
 } from "@/components/ui";
+import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import * as confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -23,7 +25,7 @@ import { useAdminApp } from "../use-admin-app";
 
 type GeneratedKeys = {
   projectId: string,
-  publishableClientKey: string,
+  publishableClientKey?: string,
   secretServerKey: string,
 };
 
@@ -58,6 +60,8 @@ const STATUS_META: Record<
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const projectConfig = project.useConfig();
+  const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
   const [keys, setKeys] = useState<GeneratedKeys | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +79,7 @@ export default function PageClient() {
     runAsynchronouslyWithAlert(async () => {
       try {
         const newKey = await adminApp.createInternalApiKey({
-          hasPublishableClientKey: true,
+          hasPublishableClientKey: requirePublishableClientKey,
           hasSecretServerKey: true,
           hasSuperSecretAdminKey: false,
           expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),

@@ -17,6 +17,7 @@ type BrowserEnv = {
     hostname: string,
     href: string,
     origin: string,
+    pathname: string,
     protocol: string,
   },
 };
@@ -42,16 +43,27 @@ function setupBrowserCookieEnv(options: BrowserEnvOptions = {}): BrowserEnv {
     hostname: host,
     href: `${protocol}//${host}/`,
     origin: `${protocol}//${host}`,
+    pathname: "/",
     protocol,
   };
 
+  const noop = () => {};
   const fakeWindow = {
     location,
     sessionStorage: fakeSessionStorage,
+    screen: { width: 1920, height: 1080 },
+    innerWidth: 1920,
+    innerHeight: 1080,
+    addEventListener: noop,
+    removeEventListener: noop,
   } as any;
 
   const fakeDocument: any = {
     createElement: () => ({}),
+    referrer: "",
+    title: "",
+    addEventListener: noop,
+    removeEventListener: noop,
   };
   Object.defineProperty(fakeDocument, "cookie", {
     configurable: true,
@@ -76,6 +88,7 @@ function setupBrowserCookieEnv(options: BrowserEnvOptions = {}): BrowserEnv {
   vi.stubGlobal("window", fakeWindow);
   vi.stubGlobal("document", fakeDocument);
   vi.stubGlobal("sessionStorage", fakeSessionStorage);
+  vi.stubGlobal("history", { pushState: noop, replaceState: noop });
 
   return {
     cookieStore,

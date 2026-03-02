@@ -24,6 +24,7 @@
     "concepts/api-keys",
     "concepts/backend-integration",
     "concepts/custom-user-data",
+    "concepts/sign-up-rules",
     "concepts/emails",
     "concepts/jwt",
     "concepts/oauth",

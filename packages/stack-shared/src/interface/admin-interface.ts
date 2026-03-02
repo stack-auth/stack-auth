@@ -12,13 +12,13 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
-  AdminGetSessionRecordingAllEventsResponse,
-  AdminGetSessionRecordingChunkEventsResponse,
-  AdminListSessionRecordingChunksOptions,
-  AdminListSessionRecordingChunksResponse,
-  AdminListSessionRecordingsOptions,
-  AdminListSessionRecordingsResponse
-} from "./crud/session-recordings";
+  AdminGetSessionReplayAllEventsResponse,
+  AdminGetSessionReplayChunkEventsResponse,
+  AdminListSessionReplayChunksOptions,
+  AdminListSessionReplayChunksResponse,
+  AdminListSessionReplaysOptions,
+  AdminListSessionReplaysResponse
+} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -598,7 +598,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
+  async getConfigOverride(level: "project" | "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       { method: "GET" },
@@ -607,7 +607,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async setConfigOverride(level: "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+  async setConfigOverride(level: "project" | "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -624,7 +624,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+  async updateConfigOverride(level: "project" | "branch" | "environment", configOverrideOverride: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -783,45 +783,52 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async listSessionRecordings(params?: AdminListSessionRecordingsOptions): Promise<AdminListSessionRecordingsResponse> {
+  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    if (params?.user_ids && params.user_ids.length > 0) qs.set("user_ids", params.user_ids.join(","));
+    if (params?.team_ids && params.team_ids.length > 0) qs.set("team_ids", params.team_ids.join(","));
+    if (typeof params?.duration_ms_min === "number") qs.set("duration_ms_min", String(params.duration_ms_min));
+    if (typeof params?.duration_ms_max === "number") qs.set("duration_ms_max", String(params.duration_ms_max));
+    if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
+    if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
+    if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings${qs.size ? `?${qs.toString()}` : ""}`,
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async listSessionRecordingChunks(sessionRecordingId: string, params?: AdminListSessionRecordingChunksOptions): Promise<AdminListSessionRecordingChunksResponse> {
-    const qs = new URLSearchParams();
-    if (params?.cursor) qs.set("cursor", params.cursor);
-    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
       { method: "GET" },
       null,
     );
     return await response.json();
   }
 
-  async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
-    const response = await this.sendAdminRequest(
-      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/chunks/${encodeURIComponent(chunkId)}/events`,
-      { method: "GET" },
-      null,
-    );
-    return await response.json();
-  }
-
-  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionRecordingAllEventsResponse> {
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
     const qs = new URLSearchParams();
     if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
     if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
     const response = await this.sendAdminRequest(
-      `/internal/session-recordings/${encodeURIComponent(sessionRecordingId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
       null,
     );
@@ -898,11 +905,7 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
 
-    const data = await response.json();
-    return {
-      result: data.result,
-      query_id: data.query_id,
-    };
+    return await response.json();
   }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {

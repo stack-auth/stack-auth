@@ -47,9 +47,12 @@ export class OAuthModel implements AuthorizationCodeModel {
       return false;
     }
 
+    // If client_secret is provided, validate it
+    // Note: The specific error handling (sentinel vs invalid key) is done in the route handlers
+    // that call this method, as they have more context about the request
     if (clientSecret) {
       const keySet = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
-      if (!keySet) {
+      if (keySet.status === "error") {
         return false;
       }
     }

@@ -1,6 +1,8 @@
 "use client";
 
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { StyledLink } from "@/components/link";
 import { useFromNow } from "@/hooks/use-from-now";
 import {
   getDesiredGlobalOffsetFromPlaybackState,
@@ -16,9 +18,11 @@ import {
 import { cn } from "@/lib/utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ArrowsClockwiseIcon, FastForwardIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { UserSearchPicker } from "@/components/data-table/user-search-picker";
+import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
@@ -60,7 +64,7 @@ type RecordingRow = {
 type ChunkRow = {
   id: string,
   batchId: string,
-  tabId: string | null,
+  sessionReplaySegmentId: string | null,
   eventCount: number,
   byteLength: number,
   firstEventAt: Date,
@@ -68,15 +72,47 @@ type ChunkRow = {
   createdAt: Date,
 };
 
-type AdminAppWithSessionRecordings = ReturnType<typeof useAdminApp> & {
-  listSessionRecordings: (options?: { limit?: number, cursor?: string }) => Promise<{
+type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
+  listSessionReplays: (options?: {
+    limit?: number,
+    cursor?: string,
+    userIds?: string[],
+    teamIds?: string[],
+    durationMsMin?: number,
+    durationMsMax?: number,
+    lastEventAtFromMillis?: number,
+    lastEventAtToMillis?: number,
+    clickCountMin?: number,
+  }) => Promise<{
     items: RecordingRow[],
     nextCursor: string | null,
   }>,
-  getSessionRecordingEvents: (sessionRecordingId: string, options?: { offset?: number, limit?: number }) => Promise<{
+  getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<{
     chunks: ChunkRow[],
     chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
   }>,
+};
+
+type ReplayFilters = {
+  userId: string,
+  userLabel: string,
+  teamId: string,
+  teamLabel: string,
+  durationMinSeconds: string,
+  durationMaxSeconds: string,
+  lastActivePreset: "" | "24h" | "7d" | "30d",
+  clickCountMin: string,
+};
+
+const EMPTY_FILTERS: ReplayFilters = {
+  userId: "",
+  userLabel: "",
+  teamId: "",
+  teamLabel: "",
+  durationMinSeconds: "",
+  durationMaxSeconds: "",
+  lastActivePreset: "",
+  clickCountMin: "",
 };
 
 function coerceRrwebEvents(raw: unknown[]): RrwebEventWithTime[] {
@@ -111,6 +147,42 @@ function formatTimelineMs(ms: number) {
     return `${h}:${(m % 60).toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function filtersActiveCount(filters: ReplayFilters): number {
+  let count = 0;
+  if (filters.userId) count += 1;
+  if (filters.teamId) count += 1;
+  if (filters.durationMinSeconds || filters.durationMaxSeconds) count += 1;
+  if (filters.lastActivePreset) count += 1;
+  if (filters.clickCountMin) count += 1;
+  return count;
+}
+
+type TimelineEvent = {
+  eventType: string,
+  eventAtMs: number,
+  data: Record<string, unknown>,
+};
+
+type TimelineMarker = {
+  timeMs: number,
+  eventType: string,
+  label: string,
+};
+
+function formatEventTooltip(event: TimelineEvent): string {
+  const d = event.data;
+  if (event.eventType === "$click") {
+    const tag = (d.tag_name as string) || "element";
+    return `Clicked ${tag}`;
+  }
+  if (event.eventType === "$page-view") {
+    const path = (d.path as string | undefined) ?? (d.url as string | undefined) ?? "/";
+    const truncated = path.length > 30 ? path.slice(0, 27) + "..." : path;
+    return truncated;
+  }
+  return event.eventType;
 }
 
 function DisplayDate({ date }: { date: Date }) {
@@ -175,6 +247,7 @@ function Timeline({
   onSeek,
   playerSpeed,
   onSpeedChange,
+  markers,
 }: {
   getCurrentTimeMs: () => number,
   playerIsPlaying: boolean,
@@ -183,8 +256,10 @@ function Timeline({
   onSeek: (timeOffset: number) => void,
   playerSpeed: number,
   onSpeedChange: (speed: number) => void,
+  markers?: TimelineMarker[],
 }) {
   const [currentTime, setCurrentTime] = useState(0);
+  const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number>(0);
 
@@ -208,8 +283,11 @@ function Timeline({
     onSeek(timeOffset);
   }, [totalTimeMs, onSeek]);
 
+  const hasMarkers = (markers?.length ?? 0) > 0;
+  const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
+
   return (
-    <div className="border-t border-border/30 bg-background px-3 py-2 flex items-center gap-3">
+    <div className={cn("border-t border-border/30 bg-background px-3 flex items-center gap-3", hasMarkers ? "py-1.5" : "py-2")}>
       <Button
         variant="ghost"
         size="icon"
@@ -223,16 +301,62 @@ function Timeline({
         {formatTimelineMs(currentTime)}
       </span>
 
-      <div
-        ref={trackRef}
-        onClick={handleTrackClick}
-        className="flex-1 h-5 flex items-center cursor-pointer group"
-      >
-        <div className="w-full h-1.5 rounded-full bg-muted relative overflow-hidden">
-          <div
-            className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
-            style={{ width: `${progress * 100}%` }}
-          />
+      <div className="flex-1 flex flex-col justify-center">
+        {/* Event markers lane */}
+        {hasMarkers && (
+          <div className="relative h-3.5 mb-0.5">
+            {markers?.map((marker, i) => {
+              const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
+              if (left < 0 || left > 100) return null;
+              const isClick = marker.eventType === "$click";
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
+                    "transition-colors",
+                    isClick
+                      ? "bg-blue-500/70 hover:bg-blue-400"
+                      : "bg-emerald-500/70 hover:bg-emerald-400",
+                  )}
+                  style={{ left: `${left}%`, marginLeft: "-1.5px" }}
+                  onMouseEnter={() => setHoveredMarkerIndex(i)}
+                  onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
+                  onClick={() => onSeek(marker.timeMs)}
+                />
+              );
+            })}
+
+            {/* Custom tooltip */}
+            {hoveredMarker && (() => {
+              const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
+              return (
+                <div
+                  className="absolute bottom-full mb-1.5 -translate-x-1/2 pointer-events-none z-50"
+                  style={{ left: `${left}%` }}
+                >
+                  <div className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground whitespace-nowrap max-w-52">
+                    <div className="truncate">{hoveredMarker.label}</div>
+                    <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Progress bar track (clickable) */}
+        <div
+          ref={trackRef}
+          onClick={handleTrackClick}
+          className="h-5 flex items-center cursor-pointer group"
+        >
+          <div className="w-full h-1.5 rounded-full bg-muted relative overflow-hidden">
+            <div
+              className="absolute inset-y-0 left-0 bg-foreground/60 group-hover:bg-foreground/80 rounded-full transition-colors"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
         </div>
       </div>
 
@@ -337,15 +461,20 @@ function useReplayMachine(initialSettings: ReplaySettings) {
 // ---------------------------------------------------------------------------
 
 export default function PageClient() {
-  const adminApp = useAdminApp() as AdminAppWithSessionRecordings;
+  const adminApp = useAdminApp() as AdminAppWithSessionReplays;
 
-  // ---- Recording list state (unchanged from original) ----
+  // ---- Recording list + filters ----
 
   const [recordings, setRecordings] = useState<RecordingRow[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [activeFilterDialog, setActiveFilterDialog] = useState<null | "user" | "team" | "duration" | "lastActive" | "clicks">(null);
+  const [appliedFilters, setAppliedFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
+  const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
 
   const listBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -356,52 +485,92 @@ export default function PageClient() {
   );
 
   const hasAutoSelectedRef = useRef(false);
-  const hasFetchedInitialRef = useRef(false);
+  const loadingMoreRef = useRef(false);
 
   const loadPage = useCallback(async (cursor: string | null) => {
-    if (cursor === null && hasFetchedInitialRef.current) return;
-    if (cursor === null) hasFetchedInitialRef.current = true;
-    if (cursor !== null && loadingMore) return;
+    if (cursor !== null && loadingMoreRef.current) return;
 
     if (cursor === null) {
       setLoadingInitial(true);
     } else {
+      loadingMoreRef.current = true;
       setLoadingMore(true);
     }
     setListError(null);
 
     try {
-      const res = await adminApp.listSessionRecordings({ limit: PAGE_SIZE, cursor: cursor ?? undefined });
-      const items = cursor ? [...recordings, ...res.items] : res.items;
-      setRecordings(items);
-      setNextCursor(res.nextCursor);
+      const presetMs: Record<string, number> = { "24h": 86_400_000, "7d": 604_800_000, "30d": 2_592_000_000 };
+      const lastActiveFromMillis = appliedFilters.lastActivePreset && presetMs[appliedFilters.lastActivePreset]
+        ? Date.now() - presetMs[appliedFilters.lastActivePreset]
+        : undefined;
 
-      if (!cursor && !hasAutoSelectedRef.current && items.length > 0) {
-        hasAutoSelectedRef.current = true;
-        setSelectedRecordingId(items[0].id);
-      }
+      const res = await adminApp.listSessionReplays({
+        limit: PAGE_SIZE,
+        cursor: cursor ?? undefined,
+        userIds: appliedFilters.userId ? [appliedFilters.userId] : undefined,
+        teamIds: appliedFilters.teamId ? [appliedFilters.teamId] : undefined,
+        durationMsMin: appliedFilters.durationMinSeconds ? Number(appliedFilters.durationMinSeconds) * 1000 : undefined,
+        durationMsMax: appliedFilters.durationMaxSeconds ? Number(appliedFilters.durationMaxSeconds) * 1000 : undefined,
+        lastEventAtFromMillis: lastActiveFromMillis,
+        clickCountMin: appliedFilters.clickCountMin ? Number(appliedFilters.clickCountMin) : undefined,
+      });
+      setRecordings((prev) => {
+        const items = cursor ? [...prev, ...res.items] : res.items;
+        if (!cursor && !hasAutoSelectedRef.current && items.length > 0) {
+          hasAutoSelectedRef.current = true;
+          setSelectedRecordingId(items[0].id);
+        }
+        return items;
+      });
+      setNextCursor(res.nextCursor);
     } catch (e: any) {
       setListError(e?.message ?? "Failed to load session recordings.");
     } finally {
       setLoadingInitial(false);
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [adminApp, loadingMore, recordings]);
+  }, [adminApp, appliedFilters]);
 
   useEffect(() => {
+    setRecordings([]);
+    setNextCursor(null);
+    hasAutoSelectedRef.current = false;
     runAsynchronously(() => loadPage(null), { noErrorLogging: true });
   }, [loadPage]);
+
+  useEffect(() => {
+    if (recordings.length === 0) return;
+    const ids = recordings.map(r => r.id);
+    runAsynchronously(async () => {
+      const res = await adminApp.queryAnalytics({
+        query: `SELECT session_replay_id, count() as cnt
+                FROM default.events
+                WHERE event_type = '$click'
+                  AND session_replay_id IN ({ids:Array(String)})
+                GROUP BY session_replay_id`,
+        params: { ids },
+        include_all_branches: false,
+        timeout_ms: 15000,
+      });
+      const map = new Map<string, number>();
+      for (const row of res.result) {
+        map.set(row.session_replay_id as string, Number(row.cnt));
+      }
+      setClickCountsByReplayId(map);
+    }, { noErrorLogging: true });
+  }, [recordings, adminApp]);
 
   const onListScroll = useCallback(() => {
     const el = listBoxRef.current;
     if (!el) return;
     if (!nextCursor) return;
-    if (loadingMore || loadingInitial) return;
+    if (loadingMoreRef.current || loadingInitial) return;
     const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (remaining < 200) {
       runAsynchronously(() => loadPage(nextCursor), { noErrorLogging: true });
     }
-  }, [loadingInitial, loadingMore, loadPage, nextCursor]);
+  }, [loadingInitial, loadPage, nextCursor]);
 
   // ---- Replay state machine ----
 
@@ -515,6 +684,7 @@ export default function PageClient() {
         root: rootEl,
         speed: msRef.current.settings.playerSpeed,
         skipInactive: msRef.current.settings.skipInactivity,
+        triggerFocus: false,
       });
 
       rootEl.style.position = "relative";
@@ -854,13 +1024,13 @@ export default function PageClient() {
 
     try {
       // Phase 1: Fetch initial batch (fast start).
-      const initialResponse = await adminApp.getSessionRecordingEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
+      const initialResponse = await adminApp.getSessionReplayEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
       if (msRef.current.generation !== gen) return;
 
       const allChunkRows: ChunkRow[] = initialResponse.chunks.map((c) => ({
         id: c.id,
         batchId: c.batchId,
-        tabId: c.tabId,
+        sessionReplaySegmentId: c.sessionReplaySegmentId,
         eventCount: c.eventCount,
         byteLength: c.byteLength,
         firstEventAt: c.firstEventAt,
@@ -942,7 +1112,7 @@ export default function PageClient() {
       while (offset < totalChunks) {
         if (msRef.current.generation !== gen) return;
 
-        const batchResponse = await adminApp.getSessionRecordingEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
+        const batchResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
         if (msRef.current.generation !== gen) return;
 
         processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);
@@ -966,6 +1136,41 @@ export default function PageClient() {
     if (!selectedRecordingId || !selectedRecording) return;
     runAsynchronously(() => loadChunksAndDownload(selectedRecordingId), { noErrorLogging: true });
   }, [loadChunksAndDownload, selectedRecordingId, selectedRecording]);
+
+  useEffect(() => {
+    if (!selectedRecordingId) {
+      setTimelineEvents([]);
+      return;
+    }
+    let cancelled = false;
+    setTimelineEvents([]);
+    runAsynchronously(async () => {
+      const res = await adminApp.queryAnalytics({
+        query: `SELECT event_type,
+                       toUnixTimestamp64Milli(event_at) as event_at_ms,
+                       data
+                FROM default.events
+                WHERE session_replay_id = {id:String}
+                  AND event_type IN ('$click', '$page-view')
+                ORDER BY event_at ASC
+                LIMIT 2000`,
+        params: { id: selectedRecordingId },
+        include_all_branches: false,
+        timeout_ms: 15000,
+      });
+      if (cancelled) return;
+      setTimelineEvents(res.result.map((r: any) => ({
+        eventType: r.event_type as string,
+        eventAtMs: Number(r.event_at_ms),
+        data: typeof r.data === "string"
+          ? JSON.parse(r.data)
+          : (r.data ?? {}),
+      })));
+    }, { noErrorLogging: true });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRecordingId, adminApp]);
 
   useEffect(() => {
     return () => {
@@ -1144,19 +1349,311 @@ export default function PageClient() {
 
   const showMainTabLabel = renderableStreamCount > 1;
 
+  const timelineMarkers = useMemo(() => {
+    if (timelineEvents.length === 0 || ms.globalTotalMs <= 0) return [];
+    return timelineEvents.map((e): TimelineMarker => ({
+      timeMs: e.eventAtMs - ms.globalStartTs,
+      eventType: e.eventType,
+      label: formatEventTooltip(e),
+    })).filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
+  }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs]);
+
+  const activeFilterCount = useMemo(() => filtersActiveCount(appliedFilters), [appliedFilters]);
+
+  const openFilterDialog = useCallback((dialog: "user" | "team" | "duration" | "lastActive" | "clicks") => {
+    setDraftFilters(appliedFilters);
+    setActiveFilterDialog(dialog);
+  }, [appliedFilters]);
+
+  const applyDraftFilters = useCallback(() => {
+    setAppliedFilters(draftFilters);
+    setActiveFilterDialog(null);
+  }, [draftFilters]);
+
+  useEffect(() => {
+    if (recordings.length === 0) {
+      setSelectedRecordingId(null);
+      return;
+    }
+    if (selectedRecordingId && recordings.some((r) => r.id === selectedRecordingId)) return;
+    setSelectedRecordingId(recordings[0]?.id ?? null);
+  }, [recordings, selectedRecordingId]);
+
   // ---- Rendering ----
 
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout title="Session Replays" fillWidth>
-        <PanelGroup direction="horizontal" className="h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
+        <PanelGroup direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
           <Panel defaultSize={25} minSize={16}>
             <div className="h-full flex flex-col">
-              <div className="shrink-0 px-3 py-2 border-b border-border/30 flex items-center h-10">
-                <Typography className="text-sm font-medium">
-                  Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
-                </Typography>
+              <div className="shrink-0 px-3 py-2 border-b border-border/30 space-y-2">
+                <div className="flex items-center justify-between gap-2 h-8">
+                  <Typography className="text-sm font-medium">
+                    Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
+                  </Typography>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5"
+                      >
+                        <FunnelSimpleIcon className="h-3.5 w-3.5 mr-1" />
+                        Filters
+                        {activeFilterCount > 0 && (
+                          <span className="ml-1 rounded-full bg-foreground/10 px-1.5 py-0 text-[10px]">
+                            {activeFilterCount}
+                          </span>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-48"
+                      onCloseAutoFocus={(e) => e.preventDefault()}
+                    >
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
+                        User
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
+                        Team
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("duration")); }}>
+                        Duration
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("lastActive")); }}>
+                        Last active
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("clicks")); }}>
+                        Click count
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {activeFilterCount > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {appliedFilters.userId && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                        user:{appliedFilters.userLabel || "selected"}
+                      </span>
+                    )}
+                    {appliedFilters.teamId && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                        team:{appliedFilters.teamLabel || "selected"}
+                      </span>
+                    )}
+                    {(appliedFilters.durationMinSeconds || appliedFilters.durationMaxSeconds) && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                        duration
+                      </span>
+                    )}
+                    {appliedFilters.lastActivePreset && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                        last active: {appliedFilters.lastActivePreset}
+                      </span>
+                    )}
+                    {appliedFilters.clickCountMin && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                        clicks
+                      </span>
+                    )}
+                    <button
+                      className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
+                      onClick={() => setAppliedFilters(EMPTY_FILTERS)}
+                    >
+                      <XIcon className="h-2.5 w-2.5" />
+                      clear
+                    </button>
+                  </div>
+                )}
               </div>
+
+              <Dialog open={activeFilterDialog === "user"} onOpenChange={(open) => setActiveFilterDialog(open ? "user" : null)}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>User Filter</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <UserSearchPicker
+                      action={(user) => (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setAppliedFilters((prev) => ({
+                              ...prev,
+                              userId: user.id,
+                              userLabel: user.displayName ?? user.primaryEmail ?? user.id,
+                            }));
+                            setActiveFilterDialog(null);
+                          }}
+                        >
+                          Select
+                        </Button>
+                      )}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          setAppliedFilters((prev) => ({ ...prev, userId: "", userLabel: "" }));
+                          setActiveFilterDialog(null);
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={activeFilterDialog === "team"} onOpenChange={(open) => setActiveFilterDialog(open ? "team" : null)}>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Team Filter</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-2">
+                    <TeamSearchTable
+                      action={(team) => (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setAppliedFilters((prev) => ({
+                              ...prev,
+                              teamId: team.id,
+                              teamLabel: team.displayName,
+                            }));
+                            setActiveFilterDialog(null);
+                          }}
+                        >
+                          Select
+                        </Button>
+                      )}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          setAppliedFilters((prev) => ({ ...prev, teamId: "", teamLabel: "" }));
+                          setActiveFilterDialog(null);
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={activeFilterDialog === "duration"} onOpenChange={(open) => setActiveFilterDialog(open ? "duration" : null)}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Duration Filter</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    applyDraftFilters();
+                  }}>
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <label className="space-y-1">
+                        <Typography className="text-xs text-muted-foreground">Min (seconds)</Typography>
+                        <input
+                          type="number"
+                          min={0}
+                          className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                          value={draftFilters.durationMinSeconds}
+                          onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMinSeconds: e.target.value }))}
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <Typography className="text-xs text-muted-foreground">Max (seconds)</Typography>
+                        <input
+                          type="number"
+                          min={0}
+                          className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                          value={draftFilters.durationMaxSeconds}
+                          onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMaxSeconds: e.target.value }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="pt-3 flex items-center justify-end gap-2">
+                      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
+                      <Button type="submit" size="sm" className="h-8">Apply</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={activeFilterDialog === "lastActive"} onOpenChange={(open) => setActiveFilterDialog(open ? "lastActive" : null)}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Last Active Filter</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {([["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["30d", "Last 30 days"]] as const).map(([value, label]) => (
+                      <Button
+                        key={value}
+                        variant={appliedFilters.lastActivePreset === value ? "default" : "outline"}
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          setAppliedFilters((prev) => ({ ...prev, lastActivePreset: value }));
+                          setActiveFilterDialog(null);
+                        }}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="pt-1 flex items-center justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => {
+                        setAppliedFilters((prev) => ({ ...prev, lastActivePreset: "" }));
+                        setActiveFilterDialog(null);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={activeFilterDialog === "clicks"} onOpenChange={(open) => setActiveFilterDialog(open ? "clicks" : null)}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Click Count Filter</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    applyDraftFilters();
+                  }}>
+                    <div className="space-y-3 pt-2">
+                      <input
+                        type="number"
+                        min={0}
+                        className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                        value={draftFilters.clickCountMin}
+                        onChange={(e) => setDraftFilters((prev) => ({ ...prev, clickCountMin: e.target.value }))}
+                        placeholder="Minimum click count"
+                      />
+                    </div>
+                    <div className="pt-3 flex items-center justify-end gap-2">
+                      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
+                      <Button type="submit" size="sm" className="h-8">Apply</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
 
               {listError && (
                 <div className="p-3">
@@ -1181,7 +1678,7 @@ export default function PageClient() {
                 ) : recordings.length === 0 ? (
                   <div className="p-6 text-center">
                     <Typography className="text-sm text-muted-foreground">
-                      No replays yet.
+                      {activeFilterCount > 0 ? "No replays match these filters." : "No replays yet."}
                     </Typography>
                   </div>
                 ) : (
@@ -1208,8 +1705,14 @@ export default function PageClient() {
                               {duration}
                             </span>
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                             <DisplayDate date={r.lastEventAt} />
+                            {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
+                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+                                <CursorClickIcon className="h-3 w-3" />
+                                {clickCountsByReplayId.get(r.id)}
+                              </span>
+                            )}
                           </div>
                         </button>
                       );
@@ -1239,9 +1742,16 @@ export default function PageClient() {
               )}
 
               <div className="shrink-0 px-3 py-2 border-b border-border/30 flex items-center justify-between gap-3 h-10">
-                <Typography className="text-sm font-medium truncate">
-                  {selectedRecording ? getRecordingTitle(selectedRecording) : ""}
-                </Typography>
+                {selectedRecording ? (
+                  <StyledLink
+                    href={`/projects/${encodeURIComponent(adminApp.projectId)}/users/${encodeURIComponent(selectedRecording.projectUser.id)}`}
+                    className="text-sm font-medium truncate"
+                  >
+                    {getRecordingTitle(selectedRecording)}
+                  </StyledLink>
+                ) : (
+                  <Typography className="text-sm font-medium truncate" />
+                )}
                 <ReplaySettingsButton
                   settings={ms.settings}
                   onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
@@ -1430,6 +1940,7 @@ export default function PageClient() {
                         onSeek={handleSeek}
                         playerSpeed={ms.settings.playerSpeed}
                         onSpeedChange={updateSpeed}
+                        markers={timelineMarkers}
                       />
                     )}
                   </div>

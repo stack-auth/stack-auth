@@ -2,15 +2,15 @@ import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
-import type { AdminGetSessionRecordingAllEventsResponse, AdminGetSessionRecordingChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-recordings";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import type { AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { pick } from "@stackframe/stack-shared/dist/utils/objects";
+import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import { AdminEmailOutbox, AdminSentEmail } from "../..";
@@ -19,15 +19,15 @@ import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
-import type { AdminSessionRecording, AdminSessionRecordingChunk, ListSessionRecordingChunksOptions, ListSessionRecordingChunksResult, ListSessionRecordingsOptions, ListSessionRecordingsResult, SessionRecordingAllEventsResult } from "../../session-recordings";
+import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -127,6 +127,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     super(resolvedOptions, {
       ...extraOptions,
@@ -138,7 +139,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         ...resolvedOptions.projectOwnerSession ? {
           projectOwnerSession: resolvedOptions.projectOwnerSession,
         } : {
-          publishableClientKey: resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey(),
+          ...(publishableClientKey ? { publishableClientKey } : {}),
           secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
           superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
         },
@@ -268,9 +269,26 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
         await app._refreshProjectConfig();
       },
       async update(update: AdminProjectUpdateOptions) {
-        const updateOptions = adminProjectUpdateOptionsToCrud(update);
-        await app._interface.updateProject(updateOptions);
-        await onRefresh();
+        const { requirePublishableClientKey, ...projectUpdate } = update;
+        const updateOptions = adminProjectUpdateOptionsToCrud(projectUpdate);
+        const hasConfigUpdate = !!updateOptions.config
+          && typedValues(updateOptions.config).some((value) => value !== undefined);
+        const hasProjectUpdate = typedEntries(updateOptions).some(([key, value]) => {
+          if (key === "config") return hasConfigUpdate;
+          return value !== undefined;
+        });
+
+        if (hasProjectUpdate) {
+          await app._interface.updateProject(updateOptions);
+          await onRefresh();
+        }
+
+        if (requirePublishableClientKey !== undefined) {
+          await app._interface.updateConfigOverride("project", {
+            "project.requirePublishableClientKey": requirePublishableClientKey,
+          });
+          await app._refreshProjectConfig();
+        }
       },
       async delete() {
         await app._interface.deleteProject();
@@ -1042,13 +1060,20 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.queryAnalytics(options);
   }
 
-  async listSessionRecordings(options?: ListSessionRecordingsOptions): Promise<ListSessionRecordingsResult> {
-    const response = await this._interface.listSessionRecordings({
+  async listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult> {
+    const response = await this._interface.listSessionReplays({
       cursor: options?.cursor,
       limit: options?.limit,
+      user_ids: options?.userIds,
+      team_ids: options?.teamIds,
+      duration_ms_min: options?.durationMsMin,
+      duration_ms_max: options?.durationMsMax,
+      last_event_at_from_millis: options?.lastEventAtFromMillis,
+      last_event_at_to_millis: options?.lastEventAtToMillis,
+      click_count_min: options?.clickCountMin,
     });
 
-    const items: AdminSessionRecording[] = response.items.map((r) => ({
+    const items: AdminSessionReplay[] = response.items.map((r) => ({
       id: r.id,
       projectUser: {
         id: r.project_user.id,
@@ -1067,16 +1092,16 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  async listSessionRecordingChunks(sessionRecordingId: string, options?: ListSessionRecordingChunksOptions): Promise<ListSessionRecordingChunksResult> {
-    const response = await this._interface.listSessionRecordingChunks(sessionRecordingId, {
+  async listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult> {
+    const response = await this._interface.listSessionReplayChunks(sessionReplayId, {
       cursor: options?.cursor,
       limit: options?.limit,
     });
 
-    const items: AdminSessionRecordingChunk[] = response.items.map((c) => ({
+    const items: AdminSessionReplayChunk[] = response.items.map((c) => ({
       id: c.id,
       batchId: c.batch_id,
-      tabId: c.tab_id,
+      sessionReplaySegmentId: c.session_replay_segment_id,
       browserSessionId: c.browser_session_id,
       eventCount: c.event_count,
       byteLength: c.byte_length,
@@ -1091,17 +1116,17 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
-  async getSessionRecordingChunkEvents(sessionRecordingId: string, chunkId: string): Promise<AdminGetSessionRecordingChunkEventsResponse> {
-    return await this._interface.getSessionRecordingChunkEvents(sessionRecordingId, chunkId);
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
+    return await this._interface.getSessionReplayChunkEvents(sessionReplayId, chunkId);
   }
 
-  async getSessionRecordingEvents(sessionRecordingId: string, options?: { offset?: number, limit?: number }): Promise<SessionRecordingAllEventsResult> {
-    const response = await this._interface.getSessionRecordingEvents(sessionRecordingId, options);
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<SessionReplayAllEventsResult> {
+    const response = await this._interface.getSessionReplayEvents(sessionReplayId, options);
     return {
       chunks: response.chunks.map((c) => ({
         id: c.id,
         batchId: c.batch_id,
-        tabId: c.tab_id,
+        sessionReplaySegmentId: c.session_replay_segment_id,
         eventCount: c.event_count,
         byteLength: c.byte_length,
         firstEventAt: new Date(c.first_event_at_millis),
