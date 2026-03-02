@@ -5,7 +5,7 @@ import viteReact from '@vitejs/plugin-react'
 
 export default defineConfig({
   server: {
-    port: 8105,
+    port: Number((process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || "81") + "09"),
   },
   resolve: {
     dedupe: ['react', 'react-dom'],
