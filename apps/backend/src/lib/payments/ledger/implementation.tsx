@@ -66,19 +66,21 @@ function normalizeDefaultSnapshot(snapshot: Record<string, any>): Record<string,
   return normalized;
 }
 
-function getCurrentDefaultProducts(transactions: Transaction[]): { snapshot: Record<string, any>, createdAtMillis: number } {
+function getCurrentDefaultProducts(transactions: Transaction[]): { snapshot: Record<string, any>, effectiveAtMillis: number } {
+  const sortedTransactions = [...transactions].sort((a, b) => a.effective_at_millis - b.effective_at_millis);
+
   for (const tx of transactions) {
     if ((tx.type as string) !== "default-products-change") continue;
     for (const entry of tx.entries) {
       if ((entry.type as string) === "default-products-change") {
         return {
           snapshot: normalizeDefaultSnapshot((entry as any).snapshot as Record<string, any>),
-          createdAtMillis: tx.created_at_millis,
+          effectiveAtMillis: tx.effective_at_millis,
         };
       }
     }
   }
-  return { snapshot: {}, createdAtMillis: 0 };
+  return { snapshot: {}, effectiveAtMillis: 0 };
 }
 
 export async function getOwnedProductsForCustomer(options: {
@@ -165,7 +167,7 @@ export async function getOwnedProductsForCustomer(options: {
         type: isSubscription ? "subscription" : isOneTime ? "one_time" : "include-by-default",
         quantity: effectiveQuantity,
         product: typedEntry.product,
-        createdAt: new Date(tx.created_at_millis),
+        createdAt: new Date(tx.effective_at_millis),
         sourceId: typedEntry.subscription_id ?? typedEntry.one_time_purchase_id ?? tx.id,
         subscription: isSubscription ? {
           stripeSubscriptionId: subMeta?.stripeSubscriptionId ?? null,
@@ -178,7 +180,7 @@ export async function getOwnedProductsForCustomer(options: {
   }
 
   // Add include-by-default products for uncovered product lines
-  const { snapshot: defaultProducts, createdAtMillis: defaultsCreatedAtMillis } = getCurrentDefaultProducts(transactions);
+  const { snapshot: defaultProducts, effectiveAtMillis: defaultsEffectiveAtMillis } = getCurrentDefaultProducts(transactions);
   const productLines = options.tenancy.config.payments.productLines;
 
   for (const [productId, product] of Object.entries(defaultProducts)) {
@@ -198,8 +200,8 @@ export async function getOwnedProductsForCustomer(options: {
       id: productId,
       type: "include-by-default",
       quantity: 1,
-      product: product as any,
-      createdAt: new Date(defaultsCreatedAtMillis),
+      product: product,
+      createdAt: new Date(defaultsEffectiveAtMillis),
       sourceId: productId,
       subscription: null,
     });
