@@ -191,16 +191,21 @@ function TeamAddUserDialogContent(props: {
 
   const users = props.team.useUsers();
   const admins = props.team.useItem("dashboard_admins");
+  const products = props.team.useProducts();
+  const hasPaidPlan = products.some(
+    p => (p.id === "team" || p.id === "growth") && p.type === "subscription"
+  );
 
   const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
+  const invitationsLoaded = invitations != null;
   const activeSeats = users.length + (invitations?.length ?? 0);
   const seatLimit = admins.quantity;
-  const atCapacity = activeSeats >= seatLimit;
+  const atCapacity = invitationsLoaded && activeSeats >= seatLimit;
 
   const handleInvite = async () => {
-    if (atCapacity) {
+    if (!invitationsLoaded || atCapacity) {
       return;
     }
 
@@ -221,6 +226,19 @@ function TeamAddUserDialogContent(props: {
     }
   };
 
+  const handleAddSeat = async () => {
+    try {
+      const checkoutUrl = await props.team.createCheckoutUrl({
+        productId: "extra-seats",
+        returnUrl: window.location.href,
+      });
+      window.location.assign(checkoutUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast({ variant: "destructive", title: "Failed to start checkout", description: message });
+    }
+  };
+
   const handleUpgrade = async () => {
     try {
       const checkoutUrl = await props.team.createCheckoutUrl({
@@ -231,7 +249,7 @@ function TeamAddUserDialogContent(props: {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       toast({ variant: "destructive", title: "Failed to start upgrade", description: message });
-    };
+    }
   };
 
   return (
@@ -239,13 +257,19 @@ function TeamAddUserDialogContent(props: {
       <div className="space-y-4 py-2">
         <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
           <Typography type="label">Dashboard admin seats</Typography>
-          <Typography variant="secondary">
-            {activeSeats}/{seatLimit}
-          </Typography>
+          {invitationsLoaded ? (
+            <Typography variant="secondary">
+              {activeSeats}/{seatLimit}
+            </Typography>
+          ) : (
+            <Skeleton className="h-4 w-12" />
+          )}
         </div>
         {atCapacity && (
           <Typography variant="secondary" className="text-destructive">
-            You are at capacity. Upgrade your plan to add more admins.
+            {hasPaidPlan
+              ? "You are at capacity. Add an extra seat for $29/month."
+              : "You are at capacity. Upgrade your plan to add more admins."}
           </Typography>
         )}
         <div className="space-y-2">
@@ -259,7 +283,7 @@ function TeamAddUserDialogContent(props: {
             }}
             placeholder="Email"
             type="email"
-            disabled={atCapacity}
+            disabled={!invitationsLoaded || atCapacity}
             autoFocus
           />
           {formError && (
@@ -308,11 +332,17 @@ function TeamAddUserDialogContent(props: {
           Close
         </Button>
         {atCapacity ? (
-          <Button onClick={handleUpgrade} variant="default">
-            Upgrade plan
-          </Button>
+          hasPaidPlan ? (
+            <Button onClick={handleAddSeat} variant="default">
+              Add seat ($29/mo)
+            </Button>
+          ) : (
+            <Button onClick={handleUpgrade} variant="default">
+              Upgrade plan
+            </Button>
+          )
         ) : (
-          <Button onClick={handleInvite}>
+          <Button onClick={handleInvite} disabled={!invitationsLoaded}>
             Invite
           </Button>
         )}
