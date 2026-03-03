@@ -3,6 +3,9 @@ import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/em
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { getStackServerApp } from "@/stack";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
@@ -614,6 +617,7 @@ type TenancyProcessingContext = {
   tenancy: Tenancy,
   prisma: Awaited<ReturnType<typeof getPrismaClientForTenancy>>,
   emailConfig: Awaited<ReturnType<typeof getEmailConfig>>,
+  billingTeamId: string | null,
 };
 
 async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
@@ -621,11 +625,13 @@ async function processTenancyBatch(batch: TenancySendBatch): Promise<void> {
 
   const prisma = await getPrismaClientForTenancy(tenancy);
   const emailConfig = await getEmailConfig(tenancy);
+  const billingTeamId = getBillingTeamId(tenancy.project);
 
   const context: TenancyProcessingContext = {
     tenancy,
     prisma,
     emailConfig,
+    billingTeamId,
   };
 
   const promises = batch.rows.map((row) => processSingleEmail(context, row));
@@ -694,6 +700,47 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           });
           return;
         }
+      }
+    }
+
+    if (context.billingTeamId != null) {
+      const app = getStackServerApp();
+      const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
+      if (emailItem.quantity <= 0) {
+        const errorMessage = "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month.";
+        const errorEntry: SendAttemptError = {
+          attemptNumber: row.sendRetries + 1,
+          timestamp: new Date().toISOString(),
+          externalMessage: errorMessage,
+          externalDetails: { errorType: "monthly-email-limit-exceeded" },
+          internalMessage: errorMessage,
+          internalDetails: { errorType: "monthly-email-limit-exceeded", remainingQuota: emailItem.quantity, billingTeamId: context.billingTeamId },
+        };
+        const updatedErrors = appendSendAttemptError(row.sendAttemptErrors as SendAttemptError[] | null, errorEntry);
+        await globalPrismaClient.emailOutbox.update({
+          where: {
+            tenancyId_id: {
+              tenancyId: row.tenancyId,
+              id: row.id,
+            },
+            finishedSendingAt: null,
+          },
+          data: {
+            finishedSendingAt: new Date(),
+            canHaveDeliveryInfo: false,
+            sendRetries: row.sendRetries + 1,
+            sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+            sendServerErrorExternalMessage: errorMessage,
+            sendServerErrorExternalDetails: { errorType: "monthly-email-limit-exceeded" },
+            sendServerErrorInternalMessage: errorMessage,
+            sendServerErrorInternalDetails: {
+              errorType: "monthly-email-limit-exceeded",
+              remainingQuota: emailItem.quantity,
+              billingTeamId: context.billingTeamId,
+            },
+          },
+        });
+        return;
       }
     }
 
@@ -803,6 +850,12 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           sendServerErrorInternalDetails: Prisma.DbNull,
         },
       });
+
+      if (context.billingTeamId != null) {
+        const app = getStackServerApp();
+        const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
+        await emailItem.decreaseQuantity(1);
+      }
     }
   } catch (error) {
     captureError("email-queue-step-sending-single-error", error);

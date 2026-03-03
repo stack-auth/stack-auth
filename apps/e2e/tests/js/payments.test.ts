@@ -410,3 +410,22 @@ it("supports granting and listing customer products", { timeout: 60_000 }, async
   expect(customProducts[0].quantity).toBe(1);
   expect(customProducts[0].displayName).toBe(inlineCustomProduct.display_name);
 });
+
+// TODO: Add E2E test for subscription renewal after cancellation
+//
+// Scenario: User cancels subscription but it's still active until end of billing period.
+// User then wants to renew/reactivate before the period ends.
+//
+// Expected behavior:
+// - User should be able to "re-purchase" the same product
+// - The system should reactivate the existing subscription (set cancel_at_period_end: false)
+//   rather than creating a new subscription and charging again
+// - To the user, it should appear to be the same continuous subscription
+//
+// This requires:
+// 1. Fix alreadyOwnsProduct to return false for canceled subscriptions (unit test exists)
+// 2. Purchase/switch flow to detect canceled-but-not-expired subscription and reactivate it
+//
+// See failing unit tests in payments.test.tsx:
+// - "BUG: alreadyOwnsProduct should be false for canceled subscriptions"
+// - "BUG: alreadyOwnsProduct should be false for canceled-but-not-expired subscriptions (to allow renewal)"

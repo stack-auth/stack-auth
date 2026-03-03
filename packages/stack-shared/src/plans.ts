@@ -54,7 +54,7 @@ export const PLAN_LIMITS: {
     analyticsEvents: 500_000,
   },
   growth: {
-    seats: UNLIMITED,
+    seats: 4,
     authUsers: UNLIMITED,
     emailsPerMonth: 25_000,
     analyticsTimeoutSeconds: 300,
