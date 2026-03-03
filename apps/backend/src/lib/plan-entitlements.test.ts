@@ -2,9 +2,9 @@ import type { PrismaClientTransaction } from "@/prisma-client";
 import { ITEM_IDS, PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
 import { describe, expect, it } from "vitest";
 import {
+  getBillingTeamId,
   getOwnedProjectIdsForBillingTeam,
   getOwnedTenancyIdsForBillingTeam,
-  getTeamWideAuthUsersCapacityForProjectTenancy,
   getTeamWideItemCapacityForTests,
   getTeamWideNonAnonymousUserCount,
 } from "./plan-entitlements";
@@ -45,27 +45,21 @@ function createGlobalPrismaStub(state: {
   };
 }
 
-describe("project billing team assertions", () => {
-  it("throws for project tenancy without owner team", async () => {
-    await expect(getTeamWideAuthUsersCapacityForProjectTenancy({
-      id: "project-tenancy",
-      project: {
-        id: "project-without-owner",
-        ownerTeamId: null,
-      },
-      config: { payments: {} },
-      branchId: "main",
-      organization: null,
-    } as unknown as Tenancy, {
-      project: {
-        id: "billing-project",
-        ownerTeamId: "team-1",
-      },
-      id: "billing-tenancy",
-      config: { payments: {} },
-      branchId: "main",
-      organization: null,
-    } as unknown as Tenancy)).rejects.toThrow("Project owner team missing");
+describe("getBillingTeamId", () => {
+  it("returns ownerTeamId when present", () => {
+    expect(getBillingTeamId({ id: "p1", ownerTeamId: "team-1" })).toBe("team-1");
+  });
+
+  it("returns owner_team_id when ownerTeamId is absent", () => {
+    expect(getBillingTeamId({ id: "p1", owner_team_id: "team-2" })).toBe("team-2");
+  });
+
+  it("returns null when neither is present", () => {
+    expect(getBillingTeamId({ id: "p1", ownerTeamId: null, owner_team_id: null })).toBe(null);
+  });
+
+  it("prefers ownerTeamId over owner_team_id", () => {
+    expect(getBillingTeamId({ id: "p1", ownerTeamId: "team-camel", owner_team_id: "team-snake" })).toBe("team-camel");
   });
 });
 
@@ -122,28 +116,6 @@ describe("team-wide ownership aggregation", () => {
 
 describe("capacity lookup helpers", () => {
   const billingTeamId = "team-free";
-  const billingTenancy = {
-    id: "internal-billing-tenancy",
-    project: { id: "internal", ownerTeamId: "internal-team" },
-    branchId: "main",
-    organization: null,
-    config: { payments: {} },
-  } as unknown as Tenancy;
-
-  const teamProjectTenancyA = {
-    id: "team-free-tenancy-a",
-    project: { id: "project-a", owner_team_id: billingTeamId },
-    branchId: "main",
-    organization: null,
-    config: { payments: {} },
-  } as unknown as Tenancy;
-  const teamProjectTenancyB = {
-    id: "team-free-tenancy-b",
-    project: { id: "project-b", owner_team_id: billingTeamId },
-    branchId: "main",
-    organization: null,
-    config: { payments: {} },
-  } as unknown as Tenancy;
 
   const itemLimits = new Map<string, number>([
     [ITEM_IDS.authUsers, PLAN_LIMITS.free.authUsers],
@@ -167,59 +139,53 @@ describe("capacity lookup helpers", () => {
     },
   };
 
-  it("returns free auth user capacity for team-wide lookup", async () => {
-    const capacity = await getTeamWideItemCapacityForTests({
+  it("returns free auth user capacity", async () => {
+    const capacity = await getTeamWideItemCapacityForTests(
       billingTeamId,
-      billingTenancy,
-      itemId: ITEM_IDS.authUsers,
-    }, capacityReaders);
+      ITEM_IDS.authUsers,
+      capacityReaders,
+    );
     expect(capacity).toBe(PLAN_LIMITS.free.authUsers);
   });
 
   it("returns the same auth capacity for two project tenancies of one team", async () => {
-    const capacityA = await getTeamWideItemCapacityForTests({
-      billingTeamId: teamProjectTenancyA.project.owner_team_id ?? (() => {
-        throw new Error("Expected owner_team_id for tenancy A");
-      })(),
-      billingTenancy,
-      itemId: ITEM_IDS.authUsers,
-    }, capacityReaders);
-    const capacityB = await getTeamWideItemCapacityForTests({
-      billingTeamId: teamProjectTenancyB.project.owner_team_id ?? (() => {
-        throw new Error("Expected owner_team_id for tenancy B");
-      })(),
-      billingTenancy,
-      itemId: ITEM_IDS.authUsers,
-    }, capacityReaders);
+    const capacityA = await getTeamWideItemCapacityForTests(
+      billingTeamId,
+      ITEM_IDS.authUsers,
+      capacityReaders,
+    );
+    const capacityB = await getTeamWideItemCapacityForTests(
+      billingTeamId,
+      ITEM_IDS.authUsers,
+      capacityReaders,
+    );
     expect(capacityA).toBe(PLAN_LIMITS.free.authUsers);
     expect(capacityB).toBe(PLAN_LIMITS.free.authUsers);
   });
 
   it("maps emails capacity helper to emails plan item", async () => {
-    const emailCapacity = await getTeamWideItemCapacityForTests({
+    const emailCapacity = await getTeamWideItemCapacityForTests(
       billingTeamId,
-      billingTenancy,
-      itemId: ITEM_IDS.emailsPerMonth,
-    }, capacityReaders);
+      ITEM_IDS.emailsPerMonth,
+      capacityReaders,
+    );
     expect(emailCapacity).toBe(PLAN_LIMITS.free.emailsPerMonth);
   });
 
   it("maps seats capacity helper to seats plan item", async () => {
-    const seatsCapacity = await getTeamWideItemCapacityForTests({
+    const seatsCapacity = await getTeamWideItemCapacityForTests(
       billingTeamId,
-      billingTenancy,
-      itemId: ITEM_IDS.seats,
-    }, capacityReaders);
+      ITEM_IDS.seats,
+      capacityReaders,
+    );
     expect(seatsCapacity).toBe(PLAN_LIMITS.free.seats);
   });
 
   it("throws on unknown item id", async () => {
-    await expect(getTeamWideItemCapacityForTests({
+    await expect(getTeamWideItemCapacityForTests(
       billingTeamId,
-      billingTenancy,
-      itemId: "unknown_item",
-    }, capacityReaders)).rejects.toThrow("Unsupported team-wide capacity item id");
+      "unknown_item",
+      capacityReaders,
+    )).rejects.toThrow("Unsupported team-wide capacity item id");
   });
-
 });
-

@@ -2,6 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
+import { getBillingTeamId, getTeamWideAuthUsersCapacity, getTeamWideNonAnonymousUserCount } from "@/lib/plan-entitlements";
 import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
@@ -243,6 +244,21 @@ async function checkAuthData(
     if (existingChannelUsedForAuth) {
       throw new KnownErrors.UserWithEmailAlreadyExists(data.primaryEmail);
     }
+  }
+}
+
+async function checkAuthUsersSoftLimit(tenancy: Tenancy) {
+  const billingTeamId = getBillingTeamId(tenancy.project);
+  if (billingTeamId == null) {
+    return;
+  }
+  const usage = await getTeamWideNonAnonymousUserCount(billingTeamId);
+  const capacity = await getTeamWideAuthUsersCapacity(billingTeamId);
+  if (usage > capacity) {
+    captureError("auth-users-plan-soft-limit-exceeded", new StackAssertionError(
+      "Auth users soft limit exceeded for billing team",
+      { ownerTeamId: billingTeamId, usage, capacity, projectId: tenancy.project.id },
+    ));
   }
 }
 
@@ -754,6 +770,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
     await createPersonalTeamIfEnabled(prisma, auth.tenancy, result);
 
+    if (!result.is_anonymous) {
+      runAsynchronouslyAndWaitUntil(checkAuthUsersSoftLimit(auth.tenancy));
+    }
+
     runAsynchronouslyAndWaitUntil(sendUserCreatedWebhook({
       projectId: auth.project.id,
       data: result,
@@ -765,7 +785,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     const primaryEmail = data.primary_email ? normalizeEmail(data.primary_email) : data.primary_email;
     const passwordHash = await getPasswordHashFromData(data);
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const { user } = await retryTransaction(prisma, async (tx) => {
+    const { user, wasAnonymousUpgrade } = await retryTransaction(prisma, async (tx) => {
       await ensureUserExists(tx, { tenancyId: auth.tenancy.id, userId: params.user_id });
 
       const config = auth.tenancy.config;
@@ -1082,8 +1102,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         }
       }
 
-      // if we went from anonymous to non-anonymous:
-      if (oldUser.isAnonymous && data.is_anonymous === false) {
+      const wasAnonymousUpgrade = oldUser.isAnonymous && data.is_anonymous === false;
+      if (wasAnonymousUpgrade) {
         // rename the personal team
         await tx.team.updateMany({
           where: {
@@ -1151,8 +1171,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       const user = userPrismaToCrud(db, auth.tenancy.config);
       return {
         user,
+        wasAnonymousUpgrade,
       };
     });
+
+    if (wasAnonymousUpgrade) {
+      runAsynchronouslyAndWaitUntil(checkAuthUsersSoftLimit(auth.tenancy));
+    }
 
     // if user password changed, reset all refresh tokens
     if (passwordHash !== undefined) {

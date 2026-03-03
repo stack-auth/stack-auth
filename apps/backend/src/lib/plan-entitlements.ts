@@ -2,7 +2,7 @@ import { getItemQuantityForCustomer } from "@/lib/payments";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import type { Tenancy } from "./tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "./tenancies";
 
 type GlobalPrismaLike = {
   project: {
@@ -33,14 +33,19 @@ const TEAM_WIDE_CAPACITY_ITEM_IDS = new Set<string>([
   ITEM_IDS.seats,
 ]);
 
-function getBillingTeamIdOrThrow(project: { id: string, ownerTeamId?: string | null, owner_team_id?: string | null }): string {
-  const ownerTeamId = project.ownerTeamId ?? project.owner_team_id ?? null;
-  if (!ownerTeamId) {
-    throw new StackAssertionError("Project owner team missing; cannot resolve billing team", {
-      projectId: project.id,
+export function getBillingTeamId(project: { id: string, ownerTeamId?: string | null, owner_team_id?: string | null }): string | null {
+  return project.ownerTeamId ?? project.owner_team_id ?? null;
+}
+
+async function getInternalBillingTenancy(): Promise<Tenancy> {
+  const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID, true);
+  if (tenancy == null) {
+    throw new StackAssertionError("Internal billing tenancy not found", {
+      billingProjectId: "internal",
+      branchId: DEFAULT_BRANCH_ID,
     });
   }
-  return ownerTeamId;
+  return tenancy;
 }
 
 export async function getOwnedProjectIdsForBillingTeam(
@@ -99,77 +104,65 @@ export async function getTeamWideNonAnonymousUserCount(
   });
 }
 
-async function getTeamWideItemCapacity(options: {
-  billingTenancy: Tenancy,
+async function getTeamWideItemCapacity(
   billingTeamId: string,
   itemId: string,
-}, readers: ItemCapacityReaders = {
-  getPrismaForTenancy: getPrismaClientForTenancy,
-  getItemQuantityForCustomer: async (readerOptions) => (
-    await getItemQuantityForCustomer(readerOptions as Parameters<typeof getItemQuantityForCustomer>[0])
-  ),
-}): Promise<number> {
+  readers: ItemCapacityReaders = {
+    getPrismaForTenancy: getPrismaClientForTenancy,
+    getItemQuantityForCustomer: async (readerOptions) => (
+      await getItemQuantityForCustomer(readerOptions as Parameters<typeof getItemQuantityForCustomer>[0])
+    ),
+  },
+): Promise<number> {
   // Capacity metric: entitlement from Stack Auth payments for a specific item.
-  // Example: auth_users / emails_per_month / dashboard_admins.
-  if (!TEAM_WIDE_CAPACITY_ITEM_IDS.has(options.itemId)) {
-    throw new StackAssertionError("Unsupported team-wide capacity item id", {
-      itemId: options.itemId,
-    });
+  if (!TEAM_WIDE_CAPACITY_ITEM_IDS.has(itemId)) {
+    throw new StackAssertionError("Unsupported team-wide capacity item id", { itemId });
   }
-  const billingPrisma = await readers.getPrismaForTenancy(options.billingTenancy);
+  const internalBillingTenancy = await getInternalBillingTenancy();
+  const billingPrisma = await readers.getPrismaForTenancy(internalBillingTenancy);
   return await readers.getItemQuantityForCustomer({
     prisma: billingPrisma,
-    tenancy: options.billingTenancy,
-    customerId: options.billingTeamId,
+    tenancy: internalBillingTenancy,
+    customerId: billingTeamId,
     customerType: "team",
-    itemId: options.itemId,
+    itemId,
   });
 }
 
-export async function getTeamWideItemCapacityForTests(options: {
-  billingTenancy: Tenancy,
+export async function getTeamWideItemCapacityForTests(
   billingTeamId: string,
   itemId: string,
-}, readers: ItemCapacityReaders): Promise<number> {
-  return await getTeamWideItemCapacity(options, readers);
+  readers: ItemCapacityReaders,
+): Promise<number> {
+  return await getTeamWideItemCapacity(billingTeamId, itemId, readers);
 }
 
-export async function getTeamWideAuthUsersCapacity(options: {
-  billingTenancy: Tenancy,
+export async function getTeamWideAuthUsersCapacity(
   billingTeamId: string,
-}): Promise<number> {
-  return await getTeamWideItemCapacity({
-    ...options,
-    itemId: ITEM_IDS.authUsers,
-  });
+): Promise<number> {
+  return await getTeamWideItemCapacity(billingTeamId, ITEM_IDS.authUsers);
 }
 
-export async function getTeamWideEmailsPerMonthCapacity(options: {
-  billingTenancy: Tenancy,
+export async function getTeamWideEmailsPerMonthCapacity(
   billingTeamId: string,
-}): Promise<number> {
-  return await getTeamWideItemCapacity({
-    ...options,
-    itemId: ITEM_IDS.emailsPerMonth,
-  });
+): Promise<number> {
+  return await getTeamWideItemCapacity(billingTeamId, ITEM_IDS.emailsPerMonth);
 }
 
-export async function getTeamWideDashboardAdminsCapacity(options: {
-  billingTenancy: Tenancy,
+export async function getTeamWideDashboardAdminsCapacity(
   billingTeamId: string,
-}): Promise<number> {
-  return await getTeamWideItemCapacity({
-    ...options,
-    itemId: ITEM_IDS.seats,
-  });
+): Promise<number> {
+  return await getTeamWideItemCapacity(billingTeamId, ITEM_IDS.seats);
 }
 
 export async function getTeamWideAuthUsersCapacityForProjectTenancy(
   projectTenancy: Tenancy,
-  billingTenancy: Tenancy,
 ): Promise<number> {
-  return await getTeamWideAuthUsersCapacity({
-    billingTenancy,
-    billingTeamId: getBillingTeamIdOrThrow(projectTenancy.project),
-  });
+  const billingTeamId = getBillingTeamId(projectTenancy.project);
+  if (billingTeamId == null) {
+    throw new StackAssertionError("Project owner team missing; cannot resolve billing team", {
+      projectId: projectTenancy.project.id,
+    });
+  }
+  return await getTeamWideAuthUsersCapacity(billingTeamId);
 }
