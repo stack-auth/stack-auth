@@ -41,7 +41,7 @@ describe("Stack CLI", () => {
 
     // Create temp dir for config file
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stack-cli-test-"));
-    configFilePath = path.join(tmpDir, ".stackrc");
+    configFilePath = path.join(tmpDir, "credentials.json");
 
     // Create test user on internal project (auto-creates team)
     const internalApp = new StackAdminApp({
@@ -131,7 +131,7 @@ describe("Stack CLI", () => {
 
   it("logout clears config", async ({ expect }) => {
     // Write a fake token to the config file
-    fs.writeFileSync(configFilePath, "STACK_CLI_REFRESH_TOKEN=fake-token\n", { mode: 0o600 });
+    fs.writeFileSync(configFilePath, JSON.stringify({ STACK_CLI_REFRESH_TOKEN: "fake-token" }), { mode: 0o600 });
 
     const { stdout, exitCode } = await runCli(["logout"]);
     expect(exitCode).toBe(0);
@@ -189,18 +189,10 @@ describe("Stack CLI", () => {
     expect(stdout.trim()).toBe('"object"');
   });
 
-  it("lists available exec API methods", async ({ expect }) => {
-    const { stdout, exitCode } = await runCli(["exec", "--list-api"]);
+  it("exec help mentions docs URL", async ({ expect }) => {
+    const { stdout, exitCode } = await runCli(["exec", "--help"]);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("StackServerApp methods");
-    expect(stdout).toContain("createUser(");
-    expect(stdout).not.toContain("createInternalApiKey(");
-  });
-
-  it("errors when combining --list-api and javascript", async ({ expect }) => {
-    const { stderr, exitCode } = await runCli(["exec", "--list-api", "return 1"]);
-    expect(exitCode).toBe(1);
-    expect(stderr).toContain("Cannot pass JavaScript when using --list-api");
+    expect(stdout).toContain("https://docs.stack-auth.com/docs/sdk");
   });
 
   it("errors when no javascript is provided", async ({ expect }) => {

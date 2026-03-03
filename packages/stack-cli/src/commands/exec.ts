@@ -2,7 +2,6 @@ import { Command } from "commander";
 import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
-import { formatExecApiHelp } from "../lib/exec-api.js";
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -22,22 +21,10 @@ export function registerExecCommand(program: Command) {
   program
     .command("exec [javascript]")
     .description("Execute JavaScript with a pre-configured StackServerApp as `stackServerApp`")
-    .option("--list-api", "List callable methods available on the `stackServerApp` object")
-    .action(async (javascript: string | undefined, options: { listApi?: boolean }) => {
-      const { listApi } = options;
-      if (listApi === true && javascript !== undefined) {
-        throw new CliError("Cannot pass JavaScript when using --list-api.");
-      }
-      if (listApi === true) {
-        try {
-          console.log(formatExecApiHelp());
-          return;
-        } catch (err: unknown) {
-          throw new CliError(`Failed to load exec API metadata. Run \`pnpm --filter @stackframe/stack-cli run generate:exec-api-metadata\` and rebuild the CLI. Root cause: ${getErrorMessage(err)}`);
-        }
-      }
+    .addHelpText("after", "\nFor available API methods, see: https://docs.stack-auth.com/docs/sdk")
+    .action(async (javascript: string | undefined) => {
       if (javascript === undefined) {
-        throw new CliError("Missing JavaScript argument. Use `stack exec \"<javascript>\"` or `stack exec --list-api`.");
+        throw new CliError("Missing JavaScript argument. Use `stack exec \"<javascript>\"` or `stack exec --help`.");
       }
 
       const flags = program.opts();

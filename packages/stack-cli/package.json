@@ -12,7 +12,6 @@
     "clean": "rimraf node_modules && rimraf dist",
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "generate:exec-api-metadata": "pnpx --package=tsx tsx ./scripts/generate-exec-api-metadata.ts",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit"
   },

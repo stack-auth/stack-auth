@@ -2,73 +2,36 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const CONFIG_PATH = process.env.STACK_CLI_CONFIG_PATH ?? path.join(os.homedir(), ".stackrc");
+const CONFIG_PATH = process.env.STACK_CLI_CONFIG_PATH ?? path.join(os.homedir(), ".config", "stack-auth", "credentials.json");
 
 type ConfigKey = "STACK_CLI_REFRESH_TOKEN" | "STACK_API_URL" | "STACK_DASHBOARD_URL";
 
-function readConfigFileRaw(): string[] {
+function readConfigJson(): Record<string, string> {
   try {
-    return fs.readFileSync(CONFIG_PATH, "utf-8").split("\n");
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
   } catch {
-    return [];
+    return {};
   }
+}
+
+function writeConfigJson(data: Record<string, string>): void {
+  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(data, null, 2) + "\n", { mode: 0o600 });
 }
 
 export function readConfigValue(key: ConfigKey): string | undefined {
-  const lines = readConfigFileRaw();
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex === -1) {
-      continue;
-    }
-    if (trimmed.slice(0, eqIndex).trim() === key) {
-      return trimmed.slice(eqIndex + 1).trim();
-    }
-  }
-  return undefined;
+  const config = readConfigJson();
+  return config[key];
 }
 
 export function writeConfigValue(key: ConfigKey, value: string): void {
-  const lines = readConfigFileRaw();
-  const newLine = `${key}=${value}`;
-  let found = false;
-  const result: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      result.push(line);
-      continue;
-    }
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex !== -1 && trimmed.slice(0, eqIndex).trim() === key) {
-      found = true;
-      result.push(newLine);
-    } else {
-      result.push(line);
-    }
-  }
-  if (!found) {
-    result.push(newLine);
-  }
-  fs.writeFileSync(CONFIG_PATH, result.join("\n"), { mode: 0o600 });
+  const config = readConfigJson();
+  config[key] = value;
+  writeConfigJson(config);
 }
 
 export function removeConfigValue(key: ConfigKey): void {
-  const lines = readConfigFileRaw();
-  const result = lines.filter((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      return true;
-    }
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex !== -1 && trimmed.slice(0, eqIndex).trim() === key) {
-      return false;
-    }
-    return true;
-  });
-  fs.writeFileSync(CONFIG_PATH, result.join("\n"), { mode: 0o600 });
+  const config = readConfigJson();
+  delete config[key];
+  writeConfigJson(config);
 }
