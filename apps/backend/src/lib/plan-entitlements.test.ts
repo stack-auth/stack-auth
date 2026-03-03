@@ -119,7 +119,6 @@ describe("capacity lookup helpers", () => {
 
   const itemLimits = new Map<string, number>([
     [ITEM_IDS.authUsers, PLAN_LIMITS.free.authUsers],
-    [ITEM_IDS.emailsPerMonth, PLAN_LIMITS.free.emailsPerMonth],
     [ITEM_IDS.seats, PLAN_LIMITS.free.seats],
   ]);
 
@@ -163,15 +162,6 @@ describe("capacity lookup helpers", () => {
     expect(capacityB).toBe(PLAN_LIMITS.free.authUsers);
   });
 
-  it("maps emails capacity helper to emails plan item", async () => {
-    const emailCapacity = await getTeamWideItemCapacityForTests(
-      billingTeamId,
-      ITEM_IDS.emailsPerMonth,
-      capacityReaders,
-    );
-    expect(emailCapacity).toBe(PLAN_LIMITS.free.emailsPerMonth);
-  });
-
   it("maps seats capacity helper to seats plan item", async () => {
     const seatsCapacity = await getTeamWideItemCapacityForTests(
       billingTeamId,
@@ -185,6 +175,14 @@ describe("capacity lookup helpers", () => {
     await expect(getTeamWideItemCapacityForTests(
       billingTeamId,
       "unknown_item",
+      capacityReaders,
+    )).rejects.toThrow("Unsupported team-wide capacity item id");
+  });
+
+  it("rejects emails_per_month as unsupported capacity item (handled via SDK)", async () => {
+    await expect(getTeamWideItemCapacityForTests(
+      billingTeamId,
+      ITEM_IDS.emailsPerMonth,
       capacityReaders,
     )).rejects.toThrow("Unsupported team-wide capacity item id");
   });

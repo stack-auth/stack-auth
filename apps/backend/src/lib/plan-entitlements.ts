@@ -29,7 +29,6 @@ type ItemCapacityReaders = {
 
 const TEAM_WIDE_CAPACITY_ITEM_IDS = new Set<string>([
   ITEM_IDS.authUsers,
-  ITEM_IDS.emailsPerMonth,
   ITEM_IDS.seats,
 ]);
 
@@ -141,12 +140,6 @@ export async function getTeamWideAuthUsersCapacity(
   billingTeamId: string,
 ): Promise<number> {
   return await getTeamWideItemCapacity(billingTeamId, ITEM_IDS.authUsers);
-}
-
-export async function getTeamWideEmailsPerMonthCapacity(
-  billingTeamId: string,
-): Promise<number> {
-  return await getTeamWideItemCapacity(billingTeamId, ITEM_IDS.emailsPerMonth);
 }
 
 export async function getTeamWideDashboardAdminsCapacity(
