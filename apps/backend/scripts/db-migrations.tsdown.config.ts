@@ -12,8 +12,15 @@ const backendDir = resolve(__dirname, '..');
 
 const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
 
+// Packages that must remain as runtime imports (can't be statically bundled)
+const externalPackages = [
+  '@prisma/client',
+];
+
 const customNoExternal = new Set([
-  ...Object.keys(packageJson.dependencies),
+  ...Object.keys(packageJson.dependencies).filter(
+    (dep) => !externalPackages.some((ext) => dep === ext || dep.startsWith(ext + '/'))
+  ),
 ]);
 
 // Node.js built-in modules that should not be bundled
@@ -30,7 +37,7 @@ export default defineConfig({
   noExternal: [...customNoExternal],
   inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
-  external: nodeBuiltins,
+  external: [...nodeBuiltins, ...externalPackages],
   clean: true,
   // Use banner to add createRequire for CommonJS modules that use require() for builtins
   // The imported require is used by the shimmed __require2 function
