@@ -2,6 +2,7 @@
 import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
 import { type NavLink } from '@/lib/navigation-utils';
+import { findActiveTab } from '@/docs-config';
 import { UserButton, useUser } from '@stackframe/stack';
 import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
 import Link from 'next/link';
@@ -46,27 +47,11 @@ export function isInApiSection(pathname: string): boolean {
 
 /**
  * Determines if a navigation link should be highlighted as active
- * based on the current pathname.
+ * based on the current pathname, using the docs config.
  */
 function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
-  // More specific matches first
-  if (navLink.label === 'Welcome' && (pathname === '/docs/overview' || pathname === '/docs/faq')) {
-    return true;
-  }
-  if (navLink.label === 'SDK' && isInSdkSection(pathname)) {
-    return true;
-  }
-  if (navLink.label === 'Components' && isInComponentsSection(pathname)) {
-    return true;
-  }
-  if (navLink.label === 'API Reference' && isInApiSection(pathname)) {
-    return true;
-  }
-  if (navLink.label === 'Guides' && pathname.startsWith('/docs') &&
-      !isInComponentsSection(pathname) && !isInSdkSection(pathname) && pathname !== '/docs/overview' && pathname !== '/docs/faq') {
-    return true;
-  }
-  return false;
+  const activeTab = findActiveTab(pathname);
+  return activeTab?.title === navLink.label;
 }
 
 /**

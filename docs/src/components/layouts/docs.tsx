@@ -47,6 +47,7 @@ import { ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lu
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { findActiveTab, type SidebarCategory, type TabConfig } from '../../docs-config';
 import { CodeOverlayProvider, useCodeOverlay } from '../../hooks/use-code-overlay';
 import { cn } from '../../lib/cn';
 import { AIChatDrawer } from '../chat/ai-chat';
@@ -314,41 +315,45 @@ function PageTreeItem({ item }: { item: PageTree.Node }) {
   );
 }
 
-// Function to render sidebar content based on context
-function renderSidebarContent(tree: PageTree.Root, pathname: string) {
+function ConfigCategorySection({ category }: { category: SidebarCategory }) {
+  if (category.title == null) {
+    return (
+      <div className="mb-4 rounded-xl border border-fd-border/80 bg-fd-muted/10 p-1">
+        {category.pages.map((page) => (
+          <DocsSidebarLink key={page.href} href={page.href}>
+            {page.title}
+          </DocsSidebarLink>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <DocsSeparator>{category.title}</DocsSeparator>
+      {category.pages.map((page) => (
+        <DocsSidebarLink key={page.href} href={page.href}>
+          {page.title}
+        </DocsSidebarLink>
+      ))}
+    </>
+  );
+}
+
+function renderSidebarContent(_tree: PageTree.Root, pathname: string) {
   if (isInApiSection(pathname)) {
     return null;
   }
 
-  const overviewItem = tree.children.find(
-    (item) =>
-      item.type === 'page' &&
-      (item.url.endsWith('/overview') || item.name === 'Overview')
-  );
-  const faqItem = tree.children.find(
-    (item) =>
-      item.type === 'page' &&
-      (item.url.endsWith('/faq') || item.name === 'FAQ')
-  );
-
-  const specialItems = [overviewItem, faqItem].filter(
-    (item): item is PageTree.Node => !!item
-  );
-  const otherItems = tree.children.filter(
-    (item) => !specialItems.includes(item)
-  );
+  const activeTab = findActiveTab(pathname);
+  if (!activeTab) {
+    return null;
+  }
 
   return (
     <>
-      {specialItems.length > 0 && (
-        <div className="mb-4 rounded-xl border border-fd-border/80 bg-fd-muted/10 p-1">
-          {specialItems.map((item, index) => (
-            <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
-          ))}
-        </div>
-      )}
-      {otherItems.map((item, index) => (
-        <PageTreeItem key={item.type === 'page' ? item.url : index} item={item} />
+      {activeTab.sidebarCategories.map((category, index) => (
+        <ConfigCategorySection key={category.title ?? `untitled-${index}`} category={category} />
       ))}
     </>
   );
@@ -809,18 +814,39 @@ function convertToHierarchicalStructure(nodes: PageTree.Node[], currentPath: str
   return items;
 }
 
-// Updated collapsed sidebar renderer - uses platform content
-function renderCollapsedSidebarContent(tree: PageTree.Root, pathname: string) {
-  const hierarchicalItems = convertToHierarchicalStructure(tree.children, pathname);
+function renderCollapsedSidebarContent(_tree: PageTree.Root, pathname: string) {
+  const activeTab = findActiveTab(pathname);
+  if (!activeTab) {
+    return null;
+  }
+
+  const items: CollapsedItem[] = [];
+  for (const category of activeTab.sidebarCategories) {
+    if (category.title != null) {
+      items.push({
+        type: 'separator',
+        title: category.title,
+        level: 0,
+      });
+    }
+    for (const page of category.pages) {
+      items.push({
+        type: 'page',
+        title: page.title,
+        href: page.href,
+        level: 0,
+      });
+    }
+  }
 
   return (
     <div className="flex flex-col items-start space-y-2 py-4 w-full">
       <div className="flex flex-col space-y-1 w-full">
-        {hierarchicalItems.map((item, index) => (
+        {items.map((item, index) => (
           <CollapsedHierarchicalItem
             key={item.href || `${item.title}-${index}`}
             item={item}
-            nextItems={hierarchicalItems.slice(index + 1)}
+            nextItems={items.slice(index + 1)}
           />
         ))}
       </div>
