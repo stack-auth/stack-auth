@@ -7,6 +7,8 @@
   | <a href="https://discord.stack-auth.com">🎮 Discord</a>
 </h4>
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stack-auth/stack-auth)
+
 # Stack Auth: The open-source auth platform
 
 Stack Auth is a managed user authentication solution. It is developer-friendly and fully open-source (licensed under MIT and AGPL).
