@@ -3,6 +3,7 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
+import type { Json } from "../utils/json";
 import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
@@ -26,6 +27,12 @@ import { ServerAuthApplicationOptions, StackServerInterface } from "./server-int
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
+
+export type TemplateVariableInfo = {
+  name: string,
+  type: string,
+  defaultValue: Json,
+};
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -177,13 +184,13 @@ export class StackAdminInterface extends StackServerInterface {
     return result.templates;
   }
 
-  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[]> {
+  async listInternalEmailDrafts(): Promise<{ id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null, template_variables: Record<string, string | number> }[]> {
     const response = await this.sendAdminRequest(`/internal/email-drafts`, {}, null);
-    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null }[] };
+    const result = await response.json() as { drafts: { id: string, display_name: string, theme_id?: string | undefined | false, tsx_source: string, sent_at_millis?: number | null, template_variables: Record<string, string | number> }[] };
     return result.drafts;
   }
 
-  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string }): Promise<{ id: string }> {
+  async createEmailDraft(options: { display_name?: string, theme_id?: string | false, tsx_source?: string, template_variables?: Record<string, string | number> }): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-drafts`,
       {
@@ -198,7 +205,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null }): Promise<void> {
+  async updateEmailDraft(id: string, data: { display_name?: string, theme_id?: string | null | false, tsx_source?: string, sent_at_millis?: number | null, template_variables?: Record<string, string | number> }): Promise<void> {
     await this.sendAdminRequest(
       `/internal/email-drafts/${id}`,
       {
@@ -517,6 +524,19 @@ export class StackAdminInterface extends StackServerInterface {
         template_tsx_source: options.templateTsxSource,
         editable_markers: options.editableMarkers,
         editable_source: options.editableSource,
+      }),
+    }, null);
+    return await response.json();
+  }
+
+  async extractTemplateVariables(templateTsxSource: string): Promise<{ variables: Array<{ name: string, type: string, default_value: TemplateVariableInfo["defaultValue"] }> }> {
+    const response = await this.sendAdminRequest(`/emails/template-variables`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        template_tsx_source: templateTsxSource,
       }),
     }, null);
     return await response.json();

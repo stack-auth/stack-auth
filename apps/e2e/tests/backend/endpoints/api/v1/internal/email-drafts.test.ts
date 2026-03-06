@@ -61,6 +61,7 @@ export function EmailTemplate({ user, project }: Props) {
             "display_name": "My Draft",
             "id": "<stripped UUID>",
             "sent_at_millis": <stripped field 'sent_at_millis'>,
+            "template_variables": {},
             "theme_id": false,
             "tsx_source": deindent\`
               import { Container } from "@react-email/components";
@@ -93,6 +94,7 @@ export function EmailTemplate({ user, project }: Props) {
         "display_name": "My Draft",
         "id": "<stripped UUID>",
         "sent_at_millis": <stripped field 'sent_at_millis'>,
+        "template_variables": {},
         "theme_id": false,
         "tsx_source": deindent\`
           import { Container } from "@react-email/components";
@@ -152,6 +154,7 @@ export function EmailTemplate({ user, project }: Props) {
         "display_name": "Updated Draft",
         "id": "<stripped UUID>",
         "sent_at_millis": <stripped field 'sent_at_millis'>,
+        "template_variables": {},
         "theme_id": false,
         "tsx_source": deindent\`
           import { Container } from "@react-email/components";

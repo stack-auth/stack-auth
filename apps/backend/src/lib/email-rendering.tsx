@@ -8,6 +8,8 @@ import {
   transpileJsxForEditing,
   convertSentinelTokensToComments,
 } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
+import { type TemplateVariableInfo } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { Tenancy } from './tenancies';
@@ -100,6 +102,51 @@ async function bundleAndExecute<T>(
     return Result.error(JSON.stringify(executeResult.error));
   }
   return Result.ok(executeResult.data as T);
+}
+
+export async function extractTemplateVariables(templateSource: string): Promise<Result<TemplateVariableInfo[], string>> {
+  const files = {
+    "/template.tsx": templateSource,
+    "/extract.tsx": deindent`
+      import { type } from "arktype";
+      import * as TemplateModule from "./template.tsx";
+      const { variablesSchema, EmailTemplate } = TemplateModule;
+
+      export const extractAll = () => {
+        if (!variablesSchema || typeof variablesSchema !== "function") {
+          return { variables: [] };
+        }
+        const jsonSchema = variablesSchema.toJsonSchema();
+        const defaults = EmailTemplate?.PreviewVariables ?? {};
+        const variables = Object.entries(jsonSchema.properties ?? {}).map(([name, prop]) => ({
+          name,
+          type: (prop as any).type ?? "string",
+          defaultValue: defaults[name] ?? null,
+        }));
+        return { variables };
+      };
+    `,
+    "/entry.js": deindent`
+      export default async () => {
+        try {
+          const { extractAll } = await import("./extract.tsx");
+          const result = extractAll();
+          return { status: "ok", data: result };
+        } catch (e) {
+          if (e instanceof Error) {
+            return { status: "error", error: { message: e.message, stack: e.stack, cause: e.cause } };
+          }
+          return { status: "error", error: { message: String(e), stack: undefined, cause: undefined } };
+        }
+      };
+    `,
+  };
+
+  const result = await bundleAndExecute<{ variables: TemplateVariableInfo[] }>(files);
+  if (result.status === "error") {
+    return Result.error(result.error);
+  }
+  return Result.ok(result.data.variables);
 }
 
 export async function renderEmailWithTemplate(

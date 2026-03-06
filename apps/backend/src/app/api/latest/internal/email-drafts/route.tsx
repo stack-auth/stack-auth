@@ -1,6 +1,6 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { jsonSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 
@@ -23,6 +23,7 @@ export const GET = createSmartRouteHandler({
         tsx_source: yupString().defined(),
         theme_id: templateThemeIdSchema,
         sent_at_millis: yupNumber().nullable().optional(),
+        template_variables: yupRecord(yupString(), jsonSchema.defined()).defined(),
       })).defined(),
     }).defined(),
   }),
@@ -42,6 +43,7 @@ export const GET = createSmartRouteHandler({
           tsx_source: d.tsxSource,
           theme_id: themeModeToTemplateThemeId(d.themeMode, d.themeId),
           sent_at_millis: d.sentAt ? d.sentAt.getTime() : null,
+          template_variables: (d.templateVariables as Record<string, string> | null) ?? {},
         })),
       },
     };
@@ -76,6 +78,7 @@ export const POST = createSmartRouteHandler({
       display_name: yupString().defined(),
       theme_id: templateThemeIdSchema,
       tsx_source: yupString().optional(),
+      template_variables: yupRecord(yupString(), jsonSchema.defined()).optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -93,6 +96,7 @@ export const POST = createSmartRouteHandler({
         themeMode: templateThemeIdToThemeMode(body.theme_id),
         themeId: body.theme_id === false ? undefined : body.theme_id,
         tsxSource: body.tsx_source ?? defaultDraftSource,
+        templateVariables: body.template_variables ?? {},
       },
     });
 

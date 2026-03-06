@@ -20,6 +20,7 @@ export {
 } from "./interfaces/admin-app";
 export type {
   StackAdminAppConstructor,
-  StackAdminAppConstructorOptions
+  StackAdminAppConstructorOptions,
+  TemplateVariableInfo,
 } from "./interfaces/admin-app";
 
