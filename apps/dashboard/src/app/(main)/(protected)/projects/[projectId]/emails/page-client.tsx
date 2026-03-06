@@ -7,7 +7,7 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, D
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
-import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
+import { CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
@@ -119,11 +119,7 @@ export default function PageClient() {
       >
         <div className="flex flex-col gap-5">
           {/* Email Server Card */}
-          {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
-            <EmulatorModeCard />
-          ) : (
-            <EmailServerCard emailConfig={emailConfig} />
-          )}
+          <EmailServerCard emailConfig={emailConfig} />
 
           {/* Email Log Card */}
           <EmailLogCard />
@@ -133,35 +129,8 @@ export default function PageClient() {
   );
 }
 
-function EmulatorModeCard() {
-  return (
-    <GlassCard gradientColor="purple">
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-5">
-          <div className="flex-1 min-w-0">
-            <SectionHeader icon={HardDrive} title="Mock Emails" />
-            <Typography variant="secondary" className="text-sm mt-1">
-              View all emails sent through the emulator in Inbucket
-            </Typography>
-          </div>
-          <Button
-            variant='secondary'
-            size="sm"
-            className="h-8 px-3 text-xs gap-1.5 flex-shrink-0"
-            onClick={() => {
-              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
-            }}
-          >
-            <ArrowSquareOut className="h-3.5 w-3.5" />
-            Open Inbox
-          </Button>
-        </div>
-      </div>
-    </GlassCard>
-  );
-}
-
 function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails']['server'] }) {
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const serverType = emailConfig.isShared
     ? 'Shared'
     : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
@@ -177,11 +146,13 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
           <div className="flex-1 min-w-0">
             <SectionHeader icon={HardDrive} title="Email Server" />
             <Typography variant="secondary" className="text-sm mt-1">
-              Configure the email server and sender address for outgoing emails
+              {isLocalEmulator
+                ? "Email server settings are read-only in the local emulator"
+                : "Configure the email server and sender address for outgoing emails"}
             </Typography>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {!emailConfig.isShared && (
+            {!emailConfig.isShared && !isLocalEmulator && (
               <TestSendingDialog
                 trigger={
                   <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
@@ -191,16 +162,25 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
                 }
               />
             )}
-            <EditEmailServerDialog
-              trigger={
-                <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
-                  <Sliders className="h-3.5 w-3.5" />
-                  Configure
-                </Button>
-              }
-            />
+            {!isLocalEmulator ? (
+              <EditEmailServerDialog
+                trigger={
+                  <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
+                    <Sliders className="h-3.5 w-3.5" />
+                    Configure
+                  </Button>
+                }
+              />
+            ) : null}
           </div>
         </div>
+        {isLocalEmulator && (
+          <Alert className="mt-4">
+            <AlertDescription>
+              Email server settings cannot be changed in the local emulator. Update these settings in your production deployment.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
       <div className="border-t border-foreground/[0.05] px-5 pb-5 pt-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
