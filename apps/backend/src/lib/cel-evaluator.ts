@@ -1,5 +1,6 @@
 import { evaluate } from "cel-js";
 import { normalizeEmail } from "./emails";
+import { SignUpRiskScores } from "./risk-scores";
 
 /**
  * Custom error class for CEL evaluation failures.
@@ -32,6 +33,7 @@ export type SignUpRuleContext = {
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   /** OAuth provider ID if authMethod is "oauth", empty string otherwise */
   oauthProvider: string,
+  riskScores: SignUpRiskScores,
 };
 
 /**
@@ -160,6 +162,7 @@ export function createSignUpRuleContext(params: {
   email?: string,
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider?: string,
+  riskScores: SignUpRiskScores,
 }): SignUpRuleContext {
   // Handle missing email (e.g., OAuth providers that don't return email)
   // Use empty string so email-based rules don't match
@@ -178,6 +181,7 @@ export function createSignUpRuleContext(params: {
     emailDomain,
     authMethod: params.authMethod,
     oauthProvider: params.oauthProvider ?? '',
+    riskScores: params.riskScores,
   };
 }
 
@@ -187,11 +191,19 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   expect(createSignUpRuleContext({
     email: 'Test.User@Example.COM',
     authMethod: 'password',
+    riskScores: {
+      bot: 17,
+      freeTrialAbuse: 23,
+    },
   })).toEqual({
     email: 'test.user@example.com',
     emailDomain: 'example.com',
     authMethod: 'password',
     oauthProvider: '',
+    riskScores: {
+      bot: 17,
+      freeTrialAbuse: 23,
+    },
   });
 
   // Should handle missing email (OAuth providers without email)
@@ -199,11 +211,19 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     email: undefined,
     authMethod: 'oauth',
     oauthProvider: 'discord',
+    riskScores: {
+      bot: 1,
+      freeTrialAbuse: 2,
+    },
   })).toEqual({
     email: '',
     emailDomain: '',
     authMethod: 'oauth',
     oauthProvider: 'discord',
+    riskScores: {
+      bot: 1,
+      freeTrialAbuse: 2,
+    },
   });
 
   // Should handle empty string email
@@ -211,11 +231,19 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     email: '',
     authMethod: 'oauth',
     oauthProvider: 'twitter',
+    riskScores: {
+      bot: 10,
+      freeTrialAbuse: 20,
+    },
   })).toEqual({
     email: '',
     emailDomain: '',
     authMethod: 'oauth',
     oauthProvider: 'twitter',
+    riskScores: {
+      bot: 10,
+      freeTrialAbuse: 20,
+    },
   });
 
   // Should handle OAuth with email
@@ -223,11 +251,19 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     email: 'oauth.user@gmail.com',
     authMethod: 'oauth',
     oauthProvider: 'google',
+    riskScores: {
+      bot: 8,
+      freeTrialAbuse: 9,
+    },
   })).toEqual({
     email: 'oauth.user@gmail.com',
     emailDomain: 'gmail.com',
     authMethod: 'oauth',
     oauthProvider: 'google',
+    riskScores: {
+      bot: 8,
+      freeTrialAbuse: 9,
+    },
   });
 });
 
@@ -237,6 +273,10 @@ import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ ex
     email: undefined,
     authMethod: 'oauth',
     oauthProvider: 'discord',
+    riskScores: {
+      bot: 33,
+      freeTrialAbuse: 44,
+    },
   });
 
   // Email-based conditions should fail when email is empty
@@ -247,6 +287,9 @@ import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ ex
   // But authMethod-based conditions should still work
   expect(evaluateCelExpression('authMethod == "oauth"', context)).toBe(true);
   expect(evaluateCelExpression('oauthProvider == "discord"', context)).toBe(true);
+  expect(evaluateCelExpression('riskScores.bot == 33', context)).toBe(true);
+  expect(evaluateCelExpression('riskScores.freeTrialAbuse == 44', context)).toBe(true);
+  expect(evaluateCelExpression('riskScores.bot > 10 && riskScores.freeTrialAbuse < 90', context)).toBe(true);
 
   // Empty email should match empty string
   expect(evaluateCelExpression('email == ""', context)).toBe(true);

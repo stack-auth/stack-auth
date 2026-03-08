@@ -59,12 +59,18 @@ const FIELD_OPTIONS: { value: ConditionField, label: string }[] = [
   { value: 'emailDomain', label: 'Email Domain' },
   { value: 'authMethod', label: 'Auth Method' },
   { value: 'oauthProvider', label: 'OAuth Provider' },
+  { value: 'riskScores.bot', label: 'Risk Score: Bot' },
+  { value: 'riskScores.freeTrialAbuse', label: 'Risk Score: Free Trial Abuse' },
 ];
 
 // Operator options with labels
 const OPERATOR_OPTIONS: { value: ConditionOperator, label: string }[] = [
   { value: 'equals', label: 'equals' },
   { value: 'not_equals', label: 'does not equal' },
+  { value: 'greater_than', label: 'is greater than' },
+  { value: 'greater_or_equal', label: 'is greater than or equal' },
+  { value: 'less_than', label: 'is less than' },
+  { value: 'less_or_equal', label: 'is less than or equal' },
   { value: 'contains', label: 'contains' },
   { value: 'starts_with', label: 'starts with' },
   { value: 'ends_with', label: 'ends with' },
@@ -72,8 +78,15 @@ const OPERATOR_OPTIONS: { value: ConditionOperator, label: string }[] = [
   { value: 'in_list', label: 'is one of' },
 ];
 
+function isNumericField(field: ConditionField): boolean {
+  return field === 'riskScores.bot' || field === 'riskScores.freeTrialAbuse';
+}
+
 // Get available operators for a field
 function getOperatorsForField(field: ConditionField): ConditionOperator[] {
+  if (isNumericField(field)) {
+    return ['equals', 'not_equals', 'greater_than', 'greater_or_equal', 'less_than', 'less_or_equal'];
+  }
   if (field === 'authMethod' || field === 'oauthProvider') {
     return ['equals', 'not_equals', 'in_list'];
   }
@@ -111,7 +124,11 @@ function ConditionRow({
     const operator = newOperators.includes(condition.operator) ? condition.operator : newOperators[0];
 
     // Reset value - use array for in_list, string otherwise
-    const value: string | string[] = operator === 'in_list' ? [] : '';
+    const value: string | number | string[] = operator === 'in_list'
+      ? []
+      : isNumericField(field)
+        ? 0
+        : '';
 
     onChange({ ...condition, field, operator, value });
   };
@@ -127,7 +144,7 @@ function ConditionRow({
     onChange({ ...condition, operator, value });
   };
 
-  const handleValueChange = (value: string | string[]) => {
+  const handleValueChange = (value: string | number | string[]) => {
     onChange({ ...condition, value });
   };
 
@@ -178,6 +195,17 @@ function ConditionRow({
             <option key={val} value={val}>{val}</option>
           ))}
         </select>
+      ) : isNumericField(condition.field) ? (
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step="1"
+          value={String(condition.value)}
+          onChange={(e) => handleValueChange(e.target.value === '' ? 0 : Number(e.target.value))}
+          placeholder="0-100"
+          className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md flex-1"
+        />
       ) : (
         <div className="flex-1 flex items-center gap-1">
           <input

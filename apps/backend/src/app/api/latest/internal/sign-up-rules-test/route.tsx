@@ -21,6 +21,10 @@ export const POST = createSmartRouteHandler({
       email: yupString().optional(),
       auth_method: yupString().oneOf(AUTH_METHODS).defined(),
       oauth_provider: yupString().optional(),
+      risk_scores: yupObject({
+        bot: yupNumber().min(0).max(100).integer().defined(),
+        free_trial_abuse: yupNumber().min(0).max(100).integer().defined(),
+      }).defined(),
     }).defined(),
   }),
   response: yupObject({
@@ -32,6 +36,10 @@ export const POST = createSmartRouteHandler({
         email_domain: yupString().defined(),
         auth_method: yupString().oneOf(AUTH_METHODS).defined(),
         oauth_provider: yupString().defined(),
+        risk_scores: yupObject({
+          bot: yupNumber().min(0).max(100).integer().defined(),
+          free_trial_abuse: yupNumber().min(0).max(100).integer().defined(),
+        }).defined(),
       }).defined(),
       evaluations: yupArray(yupObject({
         rule_id: yupString().defined(),
@@ -58,6 +66,10 @@ export const POST = createSmartRouteHandler({
       email: req.body.email,
       authMethod: req.body.auth_method,
       oauthProvider: req.body.oauth_provider,
+      riskScores: {
+        bot: req.body.risk_scores.bot,
+        freeTrialAbuse: req.body.risk_scores.free_trial_abuse,
+      },
     });
     const trace = evaluateSignUpRulesWithTrace(req.auth.tenancy, context);
 
@@ -70,6 +82,10 @@ export const POST = createSmartRouteHandler({
           email_domain: context.emailDomain,
           auth_method: context.authMethod,
           oauth_provider: context.oauthProvider,
+          risk_scores: {
+            bot: context.riskScores.bot,
+            free_trial_abuse: context.riskScores.freeTrialAbuse,
+          },
         },
         evaluations: trace.evaluations.map((evaluation) => ({
           rule_id: evaluation.ruleId,

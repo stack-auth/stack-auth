@@ -11,11 +11,16 @@
  * - emailDomain == "domain.com" / emailDomain in ["d1", "d2"]
  * - authMethod == "password" / authMethod in ["password", "otp"]
  * - oauthProvider == "google" / oauthProvider in ["google", "github"]
+ * - riskScores.bot > 80 / riskScores.freeTrialAbuse >= 60
  */
 
 export type ConditionOperator =
   | 'equals'
   | 'not_equals'
+  | 'greater_than'
+  | 'greater_or_equal'
+  | 'less_than'
+  | 'less_or_equal'
   | 'matches'  // regex
   | 'ends_with'
   | 'starts_with'
@@ -26,14 +31,20 @@ export type ConditionField =
   | 'email'
   | 'emailDomain'
   | 'authMethod'
-  | 'oauthProvider';
+  | 'oauthProvider'
+  | 'riskScores.bot'
+  | 'riskScores.freeTrialAbuse';
+
+function isNumericField(field: ConditionField): boolean {
+  return field === 'riskScores.bot' || field === 'riskScores.freeTrialAbuse';
+}
 
 export type ConditionNode = {
   type: 'condition',
   id: string,
   field: ConditionField,
   operator: ConditionOperator,
-  value: string | string[],
+  value: string | number | string[],
 };
 
 export type GroupNode = {
@@ -77,13 +88,33 @@ function unescapeCelString(value: string): string {
 
 function conditionToCel(condition: ConditionNode): string {
   const { field, operator, value } = condition;
+  const valueAsNumber = typeof value === 'number' ? value : Number(value);
+  const useNumericValue = isNumericField(field) && Number.isFinite(valueAsNumber);
 
   switch (operator) {
     case 'equals': {
+      if (useNumericValue) {
+        return `${field} == ${valueAsNumber}`;
+      }
       return `${field} == "${escapeCelString(String(value))}"`;
     }
     case 'not_equals': {
+      if (useNumericValue) {
+        return `${field} != ${valueAsNumber}`;
+      }
       return `${field} != "${escapeCelString(String(value))}"`;
+    }
+    case 'greater_than': {
+      return `${field} > ${useNumericValue ? valueAsNumber : 0}`;
+    }
+    case 'greater_or_equal': {
+      return `${field} >= ${useNumericValue ? valueAsNumber : 0}`;
+    }
+    case 'less_than': {
+      return `${field} < ${useNumericValue ? valueAsNumber : 0}`;
+    }
+    case 'less_or_equal': {
+      return `${field} <= ${useNumericValue ? valueAsNumber : 0}`;
     }
     case 'matches': {
       return `${field}.matches("${escapeCelString(String(value))}")`;
@@ -260,8 +291,80 @@ function splitByOperator(expr: string, operator: string): string[] {
 function parseCondition(expr: string): ConditionNode | null {
   const trimmed = expr.trim();
 
+  // Match patterns like: field >= 42
+  const greaterOrEqualNumberMatch = trimmed.match(/^([\w.]+)\s*>=\s*(-?\d+(?:\.\d+)?)$/);
+  if (greaterOrEqualNumberMatch) {
+    return {
+      type: 'condition',
+      id: generateNodeId(),
+      field: greaterOrEqualNumberMatch[1] as ConditionField,
+      operator: 'greater_or_equal',
+      value: Number(greaterOrEqualNumberMatch[2]),
+    };
+  }
+
+  // Match patterns like: field <= 42
+  const lessOrEqualNumberMatch = trimmed.match(/^([\w.]+)\s*<=\s*(-?\d+(?:\.\d+)?)$/);
+  if (lessOrEqualNumberMatch) {
+    return {
+      type: 'condition',
+      id: generateNodeId(),
+      field: lessOrEqualNumberMatch[1] as ConditionField,
+      operator: 'less_or_equal',
+      value: Number(lessOrEqualNumberMatch[2]),
+    };
+  }
+
+  // Match patterns like: field > 42
+  const greaterNumberMatch = trimmed.match(/^([\w.]+)\s*>\s*(-?\d+(?:\.\d+)?)$/);
+  if (greaterNumberMatch) {
+    return {
+      type: 'condition',
+      id: generateNodeId(),
+      field: greaterNumberMatch[1] as ConditionField,
+      operator: 'greater_than',
+      value: Number(greaterNumberMatch[2]),
+    };
+  }
+
+  // Match patterns like: field < 42
+  const lessNumberMatch = trimmed.match(/^([\w.]+)\s*<\s*(-?\d+(?:\.\d+)?)$/);
+  if (lessNumberMatch) {
+    return {
+      type: 'condition',
+      id: generateNodeId(),
+      field: lessNumberMatch[1] as ConditionField,
+      operator: 'less_than',
+      value: Number(lessNumberMatch[2]),
+    };
+  }
+
+  // Match patterns like: field == 42
+  const equalsNumberMatch = trimmed.match(/^([\w.]+)\s*==\s*(-?\d+(?:\.\d+)?)$/);
+  if (equalsNumberMatch) {
+    return {
+      type: 'condition',
+      id: generateNodeId(),
+      field: equalsNumberMatch[1] as ConditionField,
+      operator: 'equals',
+      value: Number(equalsNumberMatch[2]),
+    };
+  }
+
+  // Match patterns like: field != 42
+  const notEqualsNumberMatch = trimmed.match(/^([\w.]+)\s*!=\s*(-?\d+(?:\.\d+)?)$/);
+  if (notEqualsNumberMatch) {
+    return {
+      type: 'condition',
+      id: generateNodeId(),
+      field: notEqualsNumberMatch[1] as ConditionField,
+      operator: 'not_equals',
+      value: Number(notEqualsNumberMatch[2]),
+    };
+  }
+
   // Match patterns like: field == "value"
-  const equalsMatch = trimmed.match(/^(\w+)\s*==\s*"((?:\\.|[^"\\])*)"$/);
+  const equalsMatch = trimmed.match(/^([\w.]+)\s*==\s*"((?:\\.|[^"\\])*)"$/);
   if (equalsMatch) {
     return {
       type: 'condition',
@@ -273,7 +376,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field != "value"
-  const notEqualsMatch = trimmed.match(/^(\w+)\s*!=\s*"((?:\\.|[^"\\])*)"$/);
+  const notEqualsMatch = trimmed.match(/^([\w.]+)\s*!=\s*"((?:\\.|[^"\\])*)"$/);
   if (notEqualsMatch) {
     return {
       type: 'condition',
@@ -285,7 +388,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.matches("regex")
-  const matchesMatch = trimmed.match(/^(\w+)\.matches\("((?:\\.|[^"\\])*)"\)$/);
+  const matchesMatch = trimmed.match(/^([\w.]+)\.matches\("((?:\\.|[^"\\])*)"\)$/);
   if (matchesMatch) {
     return {
       type: 'condition',
@@ -297,7 +400,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.endsWith("value")
-  const endsWithMatch = trimmed.match(/^(\w+)\.endsWith\("((?:\\.|[^"\\])*)"\)$/);
+  const endsWithMatch = trimmed.match(/^([\w.]+)\.endsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (endsWithMatch) {
     return {
       type: 'condition',
@@ -309,7 +412,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.startsWith("value")
-  const startsWithMatch = trimmed.match(/^(\w+)\.startsWith\("((?:\\.|[^"\\])*)"\)$/);
+  const startsWithMatch = trimmed.match(/^([\w.]+)\.startsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (startsWithMatch) {
     return {
       type: 'condition',
@@ -321,7 +424,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.contains("value")
-  const containsMatch = trimmed.match(/^(\w+)\.contains\("((?:\\.|[^"\\])*)"\)$/);
+  const containsMatch = trimmed.match(/^([\w.]+)\.contains\("((?:\\.|[^"\\])*)"\)$/);
   if (containsMatch) {
     return {
       type: 'condition',
@@ -333,7 +436,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field in ["a", "b", "c"]
-  const inListMatch = trimmed.match(/^(\w+)\s+in\s+\[([^\]]*)\]$/);
+  const inListMatch = trimmed.match(/^([\w.]+)\s+in\s+\[([^\]]*)\]$/);
   if (inListMatch) {
     const listStr = inListMatch[2];
     const items = listStr

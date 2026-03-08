@@ -126,6 +126,24 @@ describe('cel-visual-parser', () => {
       expect(cel).toContain('inject\\"attack.com');
       expect(cel).toContain('also\\\\bad.com');
     });
+
+    it('should serialize numeric risk score comparisons', () => {
+      const greaterThan = visualTreeToCel({
+        ...createEmptyCondition(),
+        field: 'riskScores.bot' as const,
+        operator: 'greater_than' as const,
+        value: 80,
+      });
+      const lessOrEqual = visualTreeToCel({
+        ...createEmptyCondition(),
+        field: 'riskScores.freeTrialAbuse' as const,
+        operator: 'less_or_equal' as const,
+        value: 40,
+      });
+
+      expect(greaterThan).toBe('riskScores.bot > 80');
+      expect(lessOrEqual).toBe('riskScores.freeTrialAbuse <= 40');
+    });
   });
 
   describe('CEL to visual tree parsing', () => {
@@ -164,6 +182,16 @@ describe('cel-visual-parser', () => {
       if (result?.type === 'condition') {
         expect(result.operator).toBe('contains');
         expect(result.value).toBe('test\\value');
+      }
+    });
+
+    it('should parse numeric risk score comparisons', () => {
+      const result = parseCelToVisualTree('riskScores.bot >= 75');
+      expect(result).toBeDefined();
+      if (result?.type === 'condition') {
+        expect(result.field).toBe('riskScores.bot');
+        expect(result.operator).toBe('greater_or_equal');
+        expect(result.value).toBe(75);
       }
     });
   });

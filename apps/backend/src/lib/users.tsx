@@ -3,6 +3,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
+import { calculateSignUpRiskScores } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 
@@ -12,6 +13,7 @@ import { Tenancy } from "./tenancies";
 export type SignUpRuleOptions = {
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider?: string,
+  ipAddress: string | null,
 };
 
 /**
@@ -43,10 +45,21 @@ export async function createOrUpgradeAnonymousUserWithRules(
   signUpRuleOptions: SignUpRuleOptions,
 ): Promise<UsersCrud["Admin"]["Read"]> {
   const email = createOrUpdate.primary_email ?? currentUser?.primary_email ?? undefined;
+  const primaryEmailVerified = createOrUpdate.primary_email_verified ?? currentUser?.primary_email_verified ?? false;
+
+  const riskScores = await calculateSignUpRiskScores(tenancy, {
+    primaryEmail: email ?? null,
+    primaryEmailVerified,
+    authMethod: signUpRuleOptions.authMethod,
+    oauthProvider: signUpRuleOptions.oauthProvider,
+    ipAddress: signUpRuleOptions.ipAddress,
+  });
+
   const ruleResult = await evaluateSignUpRules(tenancy, createSignUpRuleContext({
     email,
     authMethod: signUpRuleOptions.authMethod,
     oauthProvider: signUpRuleOptions.oauthProvider,
+    riskScores,
   }));
 
   if (!ruleResult.shouldAllow) {
@@ -68,17 +81,21 @@ export async function createOrUpgradeAnonymousUserWithRules(
       restricted_by_admin: true,
       restricted_by_admin_private_details: existingRestrictionPrivateDetails ? `${existingRestrictionPrivateDetails}\n\n${restrictionPrivateDetails}` : restrictionPrivateDetails,
     } : {},
+    risk_scores: {
+      sign_up: {
+        bot: riskScores.bot,
+        free_trial_abuse: riskScores.freeTrialAbuse,
+      },
+    },
   };
 
   // Proceed with user creation/upgrade
-  const user = await createOrUpgradeAnonymousUserWithoutRules(
+  return await createOrUpgradeAnonymousUserWithoutRules(
     tenancy,
     currentUser,
     enrichedCreateOrUpdate as KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
     allowedErrorTypes,
   );
-
-  return user;
 }
 
 /**
@@ -109,9 +126,11 @@ export async function createOrUpgradeAnonymousUserWithoutRules(
     });
   } else {
     // Create new user (normal flow)
+    // Cast needed: createOrUpdate may contain create-only fields (like risk scores) that
+    // KeyIntersect<Create, Update> strips from the type since they're absent on Update
     return await usersCrudHandlers.adminCreate({
       tenancy,
-      data: createOrUpdate,
+      data: createOrUpdate as UsersCrud["Admin"]["Create"],
       allowedErrorTypes,
     });
   }
