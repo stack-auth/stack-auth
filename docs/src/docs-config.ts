@@ -1,8 +1,12 @@
-import { Book, Code, Home, Layers, Zap, type LucideIcon } from 'lucide-react';
+import { BarChart3, Book, ClipboardList, Code, CreditCard, Database, Inbox, Key, Layers, Lock, Mail, Monitor, Rocket, ShieldCheck, Sparkles, Triangle, Users, Webhook, Zap, type LucideIcon } from 'lucide-react';
 
 export type PageItem = {
   title: string,
   href: string,
+  icon?: LucideIcon,
+  iconColor?: string,
+  iconTooltip?: string,
+  children?: PageItem[],
 };
 
 export type SidebarCategory = {
@@ -23,82 +27,102 @@ export type DocsConfig = {
 export const docsConfig: DocsConfig = {
   tabs: [
     {
-      title: "Welcome",
-      icon: Home,
+      title: "Guides",
+      icon: Book,
       sidebarCategories: [
         {
           title: null,
           pages: [
             { title: "Overview", href: "/docs/overview" },
-            { title: "FAQ", href: "/docs/faq" },
+            { title: "FAQ", href: "/docs/overview" },
           ],
         },
-      ],
-    },
-    {
-      title: "Guides",
-      icon: Book,
-      sidebarCategories: [
         {
           title: "Getting Started",
           pages: [
             { title: "Setup", href: "/docs/getting-started/setup" },
-            { title: "Components", href: "/docs/getting-started/components" },
             { title: "Users", href: "/docs/getting-started/users" },
-            { title: "Production", href: "/docs/getting-started/production" },
-            { title: "Vite Example", href: "/docs/getting-started/vite-example" },
+            { title: "Backend Integration", href: "/docs/getting-started/production" },
+            { title: "Customization", href: "/docs/getting-started/vite-example" },
+          ],
+        },
+        {
+          title: "Going Further",
+          pages: [
+            { title: "The StackApp Object", href: "/docs/concepts/stack-app" },
+            { title: "Integrating with backends", href: "/docs/concepts/integrating-with-backends" },
+            { title: "Local Development", href: "/docs/concepts/developing-locally" },
+            { title: "Component customization", href: "/docs/concepts/developing-locally" },
           ],
         },
         {
           title: "Apps",
           pages: [
-            { title: "API Keys", href: "/docs/apps/api-keys" },
-            { title: "Emails", href: "/docs/apps/emails" },
-            { title: "OAuth", href: "/docs/apps/oauth" },
-            { title: "Auth Providers", href: "/docs/apps/auth-providers" },
-            { title: "Orgs & Teams", href: "/docs/apps/orgs-and-teams" },
-            { title: "Permissions", href: "/docs/apps/permissions" },
-            { title: "Webhooks", href: "/docs/apps/webhooks" },
-            { title: "Payments", href: "/docs/apps/payments" },
+            { title: "Authentication", icon: Lock, href: "/docs/apps/authentication", children: [
+              { title: "Auth Providers", href: "/docs/apps/auth-providers", children: [
+                { title: "GitHub", href: "/docs/apps/auth-providers/github" },
+                { title: "Google", href: "/docs/apps/auth-providers/google" },
+                { title: "Facebook", href: "/docs/apps/auth-providers/facebook" },
+                { title: "Microsoft", href: "/docs/apps/auth-providers/microsoft" },
+                { title: "Spotify", href: "/docs/apps/auth-providers/spotify" },
+                { title: "Discord", href: "/docs/apps/auth-providers/discord" },
+                { title: "GitLab", href: "/docs/apps/auth-providers/gitlab" },
+                { title: "Apple", href: "/docs/apps/auth-providers/apple" },
+                { title: "Bitbucket", href: "/docs/apps/auth-providers/bitbucket" },
+                { title: "LinkedIn", href: "/docs/apps/auth-providers/linkedin" },
+                { title: "X (Twitter)", href: "/docs/apps/auth-providers/x-twitter" },
+                { title: "Twitch", href: "/docs/apps/auth-providers/twitch" },
+                { title: "Passkey", href: "/docs/apps/auth-providers/passkey" },
+                { title: "Two-Factor Auth", href: "/docs/apps/auth-providers/two-factor-auth" },
+              ] },
+              { title: "Sign-up Rules", href: "/docs/apps/sign-up-rules" },
+              { title: "CLI Authentication", href: "/docs/apps/oauth" },
+            ] },
+            { title: "Onboarding", icon: ClipboardList, href: "/docs/apps/onboarding" },
+            { title: "Teams", icon: Users, href: "/docs/apps/teams", children: [
+              { title: "Team Settings", href: "/docs/apps/team-settings" },
+              { title: "Selected Teams", href: "/docs/apps/selected-teams" },
+            ] },
+            { title: "RBAC", icon: ShieldCheck, href: "/docs/apps/rbac" },
+            { title: "API Keys", icon: Key, href: "/docs/apps/api-keys" },
+            { title: "Payments", icon: CreditCard, href: "/docs/apps/payments" },
+            { title: "Emails", icon: Mail, href: "/docs/apps/emails" },
+            { title: "Email API", icon: Inbox, href: "/docs/apps/email-api" },
+            { title: "Data Vault", icon: Database, href: "/docs/apps/data-vault" },
+            { title: "Webhooks", icon: Webhook, href: "/docs/apps/webhooks" },
+            { title: "TV Mode", icon: Monitor, href: "/docs/apps/tv-mode" },
+            { title: "Launch Checklist", icon: Rocket, href: "/docs/apps/launch-checklist" },
+            { title: "Catalyst", icon: Sparkles, href: "/docs/apps/catalyst" },
+            { title: "Analytics", icon: BarChart3, href: "/docs/apps/analytics" },
           ],
         },
         {
-          title: "Concepts",
+          title: "Integrations",
           pages: [
-            { title: "API Keys", href: "/docs/concepts/api-keys" },
-            { title: "Backend Integration", href: "/docs/concepts/backend-integration" },
-            { title: "Custom User Data", href: "/docs/concepts/custom-user-data" },
-            { title: "Sign-up Rules", href: "/docs/concepts/sign-up-rules" },
-            { title: "Emails", href: "/docs/concepts/emails" },
-            { title: "JWT", href: "/docs/concepts/jwt" },
-            { title: "OAuth", href: "/docs/concepts/oauth" },
-            { title: "Auth Providers", href: "/docs/concepts/auth-providers" },
-            { title: "Orgs & Teams", href: "/docs/concepts/orgs-and-teams" },
-            { title: "Permissions", href: "/docs/concepts/permissions" },
-            { title: "Stack App", href: "/docs/concepts/stack-app" },
-            { title: "Team Selection", href: "/docs/concepts/team-selection" },
-            { title: "User Onboarding", href: "/docs/concepts/user-onboarding" },
-            { title: "Webhooks", href: "/docs/concepts/webhooks" },
-          ],
-        },
-        {
-          title: "Customization",
-          pages: [
-            { title: "Custoakshdfsdm Pages", href: "/docs/customization/custom-pages" },
-            { title: "Custom Styles", href: "/docs/customization/custom-styles" },
-            { title: "Dark Mode", href: "/docs/customization/dark-mode" },
-            { title: "Internationalization", href: "/docs/customization/internationalization" },
-            { title: "Page Examples", href: "/docs/customization/page-examples" },
+            { title: "Supabase", icon: Database, iconColor: "amber", href: "/docs/apps/supabase" },
+            { title: "Convex", icon: Database, iconColor: "amber", href: "/docs/apps/convex" },
+            { title: "Vercel", icon: Triangle, iconColor: "amber", href: "/docs/apps/vercel" },
+            { title: "Neon", icon: Database, iconColor: "amber", href: "/docs/apps/neon" },
           ],
         },
         {
           title: "Other",
           pages: [
-            { title: "CLI Authentication", href: "/docs/others/cli-authentication" },
-            { title: "Self Host", href: "/docs/others/self-host" },
-            { title: "Supabase", href: "/docs/others/supabase" },
-            { title: "Convex", href: "/docs/others/convex" },
+            { title: "Self Hosting", href: "/docs/others/self-host" },
             { title: "MCP Setup", href: "/docs/others/mcp-setup" },
+            { title: "Migrations", href: "/docs/others/migrations", children: [
+              { title: "From Auth0", href: "/docs/others/migrations/from-auth0" },
+              { title: "From Firebase", href: "/docs/others/migrations/from-firebase" },
+              { title: "From Supabase", href: "/docs/others/migrations/from-supabase" },
+              { title: "From Stripe", href: "/docs/others/migrations/from-firebase" },
+              { title: "From Clerk", href: "/docs/others/migrations/from-clerk" },
+            ] },
+            { title: "Tutorials", href: "/docs/others/migrations", children: [
+              { title: "Build a SaaS with Stack Auth", href: "/docs/others/tutorials/build-a-saas-with-stack-auth" },
+              { title: "Build a SaaS with Stack Auth", href: "/docs/others/tutorials/build-a-saas-with-stack-auth" },
+              { title: "Build a SaaS with Stack Auth", href: "/docs/others/tutorials/build-a-saas-with-stack-auth" },
+            ] },
+            { title: "Showcase", href: "/docs/others/showcase" },
           ],
         },
       ],
@@ -117,7 +141,6 @@ export const docsConfig: DocsConfig = {
           title: "Objects",
           pages: [
             { title: "StackApp", href: "/docs/sdk/objects/stack-app" },
-            { title: "StackApp (Test)", href: "/docs/sdk/objects/stack-app-test" },
           ],
         },
         {
@@ -157,38 +180,31 @@ export const docsConfig: DocsConfig = {
           ],
         },
         {
-          title: "Authentication",
+          title: "Pages",
           pages: [
-            { title: "Sign In", href: "/docs/components/sign-in" },
-            { title: "Sign Up", href: "/docs/components/sign-up" },
-            { title: "Credential Sign In", href: "/docs/components/credential-sign-in" },
-            { title: "Credential Sign Up", href: "/docs/components/credential-sign-up" },
-            { title: "Magic Link Sign In", href: "/docs/components/magic-link-sign-in" },
-            { title: "Forgot Password", href: "/docs/components/forgot-password" },
-            { title: "Password Reset", href: "/docs/components/password-reset" },
-          ],
-        },
-        {
-          title: "OAuth",
-          pages: [
-            { title: "OAuth Button", href: "/docs/components/oauth-button" },
-            { title: "OAuth Button Group", href: "/docs/components/oauth-button-group" },
-          ],
-        },
-        {
-          title: "User Interface",
-          pages: [
-            { title: "User Button", href: "/docs/components/user-button" },
-            { title: "Account Settings", href: "/docs/components/account-settings" },
-            { title: "Selected Team Switcher", href: "/docs/components/selected-team-switcher" },
-          ],
-        },
-        {
-          title: "Layout & Providers",
-          pages: [
-            { title: "Stack Provider", href: "/docs/components/stack-provider" },
+            { title: "Sign In", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/sign-in" },
+            { title: "Sign Up", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/sign-up" },
+            { title: "Forgot Password", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/forgot-password" },
+            { title: "Password Reset", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/password-reset" },
+            { title: "Email Verification", icon: Mail, iconTooltip: "Emails app", href: "/docs/components/email-verification" },
+            { title: "Team Invitation", icon: Users, iconTooltip: "Teams app", href: "/docs/components/team-invitation" },
             { title: "Stack Handler", href: "/docs/components/stack-handler" },
-            { title: "Stack Theme", href: "/docs/components/stack-theme" },
+            { title: "Account Settings", href: "/docs/components/account-settings" },
+          ],
+        },
+        {
+          title: "Component Cookbooks",
+          pages: [
+            { title: "Sign In Component", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/sign-in" },
+            { title: "Sign Up Component", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/sign-up" },
+            { title: "Credential Sign In", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/credential-sign-in" },
+            { title: "Credential Sign Up", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/credential-sign-up" },
+            { title: "Magic Link Sign In", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/magic-link-sign-in" },
+            { title: "OAuth Button", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/oauth-button" },
+            { title: "OAuth Button Group", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/oauth-button-group" },
+            { title: "Team Switcher", icon: Users, iconTooltip: "Teams app", href: "/docs/components/team-switcher" },
+            { title: "User Button", icon: Lock, iconTooltip: "Authentication app", href: "/docs/components/user-button" },
+            { title: "Selected Team Switcher", icon: Users, iconTooltip: "Teams app", href: "/docs/components/selected-team-switcher" },
           ],
         },
       ],
@@ -208,11 +224,24 @@ export const docsConfig: DocsConfig = {
   ],
 };
 
-export function getTabDefaultHref(tab: TabConfig): string {
-  for (const category of tab.sidebarCategories) {
-    for (const page of category.pages) {
-      return page.href;
+function* iteratePages(pages: PageItem[]): Generator<PageItem> {
+  for (const page of pages) {
+    yield page;
+    if (page.children) {
+      yield* iteratePages(page.children);
     }
+  }
+}
+
+function* iterateAllTabPages(tab: TabConfig): Generator<PageItem> {
+  for (const category of tab.sidebarCategories) {
+    yield* iteratePages(category.pages);
+  }
+}
+
+export function getTabDefaultHref(tab: TabConfig): string {
+  for (const page of iterateAllTabPages(tab)) {
+    return page.href;
   }
   return '/docs/overview';
 }
@@ -221,21 +250,17 @@ export function findActiveTab(pathname: string): TabConfig | null {
   const normalizedPath = pathname.replace(/\/$/, '');
 
   for (const tab of docsConfig.tabs) {
-    for (const category of tab.sidebarCategories) {
-      for (const page of category.pages) {
-        if (normalizedPath === page.href) {
-          return tab;
-        }
+    for (const page of iterateAllTabPages(tab)) {
+      if (normalizedPath === page.href) {
+        return tab;
       }
     }
   }
 
   for (const tab of docsConfig.tabs) {
-    for (const category of tab.sidebarCategories) {
-      for (const page of category.pages) {
-        if (normalizedPath.startsWith(page.href + '/')) {
-          return tab;
-        }
+    for (const page of iterateAllTabPages(tab)) {
+      if (normalizedPath.startsWith(page.href + '/')) {
+        return tab;
       }
     }
   }

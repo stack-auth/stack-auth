@@ -47,7 +47,7 @@ import { ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lu
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { findActiveTab, type SidebarCategory, type TabConfig } from '../../docs-config';
+import { findActiveTab, type PageItem, type SidebarCategory, type TabConfig } from '../../docs-config';
 import { CodeOverlayProvider, useCodeOverlay } from '../../hooks/use-code-overlay';
 import { cn } from '../../lib/cn';
 import { AIChatDrawer } from '../chat/ai-chat';
@@ -205,11 +205,13 @@ function ClickableCollapsibleSection({
   title,
   href,
   children,
+  icon,
   defaultOpen = false
 }: {
   title: string,
   href: string,
   children: ReactNode,
+  icon?: ReactNode,
   defaultOpen?: boolean,
 }) {
   const pathname = usePathname();
@@ -220,9 +222,6 @@ function ClickableCollapsibleSection({
   const [isOpen, setIsOpen] = useAccordionState(accordionKey, defaultOpen || isActive);
 
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Note: Removed outside click detection as it was interfering with navigation
-  // The accordion should stay open when user navigates within the section
 
   return (
     <div className="space-y-1" ref={containerRef}>
@@ -240,6 +239,7 @@ function ClickableCollapsibleSection({
             }
           }}
         >
+          {icon && <span className="flex-shrink-0 mr-1.5">{icon}</span>}
           <span className="flex-1">{title}</span>
           <button
             onClick={(e) => {
@@ -315,14 +315,62 @@ function PageTreeItem({ item }: { item: PageTree.Node }) {
   );
 }
 
+const ICON_COLOR_CLASSES = new Map([
+  ['blue', 'bg-blue-500/15 text-blue-500'],
+  ['amber', 'bg-amber-500/15 text-amber-500'],
+  ['green', 'bg-green-500/15 text-green-500'],
+  ['red', 'bg-red-500/15 text-red-500'],
+  ['purple', 'bg-purple-500/15 text-purple-500'],
+  ['pink', 'bg-pink-500/15 text-pink-500'],
+  ['cyan', 'bg-cyan-500/15 text-cyan-500'],
+  ['orange', 'bg-orange-500/15 text-orange-500'],
+  ['emerald', 'bg-emerald-500/15 text-emerald-500'],
+  ['violet', 'bg-violet-500/15 text-violet-500'],
+]);
+
+function PageIconBadge({ icon: Icon, tooltip, color = 'blue' }: { icon: PageItem['icon'], tooltip?: string, color?: string }) {
+  if (!Icon) return null;
+  const colorClasses = ICON_COLOR_CLASSES.get(color) ?? ICON_COLOR_CLASSES.get('blue')!;
+  return (
+    <span
+      className={`flex-shrink-0 flex items-center justify-center w-5 h-5 rounded ${colorClasses}`}
+      title={tooltip}
+    >
+      <Icon className="size-3" />
+    </span>
+  );
+}
+
+function ConfigPageItem({ page }: { page: PageItem }) {
+  const iconNode = page.icon ? <PageIconBadge icon={page.icon} tooltip={page.iconTooltip} color={page.iconColor} /> : undefined;
+
+  if (page.children && page.children.length > 0) {
+    return (
+      <ClickableCollapsibleSection
+        title={page.title}
+        href={page.href}
+        icon={iconNode}
+      >
+        {page.children.map((child) => (
+          <ConfigPageItem key={child.href} page={child} />
+        ))}
+      </ClickableCollapsibleSection>
+    );
+  }
+
+  return (
+    <DocsSidebarLink href={page.href} icon={iconNode}>
+      {page.title}
+    </DocsSidebarLink>
+  );
+}
+
 function ConfigCategorySection({ category }: { category: SidebarCategory }) {
   if (category.title == null) {
     return (
       <div className="mb-4 rounded-xl border border-fd-border/80 bg-fd-muted/10 p-1">
         {category.pages.map((page) => (
-          <DocsSidebarLink key={page.href} href={page.href}>
-            {page.title}
-          </DocsSidebarLink>
+          <ConfigPageItem key={page.href} page={page} />
         ))}
       </div>
     );
@@ -332,9 +380,7 @@ function ConfigCategorySection({ category }: { category: SidebarCategory }) {
     <>
       <DocsSeparator>{category.title}</DocsSeparator>
       {category.pages.map((page) => (
-        <DocsSidebarLink key={page.href} href={page.href}>
-          {page.title}
-        </DocsSidebarLink>
+        <ConfigPageItem key={page.href} page={page} />
       ))}
     </>
   );
@@ -814,6 +860,30 @@ function convertToHierarchicalStructure(nodes: PageTree.Node[], currentPath: str
   return items;
 }
 
+function convertConfigPagesToCollapsedItems(pages: PageItem[], level: number): CollapsedItem[] {
+  const items: CollapsedItem[] = [];
+  for (const page of pages) {
+    if (page.children && page.children.length > 0) {
+      items.push({
+        type: 'section',
+        title: page.title,
+        href: page.href,
+        level,
+        children: convertConfigPagesToCollapsedItems(page.children, level + 1),
+        isCollapsible: true,
+      });
+    } else {
+      items.push({
+        type: 'page',
+        title: page.title,
+        href: page.href,
+        level,
+      });
+    }
+  }
+  return items;
+}
+
 function renderCollapsedSidebarContent(_tree: PageTree.Root, pathname: string) {
   const activeTab = findActiveTab(pathname);
   if (!activeTab) {
@@ -829,14 +899,7 @@ function renderCollapsedSidebarContent(_tree: PageTree.Root, pathname: string) {
         level: 0,
       });
     }
-    for (const page of category.pages) {
-      items.push({
-        type: 'page',
-        title: page.title,
-        href: page.href,
-        level: 0,
-      });
-    }
+    items.push(...convertConfigPagesToCollapsedItems(category.pages, 0));
   }
 
   return (

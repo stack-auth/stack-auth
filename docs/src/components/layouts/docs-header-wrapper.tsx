@@ -1,6 +1,6 @@
 'use client';
 import { generateNavLinks } from '@/lib/navigation-utils';
-import { findActiveTab, type SidebarCategory } from '@/docs-config';
+import { findActiveTab, type PageItem, type SidebarCategory } from '@/docs-config';
 import type { PageTree } from 'fumadocs-core/server';
 import { usePathname } from 'next/navigation';
 import React, { useMemo } from 'react';
@@ -56,6 +56,31 @@ function MobileSidebarSeparator({ children }: { children: React.ReactNode }) {
   );
 }
 
+function MobilePageItem({ page, depth = 0 }: { page: PageItem, depth?: number }) {
+  if (page.children && page.children.length > 0) {
+    return (
+      <div style={{ paddingLeft: depth > 0 ? 12 : 0 }}>
+        <MobileSidebarLink href={page.href}>
+          {page.title}
+        </MobileSidebarLink>
+        <div className="ml-3 border-l border-fd-border/50 pl-1">
+          {page.children.map((child) => (
+            <MobilePageItem key={child.href} page={child} depth={depth + 1} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingLeft: depth > 0 ? 12 : 0 }}>
+      <MobileSidebarLink href={page.href}>
+        {page.title}
+      </MobileSidebarLink>
+    </div>
+  );
+}
+
 function MobileConfigCategory({ category }: { category: SidebarCategory }) {
   return (
     <>
@@ -63,9 +88,7 @@ function MobileConfigCategory({ category }: { category: SidebarCategory }) {
         <MobileSidebarSeparator>{category.title}</MobileSidebarSeparator>
       )}
       {category.pages.map((page) => (
-        <MobileSidebarLink key={page.href} href={page.href}>
-          {page.title}
-        </MobileSidebarLink>
+        <MobilePageItem key={page.href} page={page} />
       ))}
     </>
   );
