@@ -103,26 +103,15 @@ export async function getOwnedProductsForCustomer(options: {
   const now = options.now ?? new Date();
   const transactions = allTransactions.filter((tx) => tx.effective_at_millis <= now.getTime());
 
-  // Build revocation map — keyed by transaction ID only, since entry index
-  // is unreliable (subscription-start entry order varies depending on whether
-  // money_transfer is present)
   const revokedQuantities = new Map<string, number>();
-  for (const tx of transactions) {
-    for (const entry of tx.entries) {
-      const typedEntry = entry as any;
-      if (typedEntry.type === "product-revocation") {
-        const key = typedEntry.adjusted_transaction_id;
-        revokedQuantities.set(key, (revokedQuantities.get(key) ?? 0) + typedEntry.quantity);
-      }
-    }
-  }
-
-  const ownedProducts: OwnedProduct[] = [];
-
   const subscriptionIds = new Set<string>();
   for (const tx of transactions) {
     for (const entry of tx.entries) {
       const typedEntry = entry as any;
+      if (typedEntry.type === "product-revocation" && typedEntry.adjusted_transaction_id != null && typedEntry.adjusted_entry_index != null) {
+        const key = `${typedEntry.adjusted_transaction_id}:${typedEntry.adjusted_entry_index}`;
+        revokedQuantities.set(key, (revokedQuantities.get(key) ?? 0) + typedEntry.quantity);
+      }
       if (typedEntry.type === "product-grant" && typedEntry.subscription_id) {
         subscriptionIds.add(typedEntry.subscription_id);
       }
@@ -148,13 +137,14 @@ export async function getOwnedProductsForCustomer(options: {
     }
   }
 
+  const ownedProducts: OwnedProduct[] = [];
   for (const tx of transactions) {
     for (let i = 0; i < tx.entries.length; i++) {
       const entry = tx.entries[i];
       const typedEntry = entry as any;
       if (typedEntry.type !== "product-grant") continue;
 
-      const revoked = revokedQuantities.get(tx.id) ?? 0;
+      const revoked = revokedQuantities.get(`${tx.id}:${i}`) ?? 0;
       const effectiveQuantity = Math.max(0, typedEntry.quantity - revoked);
       if (effectiveQuantity <= 0) continue;
 
