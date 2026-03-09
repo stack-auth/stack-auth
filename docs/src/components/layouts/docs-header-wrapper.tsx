@@ -1,6 +1,5 @@
 'use client';
-import { generateNavLinks } from '@/lib/navigation-utils';
-import { findActiveTab, type SidebarCategory } from '@/docs-config';
+import { docsConfig, findActiveSection, type SidebarCategory, type SidebarSection } from '@/docs-config';
 import type { PageTree } from 'fumadocs-core/server';
 import { usePathname } from 'next/navigation';
 import React, { useMemo } from 'react';
@@ -71,14 +70,54 @@ function MobileConfigCategory({ category }: { category: SidebarCategory }) {
   );
 }
 
+function MobileSidebarSection({ section, isOpen, onToggle }: {
+  section: SidebarSection,
+  isOpen: boolean,
+  onToggle: () => void,
+}) {
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-semibold text-fd-foreground hover:text-fd-foreground/80 transition-colors"
+      >
+        <span>{isOpen ? '▾' : '▸'}</span>
+        {section.title}
+      </button>
+      {isOpen && (
+        <div className="ml-4 space-y-1">
+          {section.categories.map((category, index) => (
+            <MobileConfigCategory key={category.title ?? `untitled-${index}`} category={category} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfigMobileSidebarContent({ pathname }: { pathname: string }) {
-  const activeTab = findActiveTab(pathname);
-  if (!activeTab) return null;
+  const activeSection = findActiveSection(pathname);
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const section of docsConfig.sections) {
+      initial[section.title] = section.defaultOpen || activeSection?.title === section.title;
+    }
+    return initial;
+  });
 
   return (
     <>
-      {activeTab.sidebarCategories.map((category, index) => (
-        <MobileConfigCategory key={category.title ?? `untitled-${index}`} category={category} />
+      {/* Sections */}
+      {docsConfig.sections.map((section) => (
+        <MobileSidebarSection
+          key={section.title}
+          section={section}
+          isOpen={openSections[section.title] ?? false}
+          onToggle={() => setOpenSections(prev => ({
+            ...prev,
+            [section.title]: !prev[section.title],
+          }))}
+        />
       ))}
     </>
   );
@@ -86,7 +125,6 @@ function ConfigMobileSidebarContent({ pathname }: { pathname: string }) {
 
 export function DocsHeaderWrapper({ showSearch = true, apiPages }: DocsHeaderWrapperProps) {
   const pathname = usePathname();
-  const navLinks = useMemo(() => generateNavLinks(), []);
 
   const sidebarContent = useMemo(() => {
     if (isInApiSection(pathname)) {
@@ -102,7 +140,6 @@ export function DocsHeaderWrapper({ showSearch = true, apiPages }: DocsHeaderWra
 
   return (
     <SharedHeader
-      navLinks={navLinks}
       showSearch={showSearch}
       sidebarContent={sidebarContent}
     />

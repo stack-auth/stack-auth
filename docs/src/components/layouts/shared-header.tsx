@@ -1,21 +1,18 @@
 'use client';
 import { CustomSearchDialog } from '@/components/layout/custom-search-dialog';
 import { SearchInputToggle } from '@/components/layout/custom-search-toggle';
-import { type NavLink } from '@/lib/navigation-utils';
-import { findActiveTab } from '@/docs-config';
+import { docsConfig } from '@/docs-config';
 import { UserButton, useUser } from '@stackframe/stack';
-import { Key, Menu, Sparkles, TableOfContents, X } from 'lucide-react';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { Key, Menu, Sidebar as SidebarIcon, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { cn } from '../../lib/cn';
-import { PlatformIndicator } from './platform-indicator';
 import { useSidebar } from './sidebar-context';
 
 type SharedHeaderProps = {
-  /** Navigation links to display */
-  navLinks: NavLink[],
   /** Whether to show the search bar */
   showSearch?: boolean,
   /** Additional content to render after nav links */
@@ -30,14 +27,10 @@ type SharedHeaderProps = {
  * Helper functions to detect which section we're in
  */
 export function isInSdkSection(pathname: string): boolean {
-  // Match the actual SDK section: /docs/sdk or /docs/sdk/...
-  // This excludes docs pages that might mention SDK in other contexts
   return pathname === '/docs/sdk' || pathname.startsWith('/docs/sdk/');
 }
 
 export function isInComponentsSection(pathname: string): boolean {
-  // Match the actual Components section: /docs/components or /docs/components/...
-  // This excludes docs pages that might mention components in other contexts
   return pathname === '/docs/components' || pathname.startsWith('/docs/components/');
 }
 
@@ -46,92 +39,38 @@ export function isInApiSection(pathname: string): boolean {
 }
 
 /**
- * Determines if a navigation link should be highlighted as active
- * based on the current pathname, using the docs config.
+ * Zen Toggle Button - Collapses sidebar and hides TOC
  */
-function isNavLinkActive(pathname: string, navLink: NavLink): boolean {
-  const activeTab = findActiveTab(pathname);
-  return activeTab?.title === navLink.label;
-}
-
-/**
- * AI Chat Toggle Button
- */
-function AIChatToggleButton(props: { className: string }) {
+function ZenToggleButton(props: { className?: string }) {
   const sidebarContext = useSidebar();
 
-  // Return null if context is not available
-  if (!sidebarContext) {
-    return null;
-  }
+  if (!sidebarContext) return null;
 
-  const { toggleChat } = sidebarContext;
+  const { isMainSidebarCollapsed, toggleMainSidebar, isTocOpen, setTocOpen } = sidebarContext;
+
+  const handleClick = () => {
+    const enteringZen = !isMainSidebarCollapsed;
+    toggleMainSidebar();
+    if (enteringZen) {
+      setTocOpen(false);
+    } else {
+      setTocOpen(true);
+    }
+  };
 
   return (
     <button
+      type="button"
+      onClick={handleClick}
       className={cn(
-        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-all duration-500 ease-out relative overflow-hidden',
-        'text-white chat-gradient-active hover:scale-105 hover:brightness-110 hover:shadow-lg',
-        props.className,
-      )}
-      onClick={toggleChat}
-      title="AI Chat"
-    >
-      <Sparkles className="h-3 w-3 relative z-10" />
-      <span className="font-medium relative z-10">AI Chat</span>
-    </button>
-  );
-}
-
-/**
- * Inner TOC Toggle Button that uses the context
- */
-function TOCToggleButtonInner(props: { className: string }) {
-  const sidebarContext = useSidebar();
-
-  // Return null if context is not available
-  if (!sidebarContext) {
-    return null;
-  }
-
-  const { isTocOpen, toggleToc, isChatOpen, isFullPage } = sidebarContext;
-
-  // Hide TOC button on full pages
-  if (isFullPage) return null;
-
-  // When chat is open, TOC is effectively not visible
-  const isTocEffectivelyVisible = isTocOpen && !isChatOpen;
-
-  return (
-    <button
-      className={cn(
-        'flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors border border-fd-border',
-        isTocEffectivelyVisible
-          ? 'bg-fd-primary/10 text-fd-primary hover:bg-fd-primary/20'
-          : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50',
+        'inline-flex h-8 w-8 items-center justify-center rounded-full text-fd-muted-foreground transition-colors hover:bg-fd-muted hover:text-fd-foreground',
         props.className
       )}
-      onClick={toggleToc}
-      title={isTocEffectivelyVisible ? 'Close table of contents' : 'Open table of contents'}
+      title={isMainSidebarCollapsed ? 'Exit zen mode' : 'Zen mode'}
     >
-      <TableOfContents className="h-3 w-3" />
-      <span className="font-medium">Contents</span>
+      <SidebarIcon className="h-3.5 w-3.5" />
     </button>
   );
-}
-
-/**
- * TOC Toggle Button - Only shows on docs pages
- */
-function TOCToggleButton(props: { className: string }) {
-  const pathname = usePathname();
-
-  // Only show on docs pages (not API pages or SDK pages)
-  const isDocsPage = pathname.startsWith('/docs') && !isInApiSection(pathname) && !isInSdkSection(pathname);
-
-  if (!isDocsPage) return null;
-
-  return <TOCToggleButtonInner {...props} />;
 }
 
 /**
@@ -141,12 +80,10 @@ function AuthToggleButton(props: { className: string }) {
   const pathname = usePathname();
   const sidebarContext = useSidebar();
 
-  // Only show on API pages
   const isAPIPage = isInApiSection(pathname);
 
   if (!isAPIPage) return null;
 
-  // Return null if context is not available
   if (!sidebarContext) {
     return null;
   }
@@ -226,26 +163,44 @@ function DocsAccountMenu({
 }
 
 /**
+ * Top link that highlights when the current page matches
+ */
+function TopNavLink({ href, activePrefix, children }: { href: string, activePrefix?: string, children: ReactNode }) {
+  const pathname = usePathname();
+  const prefix = activePrefix ?? href;
+  let isActive = pathname === prefix || pathname.startsWith(prefix + '/');
+
+  // If using a broad activePrefix, check that no other more-specific top link matches
+  if (isActive && activePrefix) {
+    const moreSpecificMatch = docsConfig.topLinks.some(
+      (link) => link.href !== href && (pathname === link.href || pathname.startsWith(link.href + '/'))
+    );
+    if (moreSpecificMatch) {
+      isActive = false;
+    }
+  }
+
+  return (
+    <Link
+      href={href}
+      className={cn(
+        'text-sm font-medium transition-colors whitespace-nowrap border-b-2 py-1',
+        isActive
+          ? 'text-fd-foreground border-fd-foreground'
+          : 'text-fd-muted-foreground hover:text-fd-foreground border-transparent'
+      )}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/**
  * SHARED HEADER COMPONENT
  *
- * Reusable header with Waves background used across docs and API layouts.
- * Provides consistent styling and behavior while allowing customization
- * for different layout requirements.
- *
- * FEATURES:
- * - Animated Waves background
- * - Stack Auth branding with logo and text
- * - Configurable navigation links with icons and active states
- * - Optional search bar
- * - Full-width design
- * - Consistent styling across layouts
- * - Platform-aware navigation links
- * - Fully responsive design with mobile hamburger menu
- * - Independent mobile navigation overlay
- * - Dynamic sidebar content integration
+ * Single-row header with logo, top links, search, and utility buttons.
  */
 export function SharedHeader({
-  navLinks,
   showSearch = false,
   children,
   onMobileMenuClick,
@@ -295,17 +250,25 @@ export function SharedHeader({
 
   return (
     <>
-      <header className="sticky top-0 w-full h-14 lg:h-26 z-49 flex flex-col space-around bg-fd-background">
+      <header className="sticky top-0 w-full h-14 z-49 flex flex-col space-around bg-fd-background">
 
-        {/* First row */}
+        {/* Single row */}
         <div className="flex items-center justify-between h-14 border-b border-fd-border px-4 md:px-6">
-          {/* Left side - Stack Auth Logo and Navigation */}
-          <div className="flex items-center gap-6 relative z-10">
-            {/* Stack Auth Logo - Always visible */}
+          {/* Left side - Stack Auth Logo + Top Links */}
+          <div className="flex items-center gap-10 relative z-10">
             <StackAuthLogo />
+
+            {/* Top navigation links - hidden on mobile */}
+            <nav className="hidden md:flex items-center gap-5">
+              {docsConfig.topLinks.map((link) => (
+                <TopNavLink key={link.href} href={link.href} activePrefix={link.activePrefix}>
+                  {link.title}
+                </TopNavLink>
+              ))}
+            </nav>
           </div>
 
-          {/* Right side - Mobile Menu and Search */}
+          {/* Right side - Search and utilities */}
           <div className="flex items-center gap-4 relative z-10">
             {/* Search Bar - Responsive sizing */}
             {showSearch && (
@@ -322,14 +285,14 @@ export function SharedHeader({
               </>
             )}
 
-            {/* TOC Toggle Button - Only on docs pages */}
-            <TOCToggleButton className='hidden md:flex' />
+            {/* Zen Toggle Button */}
+            <ZenToggleButton className='hidden md:flex' />
 
-            {/* Auth Toggle Button - Shows on all pages like AI Chat button */}
+            {/* Theme Toggle */}
+            <ThemeToggle mode="light-dark" compact className="hidden md:inline-flex" />
+
+            {/* Auth Toggle Button */}
             <AuthToggleButton className='hidden md:flex' />
-
-            {/* AI Chat Toggle Button */}
-            <AIChatToggleButton className='hidden md:flex' />
 
             {/* User Button */}
             <div className="hidden md:block">
@@ -349,42 +312,6 @@ export function SharedHeader({
             </div>
           </div>
         </div>
-
-        {/* Second row */}
-        <div className="h-12 hidden lg:flex items-center justify-between border-b border-fd-border px-4 md:px-6">
-          {/* Desktop Navigation Links - Hidden on mobile */}
-          <div className="flex items-center gap-6">
-            {navLinks.map((link, index) => {
-              const isActive = isNavLinkActive(pathname, link);
-              const IconComponent = link.icon;
-
-              return (
-                <Link
-                  key={index}
-                  href={link.href}
-                  className={`flex items-center gap-2 text-sm font-medium transition-colors relative py-1 whitespace-nowrap ${
-                    isActive
-                      ? 'text-fd-foreground'
-                      : 'text-fd-muted-foreground hover:text-fd-foreground'
-                  }`}
-                >
-                  <IconComponent className="w-4 h-4 flex-shrink-0" />
-                  <span>{link.label}</span>
-                  {/* Active underline */}
-                  {isActive && (
-                    <div className="absolute -bottom-3 left-0 right-0 h-0.5 bg-fd-primary rounded-full" />
-                  )}
-                </Link>
-              );
-            })}
-            {children}
-          </div>
-
-          {/* Platform/Framework Indicator - Right side */}
-          <div className="flex items-center">
-            <PlatformIndicator />
-          </div>
-        </div>
       </header>
 
       {/* Mobile Navigation Overlay */}
@@ -399,45 +326,16 @@ export function SharedHeader({
           {/* Mobile Navigation Panel */}
           <div className="fixed top-14 left-0 right-0 bottom-0 z-50 bg-fd-background lg:hidden overflow-y-auto">
             <div className="p-6 space-y-6">
-              {/* Top-level Navigation */}
+              {/* User Authentication */}
               <div>
-                {/* User Authentication */}
-                <div>
-                  <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
-                  <DocsAccountMenu />
-                  <br />
-                </div>
-
-                <h2 className="text-lg font-semibold text-fd-foreground mb-4">Navigation</h2>
-                <div className="space-y-2">
-                  {navLinks.map((link, index) => {
-                    const isActive = isNavLinkActive(pathname, link);
-                    const IconComponent = link.icon;
-
-                    return (
-                      <Link
-                        key={index}
-                        href={link.href}
-                        onClick={() => setShowMobileNav(false)}
-                        className={`flex items-center gap-4 px-4 py-3 rounded-lg text-base font-medium transition-colors ${
-                          isActive
-                            ? 'bg-fd-primary/10 text-fd-primary'
-                            : 'text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50'
-                        }`}
-                      >
-                        <IconComponent className="w-5 h-5 flex-shrink-0" />
-                        <span>{link.label}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
+                <h2 className="text-lg font-semibold text-fd-foreground mb-4">Account</h2>
+                <DocsAccountMenu />
               </div>
-
 
               {/* Sidebar Content */}
               {sidebarContent && (
                 <div>
-                  <h2 className="text-lg font-semibold text-fd-foreground mb-4">Browse</h2>
+                  <h2 className="text-lg font-semibold text-fd-foreground mb-4">Navigation</h2>
                   <div className="space-y-1">
                     {sidebarContent}
                   </div>

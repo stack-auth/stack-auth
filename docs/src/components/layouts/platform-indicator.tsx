@@ -140,7 +140,7 @@ export function PlatformIndicator({ className }: { className?: string }) {
           }
         }}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-fd-border/50 bg-fd-background/80 px-2.5 py-1 text-xs font-medium text-fd-foreground transition-colors",
+          "inline-flex items-center gap-1.5 rounded-md border border-fd-border bg-fd-background/80 px-2.5 py-2.5 text-xs font-medium text-fd-foreground transition-colors",
           "hover:border-fd-primary/50 hover:bg-fd-primary/5",
           className
         )}
@@ -157,7 +157,7 @@ export function PlatformIndicator({ className }: { className?: string }) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-[200] mt-1 min-w-[200px] rounded-lg border border-fd-border/70 bg-fd-background shadow-lg">
+        <div className="absolute left-0 top-full z-[200] mt-1 min-w-[200px] rounded-lg border border-fd-border/70 bg-fd-background shadow-lg">
           {dropdownView === 'platform' ? (
             <div className="py-1">
               <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-fd-muted-foreground">

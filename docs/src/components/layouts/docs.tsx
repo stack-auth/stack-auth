@@ -43,14 +43,14 @@ import {
   type PageStyles,
 } from 'fumadocs-ui/contexts/layout';
 import { TreeContextProvider } from 'fumadocs-ui/contexts/tree';
-import { ChevronDown, ChevronRight, Languages, Sidebar as SidebarIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, Languages, type LucideIcon } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { findActiveTab, type SidebarCategory, type TabConfig } from '../../docs-config';
+import { docsConfig, findActiveSection, type SidebarCategory, type SidebarSection } from '../../docs-config';
 import { CodeOverlayProvider, useCodeOverlay } from '../../hooks/use-code-overlay';
 import { cn } from '../../lib/cn';
-import { AIChatDrawer } from '../chat/ai-chat';
+import { FloatingAIChat } from '../chat/floating-ai-chat';
 import { CustomSearchDialog } from '../layout/custom-search-dialog';
 import {
   SearchInputToggle
@@ -79,6 +79,7 @@ import {
   type LinkItemType,
 } from './links';
 import { getLinks, omit, slot, slots, type BaseLayoutProps } from './shared';
+import { PlatformIndicator } from './platform-indicator';
 import { isInApiSection } from './shared-header';
 import { useSidebar as useCustomSidebar } from './sidebar-context';
 
@@ -157,7 +158,7 @@ function DocsSidebarLink({
 function DocsSeparator({ children }: { children: ReactNode }) {
   return (
     <div className="mt-6 mb-3 first:mt-2">
-      <span className="text-xs font-bold text-fd-foreground uppercase tracking-wider">
+      <span className="text-xs font-semibold text-fd-muted-foreground uppercase tracking-wider">
         {children}
       </span>
     </div>
@@ -167,10 +168,12 @@ function DocsSeparator({ children }: { children: ReactNode }) {
 // Custom collapsible section component - matches API sidebar
 function CollapsibleSection({
   title,
+  icon: Icon,
   children,
   defaultOpen = false
 }: {
   title: string,
+  icon?: LucideIcon,
   children: ReactNode,
   defaultOpen?: boolean,
 }) {
@@ -182,17 +185,20 @@ function CollapsibleSection({
     <div className="space-y-1">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-xs font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
+        className="group flex items-center gap-2 w-full text-left px-2 py-1.5 text-xs font-bold text-fd-foreground hover:text-fd-foreground transition-colors"
       >
+        {Icon ? (
+          <Icon className="h-3.5 w-3.5 text-fd-muted-foreground group-hover:text-fd-foreground transition-colors" />
+        ) : null}
+        <span className="flex-1">{title}</span>
         {isOpen ? (
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className="h-3 w-3 text-fd-muted-foreground" />
         ) : (
-          <ChevronRight className="h-3 w-3" />
+          <ChevronRight className="h-3 w-3 text-fd-muted-foreground" />
         )}
-        {title}
       </button>
       {isOpen && (
-        <div className="ml-4 space-y-1">
+        <div className="ml-[9px] border-l border-fd-border pl-[11px] space-y-1">
           {children}
         </div>
       )}
@@ -316,27 +322,33 @@ function PageTreeItem({ item }: { item: PageTree.Node }) {
 }
 
 function ConfigCategorySection({ category }: { category: SidebarCategory }) {
-  if (category.title == null) {
-    return (
-      <div className="mb-4 rounded-xl border border-fd-border/80 bg-fd-muted/10 p-1">
+  return (
+    <>
+      {category.title != null && (
+        <DocsSeparator>{category.title}</DocsSeparator>
+      )}
+      <div className={category.title != null ? "ml-6" : "ml-4"}>
         {category.pages.map((page) => (
           <DocsSidebarLink key={page.href} href={page.href}>
             {page.title}
           </DocsSidebarLink>
         ))}
       </div>
-    );
-  }
+    </>
+  );
+}
+
+function SidebarSectionContent({ section, pathname }: { section: SidebarSection, pathname: string }) {
+  const activeSection = findActiveSection(pathname);
+  const isActive = activeSection?.title === section.title;
+  const shouldOpen = section.defaultOpen || isActive;
 
   return (
-    <>
-      <DocsSeparator>{category.title}</DocsSeparator>
-      {category.pages.map((page) => (
-        <DocsSidebarLink key={page.href} href={page.href}>
-          {page.title}
-        </DocsSidebarLink>
+    <CollapsibleSection title={section.title} icon={section.icon} defaultOpen={shouldOpen}>
+      {section.categories.map((category, index) => (
+        <ConfigCategorySection key={category.title ?? `untitled-${index}`} category={category} />
       ))}
-    </>
+    </CollapsibleSection>
   );
 }
 
@@ -345,15 +357,23 @@ function renderSidebarContent(_tree: PageTree.Root, pathname: string) {
     return null;
   }
 
-  const activeTab = findActiveTab(pathname);
-  if (!activeTab) {
-    return null;
-  }
-
   return (
     <>
-      {activeTab.sidebarCategories.map((category, index) => (
-        <ConfigCategorySection key={category.title ?? `untitled-${index}`} category={category} />
+      {/* Platform/Framework Selector */}
+      <div className="mb-4">
+        <PlatformIndicator className="w-full justify-between" />
+      </div>
+
+      {/* Overview */}
+      <div className="mb-2">
+        <DocsSidebarLink href="/docs/overview">
+          Overview
+        </DocsSidebarLink>
+      </div>
+
+      {/* Sections */}
+      {docsConfig.sections.map((section) => (
+        <SidebarSectionContent key={section.title} section={section} pathname={pathname} />
       ))}
     </>
   );
@@ -815,28 +835,39 @@ function convertToHierarchicalStructure(nodes: PageTree.Node[], currentPath: str
 }
 
 function renderCollapsedSidebarContent(_tree: PageTree.Root, pathname: string) {
-  const activeTab = findActiveTab(pathname);
-  if (!activeTab) {
-    return null;
-  }
+  const activeSection = findActiveSection(pathname);
 
   const items: CollapsedItem[] = [];
-  for (const category of activeTab.sidebarCategories) {
-    if (category.title != null) {
-      items.push({
-        type: 'separator',
-        title: category.title,
-        level: 0,
-      });
+  for (const section of docsConfig.sections) {
+    const isActive = activeSection?.title === section.title;
+    const sectionChildren: CollapsedItem[] = [];
+
+    for (const category of section.categories) {
+      if (category.title != null) {
+        sectionChildren.push({
+          type: 'separator',
+          title: category.title,
+          level: 1,
+        });
+      }
+      for (const page of category.pages) {
+        sectionChildren.push({
+          type: 'page',
+          title: page.title,
+          href: page.href,
+          level: 1,
+        });
+      }
     }
-    for (const page of category.pages) {
-      items.push({
-        type: 'page',
-        title: page.title,
-        href: page.href,
-        level: 0,
-      });
-    }
+
+    items.push({
+      type: 'section',
+      title: section.title,
+      level: 0,
+      children: sectionChildren,
+      isCollapsible: true,
+      defaultOpen: section.defaultOpen || isActive,
+    });
   }
 
   return (
@@ -892,7 +923,7 @@ export function DocsLayout({
   const pageStyles: PageStyles = {
     tocNav: cn('xl:hidden'),
     toc: cn('max-xl:hidden'),
-    article: cn('max-w-none'),
+    article: cn('max-w-3xl mx-auto'),
   };
 
   return (
@@ -969,35 +1000,11 @@ export function DocsLayout({
                 <CodeOverlayRenderer />
               </div>
             </main>
-            <AIChatDrawer />
+            <FloatingAIChat />
           </NavProvider>
         </TreeContextProvider>
       </AccordionProvider>
     </CodeOverlayProvider>
-  );
-}
-
-// Docs Sidebar Collapse Trigger Button
-function DocsSidebarCollapseTrigger() {
-  const customSidebarContext = useCustomSidebar();
-  const { isMainSidebarCollapsed, toggleMainSidebar } = customSidebarContext || {
-    isMainSidebarCollapsed: false,
-    toggleMainSidebar: () => {},
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={toggleMainSidebar}
-      className={cn(
-        'px-2 py-1 text-xs font-medium rounded-md transition-colors',
-        'bg-fd-muted/50 hover:bg-fd-muted text-fd-muted-foreground hover:text-fd-foreground',
-        'border border-fd-border/50'
-      )}
-      title={isMainSidebarCollapsed ? 'Expand sidebar' : 'Zen mode'}
-    >
-      {isMainSidebarCollapsed ? <SidebarIcon className="h-3 w-3" /> : 'Zen'}
-    </button>
   );
 }
 
@@ -1023,14 +1030,14 @@ export function DocsLayoutSidebar({
       {collapsible ? <CollapsibleControl onSearchOpen={onSearchOpen} /> : null}
       {/* Sidebar positioned under the header */}
       <div className={cn(
-        "hidden md:block sticky left-0 top-14 lg:top-26 z-30 transition-all duration-300 ease-out",
+        "hidden md:block sticky left-0 top-14 z-30 transition-all duration-300 ease-out border-r border-fd-border/40",
         isMainSidebarCollapsed ? "w-16" : "w-64"
       )}>
-        <div className="h-[calc(100vh-3.5rem)] lg:h-[calc(100vh-6.5rem)] flex flex-col">
+        <div className="h-[calc(100vh-3.5rem)] flex flex-col">
           {/* Scrollable content area */}
           <div className="flex-1 min-h-0 pt-4 overflow-hidden">
             <ScrollArea className="h-full">
-              <ScrollViewport className={isMainSidebarCollapsed ? "p-2" : "p-4"}>
+              <ScrollViewport className={isMainSidebarCollapsed ? "p-2" : "pl-2 pr-4 py-4"}>
                 {/* Platform tabs/banner */}
                 {banner && !isMainSidebarCollapsed && (
                   <div className="mb-4">
@@ -1049,24 +1056,6 @@ export function DocsLayoutSidebar({
                 </div>
               </ScrollViewport>
             </ScrollArea>
-          </div>
-
-          {/* Footer - with zen button and theme toggle */}
-          <div className="border-t border-fd-border p-4 flex-shrink-0">
-            {isMainSidebarCollapsed ? (
-              <div className="flex flex-col items-center gap-2">
-                <DocsSidebarCollapseTrigger />
-                <ThemeToggle mode="light-dark" />
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-fd-muted-foreground flex-1">Stack Auth Docs</span>
-                <div className="flex items-center gap-2">
-                  <DocsSidebarCollapseTrigger />
-                  <ThemeToggle mode="light-dark" />
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

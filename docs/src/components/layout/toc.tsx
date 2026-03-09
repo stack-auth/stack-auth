@@ -3,6 +3,8 @@ import type { TOCItemType } from 'fumadocs-core/server';
 import * as Primitive from 'fumadocs-core/toc';
 import { useI18n } from 'fumadocs-ui/contexts/i18n';
 import { usePageStyles } from 'fumadocs-ui/contexts/layout';
+import { ClipboardCopy, ExternalLink, FileText, Plug, Wrench } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import {
   useEffect,
   useMemo,
@@ -16,32 +18,21 @@ import { cn } from '../../lib/cn';
 import { useSidebar } from '../layouts/sidebar-context';
 
 export type TOCProps = {
-  /**
-   * Custom content in TOC container, before the main TOC
-   */
   header?: ReactNode,
-
-  /**
-   * Custom content in TOC container, after the main TOC
-   */
   footer?: ReactNode,
-
   children: ReactNode,
 }
 
 export function Toc(props: HTMLAttributes<HTMLDivElement>) {
   const { toc } = usePageStyles();
   const sidebarContext = useSidebar();
-  const { isTocOpen, toggleToc } = sidebarContext || {
+  const { isTocOpen } = sidebarContext || {
     isTocOpen: false,
-    toggleToc: () => {},
   };
 
-  // State for tracking homepage and scroll detection (similar to AI Chat)
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // Detect if we're on homepage and scroll state
   useEffect(() => {
     const checkHomePage = () => {
       setIsHomePage(document.body.classList.contains('home-page'));
@@ -51,11 +42,9 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
       setIsScrolled(document.body.classList.contains('scrolled'));
     };
 
-    // Initial check
     checkHomePage();
     checkScrolled();
 
-    // Set up observers for class changes
     const observer = new MutationObserver(() => {
       checkHomePage();
       checkScrolled();
@@ -71,36 +60,92 @@ export function Toc(props: HTMLAttributes<HTMLDivElement>) {
     };
   }, []);
 
-  // Calculate position based on homepage and scroll state (same as AI Chat and Auth Panel)
-  const topPosition = isHomePage && isScrolled ? 'top-0' : 'top-0';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
+  const topPosition = 'top-14';
+  const height = 'h-[calc(100vh-3.5rem)]';
 
   return (
     <div
       id="nd-toc"
       {...props}
       className={cn(
-        `hidden md:block fixed ${topPosition} right-0 ${height} bg-fd-background flex flex-col transition-all duration-300 ease-out z-50 w-64`,
+        `hidden md:block fixed ${topPosition} right-0 ${height} bg-fd-background flex flex-col transition-all duration-300 ease-out z-40 w-64`,
         isTocOpen ? 'translate-x-0' : 'translate-x-full',
         toc,
         props.className,
       )}
     >
-      <div className="flex items-center justify-end px-4 py-3">
-        <button
-          onClick={toggleToc}
-          className="text-xs font-medium text-fd-muted-foreground hover:text-fd-foreground transition-colors"
-          title="Close table of contents"
-          aria-label="Close table of contents"
-        >
-          Close
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto pb-5">
+      <div className="flex-1 overflow-y-auto pt-4 pb-5">
         <div className="px-4">
           {props.children}
         </div>
+      </div>
+
+      <TocActions />
+    </div>
+  );
+}
+
+function TocActions() {
+  const pathname = usePathname();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyMarkdown = () => {
+    const article = document.querySelector('article');
+    if (!article) return;
+
+    const text = article.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // silently fail
+    });
+  };
+
+  const docsUrl = `https://docs.stack-auth.com${pathname}`;
+
+  return (
+    <div className="border-t border-fd-border px-4 py-3 space-y-2 flex-shrink-0">
+      <div className="flex flex-col gap-0.5">
+        <button
+          onClick={handleCopyMarkdown}
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-md text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50 transition-colors"
+        >
+          <ClipboardCopy className="w-3 h-3 flex-shrink-0" />
+          <span>{copied ? 'Copied!' : 'Copy page'}</span>
+        </button>
+        <a
+          href={docsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-md text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+          <span>Open</span>
+        </a>
+        <a
+          href="/docs/others/mcp-setup"
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-md text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50 transition-colors"
+        >
+          <Plug className="w-3 h-3 flex-shrink-0" />
+          <span>Install MCP</span>
+        </a>
+        <a
+          href="/llms.txt"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-md text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50 transition-colors"
+        >
+          <FileText className="w-3 h-3 flex-shrink-0" />
+          <span>llms.txt</span>
+        </a>
+        <a
+          href="/docs/sdk"
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-md text-fd-muted-foreground hover:text-fd-foreground hover:bg-fd-muted/50 transition-colors"
+        >
+          <Wrench className="w-3 h-3 flex-shrink-0" />
+          <span>Install skill</span>
+        </a>
       </div>
     </div>
   );
@@ -167,20 +212,23 @@ export function TOCItems({ items }: { items: TOCItemType[] }) {
   if (visibleItems.length === 0) return <TocItemsEmpty />;
 
   return (
-    <>
-      <div
-        ref={containerRef}
-        className="flex flex-col gap-1.5"
-      >
+    <div ref={containerRef} className="relative">
+      {/* Timeline line */}
+      <div className="absolute left-[7px] top-0 bottom-0 w-px bg-fd-border" />
+
+      <div className="flex flex-col">
         {visibleItems.map((item) => (
-          <TOCItem key={item.url} item={item} />
+          <TimelineTOCItem key={item.url} item={item} />
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
-function TOCItem({ item }: { item: TOCItemType }) {
+function TimelineTOCItem({ item }: { item: TOCItemType }) {
+  const active = Primitive.useActiveAnchors();
+  const isActive = active.includes(item.url.slice(1));
+
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (typeof window === 'undefined') return;
 
@@ -199,7 +247,7 @@ function TOCItem({ item }: { item: TOCItemType }) {
         try {
           window.history.replaceState(null, '', `#${targetId}`);
         } catch {
-          // no-op if history manipulation is not allowed
+          // no-op
         }
       });
     }).catch(() => {
@@ -207,21 +255,39 @@ function TOCItem({ item }: { item: TOCItemType }) {
     });
   };
 
+  const indent = item.depth <= 2 ? 0 : item.depth === 3 ? 12 : 20;
+
   return (
-    <Primitive.TOCItem
+    <a
       href={item.url}
       onClick={handleClick}
       className={cn(
-        'relative py-1.5 text-sm text-fd-muted-foreground transition-colors [overflow-wrap:anywhere]',
-        'hover:text-fd-foreground',
-        'data-[active=true]:text-fd-foreground data-[active=true]:font-semibold',
-        item.depth <= 2 && 'ps-3',
-        item.depth === 3 && 'ps-6',
-        item.depth >= 4 && 'ps-8',
+        'group relative flex items-start gap-3 py-1.5 text-sm transition-colors [overflow-wrap:anywhere]',
+        isActive
+          ? 'text-fd-primary font-medium'
+          : 'text-fd-muted-foreground hover:text-fd-foreground',
       )}
+      style={{ paddingLeft: indent }}
     >
-      {item.title}
-    </Primitive.TOCItem>
+      {/* Timeline dot */}
+      <div className="relative flex-shrink-0 mt-[6px]">
+        <div
+          className={cn(
+            'w-[15px] h-[15px] rounded-full border-2 transition-all duration-200',
+            isActive
+              ? 'border-fd-primary bg-fd-primary scale-110'
+              : 'border-fd-border bg-fd-background group-hover:border-fd-muted-foreground',
+          )}
+        >
+          {isActive && (
+            <div className="absolute inset-[3px] rounded-full bg-fd-background" />
+          )}
+        </div>
+      </div>
+
+      {/* Text */}
+      <span className="flex-1">{item.title}</span>
+    </a>
   );
 }
 

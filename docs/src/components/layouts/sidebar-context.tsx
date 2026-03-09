@@ -49,7 +49,7 @@ export function useSidebar() {
 }
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  const [activeSidebar, setActiveSidebar] = useState<SidebarType>(null);
+  const [activeSidebar, setActiveSidebar] = useState<SidebarType>('toc');
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [isFullPage, setIsFullPage] = useState(false);
   const [isMainSidebarCollapsed, setIsMainSidebarCollapsed] = useState(false);
@@ -67,10 +67,10 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     // Priority: saved state > default TOC on large screens > nothing
     if (savedChat === 'true') {
       setActiveSidebar('chat');
-    } else if (savedToc === 'true') {
+    } else if (isLargeScreen) {
+      // Always default to TOC on large screens (zen mode controls hiding it)
       setActiveSidebar('toc');
-    } else if (isLargeScreen && savedToc !== 'false') {
-      // Default to TOC on large screens if no preference is saved
+    } else if (savedToc === 'true') {
       setActiveSidebar('toc');
     }
 

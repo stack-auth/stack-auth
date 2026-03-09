@@ -60,25 +60,25 @@ body.main-sidebar-collapsed .api-sidebar {
 }
 
 /* TOC open state - only when chat is not open */
-body.toc-open:not(.chat-open):not(.home-page) {
+body.toc-open:not(.chat-open):not(.home-page) #nd-docs-layout {
   padding-right: 16rem; /* same as w-64 */
   transition: padding-right 300ms ease-out;
 }
 
 /* Chat open state - overrides everything */
-body.chat-open:not(.home-page) {
+body.chat-open:not(.home-page) #nd-docs-layout {
   padding-right: 24rem; /* 384px */
   transition: padding-right 300ms ease-out;
 }
 
 /* Auth open state - for API pages */
-body.auth-open:not(.home-page) {
+body.auth-open:not(.home-page) #nd-docs-layout {
   padding-right: 24rem; /* 384px (auth panel is 384px wide) */
   transition: padding-right 300ms ease-out;
 }
 
 /* Default transition for docs pages */
-body:not(.home-page) {
+body:not(.home-page) #nd-docs-layout {
   transition: padding-right 300ms ease-out;
 }
 
