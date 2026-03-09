@@ -53,6 +53,41 @@ describe("local emulator project endpoint", () => {
     }
   });
 
+  it.runIf(isLocalEmulator)("rejects non-existent config files", async ({ expect }) => {
+    const nonExistentPath = `/tmp/${randomUUID()}/stack.config.ts`;
+
+    const response = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+      accessType: "admin",
+      method: "POST",
+      body: {
+        absolute_file_path: nonExistentPath,
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toContain("Config file not found");
+  });
+
+  it.runIf(isLocalEmulator)("writes default config for empty files", async ({ expect }) => {
+    const filePath = `/tmp/${randomUUID()}/stack.config.ts`;
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, "", "utf-8");
+
+    const response = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+      accessType: "admin",
+      method: "POST",
+      body: {
+        absolute_file_path: filePath,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body.branch_config_override_string)).toEqual({});
+
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    expect(fileContent).toContain("export const config");
+  });
+
   it.runIf(isLocalEmulator)("creates path-based projects, reuses mappings, and returns valid credentials", async ({ expect }) => {
     const pathA = await createTempConfigFile();
     const pathB = await createTempConfigFile();
