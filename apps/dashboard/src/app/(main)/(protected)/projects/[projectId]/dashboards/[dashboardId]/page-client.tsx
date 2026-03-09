@@ -23,6 +23,8 @@ import {
 } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { getPublicEnvVar } from "@/lib/env";
+import { useUser } from "@stackframe/stack";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
@@ -39,6 +41,8 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const projectId = useProjectId();
+  const currentUser = useUser({ or: "redirect" });
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? "";
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const router = useRouter();
@@ -74,6 +78,8 @@ export default function PageClient() {
       adminApp={adminApp}
       updateConfig={updateConfig}
       router={router}
+      currentUser={currentUser}
+      backendBaseUrl={backendBaseUrl}
     />
   );
 }
@@ -86,6 +92,8 @@ function DashboardDetailContent({
   adminApp,
   updateConfig,
   router,
+  currentUser,
+  backendBaseUrl,
 }: {
   dashboardId: string,
   displayName: string,
@@ -94,6 +102,8 @@ function DashboardDetailContent({
   adminApp: ReturnType<typeof useAdminApp>,
   updateConfig: ReturnType<typeof useUpdateConfig>,
   router: ReturnType<typeof useRouter>,
+  currentUser: NonNullable<ReturnType<typeof useUser>>,
+  backendBaseUrl: string,
 }) {
   const composerPlaceholder = useTypingPlaceholder(
     "Create a dashboard about ",
@@ -342,7 +352,7 @@ function DashboardDetailContent({
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(adminApp, currentTsxSource, handleCodeUpdate, editingWidgetId, addingWidgetPosition)}
+                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, adminApp, currentTsxSource, handleCodeUpdate, currentUser, editingWidgetId, addingWidgetPosition)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
                   useOffWhiteLightMode

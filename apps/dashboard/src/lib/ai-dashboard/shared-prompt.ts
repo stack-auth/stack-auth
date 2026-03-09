@@ -1,10 +1,10 @@
 import { BUNDLED_DASHBOARD_UI_TYPES, BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
-import { StackAdminApp } from "@stackframe/stack";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 
 export async function selectRelevantFiles(
   prompt: string,
-  adminApp: StackAdminApp,
+  backendBaseUrl: string,
+  currentUser?: CurrentUser,
 ): Promise<string[]> {
   const availableFiles = BUNDLED_TYPE_DEFINITIONS.map((f: { path: string }) => f.path);
 
@@ -27,19 +27,25 @@ Respond with ONLY a JSON object: { "selectedFiles": ["file1.ts", "file2.ts"] }
 No markdown, no explanation — just the JSON.`;
 
   try {
-    const result = await adminApp.sendAiQuery({
-      quality: "dumb",
-      speed: "fast",
-      systemPrompt: "command-center-ask-ai",
-      tools: [],
-      messages: [{
-        role: "user",
-        content: `${systemPromptText}\n\nDashboard request: "${prompt}"\n\nWhich type definition files do you need? When uncertain, err on the side of INCLUDING more files rather than fewer.`,
-      }],
+    const authHeaders = await buildStackAuthHeaders(currentUser);
+    const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders },
+      body: JSON.stringify({
+        quality: "dumb",
+        speed: "fast",
+        systemPrompt: "command-center-ask-ai",
+        tools: [],
+        messages: [{
+          role: "user",
+          content: `${systemPromptText}\n\nDashboard request: "${prompt}"\n\nWhich type definition files do you need? When uncertain, err on the side of INCLUDING more files rather than fewer.`,
+        }],
+      }),
     });
 
-    const content: ChatContent = Array.isArray(result.content) ? result.content : [];
-    const textBlock = content.find((b): b is Extract<ChatContent[number], { type: "text" }> => b.type === "text");
+    const result = await response.json() as { content?: Array<{ type: string, text?: string }> };
+    const content = Array.isArray(result.content) ? result.content : [];
+    const textBlock = content.find((b) => b.type === "text");
     const responseText = textBlock?.text;
 
     if (!responseText) {
@@ -94,14 +100,15 @@ function extractUserPromptText(messages: Array<{ role: string, content: unknown 
 }
 
 export async function buildDashboardMessages(
-  adminApp: StackAdminApp,
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
   messages: Array<{ role: string, content: unknown }>,
   currentSource?: string,
   editingWidgetId?: string,
   addingWidgetPosition?: { x: number, y: number, width: number, height: number },
 ): Promise<Array<{ role: string, content: string }>> {
   const promptForFileSelection = extractUserPromptText(messages);
-  const selectedFiles = await selectRelevantFiles(promptForFileSelection, adminApp);
+  const selectedFiles = await selectRelevantFiles(promptForFileSelection, backendBaseUrl, currentUser);
   const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
 
   const widgetEditContext = editingWidgetId != null

@@ -6,15 +6,20 @@ import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouterConfirm } from "@/components/router";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
-import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
+import { ToolCallContent, applyWysiwygEdit, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
+import { useUser } from "@stackframe/stack";
+import { getPublicEnvVar } from "@/lib/env";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
+  const currentUser = useUser({ or: "redirect" });
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const { setNeedConfirm } = useRouterConfirm();
   const [saveAlert, setSaveAlert] = useState<{
     variant: "destructive" | "success",
@@ -92,7 +97,8 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
-    const result = await stackAdminApp.applyWysiwygEdit({
+    const result = await applyWysiwygEdit(backendBaseUrl, {
+      currentUser,
       sourceType: 'draft',
       sourceCode: currentCode,
       oldText: data.oldText,
@@ -103,7 +109,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
     });
     setCurrentCode(result.updatedSource);
     return result.updatedSource;
-  }, [stackAdminApp, currentCode]);
+  }, [backendBaseUrl, currentCode, currentUser]);
 
   return (
     <AppEnabledGuard appId="emails">
@@ -162,7 +168,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
               chatComponent={
                 <AssistantChat
                   historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-                  chatAdapter={createChatAdapter(stackAdminApp, "email-draft", handleToolUpdate, () => currentCode)}
+                  chatAdapter={createChatAdapter(backendBaseUrl, "email-draft", handleToolUpdate, () => currentCode, currentUser)}
                   toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                   useOffWhiteLightMode
                 />

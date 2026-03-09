@@ -337,8 +337,13 @@ TECHNICAL RULES:
 - YOU MUST WRITE A FULL REACT COMPONENT WHEN CALLING THE createEmailTemplate TOOL.
 - Always include a <Subject />.
 - Do NOT include <Html>, <Head>, <Body>, or <Preview> components (the theme provides those).
-- Use only tailwind classes for styling.
+- Use only tailwind classes for styling. Do NOT use Tailwind classes that require style injection (e.g., hover:, focus:, active:, dark:, group-hover:, media queries). Only use inlineable Tailwind utilities.
 - Export 'EmailTemplate' component.
+- Import email components only from \`@react-email/components\` and Stack Auth helpers from \`@stackframe/emails\` (Subject, NotificationCategory, Props).
+- EVERY component you use in JSX must be explicitly imported. If you use \`<Hr />\`, import \`Hr\`. Never use a component without importing it.
+- YOU MUST call the \`createEmailTemplate\` tool with the complete code. NEVER output code directly in the chat.
+- Output raw TSX source code — NEVER HTML-encode angle brackets. Write \`<Container>\`, not \`&lt;Container&gt;\`.
+- NEVER use bare & in JSX text content — it is invalid JSX and causes a build error. Use \`&amp;\` or \`{"&"}\` instead.
 
 The current source code will be provided in the conversation messages.
 `,

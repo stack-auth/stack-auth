@@ -7,7 +7,8 @@ import {
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -50,14 +51,27 @@ function sanitizeGeneratedCode(code: string): string {
   return result;
 }
 
-function createGenericChatAdapter(options: {
-  adminApp: StackAdminApp,
-  systemPrompt: string,
-  tools: string[],
-  buildContextMessages: (formattedMessages: Array<{ role: string, content: unknown }>) => Promise<Array<{ role: string, content: unknown }>>,
+function stripCodeFences(code: string): string {
+  if (!code.startsWith("```")) return code;
+  const lines = code.split("\n");
+  lines.shift();
+  if (lines[lines.length - 1]?.trim() === "```") lines.pop();
+  return lines.join("\n");
+}
+
+const CONTEXT_MAP = {
+  "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
+  "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
+  "email-draft": { systemPrompt: "email-assistant-draft", tools: ["create-email-draft"] },
+} as const;
+
+export function createChatAdapter(
+  backendBaseUrl: string,
+  contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void,
-  errorTag: string,
-}): ChatModelAdapter {
+  getCurrentSource?: () => string,
+  currentUser?: CurrentUser,
+): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }: ChatModelRunOptions) {
       try {
@@ -69,15 +83,34 @@ function createGenericChatAdapter(options: {
           }
         }
 
-        const contextMessages = await options.buildContextMessages(formattedMessages);
+        const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
-        const result = await options.adminApp.sendAiQuery({
-          systemPrompt: options.systemPrompt,
-          tools: options.tools,
-          messages: [...contextMessages, ...formattedMessages],
+        const contextMessages: Array<{ role: string, content: unknown }> = [];
+        if (getCurrentSource) {
+          const src = getCurrentSource();
+          if (src.length > 0) {
+            contextMessages.push({ role: "user", content: `Here is the current source:\n\`\`\`tsx\n${src}\n\`\`\`` });
+            contextMessages.push({ role: "assistant", content: "Got it, I have the current source code." });
+          }
+        }
+
+        const authHeaders = await buildStackAuthHeaders(currentUser);
+
+        const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...authHeaders },
+          signal: abortSignal,
+          body: JSON.stringify({
+            systemPrompt,
+            tools: [...tools],
+            messages: [...contextMessages, ...formattedMessages],
+            quality: "smartest",
+            speed: "fast",
+          }),
         });
 
-        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
+        const json = await response.json() as { content?: ChatContent };
+        const content: ChatContent = Array.isArray(json.content) ? json.content : [];
 
         const sanitizedContent: ChatContent = content.map((item) => {
           if (item.type === "tool-call" && typeof item.args?.content === "string") {
@@ -88,7 +121,7 @@ function createGenericChatAdapter(options: {
 
         const toolCall = sanitizedContent.find(isToolCall);
         if (toolCall) {
-          options.onToolCall(toolCall);
+          onToolCall(toolCall);
         }
 
         return { content: sanitizedContent };
@@ -96,66 +129,163 @@ function createGenericChatAdapter(options: {
         if (abortSignal.aborted) {
           return {};
         }
-        captureError(options.errorTag, error);
         throw new Error("Failed to get AI response. Please try again.");
       }
     },
   };
 }
 
-const EMAIL_CONTEXT_MAP = {
-  "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
-  "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
-  "email-draft": { systemPrompt: "email-assistant-draft", tools: ["create-email-draft"] },
-} as const;
-
-export function createChatAdapter(
-  adminApp: StackAdminApp,
-  contextType: "email-theme" | "email-template" | "email-draft",
-  onToolCall: (toolCall: ToolCallContent) => void,
-  getCurrentSource?: () => string,
-): ChatModelAdapter {
-  const { systemPrompt, tools } = EMAIL_CONTEXT_MAP[contextType];
-  return createGenericChatAdapter({
-    adminApp,
-    systemPrompt,
-    tools: [...tools],
-    buildContextMessages: async () => {
-      const currentSource = getCurrentSource?.() ?? "";
-      if (!currentSource) return [];
-      return [
-        { role: "user", content: `Here is the current source:\n\`\`\`tsx\n${currentSource}\n\`\`\`` },
-        { role: "assistant", content: "Got it. What would you like to change?" },
-      ];
-    },
-    onToolCall,
-    errorTag: "chat-adapter-email",
-  });
-}
-
 export function createDashboardChatAdapter(
+  backendBaseUrl: string,
   adminApp: StackAdminApp,
   currentTsxSource: string,
   onToolCall: (toolCall: ToolCallContent) => void,
+  currentUser?: CurrentUser,
   editingWidgetId?: string | null,
   addingWidgetPosition?: { x: number, y: number, width: number, height: number } | null,
 ): ChatModelAdapter {
-  return createGenericChatAdapter({
-    adminApp,
-    systemPrompt: "create-dashboard",
-    tools: ["update-dashboard"],
-    buildContextMessages: async (formattedMessages) => {
-      return await buildDashboardMessages(
-        adminApp,
-        formattedMessages,
-        currentTsxSource.length > 0 ? currentTsxSource : undefined,
-        editingWidgetId ?? undefined,
-        addingWidgetPosition ?? undefined,
-      );
+  return {
+    async run({ messages, abortSignal }: ChatModelRunOptions) {
+      try {
+        const formattedMessages: Array<{ role: string, content: unknown }> = [];
+        for (const msg of messages) {
+          const textContent = msg.content.filter(c => !isToolCall(c));
+          if (textContent.length > 0) {
+            formattedMessages.push({ role: msg.role, content: textContent });
+          }
+        }
+
+        const contextMessages = await buildDashboardMessages(
+          backendBaseUrl,
+          currentUser,
+          formattedMessages,
+          currentTsxSource,
+          editingWidgetId ?? undefined,
+          addingWidgetPosition ?? undefined,
+        );
+
+        const authHeaders = await buildStackAuthHeaders(currentUser);
+
+        const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+          method: "POST",
+          headers: { "content-type": "application/json", ...authHeaders },
+          signal: abortSignal,
+          body: JSON.stringify({
+            systemPrompt: "create-dashboard",
+            tools: ["update-dashboard"],
+            messages: [...contextMessages, ...formattedMessages],
+            quality: "smartest",
+            speed: "fast",
+          }),
+        });
+
+        const json = await response.json() as { content?: ChatContent };
+        const content: ChatContent = Array.isArray(json.content) ? json.content : [];
+
+        const sanitizedContent: ChatContent = content.map((item) => {
+          if (item.type === "tool-call" && typeof item.args?.content === "string") {
+            return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
+          }
+          return item;
+        });
+
+        const toolCall = sanitizedContent.find(isToolCall);
+        if (toolCall) {
+          onToolCall(toolCall);
+        }
+
+        return { content: sanitizedContent };
+      } catch (error) {
+        if (abortSignal.aborted) {
+          return {};
+        }
+        throw new Error("Failed to get AI response. Please try again.");
+      }
     },
-    onToolCall,
-    errorTag: "chat-adapter-dashboard",
+  };
+}
+
+export async function applyWysiwygEdit(
+  backendBaseUrl: string,
+  options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: EditableMetadata,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+    currentUser?: CurrentUser,
+  },
+): Promise<{ updatedSource: string }> {
+  if (options.oldText === options.newText) {
+    return { updatedSource: options.sourceCode };
+  }
+
+  const { sourceCode, oldText, newText, metadata, domPath, htmlContext } = options;
+
+  const userPrompt = `
+## Source Code to Edit
+\`\`\`tsx
+${sourceCode}
+\`\`\`
+
+## Edit Request
+- **Old text:** "${oldText}"
+- **New text:** "${newText}"
+
+## Location Information
+- **Line:** ${metadata.loc.line}
+- **Column:** ${metadata.loc.column}
+- **JSX Path:** ${metadata.jsxPath.join(" > ")}
+- **Parent Element:** <${metadata.parentElement.tagName}>
+- **Sibling Index:** ${metadata.siblingIndex}
+- **Occurrence:** ${metadata.occurrenceIndex} of ${metadata.occurrenceCount}
+
+## Source Context (lines around the text)
+Before:
+\`\`\`
+${metadata.sourceContext.before}
+\`\`\`
+
+After:
+\`\`\`
+${metadata.sourceContext.after}
+\`\`\`
+
+## Runtime DOM Path (for disambiguation)
+${domPath.map((p, i) => `${i + 1}. <${p.tagName}> (index: ${p.index})`).join("\n")}
+
+## Rendered HTML Context
+\`\`\`html
+${htmlContext.slice(0, 500)}
+\`\`\`
+
+Please update the source code to change "${oldText}" to "${newText}" at the specified location. Return ONLY the complete updated source code.
+`;
+
+  const { currentUser } = options;
+  const authHeaders = await buildStackAuthHeaders(currentUser);
+
+  const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders },
+    body: JSON.stringify({
+      quality: "smart",
+      speed: "fast",
+      systemPrompt: "wysiwyg-edit",
+      tools: [],
+      messages: [{ role: "user", content: userPrompt }],
+    }),
   });
+
+  const json = await response.json() as { content?: Array<{ type: string, text?: string }> };
+  const textBlock = Array.isArray(json.content)
+    ? json.content.find((b) => b.type === "text" && b.text)
+    : undefined;
+  const updatedSource = stripCodeFences(textBlock?.text?.trim() ?? sourceCode);
+
+  return { updatedSource };
 }
 
 export function createHistoryAdapter(

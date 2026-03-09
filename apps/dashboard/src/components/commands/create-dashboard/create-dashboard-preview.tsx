@@ -5,12 +5,16 @@ import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
+import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { useUpdateConfig } from "@/lib/config-update";
+import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { useUser } from "@stackframe/stack";
 import { memo, useCallback, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
@@ -37,6 +41,8 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 }: CmdKPreviewProps) {
   const projectId = useProjectId();
   const adminApp = useAdminApp(projectId);
+  const currentUser = useUser({ or: "redirect" });
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? "";
   const updateConfig = useUpdateConfig();
   const router = useRouter();
   const prompt = query.trim();
@@ -56,13 +62,19 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
     try {
       const userMessages: Array<{ role: string, content: string }> = [{ role: "user", content: prompt }];
-      const contextMessages = await buildDashboardMessages(adminApp, userMessages);
+      const contextMessages = await buildDashboardMessages(backendBaseUrl, currentUser, userMessages);
 
-      const result = await adminApp.sendAiQuery({
-        systemPrompt: "create-dashboard",
-        tools: ["update-dashboard"],
-        messages: [...contextMessages, ...userMessages],
+      const authHeaders = await buildStackAuthHeaders(currentUser);
+      const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          systemPrompt: "create-dashboard",
+          tools: ["update-dashboard"],
+          messages: [...contextMessages, ...userMessages],
+        }),
       });
+      const result = await response.json() as { content?: ChatContent };
 
       const contentArr = Array.isArray(result.content) ? result.content : [];
       const toolCall = contentArr.find(
@@ -91,7 +103,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
       setState("error");
       setErrorText("Failed to generate dashboard. Please try again.");
     }
-  }, [projectId, prompt, adminApp]);
+  }, [projectId, prompt, currentUser, backendBaseUrl]);
 
   const handleSave = useCallback(async () => {
     if (!artifact) return;

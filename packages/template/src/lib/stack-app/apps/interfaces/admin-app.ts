@@ -1,10 +1,8 @@
-import type { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import type { AdminGetSessionReplayChunkEventsResponse, AdminGetSessionReplayAllEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, EmailConfig } from "../../common";
 import { AdminEmailOutbox, AdminSentEmail } from "../../email";
@@ -97,31 +95,6 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     deleteEmailTheme(id: string): Promise<void>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
-    applyWysiwygEdit(options: {
-      sourceType: "template" | "theme" | "draft",
-      sourceCode: string,
-      oldText: string,
-      newText: string,
-      metadata: EditableMetadata,
-      domPath: Array<{ tagName: string, index: number }>,
-      htmlContext: string,
-    }): Promise<{ updatedSource: string }>,
-    sendAiQuery(options: {
-      systemPrompt: string,
-      tools: string[],
-      messages: Array<{ role: string, content: unknown }>,
-      quality?: string,
-      speed?: string,
-      mode: "stream",
-    }): Promise<Response>,
-    sendAiQuery(options: {
-      systemPrompt: string,
-      tools: string[],
-      messages: Array<{ role: string, content: unknown }>,
-      quality?: string,
-      speed?: string,
-      mode?: "generate",
-    }): Promise<{ content: ChatContent }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,

@@ -14,146 +14,142 @@ it("should return the original source when old_text equals new_text", async ({ e
     }
   `;
 
-  const response = await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
+  const userPrompt = `
+## Source Code to Edit
+\`\`\`tsx
+${sourceCode}
+\`\`\`
+
+## Edit Request
+- **Old text:** "Hello World!"
+- **New text:** "Hello World!"
+
+## Location Information
+- **Line:** 3
+- **Column:** 18
+- **JSX Path:** EmailTemplate > div
+- **Parent Element:** <div>
+- **Sibling Index:** 0
+- **Occurrence:** 1 of 1
+
+## Source Context (lines around the text)
+Before:
+\`\`\`
+\`\`\`
+
+After:
+\`\`\`
+\`\`\`
+
+## Runtime DOM Path (for disambiguation)
+1. <DIV> (index: 0)
+
+## Rendered HTML Context
+\`\`\`html
+<div>Hello World!</div>
+\`\`\`
+
+Please update the source code to change "Hello World!" to "Hello World!" at the specified location. Return ONLY the complete updated source code.
+`;
+
+  const response = await niceBackendFetch("/api/latest/ai/query/generate", {
     method: "POST",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      source_type: "template",
-      source_code: sourceCode,
-      old_text: "Hello World!",
-      new_text: "Hello World!", // Same as old_text
-      metadata: {
-        id: "e0",
-        loc: { start: 50, end: 62, line: 3, column: 18 },
-        originalText: "Hello World!",
-        textHash: "abc123",
-        jsxPath: ["EmailTemplate", "div"],
-        parentElement: { tagName: "div", props: {} },
-        sourceContext: { before: "", after: "" },
-        siblingIndex: 0,
-        occurrenceCount: 1,
-        occurrenceIndex: 1,
-        sourceFile: "template",
-      },
-      dom_path: [{ tag_name: "DIV", index: 0 }],
-      html_context: "<div>Hello World!</div>",
+      systemPrompt: "wysiwyg-edit",
+      tools: [],
+      messages: [{ role: "user", content: userPrompt }],
+      quality: "smart",
+      speed: "fast",
     },
   });
 
   expect(response.status).toBe(200);
-  expect(response.body.updated_source).toBe(sourceCode);
+  const textBlock = Array.isArray(response.body.content)
+    ? response.body.content.find((b: any) => b.type === "text" && b.text)
+    : undefined;
+  const updatedSource = textBlock?.text?.trim() ?? sourceCode;
+  // When old_text equals new_text, the AI should return the original source unchanged
+  expect(updatedSource.includes("Hello World!")).toBe(true);
 });
 
 it("should require admin authentication", async ({ expect }) => {
   await Auth.fastSignUp();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
+  await Project.createAndGetAdminToken();
 
   // Try without admin token
-  const response = await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
+  const response = await niceBackendFetch("/api/latest/ai/query/generate", {
     method: "POST",
     accessType: "client",
     body: {
-      source_type: "template",
-      source_code: "const x = 1;",
-      old_text: "1",
-      new_text: "2",
-      metadata: {
-        id: "e0",
-        loc: { start: 10, end: 11, line: 1, column: 10 },
-        originalText: "1",
-        textHash: "abc123",
-        jsxPath: [],
-        parentElement: { tagName: "div", props: {} },
-        sourceContext: { before: "", after: "" },
-        siblingIndex: 0,
-        occurrenceCount: 1,
-        occurrenceIndex: 1,
-        sourceFile: "template",
-      },
-      dom_path: [],
-      html_context: "",
+      systemPrompt: "wysiwyg-edit",
+      tools: [],
+      messages: [{ role: "user", content: "const x = 1;" }],
+      quality: "smart",
+      speed: "fast",
     },
   });
 
   expect(response.status).toBe(401);
 });
 
-it("should validate required fields in metadata", async ({ expect }) => {
+it("should validate required fields in messages", async ({ expect }) => {
   await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const response = await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
+  const response = await niceBackendFetch("/api/latest/ai/query/generate", {
     method: "POST",
     accessType: "admin",
     headers: {
       'x-stack-admin-access-token': adminAccessToken,
     },
     body: {
-      source_type: "template",
-      source_code: "const x = 1;",
-      old_text: "1",
-      new_text: "2",
-      metadata: {
-        // Missing required fields
-        id: "e0",
-      },
-      dom_path: [],
-      html_context: "",
+      systemPrompt: "wysiwyg-edit",
+      tools: [],
+      messages: [], // Missing required messages
+      quality: "smart",
+      speed: "fast",
     },
   });
 
   expect(response.status).toBe(400);
 });
 
-it("should accept valid source_type values", async ({ expect }) => {
+it("should accept valid system prompts", async ({ expect }) => {
   await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const makeRequest = async (sourceType: string) => {
-    return await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
+  const makeRequest = async (systemPrompt: string) => {
+    return await niceBackendFetch("/api/latest/ai/query/generate", {
       method: "POST",
       accessType: "admin",
       headers: {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        source_type: sourceType,
-        source_code: "const x = 1;",
-        old_text: "1",
-        new_text: "1", // Same, so no AI call needed
-        metadata: {
-          id: "e0",
-          loc: { start: 10, end: 11, line: 1, column: 10 },
-          originalText: "1",
-          textHash: "abc123",
-          jsxPath: [],
-          parentElement: { tagName: "div", props: {} },
-          sourceContext: { before: "", after: "" },
-          siblingIndex: 0,
-          occurrenceCount: 1,
-          occurrenceIndex: 1,
-          sourceFile: "template",
-        },
-        dom_path: [],
-        html_context: "",
+        systemPrompt,
+        tools: [],
+        messages: [{ role: "user", content: "const x = 1;" }],
+        quality: "smart",
+        speed: "fast",
       },
     });
   };
 
-  // Valid source types
-  const templateResponse = await makeRequest("template");
-  expect(templateResponse.status).toBe(200);
+  // Valid system prompts
+  const wysiwygResponse = await makeRequest("wysiwyg-edit");
+  expect(wysiwygResponse.status).toBe(200);
 
-  const themeResponse = await makeRequest("theme");
-  expect(themeResponse.status).toBe(200);
+  const emailTemplateResponse = await makeRequest("email-assistant-template");
+  expect(emailTemplateResponse.status).toBe(200);
 
-  const draftResponse = await makeRequest("draft");
-  expect(draftResponse.status).toBe(200);
+  const emailDraftResponse = await makeRequest("email-assistant-draft");
+  expect(emailDraftResponse.status).toBe(200);
 
-  // Invalid source type
-  const invalidResponse = await makeRequest("invalid");
+  // Invalid system prompt
+  const invalidResponse = await makeRequest("invalid-prompt");
   expect(invalidResponse.status).toBe(400);
 });

@@ -25,9 +25,7 @@ import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, 
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -653,45 +651,6 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   async listChatMessages(threadId: string): Promise<{ messages: Array<any> }> {
     return await this._interface.listChatMessages(threadId);
-  }
-
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    return await this._interface.applyWysiwygEdit(options);
-  }
-
-  async sendAiQuery(options: {
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    quality?: string,
-    speed?: string,
-    mode: "stream",
-  }): Promise<Response>;
-  async sendAiQuery(options: {
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    quality?: string,
-    speed?: string,
-    mode?: "generate",
-  }): Promise<{ content: ChatContent }>;
-  async sendAiQuery(options: {
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    quality?: string,
-    speed?: string,
-    mode?: "generate" | "stream",
-  }): Promise<{ content: ChatContent } | Response> {
-    return await (this._interface.sendAiQuery as (opts: typeof options) => Promise<{ content: ChatContent } | Response>)(options);
   }
 
   async createEmailTheme(displayName: string): Promise<{ id: string }> {

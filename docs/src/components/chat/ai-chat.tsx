@@ -1,6 +1,7 @@
 'use client';
 
 import { useChat, type UIMessage } from '@ai-sdk/react';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { DefaultChatTransport, type DynamicToolUIPart } from 'ai';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
@@ -350,6 +351,7 @@ export function AIChatDrawer() {
   const height = isHomePage && isScrolled ? 'h-[calc(100vh-1.5rem)]' : 'h-[calc(100vh-1.5rem)]';
 
   const [input, setInput] = useState('');
+  const apiBaseUrl = process.env.NEXT_PUBLIC_STACK_API_URL ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 
   const {
     messages,
@@ -357,7 +359,15 @@ export function AIChatDrawer() {
     status,
     error,
   } = useChat({
-    transport: new DefaultChatTransport({ api: '/api/chat' }),
+    transport: new DefaultChatTransport({
+      api: `${apiBaseUrl}/api/latest/ai/query/stream`,
+      body: {
+        systemPrompt: "docs-ask-ai",
+        tools: ["docs"],
+        quality: "smart",
+        speed: "fast",
+      },
+    }),
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
