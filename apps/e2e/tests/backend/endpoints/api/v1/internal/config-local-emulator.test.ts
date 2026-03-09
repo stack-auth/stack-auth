@@ -1,4 +1,6 @@
 import { randomUUID } from "crypto";
+import fs from "fs/promises";
+import path from "path";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
@@ -8,11 +10,15 @@ const blockedMessage = "cannot be changed in the local emulator";
 const localEmulatorProjectEndpoint = "/api/v1/internal/local-emulator/project";
 
 async function switchToLocalEmulatorProject() {
+  const filePath = `/tmp/${randomUUID()}/stack.config.ts`;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "export const config = {};\n", "utf-8");
+
   const response = await niceBackendFetch(localEmulatorProjectEndpoint, {
     method: "POST",
     accessType: "admin",
     body: {
-      absolute_file_path: `/tmp/${randomUUID()}/stack.config.ts`,
+      absolute_file_path: filePath,
     },
   });
   if (response.status !== 200) {

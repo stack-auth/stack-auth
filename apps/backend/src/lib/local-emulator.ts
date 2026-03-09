@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import { createJiti } from "jiti";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
@@ -44,23 +44,27 @@ export async function getLocalEmulatorFilePath(projectId: string): Promise<strin
 }
 
 export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
+  let content: string;
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    const jiti = createJiti(import.meta.url, { cache: false });
-    const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
-    const config = mod.config;
-    if (!isValidConfig(config)) {
-      captureError("readConfigFromFile", new Error(`Invalid config in ${filePath}`));
-      return {};
+    content = await fs.readFile(filePath, "utf-8");
+  } catch (e: any) {
+    if (e?.code === "ENOENT") {
+      throw new StackAssertionError(`Config file not found: ${filePath}`, { cause: e });
     }
-    return config;
-  } catch (e) {
-    captureError("readConfigFromFile", e instanceof Error ? e : new Error(String(e)));
-    return {};
+    throw e;
   }
+  const jiti = createJiti(import.meta.url, { cache: false });
+  const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
+  const config = mod.config;
+  if (!isValidConfig(config)) {
+    throw new StackAssertionError(`Invalid config in ${filePath}`);
+  }
+  return config;
 }
 
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
+  const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+  await fs.mkdir(dir, { recursive: true });
   const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
   await fs.writeFile(filePath, content, "utf-8");
 }

@@ -1,4 +1,6 @@
 import { randomUUID } from "crypto";
+import fs from "fs/promises";
+import path from "path";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
@@ -6,6 +8,13 @@ import { backendContext, niceBackendFetch } from "../../../../backend-helpers";
 const LOCAL_EMULATOR_PROJECT_ENDPOINT = "/api/v1/internal/local-emulator/project";
 const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
 const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+
+async function createTempConfigFile(): Promise<string> {
+  const filePath = `/tmp/${randomUUID()}/stack.config.ts`;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, "export const config = {};\n", "utf-8");
+  return filePath;
+}
 
 describe("local emulator project endpoint", () => {
   it("returns a clear error when local emulator mode is disabled", async ({ expect }) => {
@@ -45,8 +54,8 @@ describe("local emulator project endpoint", () => {
   });
 
   it.runIf(isLocalEmulator)("creates path-based projects, reuses mappings, and returns valid credentials", async ({ expect }) => {
-    const pathA = `/tmp/${randomUUID()}/stack.config.ts`;
-    const pathB = `/tmp/${randomUUID()}/stack.config.ts`;
+    const pathA = await createTempConfigFile();
+    const pathB = await createTempConfigFile();
 
     const responseA1 = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
       accessType: "admin",
@@ -59,7 +68,7 @@ describe("local emulator project endpoint", () => {
     expect(responseA1.body.project_id).toEqual(expect.any(String));
     expect(responseA1.body.secret_server_key).toMatch(/^ssk_/);
     expect(responseA1.body.super_secret_admin_key).toMatch(/^sak_/);
-    expect(JSON.stringify(JSON.parse(responseA1.body.branch_config_override_string))).toContain(pathA);
+    expect(JSON.parse(responseA1.body.branch_config_override_string)).toEqual({});
 
     const responseA2 = await niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
       accessType: "admin",
@@ -82,7 +91,7 @@ describe("local emulator project endpoint", () => {
     });
     expect(responseB.status).toBe(200);
     expect(responseB.body.project_id).not.toBe(responseA1.body.project_id);
-    expect(JSON.stringify(JSON.parse(responseB.body.branch_config_override_string))).toContain(pathB);
+    expect(JSON.parse(responseB.body.branch_config_override_string)).toEqual({});
 
     backendContext.set({
       projectKeys: {
