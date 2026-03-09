@@ -42,7 +42,7 @@ import {
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
@@ -419,6 +419,9 @@ function UserDetails({ user }: UserDetailsProps) {
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
         <EditableInput value={String(user.riskScores.signUp.bot)} readOnly />
+      </UserInfo>
+      <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
+        <EditableInput value={user.countryCode ?? ""} placeholder="-" readOnly />
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
         <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} readOnly />

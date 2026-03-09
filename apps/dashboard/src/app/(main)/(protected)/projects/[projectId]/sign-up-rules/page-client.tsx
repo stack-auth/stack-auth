@@ -85,6 +85,7 @@ type SignUpRulesTestResult = {
   context: {
     email: string,
     email_domain: string,
+    country_code: string,
     auth_method: 'password' | 'otp' | 'oauth' | 'passkey',
     oauth_provider: string,
     risk_scores: {
@@ -523,6 +524,7 @@ function TestRulesCard({
   stackAdminApp: ReturnType<typeof useAdminApp>,
 }) {
   const [email, setEmail] = useState('');
+  const [countryCode, setCountryCode] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
   const [riskScoreBot, setRiskScoreBot] = useState<number>(0);
@@ -535,9 +537,12 @@ function TestRulesCard({
       {
         method: 'POST',
         body: JSON.stringify({
-          email: email || undefined,
+          email: email === '' ? null : email,
+          country_code: countryCode === '' ? null : countryCode,
           auth_method: authMethod,
-          oauth_provider: authMethod === 'oauth' ? (oauthProvider || undefined) : undefined,
+          oauth_provider: authMethod === 'oauth'
+            ? (oauthProvider === '' ? null : oauthProvider)
+            : null,
           risk_scores: {
             bot: riskScoreBot,
             free_trial_abuse: riskScoreFreeTrialAbuse,
@@ -556,7 +561,7 @@ function TestRulesCard({
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, email, oauthProvider, riskScoreBot, riskScoreFreeTrialAbuse, stackAdminApp]);
+  }, [authMethod, countryCode, email, oauthProvider, riskScoreBot, riskScoreFreeTrialAbuse, stackAdminApp]);
 
   const handleAuthMethodChange = (value: string) => {
     if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
@@ -625,6 +630,16 @@ function TestRulesCard({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="user@company.com"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Country code
+            </Typography>
+            <Input
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
+              placeholder="US"
             />
           </div>
           <div className="space-y-1.5">
@@ -702,6 +717,9 @@ function TestRulesCard({
           </Button>
           <Typography variant="secondary" className="text-xs">
             Simulate a sign-up request to preview which rules trigger.
+          </Typography>
+          <Typography variant="secondary" className="text-xs">
+            Country matching uses best-effort proxy geolocation headers when they are available.
           </Typography>
         </div>
       </div>
@@ -839,6 +857,9 @@ function TestRulesCard({
               </Typography>
               <Typography variant="secondary" className="text-xs">
                 Email domain: {result.context.email_domain || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Country code: {result.context.country_code || "(empty)"}
               </Typography>
               <Typography variant="secondary" className="text-xs">
                 OAuth provider: {result.context.oauth_provider || "(empty)"}

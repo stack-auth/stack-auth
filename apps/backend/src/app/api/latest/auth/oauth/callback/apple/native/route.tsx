@@ -18,7 +18,7 @@ const appleJWKS = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/key
  */
 async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): Promise<{
   sub: string,
-  email?: string,
+  email: string | null,
   emailVerified: boolean,
 }> {
   try {
@@ -29,7 +29,7 @@ async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): 
 
     return {
       sub: payload.sub ?? throwErr("No sub claim in Apple ID token"),
-      email: typeof payload.email === "string" ? payload.email : undefined,
+      email: typeof payload.email === "string" ? payload.email : null,
       emailVerified: payload.email_verified === true || payload.email_verified === "true",
     };
   } catch (error) {
@@ -125,9 +125,14 @@ export const POST = createSmartRouteHandler({
           email: appleUser.email,
           emailVerified: appleUser.emailVerified,
           primaryEmailAuthEnabled,
+          currentUser: null,
+          displayName: null,
+          profileImageUrl: null,
           signUpRuleOptions: {
             authMethod: 'oauth',
             oauthProvider: 'apple',
+            ipAddress: null,
+            countryCode: null,
             // Note: Request context not easily available in native OAuth callback
           },
         });

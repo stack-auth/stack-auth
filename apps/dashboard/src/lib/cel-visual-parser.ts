@@ -8,6 +8,7 @@
  * - email == "value" / email != "value"
  * - email.endsWith("@domain.com")
  * - email.matches("regex")
+ * - countryCode == "US" / countryCode in ["US", "CA"]
  * - emailDomain == "domain.com" / emailDomain in ["d1", "d2"]
  * - authMethod == "password" / authMethod in ["password", "otp"]
  * - oauthProvider == "google" / oauthProvider in ["google", "github"]
@@ -29,6 +30,7 @@ export type ConditionOperator =
 
 export type ConditionField =
   | 'email'
+  | 'countryCode'
   | 'emailDomain'
   | 'authMethod'
   | 'oauthProvider'
@@ -86,8 +88,29 @@ function unescapeCelString(value: string): string {
   return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
 }
 
+function normalizeCountryCodeValue(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {
+  if (condition.field !== 'countryCode') {
+    return condition.value;
+  }
+
+  if (Array.isArray(condition.value)) {
+    return condition.value.map(normalizeCountryCodeValue);
+  }
+
+  if (typeof condition.value === 'number') {
+    return condition.value;
+  }
+
+  return normalizeCountryCodeValue(condition.value);
+}
+
 function conditionToCel(condition: ConditionNode): string {
-  const { field, operator, value } = condition;
+  const { field, operator } = condition;
+  const value = normalizeConditionValue(condition);
   const valueAsNumber = typeof value === 'number' ? value : Number(value);
   const useNumericValue = isNumericField(field) && Number.isFinite(valueAsNumber);
 
@@ -485,4 +508,3 @@ export function createEmptyGroup(operator: 'and' | 'or' = 'and'): GroupNode {
     children: [],
   };
 }
-

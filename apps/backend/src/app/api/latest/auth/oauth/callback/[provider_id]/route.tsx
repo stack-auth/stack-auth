@@ -24,7 +24,7 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
   tenancyId: string,
   providerId: string,
   providerAccountId: string,
-  email?: string | null,
+  email: string | null,
   projectUserId: string,
 }) {
   return await prisma.projectUserOAuthAccount.create({
@@ -248,7 +248,7 @@ const handler = createSmartRouteHandler({
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
-                      email: userInfo.email,
+                      email: userInfo.email ?? null,
                       projectUserId,
                     });
 
@@ -288,7 +288,7 @@ const handler = createSmartRouteHandler({
                     tenancyId: outerInfo.tenancyId,
                     providerId: provider.id,
                     providerAccountId: userInfo.accountId,
-                    email: userInfo.email ?? undefined,
+                    email: userInfo.email ?? null,
                     projectUserId: linkedUserId,
                   });
 
@@ -327,15 +327,17 @@ const handler = createSmartRouteHandler({
                   {
                     providerId: provider.id,
                     providerAccountId: userInfo.accountId,
-                    email: userInfo.email ?? undefined,
+                    email: userInfo.email ?? null,
                     emailVerified: userInfo.emailVerified,
                     primaryEmailAuthEnabled,
                     currentUser,
-                    displayName: userInfo.displayName ?? undefined,
-                    profileImageUrl: userInfo.profileImageUrl ?? undefined,
+                    displayName: userInfo.displayName ?? null,
+                    profileImageUrl: userInfo.profileImageUrl ?? null,
                     signUpRuleOptions: {
                       authMethod: 'oauth',
                       oauthProvider: provider.id,
+                      ipAddress: null,
+                      countryCode: null,
                       // Note: Request context not easily available in OAuth callback
                       // TODO: Pass IP and user agent from stored OAuth state if needed
                     },

@@ -184,6 +184,7 @@ export const userPrismaToCrud = (
     restricted_by_admin: prisma.restrictedByAdmin,
     restricted_by_admin_reason: prisma.restrictedByAdminReason,
     restricted_by_admin_private_details: prisma.restrictedByAdminPrivateDetails,
+    country_code: prisma.countryCode,
     risk_scores: {
       sign_up: {
         bot: prisma.signUpRiskScoreBot,
@@ -408,6 +409,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         restricted_by_admin: row.restrictedByAdmin,
         restricted_by_admin_reason: row.restrictedByAdminReason,
         restricted_by_admin_private_details: row.restrictedByAdminPrivateDetails,
+        country_code: row.countryCode,
         risk_scores: {
           sign_up: {
             bot: row.signUpRiskScoreBot,
@@ -654,6 +656,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin,
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
+          countryCode: data.country_code,
           signUpRiskScoreBot: data.risk_scores?.sign_up.bot ?? 0,
           signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse ?? 0,
         },
@@ -1158,6 +1161,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
+          countryCode: data.country_code,
           signUpRiskScoreBot: data.risk_scores?.sign_up.bot,
           signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse,
         }),

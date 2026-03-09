@@ -9,7 +9,7 @@ export type SignUpRiskScoreContext = {
   primaryEmail: string | null,
   primaryEmailVerified: boolean,
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
-  oauthProvider?: string,
+  oauthProvider: string | null,
   ipAddress: string | null,
 };
 

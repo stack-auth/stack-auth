@@ -360,6 +360,8 @@ export type ServerBaseUser = {
   readonly restrictedByAdminReason: string | null,
   /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
   readonly restrictedByAdminPrivateDetails: string | null,
+  /** Best-effort ISO country code captured at sign-up time from request geo headers. */
+  readonly countryCode: string | null,
   /** Server-only risk scores used during sign-up risk evaluation. */
   readonly riskScores: {
     readonly signUp: {

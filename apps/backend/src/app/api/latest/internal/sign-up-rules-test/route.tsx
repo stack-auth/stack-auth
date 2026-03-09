@@ -18,9 +18,10 @@ export const POST = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }),
     body: yupObject({
-      email: yupString().optional(),
+      email: yupString().nullable().defined(),
+      country_code: yupString().nullable().defined(),
       auth_method: yupString().oneOf(AUTH_METHODS).defined(),
-      oauth_provider: yupString().optional(),
+      oauth_provider: yupString().nullable().defined(),
       risk_scores: yupObject({
         bot: yupNumber().min(0).max(100).integer().defined(),
         free_trial_abuse: yupNumber().min(0).max(100).integer().defined(),
@@ -34,6 +35,7 @@ export const POST = createSmartRouteHandler({
       context: yupObject({
         email: yupString().defined(),
         email_domain: yupString().defined(),
+        country_code: yupString().defined(),
         auth_method: yupString().oneOf(AUTH_METHODS).defined(),
         oauth_provider: yupString().defined(),
         risk_scores: yupObject({
@@ -64,6 +66,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const context = createSignUpRuleContext({
       email: req.body.email,
+      countryCode: req.body.country_code,
       authMethod: req.body.auth_method,
       oauthProvider: req.body.oauth_provider,
       riskScores: {
@@ -80,6 +83,7 @@ export const POST = createSmartRouteHandler({
         context: {
           email: context.email,
           email_domain: context.emailDomain,
+          country_code: context.countryCode,
           auth_method: context.authMethod,
           oauth_provider: context.oauthProvider,
           risk_scores: {

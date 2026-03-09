@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
 
 describe("risk scores", () => {
   // ==========================================
@@ -186,6 +186,159 @@ describe("risk scores", () => {
           free_trial_abuse: 100,
         },
       });
+    });
+  });
+
+  describe("signup country persistence", () => {
+    it("should derive country_code from xx-test@example.com when request geo is unavailable", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: "us-test@example.com",
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(response.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.country_code).toBe("US");
+    });
+
+    it("should persist country_code for password signup", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      backendContext.set({
+        ipData: {
+          ipAddress: "127.0.0.1",
+          country: "CA",
+          city: "Toronto",
+          region: "ON",
+          latitude: 43.6532,
+          longitude: -79.3832,
+          tzIdentifier: "America/Toronto",
+        },
+      });
+
+      const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: `country-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(response.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.country_code).toBe("CA");
+    });
+
+    it("should persist country_code for OTP signup", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { magic_link_enabled: true },
+      });
+
+      backendContext.set({
+        ipData: {
+          ipAddress: "127.0.0.1",
+          country: "DE",
+          city: "Berlin",
+          region: "BE",
+          latitude: 52.52,
+          longitude: 13.405,
+          tzIdentifier: "Europe/Berlin",
+        },
+      });
+
+      await Auth.Otp.signIn();
+
+      const meResponse = await niceBackendFetch("/api/v1/users/me", {
+        accessType: "server",
+      });
+
+      expect(meResponse.status).toBe(200);
+      expect(meResponse.body.country_code).toBe("DE");
+    });
+
+    it("should persist country_code for OAuth signup", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          oauth_providers: [{ id: "spotify", type: "shared" }],
+        },
+      });
+      await InternalApiKey.createAndSetProjectKeys();
+
+      backendContext.set({
+        ipData: {
+          ipAddress: "127.0.0.1",
+          country: "FR",
+          city: "Paris",
+          region: "IDF",
+          latitude: 48.8566,
+          longitude: 2.3522,
+          tzIdentifier: "Europe/Paris",
+        },
+      });
+
+      const response = await Auth.OAuth.signIn();
+      expect(response.tokenResponse.status).toBe(200);
+
+      const meResponse = await niceBackendFetch("/api/v1/users/me", {
+        accessType: "server",
+      });
+
+      expect(meResponse.status).toBe(200);
+      expect(meResponse.body.country_code).toBe("FR");
+    });
+
+    it("should keep country_code null for anonymous users", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      backendContext.set({
+        ipData: {
+          ipAddress: "127.0.0.1",
+          country: "US",
+          city: "New York",
+          region: "NY",
+          latitude: 40.7128,
+          longitude: -74.006,
+          tzIdentifier: "America/New_York",
+        },
+      });
+
+      const anonResponse = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+        accessType: "client",
+        method: "POST",
+        body: {},
+      });
+      expect(anonResponse.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${anonResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.country_code).toBeNull();
     });
   });
 

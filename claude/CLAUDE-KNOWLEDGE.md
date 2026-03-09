@@ -76,3 +76,18 @@ A: The card playground now includes a `Header Actions` toggle that injects a sam
 
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: What should `getSpoofableEndUserLocation()` return for normal browser/proxy traffic?
+A: It should return location fields from `spoofedInfo` when `getEndUserInfo()` reports `maybeSpoofed: true`, and from `exactInfo` otherwise. Returning only exact info drops country data for the normal header-derived browser path and breaks geo-based signup rules.
+
+Q: How should nullable signup-rule context inputs be typed?
+A: If a field already uses `null` to represent absence, keep it non-optional and pass explicit `null` at callsites. In practice, `createSignUpRuleContext` and signup-rule option plumbing should use `countryCode: string | null` and `ipAddress: string | null`, not `?: ... | null`, so `undefined` never leaks into the flow.
+
+Q: What shape should `/api/v1/internal/sign-up-rules-test` use for optional-looking inputs?
+A: Use explicit nullable fields instead of omitting them. `email`, `country_code`, and `oauth_provider` should be sent and validated as `string | null`, with the dashboard tester and e2e tests passing `null` rather than leaving them `undefined`.
+
+Q: Where is signup country code stored and exposed for dashboard user details?
+A: Persist the best-effort signup country on `ProjectUser.countryCode`, expose it as `country_code` on the server user CRUD read shape, map it to `ServerUser.countryCode` in `packages/template`, and render it as a read-only field in the dashboard user details page.
+
+Q: Is there a deterministic email-based stub for signup country in local/test flows?
+A: Yes. In `apps/backend/src/lib/users.tsx`, if request geo does not provide a country, emails matching `xx-test@example.com` map to `countryCode = XX` (for example `us-test@example.com` -> `US`). This is a test stub analogous to the `test@example.com` risk-score stub and does not override real request geo.

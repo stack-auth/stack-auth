@@ -10,7 +10,13 @@ describe("with admin access", () => {
       accessType: "admin",
       body: {
         email: "user@example.com",
+        country_code: null,
         auth_method: "password",
+        oauth_provider: null,
+        risk_scores: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
       },
     });
 
@@ -56,8 +62,13 @@ describe("with admin access", () => {
       accessType: "admin",
       body: {
         email: "test@example.com",
+        country_code: null,
         auth_method: "oauth",
         oauth_provider: "google",
+        risk_scores: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
       },
     });
 
@@ -103,7 +114,9 @@ describe("with admin access", () => {
       accessType: "admin",
       body: {
         email: "risk@example.com",
+        country_code: null,
         auth_method: "password",
+        oauth_provider: null,
         risk_scores: {
           bot: 90,
           free_trial_abuse: 10,
@@ -123,6 +136,93 @@ describe("with admin access", () => {
         should_allow: false,
         decision: "reject",
         decision_rule_id: "block-high-bot-score",
+      },
+    });
+  });
+
+  it("evaluates country code conditions and normalizes country input", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await Project.updateConfig({
+      "auth.signUpRules.block-us": {
+        enabled: true,
+        displayName: "Block US signups",
+        priority: 1,
+        condition: 'countryCode == "US"',
+        action: {
+          type: "reject",
+          message: "US blocked",
+        },
+      },
+      "auth.signUpRulesDefaultAction": "allow",
+    });
+
+    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-test", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        email: "country@example.com",
+        country_code: "us",
+        auth_method: "password",
+        oauth_provider: null,
+        risk_scores: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      context: {
+        country_code: "US",
+      },
+      outcome: {
+        should_allow: false,
+        decision: "reject",
+        decision_rule_id: "block-us",
+      },
+    });
+  });
+
+  it("evaluates country code in_list conditions", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await Project.updateConfig({
+      "auth.signUpRules.allow-na": {
+        enabled: true,
+        displayName: "Allow North America",
+        priority: 1,
+        condition: 'countryCode in ["US", "CA"]',
+        action: {
+          type: "allow",
+        },
+      },
+      "auth.signUpRulesDefaultAction": "reject",
+    });
+
+    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-test", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        email: "country@example.com",
+        country_code: "ca",
+        auth_method: "password",
+        oauth_provider: null,
+        risk_scores: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      context: {
+        country_code: "CA",
+      },
+      outcome: {
+        should_allow: true,
+        decision: "allow",
+        decision_rule_id: "allow-na",
       },
     });
   });
