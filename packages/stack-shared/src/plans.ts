@@ -17,6 +17,7 @@ export const ITEM_IDS = {
   analyticsTimeoutSeconds: "analytics_timeout_seconds",
   analyticsEvents: "analytics_events",
   sessionReplays: "session_replays",
+  onboardingCall: "onboarding_call",
 } as const;
 
 export type ItemId = typeof ITEM_IDS[keyof typeof ITEM_IDS];

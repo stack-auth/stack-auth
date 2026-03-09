@@ -156,6 +156,7 @@ export async function seed() {
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.team.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: [1, "month"] as any, expires: "when-repeated" as const },
               [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.team.sessionReplays, repeat: [1, "month"] as any, expires: "when-repeated" as const },
+              [ITEM_IDS.onboardingCall]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
           },
           growth: {
@@ -178,6 +179,7 @@ export async function seed() {
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.growth.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: [1, "month"] as any, expires: "when-repeated" as const },
               [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.growth.sessionReplays, repeat: [1, "month"] as any, expires: "when-repeated" as const },
+              [ITEM_IDS.onboardingCall]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
           },
           "extra-seats": {
@@ -209,6 +211,7 @@ export async function seed() {
           [ITEM_IDS.analyticsTimeoutSeconds]: { displayName: "Analytics Timeout (seconds)", customerType: "team" as const },
           [ITEM_IDS.analyticsEvents]: { displayName: "Analytics Events", customerType: "team" as const },
           [ITEM_IDS.sessionReplays]: { displayName: "Session Replays", customerType: "team" as const },
+          [ITEM_IDS.onboardingCall]: { displayName: "Onboarding Call", customerType: "team" as const },
         },
       },
       apps: {
