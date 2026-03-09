@@ -19,6 +19,7 @@ import { inviteUser, listInvitations, revokeInvitation } from "./actions";
 
 type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
+  refreshOwnedProjects: () => Promise<void>,
 };
 
 function isStackAppInternals(value: unknown): value is StackAppInternals {
@@ -26,7 +27,9 @@ function isStackAppInternals(value: unknown): value is StackAppInternals {
     value != null &&
     typeof value === "object" &&
     "sendRequest" in value &&
-    typeof value.sendRequest === "function"
+    typeof value.sendRequest === "function" &&
+    "refreshOwnedProjects" in value &&
+    typeof value.refreshOwnedProjects === "function"
   );
 }
 
@@ -111,6 +114,7 @@ export default function PageClient() {
 
       setOpenConfigFileDialog(false);
       setAbsoluteConfigFilePath("");
+      await appInternals.refreshOwnedProjects();
       router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
       await wait(2000);
     } finally {
@@ -212,7 +216,7 @@ export default function PageClient() {
               onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-2">
             <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
               Cancel
             </Button>
