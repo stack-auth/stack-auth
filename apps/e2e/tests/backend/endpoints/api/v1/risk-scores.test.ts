@@ -437,7 +437,7 @@ describe("risk scores", () => {
   // ==========================================
 
   describe("server-side update", () => {
-    it("should allow server to update risk scores", async ({ expect }) => {
+    it("should allow risk_scores in server update requests", async ({ expect }) => {
       await Project.createAndSwitch({
         config: { credential_enabled: true },
       });
@@ -521,6 +521,25 @@ describe("risk scores", () => {
       });
 
       expect(response.status).toBe(400);
+    });
+
+    it("should allow country_code in server update requests", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const res = await Auth.Password.signUpWithEmail();
+
+      const response = await niceBackendFetch(`/api/v1/users/${res.userId}`, {
+        method: "PATCH",
+        accessType: "server",
+        body: {
+          country_code: "FR",
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.country_code).toBe("FR");
     });
 
     it("should reject non-integer risk scores", async ({ expect }) => {
@@ -695,12 +714,13 @@ describe("risk scores", () => {
       });
     });
 
-    it("should allow setting risk scores when creating users via server API", async ({ expect }) => {
+    it("should allow risk_scores and country_code when creating users via server API", async ({ expect }) => {
       const createResponse = await niceBackendFetch("/api/v1/users", {
         method: "POST",
         accessType: "server",
         body: {
           primary_email: `risky-${generateSecureRandomString(8)}@example.com`,
+          country_code: "FR",
           risk_scores: {
             sign_up: {
               bot: 55,
@@ -711,6 +731,7 @@ describe("risk scores", () => {
       });
 
       expect(createResponse.status).toBe(201);
+      expect(createResponse.body.country_code).toBe("FR");
       expect(createResponse.body.risk_scores).toEqual({
         sign_up: {
           bot: 55,

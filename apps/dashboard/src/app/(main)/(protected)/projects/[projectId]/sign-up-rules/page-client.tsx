@@ -524,29 +524,49 @@ function TestRulesCard({
   stackAdminApp: ReturnType<typeof useAdminApp>,
 }) {
   const [email, setEmail] = useState('');
-  const [countryCode, setCountryCode] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
-  const [riskScoreBot, setRiskScoreBot] = useState<number>(0);
-  const [riskScoreFreeTrialAbuse, setRiskScoreFreeTrialAbuse] = useState<number>(0);
+  const [countryCodeOverride, setCountryCodeOverride] = useState('');
+  const [botRiskScoreOverride, setBotRiskScoreOverride] = useState('');
+  const [freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride] = useState('');
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
 
   const [runTest, isRunning] = useAsyncCallback(async () => {
+    const normalizedCountryCodeOverride = countryCodeOverride.trim().toUpperCase();
+    const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
+    const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();
+    if (normalizedCountryCodeOverride !== '' && !/^[A-Z]{2}$/.test(normalizedCountryCodeOverride)) {
+      throw new StackAssertionError("Country code override must be a two-letter ISO code.");
+    }
+    if (normalizedBotRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedBotRiskScoreOverride)) {
+      throw new StackAssertionError("Bot risk score override must be an integer between 0 and 100.");
+    }
+    if (normalizedFreeTrialAbuseRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedFreeTrialAbuseRiskScoreOverride)) {
+      throw new StackAssertionError("Free trial abuse risk score override must be an integer between 0 and 100.");
+    }
+    if ((normalizedBotRiskScoreOverride === '') !== (normalizedFreeTrialAbuseRiskScoreOverride === '')) {
+      throw new StackAssertionError("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
+    }
+
     const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
       '/internal/sign-up-rules-test',
       {
         method: 'POST',
         body: JSON.stringify({
           email: email === '' ? null : email,
-          country_code: countryCode === '' ? null : countryCode,
           auth_method: authMethod,
           oauth_provider: authMethod === 'oauth'
             ? (oauthProvider === '' ? null : oauthProvider)
             : null,
-          risk_scores: {
-            bot: riskScoreBot,
-            free_trial_abuse: riskScoreFreeTrialAbuse,
-          },
+          country_code: normalizedCountryCodeOverride === '' ? null : normalizedCountryCodeOverride,
+          ...(normalizedBotRiskScoreOverride === ''
+            ? {}
+            : {
+              risk_scores: {
+                bot: Number(normalizedBotRiskScoreOverride),
+                free_trial_abuse: Number(normalizedFreeTrialAbuseRiskScoreOverride),
+              },
+            }),
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -561,7 +581,7 @@ function TestRulesCard({
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, countryCode, email, oauthProvider, riskScoreBot, riskScoreFreeTrialAbuse, stackAdminApp]);
+  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp]);
 
   const handleAuthMethodChange = (value: string) => {
     if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
@@ -634,16 +654,6 @@ function TestRulesCard({
           </div>
           <div className="space-y-1.5">
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Country code
-            </Typography>
-            <Input
-              value={countryCode}
-              onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
-              placeholder="US"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
               Auth method
             </Typography>
             <Select value={authMethod} onValueChange={handleAuthMethodChange}>
@@ -678,31 +688,38 @@ function TestRulesCard({
           </datalist>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Risk score: bot
+              Country code override
             </Typography>
             <Input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={String(riskScoreBot)}
-              onChange={(e) => setRiskScoreBot(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+              value={countryCodeOverride}
+              onChange={(e) => setCountryCodeOverride(e.target.value.toUpperCase())}
+              placeholder="US"
+              maxLength={2}
             />
           </div>
           <div className="space-y-1.5">
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Risk score: free trial abuse
+              Bot score override
             </Typography>
             <Input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={String(riskScoreFreeTrialAbuse)}
-              onChange={(e) => setRiskScoreFreeTrialAbuse(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+              value={botRiskScoreOverride}
+              onChange={(e) => setBotRiskScoreOverride(e.target.value)}
+              placeholder="0-100"
+              inputMode="numeric"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Free trial abuse override
+            </Typography>
+            <Input
+              value={freeTrialAbuseRiskScoreOverride}
+              onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
+              placeholder="0-100"
+              inputMode="numeric"
             />
           </div>
         </div>
@@ -719,7 +736,7 @@ function TestRulesCard({
             Simulate a sign-up request to preview which rules trigger.
           </Typography>
           <Typography variant="secondary" className="text-xs">
-            Country matching uses best-effort proxy geolocation headers when they are available.
+            Leave overrides blank to derive country code and risk scores on the server from request geolocation and signup context.
           </Typography>
         </div>
       </div>

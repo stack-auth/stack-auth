@@ -388,6 +388,15 @@ type UserDetailsProps = {
 
 function UserDetails({ user }: UserDetailsProps) {
   const [newPassword, setNewPassword] = useState<string | null>(null);
+
+  const parseRiskScore = (value: string): number => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
+      throw new StackAssertionError("Risk scores must be integers between 0 and 100");
+    }
+    return parsed;
+  };
+
   return (
     <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
       <UserInfo icon={<HashIcon size={16}/>} name="User ID">
@@ -418,13 +427,39 @@ function UserDetails({ user }: UserDetailsProps) {
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
-        <EditableInput value={String(user.riskScores.signUp.bot)} readOnly />
+        <EditableInput value={String(user.riskScores.signUp.bot)} onUpdate={async (newValue) => {
+          await user.update({
+            riskScores: {
+              signUp: {
+                bot: parseRiskScore(newValue),
+                freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
+              },
+            },
+          });
+        }} />
       </UserInfo>
       <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
-        <EditableInput value={user.countryCode ?? ""} placeholder="-" readOnly />
+        <EditableInput value={user.countryCode ?? ""} placeholder="-" onUpdate={async (newValue) => {
+          const normalized = newValue.trim().toUpperCase();
+          if (normalized !== '' && !/^[A-Z]{2}$/.test(normalized)) {
+            throw new StackAssertionError("Country code must be empty or a 2-letter ISO code");
+          }
+          await user.update({
+            countryCode: normalized === '' ? null : normalized,
+          });
+        }} />
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
-        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} readOnly />
+        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} onUpdate={async (newValue) => {
+          await user.update({
+            riskScores: {
+              signUp: {
+                bot: user.riskScores.signUp.bot,
+                freeTrialAbuse: parseRiskScore(newValue),
+              },
+            },
+          });
+        }} />
       </UserInfo>
       <RestrictedStatusRow user={user} />
     </div>

@@ -23,7 +23,7 @@ export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   restricted_by_admin: fieldSchema.yupBoolean().optional().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
   restricted_by_admin_reason: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
   restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
-  country_code: fieldSchema.yupString().nullable().optional().meta({ openapiField: { hidden: true } }),
+  country_code: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Best-effort ISO country code captured at sign-up time from request geo headers.', exampleValue: "US" } }),
   risk_scores: fieldSchema.yupObject({
     sign_up: fieldSchema.yupObject({
       bot: fieldSchema.yupNumber().integer().min(0).max(100).defined(),
@@ -121,12 +121,6 @@ export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['se
     email: fieldSchema.yupString().nullable().defined().default(null),
   }).defined()).optional().meta({ openapiField: { hidden: true } }),
   is_anonymous: fieldSchema.yupBoolean().optional(),
-  risk_scores: fieldSchema.yupObject({
-    sign_up: fieldSchema.yupObject({
-      bot: fieldSchema.yupNumber().integer().min(0).max(100).defined(),
-      free_trial_abuse: fieldSchema.yupNumber().integer().min(0).max(100).defined(),
-    }).defined(),
-  }).optional(),
 }).defined());
 
 export const usersCrudServerDeleteSchema = fieldSchema.yupMixed();

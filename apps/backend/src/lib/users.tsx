@@ -27,6 +27,10 @@ function getStubSignUpCountryCode(email: string | null): string | null {
   return match === null ? null : match[1].toUpperCase();
 }
 
+export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
+  return requestCountryCode ?? getStubSignUpCountryCode(email);
+}
+
 /**
  * Creates or upgrades an anonymous user with sign-up rule evaluation.
  *
@@ -63,7 +67,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
   ]);
   const countryCode = signUpRuleOptions.countryCode !== null
     ? signUpRuleOptions.countryCode
-    : (requestLocation?.countryCode ?? getStubSignUpCountryCode(email));
+    : getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null, email);
 
   const riskScores = await calculateSignUpRiskScores(tenancy, {
     primaryEmail: email ?? null,
@@ -109,7 +113,6 @@ export async function createOrUpgradeAnonymousUserWithRules(
     },
   };
 
-  // Proceed with user creation/upgrade
   return await createOrUpgradeAnonymousUserWithoutRules(
     tenancy,
     currentUser,
