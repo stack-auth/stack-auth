@@ -130,7 +130,7 @@ export async function seed() {
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: [1, "month"] as const, expires: "when-repeated" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: [1, "month"] as any, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.free.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
@@ -151,7 +151,7 @@ export async function seed() {
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.team.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.team.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: [1, "month"] as const, expires: "when-repeated" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: [1, "month"] as any, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.team.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
@@ -172,7 +172,7 @@ export async function seed() {
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.growth.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.growth.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: [1, "month"] as const, expires: "when-repeated" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: [1, "month"] as any, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.growth.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
