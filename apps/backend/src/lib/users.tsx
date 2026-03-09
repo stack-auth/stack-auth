@@ -19,28 +19,19 @@ export type SignUpRuleOptions = {
   countryCode: string | null,
 };
 
-function getStubSignUpCountryCode(email: string | null): string | null {
-  if (email === null) {
-    return null;
-  }
-
-  const match = email.match(/^([a-z]{2})-test@example\.com$/);
-  return match === null ? null : match[1].toUpperCase();
-}
-
-export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
+export function getDerivedSignUpCountryCode(requestCountryCode: string | null): string | null {
   if (requestCountryCode !== null) {
     const normalizedCountryCode = normalizeCountryCode(requestCountryCode);
     if (isValidCountryCode(normalizedCountryCode)) {
       return normalizedCountryCode;
     }
   }
-  return getStubSignUpCountryCode(email);
+  return null;
 }
 import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
-  expect(getDerivedSignUpCountryCode(" us ", null)).toBe("US");
-  expect(getDerivedSignUpCountryCode("usa", "ca-test@example.com")).toBe("CA");
-  expect(getDerivedSignUpCountryCode("1", null)).toBeNull();
+  expect(getDerivedSignUpCountryCode(" us ")).toBe("US");
+  expect(getDerivedSignUpCountryCode("usa")).toBeNull();
+  expect(getDerivedSignUpCountryCode("1")).toBeNull();
 });
 
 /**
@@ -79,7 +70,10 @@ export async function createOrUpgradeAnonymousUserWithRules(
   ]);
   const countryCode = signUpRuleOptions.countryCode !== null
     ? signUpRuleOptions.countryCode
-    : getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null, email);
+    : getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null);
+  const countryCodeToPersist = currentUser?.is_anonymous && currentUser.country_code != null
+    ? currentUser.country_code
+    : countryCode;
 
   const riskScores = await calculateSignUpRiskScores(tenancy, {
     primaryEmail: email ?? null,
@@ -116,7 +110,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
       restricted_by_admin: true,
       restricted_by_admin_private_details: existingRestrictionPrivateDetails != null ? `${existingRestrictionPrivateDetails}\n\n${restrictionPrivateDetails}` : restrictionPrivateDetails,
     } : {},
-    country_code: countryCode,
+    ...(countryCodeToPersist !== null ? { country_code: countryCodeToPersist } : {}),
     risk_scores: {
       sign_up: {
         bot: riskScores.bot,

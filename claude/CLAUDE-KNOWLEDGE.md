@@ -90,7 +90,13 @@ Q: Where is signup country code stored and exposed for dashboard user details?
 A: Persist the best-effort signup country on `ProjectUser.countryCode`, expose it as `country_code` on the server user CRUD read shape, map it to `ServerUser.countryCode` in `packages/template`, and render it as a read-only field in the dashboard user details page.
 
 Q: Is there a deterministic email-based stub for signup country in local/test flows?
-A: Yes. In `apps/backend/src/lib/users.tsx`, if request geo does not provide a country, emails matching `xx-test@example.com` map to `countryCode = XX` (for example `us-test@example.com` -> `US`). This is a test stub analogous to the `test@example.com` risk-score stub and does not override real request geo.
+A: No. `apps/backend/src/lib/users.tsx` now derives signup country only from request geo (normalized and validated); if geo is missing or invalid, it stores `null` instead of inferring a country from the email address.
+
+Q: How should anonymous-user signup upgrades handle an existing `country_code`?
+A: Preserve a non-null `currentUser.country_code` when upgrading an anonymous user in `createOrUpgradeAnonymousUserWithRules`. Only write a newly derived/signup-provided country code when the anonymous user does not already have one.
+
+Q: How should the dashboard signup-rule builder validate `countryCode in_list`?
+A: Treat an empty list as invalid in `apps/dashboard/src/components/rule-builder/condition-builder.tsx`; otherwise `countryCode in []` can be saved and silently makes that condition always false.
 
 Q: Who is allowed to set `risk_scores` and `country_code`?
 A: Customers/admins can set them through server/admin user create and update surfaces, the server SDK `createUser`/`update`, the dashboard admin create flow, and the internal sign-up-rules tester. End users still cannot set them themselves because `current-user` client update schemas do not expose those fields.

@@ -37,6 +37,9 @@ function validateRegex(pattern: string): string | null {
 
 function validateCountryCodeValue(value: string | string[]): string | null {
   const values = Array.isArray(value) ? value : [value];
+  if (values.length === 0) {
+    return "At least one country code is required";
+  }
   return values.every((item) => isValidCountryCode(item))
     ? null
     : "Country code must be a valid ISO 3166-1 alpha-2 code";
@@ -144,7 +147,7 @@ function ConditionRow({
       : (() => {
         throw new Error("Expected countryCode in_list condition value to be a string array");
       })()
-    : null;
+    : [];
   const countryCodeError = isCountryCodeField
     ? validateCountryCodeValue(
         Array.isArray(condition.value)
@@ -203,17 +206,15 @@ function ConditionRow({
   };
 
   const handleCountryCodeListItemChange = (index: number, value: string) => {
-    const values = countryCodeListValues ?? [];
-    handleValueChange(values.map((item, itemIndex) => itemIndex === index ? value : item));
+    handleValueChange(countryCodeListValues.map((item, itemIndex) => itemIndex === index ? value : item));
   };
 
   const handleAddCountryCodeListItem = () => {
-    handleValueChange([...(countryCodeListValues ?? []), '']);
+    handleValueChange([...countryCodeListValues, '']);
   };
 
   const handleRemoveCountryCodeListItem = (index: number) => {
-    const values = countryCodeListValues ?? [];
-    handleValueChange(values.filter((_, itemIndex) => itemIndex !== index));
+    handleValueChange(countryCodeListValues.filter((_, itemIndex) => itemIndex !== index));
   };
 
   return (

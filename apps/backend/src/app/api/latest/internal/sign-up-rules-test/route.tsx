@@ -71,7 +71,7 @@ export const POST = createSmartRouteHandler({
       getSpoofableEndUserIp().then((ip) => ip ?? null),
       getSpoofableEndUserLocation(),
     ]);
-    const derivedCountryCode = getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null, req.body.email);
+    const derivedCountryCode = getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null);
     const derivedRiskScores = await calculateSignUpRiskScores(req.auth.tenancy, {
       primaryEmail: req.body.email,
       primaryEmailVerified: req.body.auth_method === "otp",

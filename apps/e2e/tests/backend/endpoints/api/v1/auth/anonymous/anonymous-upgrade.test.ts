@@ -458,6 +458,45 @@ it("anonymous user preserves metadata when upgrading", async ({ expect }) => {
   expect(serverUser.body.server_metadata).toEqual({ internal_id: "123" });
 });
 
+it("anonymous user preserves a pre-set country code when upgrading without request geo", async ({ expect }) => {
+  await Project.createAndSwitch();
+
+  const anonSignUp = await Auth.Anonymous.signUp();
+
+  await niceBackendFetch(`/api/v1/users/${anonSignUp.userId}`, {
+    method: "PATCH",
+    accessType: "server",
+    body: {
+      country_code: "FR",
+    },
+  });
+
+  backendContext.set({
+    ipData: undefined,
+  });
+
+  const upgradeRes = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+    method: "POST",
+    accessType: "client",
+    headers: {
+      "x-stack-access-token": anonSignUp.accessToken,
+    },
+    body: {
+      email: "country-preserved@example.com",
+      password: "TestPassword123!",
+      verification_callback_url: "http://localhost:3000/callback",
+    },
+  });
+
+  expect(upgradeRes.status).toBe(200);
+
+  const upgradedUser = await niceBackendFetch(`/api/v1/users/${anonSignUp.userId}`, {
+    accessType: "server",
+  });
+  expect(upgradedUser.status).toBe(200);
+  expect(upgradedUser.body.country_code).toBe("FR");
+});
+
 it("cannot upgrade anonymous user to email that already exists", async ({ expect }) => {
   await Project.createAndSwitch();
 

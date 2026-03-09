@@ -395,7 +395,7 @@ function UserDetails({ user }: UserDetailsProps) {
   const parseRiskScore = (value: string): number => {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
-      throw new StackAssertionError("Risk scores must be integers between 0 and 100");
+      throw new Error("Risk scores must be integers between 0 and 100");
     }
     return parsed;
   };

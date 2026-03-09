@@ -190,7 +190,7 @@ describe("risk scores", () => {
   });
 
   describe("signup country persistence", () => {
-    it("should derive country_code from xx-test@example.com when request geo is unavailable", async ({ expect }) => {
+    it("should keep country_code null when request geo is unavailable", async ({ expect }) => {
       await Project.createAndSwitch({
         config: { credential_enabled: true },
       });
@@ -199,7 +199,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "us-test@example.com",
+          email: "countryless@example.com",
           password: generateSecureRandomString(),
         },
       });
@@ -211,7 +211,7 @@ describe("risk scores", () => {
       });
 
       expect(userResponse.status).toBe(200);
-      expect(userResponse.body.country_code).toBe("US");
+      expect(userResponse.body.country_code).toBeNull();
     });
 
     it("should persist country_code for password signup", async ({ expect }) => {

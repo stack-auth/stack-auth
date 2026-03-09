@@ -537,16 +537,16 @@ function TestRulesCard({
     const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
     const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();
     if (normalizedCountryCodeOverride !== '' && !isValidCountryCode(normalizedCountryCodeOverride)) {
-      throw new StackAssertionError("Country code override must be a two-letter ISO code.");
+      throw new Error("Country code override must be a two-letter ISO code.");
     }
     if (normalizedBotRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedBotRiskScoreOverride)) {
-      throw new StackAssertionError("Bot risk score override must be an integer between 0 and 100.");
+      throw new Error("Bot risk score override must be an integer between 0 and 100.");
     }
     if (normalizedFreeTrialAbuseRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedFreeTrialAbuseRiskScoreOverride)) {
-      throw new StackAssertionError("Free trial abuse risk score override must be an integer between 0 and 100.");
+      throw new Error("Free trial abuse risk score override must be an integer between 0 and 100.");
     }
     if ((normalizedBotRiskScoreOverride === '') !== (normalizedFreeTrialAbuseRiskScoreOverride === '')) {
-      throw new StackAssertionError("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
+      throw new Error("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
     }
 
     const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(

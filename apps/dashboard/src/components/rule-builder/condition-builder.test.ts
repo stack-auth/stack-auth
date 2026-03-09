@@ -29,4 +29,13 @@ describe("isConditionTreeValid", () => {
       value: ["US", "USA"],
     })).toBe(false);
   });
+
+  it("rejects empty country code lists", () => {
+    expect(isConditionTreeValid({
+      ...createEmptyCondition(),
+      field: "countryCode",
+      operator: "in_list",
+      value: [],
+    })).toBe(false);
+  });
 });
