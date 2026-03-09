@@ -349,6 +349,58 @@ export function AnalyticsEventLimitBanner() {
   return <AnalyticsEventLimitBannerInner team={ownerTeam} />;
 }
 
+/**
+ * Shows a warning banner when session replay usage is at 80%+ or 100%.
+ * Since the limit is the same across all plans, no upgrade button is shown.
+ */
+export function SessionReplayLimitBanner() {
+  const adminApp = useAdminApp();
+  const project = adminApp.useProject();
+  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const teams = user.useTeams();
+
+  const ownerTeam = useMemo(
+    () => teams.find(t => t.id === project.ownerTeamId),
+    [teams, project.ownerTeamId],
+  );
+
+  if (ownerTeam == null) {
+    return null;
+  }
+
+  return <SessionReplayLimitBannerInner team={ownerTeam} />;
+}
+
+function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type: string }> } }) {
+  const replaysItem = team.useItem("session_replays");
+  const products = team.useProducts();
+  const planId = resolvePlanId(products);
+  const totalAllocation = PLAN_LIMITS[planId].sessionReplays;
+  const used = totalAllocation - replaysItem.quantity;
+  const usagePercent = totalAllocation > 0 ? (used / totalAllocation) * 100 : 0;
+
+  if (usagePercent < 80) {
+    return null;
+  }
+
+  const isExhausted = replaysItem.quantity <= 0;
+
+  return (
+    <Alert
+      variant={isExhausted ? "destructive" : "default"}
+      className={isExhausted ? undefined : "border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/5 [&>svg]:text-amber-500"}
+    >
+      <WarningCircleIcon className="h-4 w-4" />
+      <AlertDescription>
+        {isExhausted
+          ? "You've reached your session replay limit for this month. New session replays are no longer being recorded."
+          : "You're approaching your session replay limit for this month."
+        }
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type: string }>, createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string> } }) {
   const eventsItem = team.useItem("analytics_events");
   const products = team.useProducts();

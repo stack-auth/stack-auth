@@ -26,7 +26,7 @@ import { TeamSearchTable } from "@/components/data-table/team-search-table";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { AnalyticsEventLimitBanner } from "../shared";
+import { AnalyticsEventLimitBanner, SessionReplayLimitBanner } from "../shared";
 import {
   createInitialState,
   replayReducer,
@@ -1386,6 +1386,7 @@ export default function PageClient() {
     <AppEnabledGuard appId="analytics">
       <PageLayout title="Session Replays" fillWidth>
         <AnalyticsEventLimitBanner />
+        <SessionReplayLimitBanner />
         <PanelGroup direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
           <Panel defaultSize={25} minSize={16}>
             <div className="h-full flex flex-col">
