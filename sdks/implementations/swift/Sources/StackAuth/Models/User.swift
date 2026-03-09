@@ -76,6 +76,7 @@ public struct TokenPartialUser: Sendable {
     public let primaryEmail: String?
     public let primaryEmailVerified: Bool
     public let isAnonymous: Bool
+    public let isMultiFactorRequired: Bool
     public let isRestricted: Bool
     public let restrictedReason: User.RestrictedReason?
 }
