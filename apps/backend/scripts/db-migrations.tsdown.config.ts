@@ -28,6 +28,17 @@ const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
 const basePlugin: Rolldown.Plugin = createBasePlugin({});
 
+// Node.js ESM is stricter about subpath imports than Next, so we need to rewrite some packages to use the correct file extensions.
+const rewriteNextSubpathImportsPlugin: Rolldown.Plugin = {
+  name: "rewrite-next-subpath-imports",
+  renderChunk(code) {
+    return code.replace(
+      /(["'])next\/(navigation|headers)\1/g,
+      (_match, quote: string, subpath: string) => `${quote}next/${subpath}.js${quote}`,
+    );
+  },
+};
+
 export default defineConfig({
   entry: [resolve(backendDir, 'scripts/db-migrations.ts')],
   format: ['esm'],
@@ -49,5 +60,5 @@ const __filename = __fileURLToPath(import.meta.url);
 const __dirname = __dirname_fn(__filename);
 const require = __createRequire(import.meta.url);`,
   },
-  plugins: [basePlugin],
+  plugins: [basePlugin, rewriteNextSubpathImportsPlugin],
 } satisfies UserConfig);
