@@ -19,7 +19,18 @@ export type SignUpRuleOptions = {
   countryCode: string | null,
 };
 
-export function getDerivedSignUpCountryCode(requestCountryCode: string | null): string | null {
+export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
+  if (email != null) {
+    const match = email.match(/^[^+]+\+([^@]+)@example\.com$/i);
+    if (match) {
+      const tag = match[1];
+      const normalized = normalizeCountryCode(tag);
+      if (validCountryCodeSet.has(normalized)) {
+        return normalized;
+      }
+    }
+  }
+
   if (requestCountryCode !== null) {
     const normalized = normalizeCountryCode(requestCountryCode);
     if (validCountryCodeSet.has(normalized)) {
@@ -29,9 +40,20 @@ export function getDerivedSignUpCountryCode(requestCountryCode: string | null): 
   return null;
 }
 import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
-  expect(getDerivedSignUpCountryCode(" us ")).toBe("US");
-  expect(getDerivedSignUpCountryCode("usa")).toBeNull();
-  expect(getDerivedSignUpCountryCode("1")).toBeNull();
+  expect(getDerivedSignUpCountryCode(" us ", null)).toBe("US");
+  expect(getDerivedSignUpCountryCode("usa", null)).toBeNull();
+  expect(getDerivedSignUpCountryCode("1", null)).toBeNull();
+
+  expect(getDerivedSignUpCountryCode(null, "test+us@example.com")).toBe("US");
+  expect(getDerivedSignUpCountryCode(null, "test+de@example.com")).toBe("DE");
+  expect(getDerivedSignUpCountryCode(null, "test+US@example.com")).toBe("US");
+  expect(getDerivedSignUpCountryCode(null, "test+invalid@example.com")).toBeNull();
+  expect(getDerivedSignUpCountryCode(null, "test+us@other.com")).toBeNull();
+  expect(getDerivedSignUpCountryCode(null, "test@example.com")).toBeNull();
+  expect(getDerivedSignUpCountryCode(null, "noplustag@example.com")).toBeNull();
+
+  expect(getDerivedSignUpCountryCode("de", "test+us@example.com")).toBe("US");
+  expect(getDerivedSignUpCountryCode("de", "test@example.com")).toBe("DE");
 });
 
 /**
@@ -70,7 +92,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
   ]);
   const countryCode = signUpRuleOptions.countryCode !== null
     ? signUpRuleOptions.countryCode
-    : getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null);
+    : getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null, email);
   const countryCodeToPersist = currentUser?.is_anonymous && currentUser.country_code != null
     ? currentUser.country_code
     : countryCode;
