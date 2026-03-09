@@ -109,3 +109,6 @@ A: The monorepo dev stack reads `packages/stack-shared/dist` immediately. If a n
 
 Q: How should the dashboard signup-rule builder collect `countryCode` values?
 A: In `apps/dashboard/src/components/rule-builder/condition-builder.tsx`, single-value `countryCode` operators (`equals`, `does not equal`) should use a dropdown sourced from `ISO_3166_ALPHA_2_COUNTRY_CODES` re-exported by `schema-fields`, and `is one of` should render repeated country-code dropdowns with add/remove controls while still storing a `string[]`.
+
+Q: What must raw `ProjectUser` SQL fixtures include after sign-up risk scores were added?
+A: Any direct `INSERT INTO "ProjectUser"` path that bypasses the CRUD layer must write `"signUpRiskScoreBot"` and `"signUpRiskScoreFreeTrialAbuse"` explicitly, usually as `0, 0`. The migration intentionally removed the temporary DB defaults, so external-db-sync/performance fixtures that omit those columns can fail with `null value in column "signUpRiskScoreBot" violates not-null constraint`.

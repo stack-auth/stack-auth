@@ -570,13 +570,18 @@ it("removes user from team on the client", async ({ expect }) => {
   });
   expect(response1).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
+      "status": 401,
       "body": {
-        "code": "CANNOT_GET_OWN_USER_WITHOUT_USER",
-        "error": "You have specified 'me' as a userId, but did not provide authentication for a user.",
+        "code": "TEAM_PERMISSION_REQUIRED",
+        "details": {
+          "permission_id": "$remove_members",
+          "team_id": "<stripped UUID>",
+          "user_id": "<stripped UUID>",
+        },
+        "error": "User <stripped UUID> does not have permission $remove_members in team <stripped UUID>.",
       },
       "headers": Headers {
-        "x-stack-known-error": "CANNOT_GET_OWN_USER_WITHOUT_USER",
+        "x-stack-known-error": "TEAM_PERMISSION_REQUIRED",
         <some fields may have been hidden>,
       },
     }
@@ -596,15 +601,9 @@ it("removes user from team on the client", async ({ expect }) => {
   });
   expect(response2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "CANNOT_GET_OWN_USER_WITHOUT_USER",
-        "error": "You have specified 'me' as a userId, but did not provide authentication for a user.",
-      },
-      "headers": Headers {
-        "x-stack-known-error": "CANNOT_GET_OWN_USER_WITHOUT_USER",
-        <some fields may have been hidden>,
-      },
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
@@ -624,15 +623,17 @@ it("creates a team on the server and adds a different user as the creator", asyn
   });
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 404,
+      "status": 201,
       "body": {
-        "code": "USER_NOT_FOUND",
-        "error": "User not found.",
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "created_at_millis": <stripped field 'created_at_millis'>,
+        "display_name": "My Team",
+        "id": "<stripped UUID>",
+        "profile_image_url": null,
+        "server_metadata": null,
       },
-      "headers": Headers {
-        "x-stack-known-error": "USER_NOT_FOUND",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 
@@ -644,19 +645,20 @@ it("creates a team on the server and adds a different user as the creator", asyn
   });
   expect(response2).toMatchInlineSnapshot(`
     NiceResponse {
-      "status": 401,
+      "status": 200,
       "body": {
-        "code": "INVALID_PROJECT_FOR_ACCESS_TOKEN",
-        "details": {
-          "actual_project_id": "<stripped UUID>",
-          "expected_project_id": "internal",
-        },
-        "error": "Access token not valid for this project. Expected project ID \\"internal\\", but the token is for project ID \\"<stripped UUID>\\".",
+        "is_paginated": false,
+        "items": [
+          {
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "display_name": "My Team",
+            "id": "<stripped UUID>",
+            "profile_image_url": null,
+          },
+        ],
       },
-      "headers": Headers {
-        "x-stack-known-error": "INVALID_PROJECT_FOR_ACCESS_TOKEN",
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
