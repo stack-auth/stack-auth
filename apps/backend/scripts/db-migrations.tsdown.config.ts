@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,15 +10,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const backendDir = resolve(__dirname, '..');
 
+const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
+
 // Packages that must remain as runtime imports (can't be statically bundled)
 const externalPackages = [
   '@prisma/client',
 ];
 
+const customNoExternal = new Set([
+  ...Object.keys(packageJson.dependencies).filter(
+    (dep) => !externalPackages.some((ext) => dep === ext || dep.startsWith(ext + '/'))
+  ),
+]);
+
 // Node.js built-in modules that should not be bundled
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
 
 const basePlugin: Rolldown.Plugin = createBasePlugin({});
+
+// Node.js ESM is stricter about subpath imports than Next, so we need to rewrite some packages to use the correct file extensions.
+const rewriteNextSubpathImportsPlugin: Rolldown.Plugin = {
+  name: "rewrite-next-subpath-imports",
+  renderChunk(code) {
+    return code.replace(
+      /(["'])next\/(navigation|headers)\1/g,
+      (_match, quote: string, subpath: string) => `${quote}next/${subpath}.js${quote}`,
+    );
+  },
+};
 
 export default defineConfig({
   entry: [resolve(backendDir, 'scripts/db-migrations.ts')],
@@ -25,8 +45,7 @@ export default defineConfig({
   outDir: resolve(backendDir, 'dist'),
   target: 'node22',
   platform: 'node',
-  // Bundle all non-Node modules into the migration artifact, except Prisma runtime.
-  noExternal: true,
+  noExternal: [...customNoExternal],
   inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
   external: [...nodeBuiltins, ...externalPackages],
@@ -41,5 +60,5 @@ const __filename = __fileURLToPath(import.meta.url);
 const __dirname = __dirname_fn(__filename);
 const require = __createRequire(import.meta.url);`,
   },
-  plugins: [basePlugin],
+  plugins: [basePlugin, rewriteNextSubpathImportsPlugin],
 } satisfies UserConfig);
