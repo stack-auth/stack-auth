@@ -598,7 +598,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfigOverride(level: "branch" | "environment"): Promise<{ config_string: string }> {
+  async getConfigOverride(level: "project" | "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       { method: "GET" },
@@ -607,7 +607,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async setConfigOverride(level: "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+  async setConfigOverride(level: "project" | "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -624,7 +624,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async updateConfigOverride(level: "branch" | "environment", configOverrideOverride: any): Promise<void> {
+  async updateConfigOverride(level: "project" | "branch" | "environment", configOverrideOverride: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/config/override/${level}`,
       {
@@ -787,6 +787,13 @@ export class StackAdminInterface extends StackServerInterface {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    if (params?.user_ids && params.user_ids.length > 0) qs.set("user_ids", params.user_ids.join(","));
+    if (params?.team_ids && params.team_ids.length > 0) qs.set("team_ids", params.team_ids.join(","));
+    if (typeof params?.duration_ms_min === "number") qs.set("duration_ms_min", String(params.duration_ms_min));
+    if (typeof params?.duration_ms_max === "number") qs.set("duration_ms_max", String(params.duration_ms_max));
+    if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
+    if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
+    if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
     const response = await this.sendAdminRequest(
       `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
@@ -898,11 +905,7 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
 
-    const data = await response.json();
-    return {
-      result: data.result,
-      query_id: data.query_id,
-    };
+    return await response.json();
   }
 
   async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {

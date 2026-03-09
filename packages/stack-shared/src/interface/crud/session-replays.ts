@@ -1,6 +1,13 @@
 export type AdminListSessionReplaysOptions = {
   limit?: number,
   cursor?: string,
+  user_ids?: string[],
+  team_ids?: string[],
+  duration_ms_min?: number,
+  duration_ms_max?: number,
+  last_event_at_from_millis?: number,
+  last_event_at_to_millis?: number,
+  click_count_min?: number,
 };
 
 export type AdminListSessionReplaysResponse = {

@@ -310,10 +310,36 @@ export async function logEvent<T extends EventType[]>(
           is_anonymous: isAnonymous,
           ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
         };
-      } else {
+      } else if (matchingEventType.id === "$sign-up-rule-trigger") {
+        const ruleId =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.ruleId === "string"
+            ? dataRecord.ruleId
+            : throwErr(new StackAssertionError("ruleId is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+        const action =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.action === "string"
+            ? dataRecord.action
+            : throwErr(new StackAssertionError("action is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+        const email =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.email as string | null | undefined) ?? null
+            : null;
+        const authMethod =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.authMethod as string | null | undefined) ?? null
+            : null;
+        const oauthProvider =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.oauthProvider as string | null | undefined) ?? null
+            : null;
         clickhouseEventData = {
-          ...(data as Record<string, unknown>),
+          rule_id: ruleId,
+          action,
+          email,
+          auth_method: authMethod,
+          oauth_provider: oauthProvider,
         };
+      } else {
+        throw new StackAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
       }
 
       if (!projectId) {

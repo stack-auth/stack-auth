@@ -52,6 +52,36 @@ struct OAuthTests {
         
         #expect(result.url.absoluteString.contains("client_id=\(testProjectId)"))
     }
+
+    @Test("Should use sentinel client_secret when publishable key is missing")
+    func oauthUrlUsesSentinelWhenPublishableKeyMissing() async throws {
+        let app = TestConfig.createClientApp(publishableClientKey: nil)
+        
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
+        
+        #expect(result.url.absoluteString.contains("client_secret=\(publishableClientKeyNotNecessarySentinel)"))
+    }
+
+    @Test("Should use publishable key when available for OAuth client_secret")
+    func oauthUrlUsesPublishableKeyWhenAvailable() async throws {
+        let app = TestConfig.createClientApp()
+        
+        let result = try await app.getOAuthUrl(provider: "google", redirectUrl: testRedirectUrl, errorRedirectUrl: testErrorRedirectUrl)
+        
+        #expect(result.url.absoluteString.contains("client_secret=\(testPublishableClientKey)"))
+    }
+
+    @Test("Should resolve OAuth client secret from API client")
+    func apiClientResolvesOAuthClientSecret() async throws {
+        let appWithKey = TestConfig.createClientApp()
+        let appWithoutKey = TestConfig.createClientApp(publishableClientKey: nil)
+        
+        let secretWithKey = await appWithKey.client.getOAuthClientSecret()
+        let secretWithoutKey = await appWithoutKey.client.getOAuthClientSecret()
+        
+        #expect(secretWithKey == testPublishableClientKey)
+        #expect(secretWithoutKey == publishableClientKeyNotNecessarySentinel)
+    }
     
     @Test("Should include state in OAuth URL")
     func oauthUrlIncludesState() async throws {
