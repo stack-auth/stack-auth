@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,10 +10,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const backendDir = resolve(__dirname, '..');
 
+const packageJson = JSON.parse(readFileSync(resolve(backendDir, 'package.json'), 'utf-8'));
+
 // Packages that must remain as runtime imports (can't be statically bundled)
 const externalPackages = [
   '@prisma/client',
 ];
+
+const customNoExternal = new Set([
+  ...Object.keys(packageJson.dependencies).filter(
+    (dep) => !externalPackages.some((ext) => dep === ext || dep.startsWith(ext + '/'))
+  ),
+]);
 
 // Node.js built-in modules that should not be bundled
 const nodeBuiltins = builtinModules.flatMap((m) => [m, `node:${m}`]);
@@ -25,8 +34,7 @@ export default defineConfig({
   outDir: resolve(backendDir, 'dist'),
   target: 'node22',
   platform: 'node',
-  // Bundle all non-Node modules into the migration artifact, except Prisma runtime.
-  noExternal: true,
+  noExternal: [...customNoExternal],
   inlineOnly: false,
   // Externalize Node.js builtins so they're imported rather than shimmed
   external: [...nodeBuiltins, ...externalPackages],

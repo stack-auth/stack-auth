@@ -8,8 +8,8 @@ import { filterUndefined } from "../utils/objects";
 import { Result } from "../utils/results";
 import { urlString } from "../utils/urls";
 import {
-  ClientInterfaceOptions,
-  StackClientInterface
+    ClientInterfaceOptions,
+    StackClientInterface
 } from "./client-interface";
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
