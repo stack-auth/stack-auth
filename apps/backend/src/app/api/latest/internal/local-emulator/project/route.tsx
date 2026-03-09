@@ -3,8 +3,8 @@ import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
   LOCAL_EMULATOR_OWNER_TEAM_ID,
-  getLocalEmulatorPlaceholderBranchConfigOverride,
   isLocalEmulatorEnabled,
+  readConfigFromFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -194,9 +194,7 @@ export const POST = createSmartRouteHandler({
 
     const projectId = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
     const credentials = await getOrCreateCredentials(projectId);
-    const placeholderBranchConfigOverride = getLocalEmulatorPlaceholderBranchConfigOverride({
-      absoluteFilePath,
-    });
+    const fileConfig = await readConfigFromFile(absoluteFilePath);
 
     return {
       statusCode: 200 as const,
@@ -205,7 +203,7 @@ export const POST = createSmartRouteHandler({
         project_id: projectId,
         secret_server_key: credentials.secretServerKey,
         super_secret_admin_key: credentials.superSecretAdminKey,
-        branch_config_override_string: JSON.stringify(placeholderBranchConfigOverride),
+        branch_config_override_string: JSON.stringify(fileConfig),
       },
     };
   },

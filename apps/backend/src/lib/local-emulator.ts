@@ -1,4 +1,8 @@
+import fs from "fs/promises";
+import { createJiti } from "jiti";
+import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
@@ -31,13 +35,32 @@ export async function isLocalEmulatorProject(projectId: string) {
   return project !== null;
 }
 
-export function getLocalEmulatorPlaceholderBranchConfigOverride(options: {
-  absoluteFilePath: string,
-}) {
-  return {
-    _debug: {
-      type: "local-emulator-placeholder-branch-config",
-      absoluteFilePath: options.absoluteFilePath,
-    },
-  };
+export async function getLocalEmulatorFilePath(projectId: string): Promise<string | null> {
+  const result = await globalPrismaClient.localEmulatorProject.findUnique({
+    where: { projectId },
+    select: { absoluteFilePath: true },
+  });
+  return result?.absoluteFilePath ?? null;
+}
+
+export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    const jiti = createJiti(import.meta.url, { cache: false });
+    const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
+    const config = mod.config;
+    if (!isValidConfig(config)) {
+      captureError("readConfigFromFile", new Error(`Invalid config in ${filePath}`));
+      return {};
+    }
+    return config;
+  } catch (e) {
+    captureError("readConfigFromFile", e instanceof Error ? e : new Error(String(e)));
+    return {};
+  }
+}
+
+export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
+  const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
+  await fs.writeFile(filePath, content, "utf-8");
 }
