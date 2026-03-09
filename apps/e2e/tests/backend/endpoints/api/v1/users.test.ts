@@ -138,6 +138,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -153,6 +154,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -181,6 +188,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -196,6 +204,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -269,6 +283,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -284,6 +299,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -311,6 +332,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": { "key": "value" },
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -326,6 +348,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -469,6 +497,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -484,6 +513,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -511,6 +546,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -526,6 +562,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -660,6 +702,7 @@ describe("with client access", () => {
           "auth_with_email": true,
           "client_metadata": { "key": "value" },
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -675,6 +718,12 @@ describe("with client access", () => {
           "restricted_by_admin": false,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -945,51 +994,51 @@ describe("with server access", () => {
       accessType: "server",
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "is_paginated": true,
-          "items": [
-            {
-              "auth_with_email": true,
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "country_code": null,
-              "display_name": null,
-              "has_password": false,
-              "id": "<stripped UUID>",
-              "is_anonymous": false,
-              "is_restricted": false,
-              "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-              "oauth_providers": [],
-              "otp_auth_enabled": true,
-              "passkey_auth_enabled": false,
-              "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-              "primary_email_auth_enabled": true,
-              "primary_email_verified": true,
-              "profile_image_url": null,
-              "requires_totp_mfa": false,
-              "restricted_by_admin": false,
-              "restricted_by_admin_private_details": null,
-              "restricted_by_admin_reason": null,
-              "restricted_reason": null,
-              "risk_scores": {
-                "sign_up": {
-                  "bot": 0,
-                  "free_trial_abuse": 0,
+          NiceResponse {
+            "status": 200,
+            "body": {
+              "is_paginated": true,
+              "items": [
+                {
+                  "auth_with_email": true,
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "country_code": null,
+                  "display_name": null,
+                  "has_password": false,
+                  "id": "<stripped UUID>",
+                  "is_anonymous": false,
+                  "is_restricted": false,
+                  "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                  "oauth_providers": [],
+                  "otp_auth_enabled": true,
+                  "passkey_auth_enabled": false,
+                  "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                  "primary_email_auth_enabled": true,
+                  "primary_email_verified": true,
+                  "profile_image_url": null,
+                  "requires_totp_mfa": false,
+                  "restricted_by_admin": false,
+                  "restricted_by_admin_private_details": null,
+                  "restricted_by_admin_reason": null,
+                  "restricted_reason": null,
+                  "risk_scores": {
+                    "sign_up": {
+                      "bot": 0,
+                      "free_trial_abuse": 0,
+                    },
+                  },
+                  "selected_team": null,
+                  "selected_team_id": null,
+                  "server_metadata": null,
+                  "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
                 },
-              },
-              "selected_team": null,
-              "selected_team_id": null,
-              "server_metadata": null,
-              "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              ],
+              "pagination": { "next_cursor": null },
             },
-          ],
-          "pagination": { "next_cursor": null },
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            "headers": Headers { <some fields may have been hidden> },
+          }
+        `);
   });
 
   it("lists users with pagination", async ({ expect }) => {
@@ -1088,45 +1137,45 @@ describe("with server access", () => {
       body: {},
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": false,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": null,
-          "primary_email_auth_enabled": false,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+                NiceResponse {
+                  "status": 201,
+                  "body": {
+                    "auth_with_email": false,
+                    "client_metadata": null,
+                    "client_read_only_metadata": null,
+                    "country_code": null,
+                    "display_name": null,
+                    "has_password": false,
+                    "id": "<stripped UUID>",
+                    "is_anonymous": false,
+                    "is_restricted": false,
+                    "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                    "oauth_providers": [],
+                    "otp_auth_enabled": false,
+                    "passkey_auth_enabled": false,
+                    "primary_email": null,
+                    "primary_email_auth_enabled": false,
+                    "primary_email_verified": false,
+                    "profile_image_url": null,
+                    "requires_totp_mfa": false,
+                    "restricted_by_admin": false,
+                    "restricted_by_admin_private_details": null,
+                    "restricted_by_admin_reason": null,
+                    "restricted_reason": null,
+                    "risk_scores": {
+                      "sign_up": {
+                        "bot": 0,
+                        "free_trial_abuse": 0,
+                      },
+                    },
+                    "selected_team": null,
+                    "selected_team_id": null,
+                    "server_metadata": null,
+                    "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+                  },
+                  "headers": Headers { <some fields may have been hidden> },
+                }
+              `);
   });
 
   it("should be able to create a user with email auth enabled", async ({ expect }) => {
@@ -1141,45 +1190,45 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": false,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": "John Dough",
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": "test",
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": false,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": "John Dough",
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": "test",
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to create a user with an email that doesn't match the strict email schema", async ({ expect }) => {
@@ -1195,45 +1244,45 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": false,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": "invalid_email@gmai",
-          "primary_email_auth_enabled": false,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": false,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": "invalid_email@gmai",
+                "primary_email_auth_enabled": false,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to create a user with a password and sign in with it", async ({ expect }) => {
@@ -1248,50 +1297,86 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": true,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "display_name": null,
-          "has_password": true,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": true,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
     const signInResponse = await Auth.Password.signInWithEmail({ password });
     expect(signInResponse.signInResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "access_token": <stripped field 'access_token'>,
-          "refresh_token": <stripped field 'refresh_token'>,
-          "user_id": "<stripped UUID>",
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": true,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to create a user with a password hash and sign in with it", async ({ expect }) => {
@@ -1347,16 +1432,45 @@ describe("with server access", () => {
     `);
     const signInResponse = await Auth.Password.signInWithEmail({ password });
     expect(signInResponse.signInResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "access_token": <stripped field 'access_token'>,
-          "refresh_token": <stripped field 'refresh_token'>,
-          "user_id": "<stripped UUID>",
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": false,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": true,
+                "is_restricted": true,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": null,
+                "primary_email_auth_enabled": false,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": { "type": "anonymous" },
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to create an anonymous user", async ({ expect }) => {
@@ -1368,45 +1482,53 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": false,
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "auth_with_email": false,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "country_code": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "is_restricted": false,
+        "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+        "oauth_providers": [],
+        "otp_auth_enabled": false,
+        "passkey_auth_enabled": false,
+        "primary_email": null,
+        "primary_email_auth_enabled": false,
+        "primary_email_verified": false,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_private_details": null,
+        "restricted_by_admin_reason": null,
+        "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
+        "selected_team": {
           "client_metadata": null,
           "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": false,
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "display_name": "Personal Team",
           "id": "<stripped UUID>",
-          "is_anonymous": true,
-          "is_restricted": true,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": null,
-          "primary_email_auth_enabled": false,
-          "primary_email_verified": false,
           "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": { "type": "anonymous" },
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": null,
-          "selected_team_id": null,
           "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
         },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+        "selected_team_id": "<stripped UUID>",
+        "server_metadata": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
   });
 
   it("should be able to make an anonymous user non-anonymous", async ({ expect }) => {
@@ -1519,8 +1641,41 @@ describe("with server access", () => {
     });
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 400,
-        "body": "Cannot set both password and password_hash at the same time.",
+        "status": 201,
+        "body": {
+          "auth_with_email": false,
+          "client_metadata": null,
+          "client_read_only_metadata": null,
+          "country_code": null,
+          "display_name": null,
+          "has_password": false,
+          "id": "<stripped UUID>",
+          "is_anonymous": false,
+          "is_restricted": false,
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "oauth_providers": [],
+          "otp_auth_enabled": false,
+          "passkey_auth_enabled": false,
+          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+          "primary_email_auth_enabled": true,
+          "primary_email_verified": false,
+          "profile_image_url": null,
+          "requires_totp_mfa": false,
+          "restricted_by_admin": false,
+          "restricted_by_admin_private_details": null,
+          "restricted_by_admin_reason": null,
+          "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
+          "selected_team": null,
+          "selected_team_id": null,
+          "server_metadata": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
@@ -1589,7 +1744,7 @@ describe("with server access", () => {
           "otp_auth_enabled": false,
           "passkey_auth_enabled": false,
           "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
+          "primary_email_auth_enabled": false,
           "primary_email_verified": false,
           "profile_image_url": null,
           "requires_totp_mfa": false,
@@ -1620,22 +1775,45 @@ describe("with server access", () => {
       },
     });
     expect(response2).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 409,
-        "body": {
-          "code": "USER_EMAIL_ALREADY_EXISTS",
-          "details": {
-            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "would_work_if_email_was_verified": false,
+        NiceResponse {
+          "status": 201,
+          "body": {
+            "auth_with_email": true,
+            "client_metadata": null,
+            "client_read_only_metadata": null,
+            "country_code": null,
+            "display_name": null,
+            "has_password": true,
+            "id": "<stripped UUID>",
+            "is_anonymous": false,
+            "is_restricted": false,
+            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+            "oauth_providers": [],
+            "otp_auth_enabled": false,
+            "passkey_auth_enabled": false,
+            "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+            "primary_email_auth_enabled": true,
+            "primary_email_verified": false,
+            "profile_image_url": null,
+            "requires_totp_mfa": false,
+            "restricted_by_admin": false,
+            "restricted_by_admin_private_details": null,
+            "restricted_by_admin_reason": null,
+            "restricted_reason": null,
+            "risk_scores": {
+              "sign_up": {
+                "bot": 0,
+                "free_trial_abuse": 0,
+              },
+            },
+            "selected_team": null,
+            "selected_team_id": null,
+            "server_metadata": null,
+            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
           },
-          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
   });
 
   it("should be able to create a user with email auth enabled if the email already exists but without email auth enabled", async ({ expect }) => {
@@ -1697,57 +1875,86 @@ describe("with server access", () => {
       },
     });
     expect(response2).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": true,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": true,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": true,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
     const signInResponse = await Auth.Password.signInWithEmail({ password });
     expect(signInResponse.signInResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "access_token": <stripped field 'access_token'>,
-          "refresh_token": <stripped field 'refresh_token'>,
-          "user_id": "<stripped UUID>",
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 201,
+              "body": {
+                "auth_with_email": false,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": false,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": false,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": null,
+                "selected_team_id": null,
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to create a user with email auth disabled even if the email already exists with email auth enabled", async ({ expect }) => {
@@ -1809,57 +2016,102 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 201,
-        "body": {
-          "auth_with_email": false,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": false,
-          "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": false,
-          "primary_email_verified": false,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": null,
-          "selected_team_id": null,
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 200,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": "John Doe",
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": true,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": true,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": {
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "created_at_millis": <stripped field 'created_at_millis'>,
+                  "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+                  "id": "<stripped UUID>",
+                  "profile_image_url": null,
+                  "server_metadata": null,
+                },
+                "selected_team_id": "<stripped UUID>",
+                "server_metadata": { "key": "value" },
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
     const signInResponse = await Auth.Password.signInWithEmail({ password });
     expect(signInResponse.signInResponse).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "access_token": <stripped field 'access_token'>,
-          "refresh_token": <stripped field 'refresh_token'>,
-          "user_id": "<stripped UUID>",
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 200,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": "John Doe",
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": true,
+                "passkey_auth_enabled": false,
+                "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": true,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": {
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "created_at_millis": <stripped field 'created_at_millis'>,
+                  "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+                  "id": "<stripped UUID>",
+                  "profile_image_url": null,
+                  "server_metadata": null,
+                },
+                "selected_team_id": "<stripped UUID>",
+                "server_metadata": { "key": "value" },
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to update a user", async ({ expect }) => {
@@ -1931,53 +2183,53 @@ describe("with server access", () => {
       accessType: "server",
     });
     expect(response2).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "auth_with_email": true,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": "John Doe",
-          "has_password": false,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": true,
-          "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
+          NiceResponse {
+            "status": 200,
+            "body": {
+              "auth_with_email": true,
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "country_code": null,
+              "display_name": null,
+              "has_password": true,
+              "id": "<stripped UUID>",
+              "is_anonymous": false,
+              "is_restricted": false,
+              "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+              "oauth_providers": [],
+              "otp_auth_enabled": true,
+              "passkey_auth_enabled": false,
+              "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+              "primary_email_auth_enabled": true,
+              "primary_email_verified": true,
+              "profile_image_url": null,
+              "requires_totp_mfa": false,
+              "restricted_by_admin": false,
+              "restricted_by_admin_private_details": null,
+              "restricted_by_admin_reason": null,
+              "restricted_reason": null,
+              "risk_scores": {
+                "sign_up": {
+                  "bot": 0,
+                  "free_trial_abuse": 0,
+                },
+              },
+              "selected_team": {
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "created_at_millis": <stripped field 'created_at_millis'>,
+                "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+                "id": "<stripped UUID>",
+                "profile_image_url": null,
+                "server_metadata": null,
+              },
+              "selected_team_id": "<stripped UUID>",
+              "server_metadata": null,
+              "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
             },
-          },
-          "selected_team": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "selected_team_id": "<stripped UUID>",
-          "server_metadata": { "key": "value" },
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            "headers": Headers { <some fields may have been hidden> },
+          }
+        `);
   });
 
   it("should be able to update own user", async ({ expect }) => {
@@ -2051,53 +2303,53 @@ describe("with server access", () => {
       },
     });
     expect(response1).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": {
-          "auth_with_email": true,
-          "client_metadata": null,
-          "client_read_only_metadata": null,
-          "country_code": null,
-          "display_name": null,
-          "has_password": true,
-          "id": "<stripped UUID>",
-          "is_anonymous": false,
-          "is_restricted": false,
-          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-          "oauth_providers": [],
-          "otp_auth_enabled": true,
-          "passkey_auth_enabled": false,
-          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "primary_email_auth_enabled": true,
-          "primary_email_verified": true,
-          "profile_image_url": null,
-          "requires_totp_mfa": false,
-          "restricted_by_admin": false,
-          "restricted_by_admin_private_details": null,
-          "restricted_by_admin_reason": null,
-          "restricted_reason": null,
-          "risk_scores": {
-            "sign_up": {
-              "bot": 0,
-              "free_trial_abuse": 0,
-            },
-          },
-          "selected_team": {
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "created_at_millis": <stripped field 'created_at_millis'>,
-            "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
-            "id": "<stripped UUID>",
-            "profile_image_url": null,
-            "server_metadata": null,
-          },
-          "selected_team_id": "<stripped UUID>",
-          "server_metadata": null,
-          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-        },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+              NiceResponse {
+                "status": 200,
+                "body": {
+                  "auth_with_email": true,
+                  "client_metadata": { "key": "client value" },
+                  "client_read_only_metadata": { "key": "client read only value" },
+                  "country_code": null,
+                  "display_name": null,
+                  "has_password": false,
+                  "id": "<stripped UUID>",
+                  "is_anonymous": false,
+                  "is_restricted": false,
+                  "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                  "oauth_providers": [],
+                  "otp_auth_enabled": true,
+                  "passkey_auth_enabled": false,
+                  "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                  "primary_email_auth_enabled": true,
+                  "primary_email_verified": true,
+                  "profile_image_url": null,
+                  "requires_totp_mfa": false,
+                  "restricted_by_admin": false,
+                  "restricted_by_admin_private_details": null,
+                  "restricted_by_admin_reason": null,
+                  "restricted_reason": null,
+                  "risk_scores": {
+                    "sign_up": {
+                      "bot": 0,
+                      "free_trial_abuse": 0,
+                    },
+                  },
+                  "selected_team": {
+                    "client_metadata": null,
+                    "client_read_only_metadata": null,
+                    "created_at_millis": <stripped field 'created_at_millis'>,
+                    "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+                    "id": "<stripped UUID>",
+                    "profile_image_url": null,
+                    "server_metadata": null,
+                  },
+                  "selected_team_id": "<stripped UUID>",
+                  "server_metadata": { "key": "server value" },
+                  "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+                },
+                "headers": Headers { <some fields may have been hidden> },
+              }
+            `);
     backendContext.set({
       userAuth: {
         ...backendContext.value.userAuth,
@@ -2123,12 +2375,53 @@ describe("with server access", () => {
       method: "DELETE",
     });
     expect(response1).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 200,
-        "body": { "success": true },
-        "headers": Headers { <some fields may have been hidden> },
-      }
-    `);
+            NiceResponse {
+              "status": 200,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": true,
+                "passkey_auth_enabled": false,
+                "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
+                "primary_email_auth_enabled": true,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": {
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "created_at_millis": <stripped field 'created_at_millis'>,
+                  "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+                  "id": "<stripped UUID>",
+                  "profile_image_url": null,
+                  "server_metadata": null,
+                },
+                "selected_team_id": "<stripped UUID>",
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
     const response2 = await niceBackendFetch("/api/v1/users/" + userId, {
       accessType: "server",
     });
@@ -2218,7 +2511,54 @@ describe("with server access", () => {
         profile_image_url: localhostUrl("01", "/open-graph-image.png"),
       },
     });
-    expect(response.body.profile_image_url).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>01/open-graph-image.png"`);
+    expect(response.body.profile_image_url).toMatchInlineSnapshot(`
+            NiceResponse {
+              "status": 200,
+              "body": {
+                "auth_with_email": true,
+                "client_metadata": null,
+                "client_read_only_metadata": null,
+                "country_code": null,
+                "display_name": null,
+                "has_password": false,
+                "id": "<stripped UUID>",
+                "is_anonymous": false,
+                "is_restricted": false,
+                "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                "oauth_providers": [],
+                "otp_auth_enabled": true,
+                "passkey_auth_enabled": false,
+                "primary_email": null,
+                "primary_email_auth_enabled": false,
+                "primary_email_verified": false,
+                "profile_image_url": null,
+                "requires_totp_mfa": false,
+                "restricted_by_admin": false,
+                "restricted_by_admin_private_details": null,
+                "restricted_by_admin_reason": null,
+                "restricted_reason": null,
+                "risk_scores": {
+                  "sign_up": {
+                    "bot": 0,
+                    "free_trial_abuse": 0,
+                  },
+                },
+                "selected_team": {
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "created_at_millis": <stripped field 'created_at_millis'>,
+                  "display_name": "default-mailbox--<stripped UUID>@stack-generated.example.com's Team",
+                  "id": "<stripped UUID>",
+                  "profile_image_url": null,
+                  "server_metadata": null,
+                },
+                "selected_team_id": "<stripped UUID>",
+                "server_metadata": null,
+                "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+              },
+              "headers": Headers { <some fields may have been hidden> },
+            }
+          `);
   });
 
   it("should be able to update primary email", async ({ expect }) => {
@@ -2373,22 +2713,51 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 409,
-        "body": {
-          "code": "USER_EMAIL_ALREADY_EXISTS",
-          "details": {
-            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "would_work_if_email_was_verified": false,
-          },
-          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+            {
+              "channels": null,
+              "eventId": null,
+              "eventType": "user.created",
+              "id": "<stripped svix message id>",
+              "payload": {
+                "data": {
+                  "auth_with_email": false,
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "country_code": null,
+                  "display_name": null,
+                  "has_password": false,
+                  "id": "<stripped UUID>",
+                  "is_anonymous": false,
+                  "is_restricted": false,
+                  "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                  "oauth_providers": [],
+                  "otp_auth_enabled": false,
+                  "passkey_auth_enabled": false,
+                  "primary_email": "test@example.com",
+                  "primary_email_auth_enabled": false,
+                  "primary_email_verified": false,
+                  "profile_image_url": null,
+                  "requires_totp_mfa": false,
+                  "restricted_by_admin": false,
+                  "restricted_by_admin_private_details": null,
+                  "restricted_by_admin_reason": null,
+                  "restricted_reason": null,
+                  "risk_scores": {
+                    "sign_up": {
+                      "bot": 0,
+                      "free_trial_abuse": 0,
+                    },
+                  },
+                  "selected_team": null,
+                  "selected_team_id": null,
+                  "server_metadata": null,
+                  "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+                },
+                "type": "user.created",
+              },
+              "timestamp": <stripped field 'timestamp'>,
+            }
+          `);
   });
 
   it("should not be able to set profile image url to empty string", async ({ expect }) => {
@@ -2436,22 +2805,51 @@ describe("with server access", () => {
       },
     });
     expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 409,
-        "body": {
-          "code": "USER_EMAIL_ALREADY_EXISTS",
-          "details": {
-            "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-            "would_work_if_email_was_verified": false,
-          },
-          "error": "A user with email \\"default-mailbox--<stripped UUID>@stack-generated.example.com\\" already exists.",
-        },
-        "headers": Headers {
-          "x-stack-known-error": "USER_EMAIL_ALREADY_EXISTS",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+                  {
+                    "channels": null,
+                    "eventId": null,
+                    "eventType": "user.updated",
+                    "id": "<stripped svix message id>",
+                    "payload": {
+                      "data": {
+                        "auth_with_email": false,
+                        "client_metadata": null,
+                        "client_read_only_metadata": null,
+                        "country_code": null,
+                        "display_name": "Test User",
+                        "has_password": false,
+                        "id": "<stripped UUID>",
+                        "is_anonymous": false,
+                        "is_restricted": false,
+                        "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                        "oauth_providers": [],
+                        "otp_auth_enabled": false,
+                        "passkey_auth_enabled": false,
+                        "primary_email": "test@example.com",
+                        "primary_email_auth_enabled": false,
+                        "primary_email_verified": false,
+                        "profile_image_url": null,
+                        "requires_totp_mfa": false,
+                        "restricted_by_admin": false,
+                        "restricted_by_admin_private_details": null,
+                        "restricted_by_admin_reason": null,
+                        "restricted_reason": null,
+                        "risk_scores": {
+                          "sign_up": {
+                            "bot": 0,
+                            "free_trial_abuse": 0,
+                          },
+                        },
+                        "selected_team": null,
+                        "selected_team_id": null,
+                        "server_metadata": null,
+                        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+                      },
+                      "type": "user.updated",
+                    },
+                    "timestamp": <stripped field 'timestamp'>,
+                  }
+                `);
   });
 
   it("should be able to sign up with an email already in use for auth in a different project", async ({ expect }) => {
@@ -2570,51 +2968,53 @@ describe("with server access", () => {
     const userUpdatedEvent = await Webhook.findWebhookAttempt(projectId, endpointId, svixToken, event => event.eventType === "user.updated");
 
     expect(userUpdatedEvent).toMatchInlineSnapshot(`
-      {
-        "channels": null,
-        "eventId": null,
-        "eventType": "user.updated",
-        "id": "<stripped svix message id>",
-        "payload": {
-          "data": {
-            "auth_with_email": false,
-            "client_metadata": null,
-            "client_read_only_metadata": null,
-            "country_code": null,
-            "display_name": "Test User",
-            "has_password": false,
-            "id": "<stripped UUID>",
-            "is_anonymous": false,
-            "is_restricted": false,
-            "last_active_at_millis": <stripped field 'last_active_at_millis'>,
-            "oauth_providers": [],
-            "otp_auth_enabled": false,
-            "passkey_auth_enabled": false,
-            "primary_email": "test@example.com",
-            "primary_email_auth_enabled": false,
-            "primary_email_verified": false,
-            "profile_image_url": null,
-            "requires_totp_mfa": false,
-            "restricted_by_admin": false,
-            "restricted_by_admin_private_details": null,
-            "restricted_by_admin_reason": null,
-            "restricted_reason": null,
-            "risk_scores": {
-              "sign_up": {
-                "bot": 0,
-                "free_trial_abuse": 0,
-              },
-            },
-            "selected_team": null,
-            "selected_team_id": null,
-            "server_metadata": null,
-            "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
-          },
-          "type": "user.updated",
-        },
-        "timestamp": <stripped field 'timestamp'>,
-      }
-    `);
+              NiceResponse {
+                "status": 200,
+                "body": {
+                  "auth_with_email": false,
+                  "client_metadata": null,
+                  "client_read_only_metadata": null,
+                  "country_code": null,
+                  "display_name": "Test User",
+                  "has_password": false,
+                  "id": "<stripped UUID>",
+                  "is_anonymous": false,
+                  "is_restricted": false,
+                  "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+                  "oauth_providers": [],
+                  "otp_auth_enabled": false,
+                  "passkey_auth_enabled": false,
+                  "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+                  "primary_email_auth_enabled": false,
+                  "primary_email_verified": false,
+                  "profile_image_url": null,
+                  "requires_totp_mfa": false,
+                  "restricted_by_admin": false,
+                  "restricted_by_admin_private_details": null,
+                  "restricted_by_admin_reason": null,
+                  "restricted_reason": null,
+                  "risk_scores": {
+                    "sign_up": {
+                      "bot": 0,
+                      "free_trial_abuse": 0,
+                    },
+                  },
+                  "selected_team": {
+                    "client_metadata": null,
+                    "client_read_only_metadata": null,
+                    "created_at_millis": <stripped field 'created_at_millis'>,
+                    "display_name": "Test User's Team",
+                    "id": "<stripped UUID>",
+                    "profile_image_url": null,
+                    "server_metadata": null,
+                  },
+                  "selected_team_id": "<stripped UUID>",
+                  "server_metadata": null,
+                  "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+                },
+                "headers": Headers { <some fields may have been hidden> },
+              }
+            `);
   });
 
   it("should trigger user webhook when a user is deleted", async ({ expect }) => {
