@@ -75,6 +75,14 @@ COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/backend/.next/static ./apps/backend/.next/static
 COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
 COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/packages/stack-shared ./node_modules/@stackframe/stack-shared
+
+# prisma runtime modules are present in pnpm's virtual store; expose @prisma/client for Node resolution
+RUN set -e && \
+    mkdir -p /app/node_modules/@prisma && \
+    PRISMA_CLIENT_DIR=$(ls -d /app/node_modules/.pnpm/@prisma+client@*/node_modules/@prisma/client | head -n 1) && \
+    ln -s "$PRISMA_CLIENT_DIR" /app/node_modules/@prisma/client
 
 # Copy built dashboard
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./
