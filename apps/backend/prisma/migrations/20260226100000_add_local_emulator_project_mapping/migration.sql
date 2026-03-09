@@ -2,7 +2,7 @@ CREATE TABLE "LocalEmulatorProject" (
   "absoluteFilePath" TEXT NOT NULL,
   "projectId" TEXT NOT NULL,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
 
   CONSTRAINT "LocalEmulatorProject_pkey" PRIMARY KEY ("absoluteFilePath")
 );
