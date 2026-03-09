@@ -10,6 +10,7 @@ import { ToolCallContent, applyWysiwygEdit, createChatAdapter, createHistoryAdap
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
 import { getPublicEnvVar } from "@/lib/env";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
