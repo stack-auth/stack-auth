@@ -820,6 +820,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -838,6 +839,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -872,6 +879,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -890,6 +898,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -940,6 +954,7 @@ describe("with server access", () => {
               "auth_with_email": true,
               "client_metadata": null,
               "client_read_only_metadata": null,
+              "country_code": null,
               "display_name": null,
               "has_password": false,
               "id": "<stripped UUID>",
@@ -958,6 +973,12 @@ describe("with server access", () => {
               "restricted_by_admin_private_details": null,
               "restricted_by_admin_reason": null,
               "restricted_reason": null,
+              "risk_scores": {
+                "sign_up": {
+                  "bot": 0,
+                  "free_trial_abuse": 0,
+                },
+              },
               "selected_team": null,
               "selected_team_id": null,
               "server_metadata": null,
@@ -1016,6 +1037,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1034,6 +1056,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1066,6 +1094,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1084,6 +1113,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1112,6 +1147,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Dough",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1130,6 +1166,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": "test",
@@ -1159,6 +1201,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1177,6 +1220,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1263,6 +1312,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
@@ -1281,6 +1331,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1318,6 +1374,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1336,6 +1393,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": { "type": "anonymous" },
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1362,6 +1425,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1380,6 +1444,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1508,6 +1578,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1526,6 +1597,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1576,6 +1653,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1594,6 +1672,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1619,6 +1703,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
@@ -1637,6 +1722,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1677,6 +1768,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
@@ -1695,6 +1787,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1717,6 +1815,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1735,6 +1834,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": null,
           "selected_team_id": null,
           "server_metadata": null,
@@ -1781,6 +1886,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1799,6 +1905,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1825,6 +1937,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1843,6 +1956,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1878,6 +1997,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "John Doe",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -1896,6 +2016,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -1931,6 +2057,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": true,
           "id": "<stripped UUID>",
@@ -1949,6 +2076,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -2033,6 +2166,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": { "key": "client value" },
           "client_read_only_metadata": { "key": "client read only value" },
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -2051,6 +2185,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -2098,6 +2238,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -2116,6 +2257,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -2169,6 +2316,7 @@ describe("with server access", () => {
           "auth_with_email": true,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": null,
           "has_password": false,
           "id": "<stripped UUID>",
@@ -2187,6 +2335,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
@@ -2352,6 +2506,7 @@ describe("with server access", () => {
             "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
+            "country_code": null,
             "display_name": null,
             "has_password": false,
             "id": "<stripped UUID>",
@@ -2370,6 +2525,12 @@ describe("with server access", () => {
             "restricted_by_admin_private_details": null,
             "restricted_by_admin_reason": null,
             "restricted_reason": null,
+            "risk_scores": {
+              "sign_up": {
+                "bot": 0,
+                "free_trial_abuse": 0,
+              },
+            },
             "selected_team": null,
             "selected_team_id": null,
             "server_metadata": null,
@@ -2419,6 +2580,7 @@ describe("with server access", () => {
             "auth_with_email": false,
             "client_metadata": null,
             "client_read_only_metadata": null,
+            "country_code": null,
             "display_name": "Test User",
             "has_password": false,
             "id": "<stripped UUID>",
@@ -2437,6 +2599,12 @@ describe("with server access", () => {
             "restricted_by_admin_private_details": null,
             "restricted_by_admin_reason": null,
             "restricted_reason": null,
+            "risk_scores": {
+              "sign_up": {
+                "bot": 0,
+                "free_trial_abuse": 0,
+              },
+            },
             "selected_team": null,
             "selected_team_id": null,
             "server_metadata": null,
@@ -2523,6 +2691,7 @@ describe("with server access", () => {
           "auth_with_email": false,
           "client_metadata": null,
           "client_read_only_metadata": null,
+          "country_code": null,
           "display_name": "Test User",
           "has_password": false,
           "id": "<stripped UUID>",
@@ -2541,6 +2710,12 @@ describe("with server access", () => {
           "restricted_by_admin_private_details": null,
           "restricted_by_admin_reason": null,
           "restricted_reason": null,
+          "risk_scores": {
+            "sign_up": {
+              "bot": 0,
+              "free_trial_abuse": 0,
+            },
+          },
           "selected_team": {
             "client_metadata": null,
             "client_read_only_metadata": null,
