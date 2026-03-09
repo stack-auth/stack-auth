@@ -28,7 +28,7 @@ export const ISO_3166_ALPHA_2_COUNTRY_CODES = [
 
 export type Iso3166Alpha2CountryCode = typeof ISO_3166_ALPHA_2_COUNTRY_CODES[number];
 
-const validCountryCodeSet = new Set<string>(ISO_3166_ALPHA_2_COUNTRY_CODES);
+export const validCountryCodeSet = new Set<string>(ISO_3166_ALPHA_2_COUNTRY_CODES);
 
 export function normalizeCountryCode(countryCode: string): string {
   return countryCode.trim().toUpperCase();

@@ -144,9 +144,7 @@ function ConditionRow({
   const countryCodeListValues = isCountryCodeListOperator
     ? Array.isArray(condition.value)
       ? condition.value
-      : (() => {
-        throw new Error("Expected countryCode in_list condition value to be a string array");
-      })()
+      : []
     : [];
   const countryCodeError = isCountryCodeField
     ? validateCountryCodeValue(

@@ -1,7 +1,7 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { getSpoofableEndUserIp, getSpoofableEndUserLocation } from "./end-users";
@@ -21,9 +21,9 @@ export type SignUpRuleOptions = {
 
 export function getDerivedSignUpCountryCode(requestCountryCode: string | null): string | null {
   if (requestCountryCode !== null) {
-    const normalizedCountryCode = normalizeCountryCode(requestCountryCode);
-    if (isValidCountryCode(normalizedCountryCode)) {
-      return normalizedCountryCode;
+    const normalized = normalizeCountryCode(requestCountryCode);
+    if (validCountryCodeSet.has(normalized)) {
+      return normalized;
     }
   }
   return null;
