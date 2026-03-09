@@ -189,6 +189,7 @@ it("list users includes anonymous users when requested", async ({ expect }) => {
         "auth_with_email": true,
         "client_metadata": null,
         "client_read_only_metadata": null,
+        "country_code": null,
         "display_name": null,
         "has_password": true,
         "id": "<stripped UUID>",
@@ -207,6 +208,12 @@ it("list users includes anonymous users when requested", async ({ expect }) => {
         "restricted_by_admin_private_details": null,
         "restricted_by_admin_reason": null,
         "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
         "selected_team": null,
         "selected_team_id": null,
         "server_metadata": null,

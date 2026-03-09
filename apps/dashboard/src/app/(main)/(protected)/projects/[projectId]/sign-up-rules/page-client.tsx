@@ -1,5 +1,6 @@
 "use client";
 
+import { CountryCodeSelect } from "@/components/country-code-select";
 import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builder";
 import {
   ActionDialog,
@@ -694,11 +695,9 @@ function TestRulesCard({
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
               Country code override
             </Typography>
-            <Input
-              value={countryCodeOverride}
-              onChange={(e) => setCountryCodeOverride(e.target.value.toUpperCase())}
-              placeholder="US"
-              maxLength={2}
+            <CountryCodeSelect
+              value={countryCodeOverride || null}
+              onChange={(val) => setCountryCodeOverride(val ?? "")}
             />
           </div>
           <div className="space-y-1.5">
