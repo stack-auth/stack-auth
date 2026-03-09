@@ -9,7 +9,7 @@ import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/sc
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { generateText, stepCountIs, streamText } from "ai";
+import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -55,7 +55,7 @@ export const POST = createSmartRouteHandler({
       const result = streamText({
         model,
         system: systemPrompt,
-        messages,
+        messages: messages as ModelMessage[],
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
       });
@@ -70,7 +70,7 @@ export const POST = createSmartRouteHandler({
       const result = await generateText({
         model,
         system: systemPrompt,
-        messages,
+        messages: messages as ModelMessage[],
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
       }).finally(() => clearTimeout(timeoutId));

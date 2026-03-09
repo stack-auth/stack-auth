@@ -14,7 +14,6 @@ export const requestBodySchema = yupObject({
     "email-assistant-theme",
     "email-assistant-draft",
     "create-dashboard",
-    "edit-dashboard",
     "run-query",
   ]).defined(),
   messages: yupArray(

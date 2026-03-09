@@ -1,7 +1,9 @@
 import { cn } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { getPublicEnvVar } from "@/lib/env";
+import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
+import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useChat, type UIMessage } from "@ai-sdk/react";
@@ -534,6 +536,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
+  const currentUser = useUser();
 
   const trimmedQuery = query.trim();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
@@ -546,6 +549,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   } = useChat({
     transport: new DefaultChatTransport({
       api: `${backendBaseUrl}/api/latest/ai/query/stream`,
+      headers: () => buildStackAuthHeaders(currentUser),
       body: {
         systemPrompt: "command-center-ask-ai",
         tools: ["docs"],

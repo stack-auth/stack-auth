@@ -22,9 +22,6 @@ It must export one thing:
 - EmailTemplate: A function that renders the email draft
 It must not import from any package besides "@react-email/components", "@stackframe/emails", and "arktype".
 It uses tailwind classes for all styling.
-The email must include <Html>, <Head />, <Preview />, <Tailwind>, <Body>, and <Container> in the correct hierarchy.
-Do not use any Tailwind classes that require style injection (e.g., hover:, focus:, active:, group-hover:, media queries, dark:, etc.). Only use inlineable Tailwind utilities.
-The <Head /> component must be rendered inside <Tailwind> to support Tailwind style injection
 Here is an example of a valid email draft:
 \`\`\`tsx
 import { Container } from "@react-email/components";

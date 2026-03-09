@@ -5,6 +5,7 @@ import {
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
@@ -67,6 +68,7 @@ export function createChatAdapter(
   contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,
+  currentUser?: CurrentUser,
 ): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }) {
@@ -86,9 +88,11 @@ export function createChatAdapter(
 
         const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
+        const authHeaders = await buildStackAuthHeaders(currentUser);
+
         const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...authHeaders },
           signal: abortSignal,
           body: JSON.stringify({
             systemPrompt,
@@ -135,6 +139,7 @@ export async function applyWysiwygEdit(
     metadata: EditableMetadata,
     domPath: Array<{ tagName: string, index: number }>,
     htmlContext: string,
+    currentUser?: CurrentUser,
   },
 ): Promise<{ updatedSource: string }> {
   if (options.oldText === options.newText) {
@@ -183,9 +188,12 @@ ${htmlContext.slice(0, 500)}
 Please update the source code to change "${oldText}" to "${newText}" at the specified location. Return ONLY the complete updated source code.
 `;
 
+  const { currentUser } = options;
+  const authHeaders = await buildStackAuthHeaders(currentUser);
+
   const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...authHeaders },
     body: JSON.stringify({
       quality: "smart",
       speed: "fast",
