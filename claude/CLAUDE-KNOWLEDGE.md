@@ -94,3 +94,12 @@ A: Yes. In `apps/backend/src/lib/users.tsx`, if request geo does not provide a c
 
 Q: Who is allowed to set `risk_scores` and `country_code`?
 A: Customers/admins can set them through server/admin user create and update surfaces, the server SDK `createUser`/`update`, the dashboard admin create flow, and the internal sign-up-rules tester. End users still cannot set them themselves because `current-user` client update schemas do not expose those fields.
+
+Q: Where should country-code validation and normalization live?
+A: Keep the canonical ISO alpha-2 list and normalization helpers in `packages/stack-shared/src/utils/country-codes.ts`, then build `countryCodeSchema` in `packages/stack-shared/src/schema-fields.ts` on top of that. Backend signup derivation, CRUD/internal-route schemas, dashboard forms, the rule builder, CEL serialization, and `getFlagEmoji` should all flow through that shared source instead of ad hoc regexes or `trim().toUpperCase()` copies.
+
+Q: Why can `pnpm dev` fail immediately after adding a new `@stackframe/stack-shared` source entry?
+A: The monorepo dev stack reads `packages/stack-shared/dist` immediately. If a new source entry like `src/utils/country-codes.ts` is referenced by existing dist files before `@stackframe/stack-shared` has been rebuilt, backend/dashboard can crash with `ERR_MODULE_NOT_FOUND`. Run `pnpm --filter @stackframe/stack-shared build` so the new dist artifacts exist before relying on the watcher.
+
+Q: How should the dashboard signup-rule builder collect `countryCode` values?
+A: In `apps/dashboard/src/components/rule-builder/condition-builder.tsx`, single-value `countryCode` operators (`equals`, `does not equal`) should use a dropdown sourced from `ISO_3166_ALPHA_2_COUNTRY_CODES` re-exported by `schema-fields`, and `is one of` should render repeated country-code dropdowns with add/remove controls while still storing a `string[]`.

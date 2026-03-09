@@ -1,4 +1,5 @@
 import { evaluate } from "cel-js";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";
 
@@ -179,7 +180,7 @@ export function createSignUpRuleContext(params: {
     emailDomain = email.includes('@') ? (email.split('@').pop() ?? '') : '';
   }
 
-  const countryCode = params.countryCode === null ? '' : params.countryCode.trim().toUpperCase();
+  const countryCode = params.countryCode === null ? '' : normalizeCountryCode(params.countryCode);
 
   return {
     email,

@@ -8,8 +8,11 @@ import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
+import { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
 import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
+
+export { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
 
 const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
 
@@ -431,6 +434,15 @@ export const base64Schema = yupString().test("is-base64", (params) => `${params.
   return isBase64(value);
 });
 export const passwordSchema = yupString().max(70);
+export const countryCodeSchema = yupString().transform((value) => typeof value === "string" ? normalizeCountryCode(value) : value).test({
+  name: "country-code",
+  message: (params) => `${params.path} must be a valid ISO 3166-1 alpha-2 country code`,
+  test: (value) => value == null || isValidCountryCode(value),
+});
+import.meta.vitest?.test("countryCodeSchema", async ({ expect }) => {
+  await expect(countryCodeSchema.validate(" us ")).resolves.toBe("US");
+  await expect(countryCodeSchema.validate("usa")).rejects.toThrow("must be a valid ISO 3166-1 alpha-2 country code");
+});
 export const intervalSchema = yupTuple<Interval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
 export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
 export const intervalOrNeverSchema = yupUnion(intervalSchema.defined(), yupString().oneOf(['never']).defined());

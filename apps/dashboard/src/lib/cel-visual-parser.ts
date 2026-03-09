@@ -15,6 +15,8 @@
  * - riskScores.bot > 80 / riskScores.freeTrialAbuse >= 60
  */
 
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+
 export type ConditionOperator =
   | 'equals'
   | 'not_equals'
@@ -88,24 +90,20 @@ function unescapeCelString(value: string): string {
   return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
 }
 
-function normalizeCountryCodeValue(value: string): string {
-  return value.trim().toUpperCase();
-}
-
 function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {
   if (condition.field !== 'countryCode') {
     return condition.value;
   }
 
   if (Array.isArray(condition.value)) {
-    return condition.value.map(normalizeCountryCodeValue);
+    return condition.value.map(normalizeCountryCode);
   }
 
   if (typeof condition.value === 'number') {
     return condition.value;
   }
 
-  return normalizeCountryCodeValue(condition.value);
+  return normalizeCountryCode(condition.value);
 }
 
 function conditionToCel(condition: ConditionNode): string {

@@ -45,8 +45,11 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { CountryCodeSelect } from "@/components/country-code-select";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useState } from "react";
 import * as yup from "yup";
@@ -439,15 +442,18 @@ function UserDetails({ user }: UserDetailsProps) {
         }} />
       </UserInfo>
       <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
-        <EditableInput value={user.countryCode ?? ""} placeholder="-" onUpdate={async (newValue) => {
-          const normalized = newValue.trim().toUpperCase();
-          if (normalized !== '' && !/^[A-Z]{2}$/.test(normalized)) {
-            throw new StackAssertionError("Country code must be empty or a 2-letter ISO code");
-          }
-          await user.update({
-            countryCode: normalized === '' ? null : normalized,
-          });
-        }} />
+        <CountryCodeSelect
+          value={user.countryCode ?? null}
+          onChange={(newValue) => {
+            runAsynchronouslyWithAlert(async () => {
+              await user.update({
+                countryCode: newValue ? normalizeCountryCode(newValue) : null,
+              });
+            });
+          }}
+          placeholder="-"
+          className="w-full h-8 text-sm"
+        />
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
         <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} onUpdate={async (newValue) => {

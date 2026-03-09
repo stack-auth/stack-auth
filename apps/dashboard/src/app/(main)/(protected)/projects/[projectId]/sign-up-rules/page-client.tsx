@@ -38,6 +38,7 @@ import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIc
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -532,10 +533,10 @@ function TestRulesCard({
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
 
   const [runTest, isRunning] = useAsyncCallback(async () => {
-    const normalizedCountryCodeOverride = countryCodeOverride.trim().toUpperCase();
+    const normalizedCountryCodeOverride = normalizeCountryCode(countryCodeOverride);
     const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
     const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();
-    if (normalizedCountryCodeOverride !== '' && !/^[A-Z]{2}$/.test(normalizedCountryCodeOverride)) {
+    if (normalizedCountryCodeOverride !== '' && !isValidCountryCode(normalizedCountryCodeOverride)) {
       throw new StackAssertionError("Country code override must be a two-letter ISO code.");
     }
     if (normalizedBotRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedBotRiskScoreOverride)) {

@@ -1,10 +1,11 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { countryCodeSchema, emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography, useToast } from "@/components/ui";
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";
+import { CountryCodeField } from "./country-code-select";
 import { DateField, InputField, SwitchField, TextAreaField } from "./form-fields";
 import { StyledLink } from "./link";
 
@@ -74,11 +75,7 @@ export function UserDialog(props: {
     }).optional(),
     passwordEnabled: yup.boolean().optional(),
     updatePassword: yup.boolean().optional(),
-    countryCode: yup.string().test({
-      name: "country-code-format",
-      message: "Country code must be a two-letter ISO code",
-      test: (value) => value == null || value === "" || /^[A-Z]{2}$/.test(value),
-    }).optional(),
+    countryCode: countryCodeSchema.transform((value) => value === "" ? undefined : value).optional(),
     botRiskScore: yup.string().test({
       name: "bot-risk-score-format",
       message: "Bot risk score must be an integer between 0 and 100",
@@ -100,7 +97,7 @@ export function UserDialog(props: {
   });
 
   async function handleSubmit(values: yup.InferType<typeof formSchema>) {
-    const normalizedCountryCode = values.countryCode?.trim().toUpperCase() ?? "";
+    const normalizedCountryCode = values.countryCode ?? "";
     const normalizedBotRiskScore = values.botRiskScore?.trim() ?? "";
     const normalizedFreeTrialAbuseRiskScore = values.freeTrialAbuseRiskScore?.trim() ?? "";
     const userValues = {
@@ -193,7 +190,7 @@ export function UserDialog(props: {
             <AccordionItem value="item-risk-and-geo">
               <AccordionTrigger>Risk and Geo</AccordionTrigger>
               <AccordionContent className="space-y-4">
-                <InputField control={form.control} label="Country code" name="countryCode" placeholder="US" />
+                <CountryCodeField control={form.control} label="Country code" name="countryCode" placeholder="Select country code..." />
                 <div className="grid gap-4 md:grid-cols-2">
                   <InputField control={form.control} label="Risk score: bot" name="botRiskScore" placeholder="0-100" />
                   <InputField control={form.control} label="Risk score: free trial abuse" name="freeTrialAbuseRiskScore" placeholder="0-100" />

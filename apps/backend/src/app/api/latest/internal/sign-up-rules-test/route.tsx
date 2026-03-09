@@ -4,7 +4,7 @@ import { calculateSignUpRiskScores } from "@/lib/risk-scores";
 import { evaluateSignUpRulesWithTrace } from "@/lib/sign-up-rules";
 import { getDerivedSignUpCountryCode } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, countryCodeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const AUTH_METHODS = ['password', 'otp', 'oauth', 'passkey'] as const;
 const ACTION_TYPES = ['allow', 'reject', 'restrict', 'log'] as const;
@@ -24,7 +24,7 @@ export const POST = createSmartRouteHandler({
       email: yupString().nullable().defined(),
       auth_method: yupString().oneOf(AUTH_METHODS).defined(),
       oauth_provider: yupString().nullable().defined(),
-      country_code: yupString().nullable().defined(),
+      country_code: countryCodeSchema.nullable().defined(),
       risk_scores: yupObject({
         bot: yupNumber().min(0).max(100).integer().defined(),
         free_trial_abuse: yupNumber().min(0).max(100).integer().defined(),

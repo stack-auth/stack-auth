@@ -10,7 +10,9 @@ import {
   type GroupNode,
   type RuleNode,
 } from "@/lib/cel-visual-parser";
-import { PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { MinusIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { CountryCodeSelect } from "@/components/country-code-select";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import React from "react";
 
@@ -33,12 +35,29 @@ function validateRegex(pattern: string): string | null {
   }
 }
 
+function validateCountryCodeValue(value: string | string[]): string | null {
+  const values = Array.isArray(value) ? value : [value];
+  return values.every((item) => isValidCountryCode(item))
+    ? null
+    : "Country code must be a valid ISO 3166-1 alpha-2 code";
+}
+
 /**
  * Recursively checks if a RuleNode tree has any validation errors.
  * Returns true if the tree is valid, false if there are errors.
  */
 export function isConditionTreeValid(node: RuleNode): boolean {
   if (node.type === 'condition') {
+    if (node.field === 'countryCode') {
+      const countryCodeError = validateCountryCodeValue(
+        Array.isArray(node.value)
+          ? node.value
+          : String(node.value),
+      );
+      if (countryCodeError !== null) {
+        return false;
+      }
+    }
     // Check regex validation
     if (node.operator === 'matches') {
       const error = validateRegex(String(node.value));
@@ -83,10 +102,6 @@ function isNumericField(field: ConditionField): boolean {
   return field === 'riskScores.bot' || field === 'riskScores.freeTrialAbuse';
 }
 
-function normalizeCountryCodeValue(value: string): string {
-  return value.trim().toUpperCase();
-}
-
 // Get available operators for a field
 function getOperatorsForField(field: ConditionField): ConditionOperator[] {
   if (isNumericField(field)) {
@@ -123,6 +138,20 @@ function ConditionRow({
   const predefinedValues = PREDEFINED_VALUES[condition.field];
   const isCountryCodeField = condition.field === 'countryCode';
   const isCountryCodeListOperator = isCountryCodeField && condition.operator === 'in_list';
+  const countryCodeListValues = isCountryCodeListOperator
+    ? Array.isArray(condition.value)
+      ? condition.value
+      : (() => {
+        throw new Error("Expected countryCode in_list condition value to be a string array");
+      })()
+    : null;
+  const countryCodeError = isCountryCodeField
+    ? validateCountryCodeValue(
+        Array.isArray(condition.value)
+          ? condition.value
+          : String(condition.value),
+    )
+    : null;
 
   // Validate regex when operator is 'matches'
   const regexError = condition.operator === 'matches'
@@ -161,16 +190,30 @@ function ConditionRow({
     }
 
     if (Array.isArray(value)) {
-      onChange({ ...condition, value: value.map(normalizeCountryCodeValue) });
+      onChange({ ...condition, value: value.map(normalizeCountryCode) });
       return;
     }
 
     if (typeof value === 'string') {
-      onChange({ ...condition, value: normalizeCountryCodeValue(value) });
+      onChange({ ...condition, value: normalizeCountryCode(value) });
       return;
     }
 
     onChange({ ...condition, value });
+  };
+
+  const handleCountryCodeListItemChange = (index: number, value: string) => {
+    const values = countryCodeListValues ?? [];
+    handleValueChange(values.map((item, itemIndex) => itemIndex === index ? value : item));
+  };
+
+  const handleAddCountryCodeListItem = () => {
+    handleValueChange([...(countryCodeListValues ?? []), '']);
+  };
+
+  const handleRemoveCountryCodeListItem = (index: number) => {
+    const values = countryCodeListValues ?? [];
+    handleValueChange(values.filter((_, itemIndex) => itemIndex !== index));
   };
 
   return (
@@ -199,7 +242,44 @@ function ConditionRow({
 
       {/* Value input */}
       <div className="flex-1 min-w-0 space-y-1">
-        {condition.operator === 'in_list' ? (
+        {isCountryCodeListOperator ? (
+          <div className="space-y-2">
+            {countryCodeListValues.map((countryCode, index) => (
+              <div key={`${condition.id}-${index}`} className="flex items-center gap-2">
+                <CountryCodeSelect
+                  value={countryCode || null}
+                  onChange={(val) => handleCountryCodeListItemChange(index, val ?? "")}
+                  allowClear={false}
+                  className={cn(
+                    "h-8 text-sm flex-1",
+                    countryCodeError !== null && "border-destructive ring-1 ring-destructive/30",
+                  )}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                  aria-label={`Remove country code ${index + 1}`}
+                  title="Remove country code"
+                  onClick={() => handleRemoveCountryCodeListItem(index)}
+                  disabled={countryCodeListValues.length <= 1}
+                >
+                  <MinusIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-muted-foreground hover:text-foreground"
+              aria-label="Add country code"
+              title="Add country code"
+              onClick={handleAddCountryCodeListItem}
+            >
+              <PlusIcon className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : condition.operator === 'in_list' ? (
           <input
             type="text"
             value={Array.isArray(condition.value) ? condition.value.join(', ') : condition.value}
@@ -207,8 +287,23 @@ function ConditionRow({
               const items = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
               handleValueChange(items);
             }}
-            placeholder={isCountryCodeListOperator ? "US, CA" : "value1, value2, ..."}
-            className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md w-full"
+            placeholder="value1, value2, ..."
+            className={cn(
+              "h-8 px-2 text-sm bg-background/60 border rounded-md w-full",
+              countryCodeError !== null
+                ? "border-destructive ring-1 ring-destructive/30"
+                : "border-border/50",
+            )}
+          />
+        ) : isCountryCodeField ? (
+          <CountryCodeSelect
+            value={typeof condition.value === 'string' && condition.value ? condition.value : null}
+            onChange={(val) => handleValueChange(val ?? "")}
+            allowClear={false}
+            className={cn(
+              "h-8 text-sm w-full",
+              countryCodeError !== null && "border-destructive ring-1 ring-destructive/30",
+            )}
           />
         ) : predefinedValues ? (
           <select
@@ -239,20 +334,18 @@ function ConditionRow({
               value={String(condition.value)}
               onChange={(e) => handleValueChange(e.target.value)}
               placeholder={
-                isCountryCodeField
-                  ? "Single code, e.g. US"
-                  : condition.operator === 'matches'
-                    ? "Enter regex pattern..."
-                    : "Enter value..."
+                condition.operator === 'matches'
+                  ? "Enter regex pattern..."
+                  : "Enter value..."
               }
               className={cn(
                 "h-8 px-2 text-sm bg-background/60 border rounded-md flex-1",
-                regexError
+                regexError !== null || countryCodeError !== null
                   ? "border-destructive ring-1 ring-destructive/30"
                   : "border-border/50"
               )}
             />
-            {regexError && (
+            {(regexError !== null || countryCodeError !== null) && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -261,7 +354,7 @@ function ConditionRow({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[300px]">
-                    <p className="text-xs">{regexError}</p>
+                    <p className="text-xs">{regexError ?? countryCodeError}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -269,11 +362,18 @@ function ConditionRow({
           </div>
         )}
         {isCountryCodeField && (
-          <p className="text-[10px] text-muted-foreground">
-            {isCountryCodeListOperator
-              ? "Comma-separated ISO country codes, e.g. US, CA"
-              : "Single ISO country code only, e.g. US"}
-          </p>
+          <>
+            <p className="text-[10px] text-muted-foreground">
+              {isCountryCodeListOperator
+                ? "Add one or more ISO country codes"
+                : "Single ISO country code only, e.g. US"}
+            </p>
+            {countryCodeError !== null && (
+              <p className="text-[10px] text-destructive">
+                {countryCodeError}
+              </p>
+            )}
+          </>
         )}
       </div>
 

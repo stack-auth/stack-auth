@@ -1,6 +1,7 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { getSpoofableEndUserIp, getSpoofableEndUserLocation } from "./end-users";
@@ -28,8 +29,19 @@ function getStubSignUpCountryCode(email: string | null): string | null {
 }
 
 export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
-  return requestCountryCode ?? getStubSignUpCountryCode(email);
+  if (requestCountryCode !== null) {
+    const normalizedCountryCode = normalizeCountryCode(requestCountryCode);
+    if (isValidCountryCode(normalizedCountryCode)) {
+      return normalizedCountryCode;
+    }
+  }
+  return getStubSignUpCountryCode(email);
 }
+import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
+  expect(getDerivedSignUpCountryCode(" us ", null)).toBe("US");
+  expect(getDerivedSignUpCountryCode("usa", "ca-test@example.com")).toBe("CA");
+  expect(getDerivedSignUpCountryCode("1", null)).toBeNull();
+});
 
 /**
  * Creates or upgrades an anonymous user with sign-up rule evaluation.
