@@ -393,8 +393,8 @@ function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: str
       <WarningCircleIcon className="h-4 w-4" />
       <AlertDescription>
         {isExhausted
-          ? "You've reached your session replay limit for this month. New session replays are no longer being recorded."
-          : "You're approaching your session replay limit for this month."
+          ? "You've reached your monthly session replay limit. New session replays are no longer being recorded. Your limit resets next month."
+          : "You're approaching your monthly session replay limit."
         }
       </AlertDescription>
     </Alert>
@@ -434,8 +434,8 @@ function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: st
       <AlertDescription className="flex items-center justify-between gap-3">
         <span>
           {isExhausted
-            ? "You've reached your analytics event limit. New events are no longer being tracked."
-            : "You're approaching your analytics event limit."
+            ? "You've reached your monthly analytics event limit. New events are no longer being tracked. Your limit resets next month."
+            : "You're approaching your monthly analytics event limit."
           }
           {canUpgrade && !isExhausted && " Consider upgrading your plan."}
         </span>
