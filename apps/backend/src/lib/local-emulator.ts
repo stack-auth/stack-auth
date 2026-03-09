@@ -1,8 +1,9 @@
 import fs from "fs/promises";
+import path from "path";
 import { createJiti } from "jiti";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
@@ -49,7 +50,7 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
     content = await fs.readFile(filePath, "utf-8");
   } catch (e: any) {
     if (e?.code === "ENOENT") {
-      throw new StackAssertionError(`Config file not found: ${filePath}`, { cause: e });
+      throw new StatusError(StatusError.BadRequest, `Config file not found: ${filePath}`);
     }
     throw e;
   }
@@ -57,13 +58,13 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
   const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
   const config = mod.config;
   if (!isValidConfig(config)) {
-    throw new StackAssertionError(`Invalid config in ${filePath}`);
+    throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);
   }
   return config;
 }
 
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
-  const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+  const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
   const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
   await fs.writeFile(filePath, content, "utf-8");
