@@ -5,6 +5,7 @@ import {
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -47,6 +48,14 @@ function sanitizeGeneratedCode(code: string): string {
   return result;
 }
 
+function stripCodeFences(code: string): string {
+  if (!code.startsWith("```")) return code;
+  const lines = code.split("\n");
+  lines.shift();
+  if (lines[lines.length - 1]?.trim() === "```") lines.pop();
+  return lines.join("\n");
+}
+
 const CONTEXT_MAP = {
   "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
   "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
@@ -54,7 +63,7 @@ const CONTEXT_MAP = {
 } as const;
 
 export function createChatAdapter(
-  adminApp: StackAdminApp,
+  backendBaseUrl: string,
   contextType: "email-theme" | "email-template" | "email-draft",
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,
@@ -77,13 +86,21 @@ export function createChatAdapter(
 
         const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
-        const result = await adminApp.sendAiQuery({
-          systemPrompt,
-          tools: [...tools],
-          messages: [...contextMessages, ...formattedMessages],
+        const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          signal: abortSignal,
+          body: JSON.stringify({
+            systemPrompt,
+            tools: [...tools],
+            messages: [...contextMessages, ...formattedMessages],
+            quality: "smartest",
+            speed: "fast",
+          }),
         });
 
-        const content: ChatContent = Array.isArray(result.content) ? result.content : [];
+        const json = await response.json() as { content?: ChatContent };
+        const content: ChatContent = Array.isArray(json.content) ? json.content : [];
 
         const sanitizedContent: ChatContent = content.map((item) => {
           if (item.type === "tool-call" && typeof item.args?.content === "string") {
@@ -106,6 +123,85 @@ export function createChatAdapter(
       }
     },
   };
+}
+
+export async function applyWysiwygEdit(
+  backendBaseUrl: string,
+  options: {
+    sourceType: "template" | "theme" | "draft",
+    sourceCode: string,
+    oldText: string,
+    newText: string,
+    metadata: EditableMetadata,
+    domPath: Array<{ tagName: string, index: number }>,
+    htmlContext: string,
+  },
+): Promise<{ updatedSource: string }> {
+  if (options.oldText === options.newText) {
+    return { updatedSource: options.sourceCode };
+  }
+
+  const { sourceCode, oldText, newText, metadata, domPath, htmlContext } = options;
+
+  const userPrompt = `
+## Source Code to Edit
+\`\`\`tsx
+${sourceCode}
+\`\`\`
+
+## Edit Request
+- **Old text:** "${oldText}"
+- **New text:** "${newText}"
+
+## Location Information
+- **Line:** ${metadata.loc.line}
+- **Column:** ${metadata.loc.column}
+- **JSX Path:** ${metadata.jsxPath.join(" > ")}
+- **Parent Element:** <${metadata.parentElement.tagName}>
+- **Sibling Index:** ${metadata.siblingIndex}
+- **Occurrence:** ${metadata.occurrenceIndex} of ${metadata.occurrenceCount}
+
+## Source Context (lines around the text)
+Before:
+\`\`\`
+${metadata.sourceContext.before}
+\`\`\`
+
+After:
+\`\`\`
+${metadata.sourceContext.after}
+\`\`\`
+
+## Runtime DOM Path (for disambiguation)
+${domPath.map((p, i) => `${i + 1}. <${p.tagName}> (index: ${p.index})`).join("\n")}
+
+## Rendered HTML Context
+\`\`\`html
+${htmlContext.slice(0, 500)}
+\`\`\`
+
+Please update the source code to change "${oldText}" to "${newText}" at the specified location. Return ONLY the complete updated source code.
+`;
+
+  const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      quality: "smart",
+      speed: "fast",
+      systemPrompt: "wysiwyg-edit",
+      tools: [],
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  const json = await response.json() as { content?: Array<{ type: string, text?: string }> };
+  const textBlock = Array.isArray(json.content)
+    ? json.content.find((b) => b.type === "text" && b.text)
+    : undefined;
+  const updatedSource = stripCodeFences(textBlock?.text?.trim() ?? sourceCode);
+
+  return { updatedSource };
 }
 
 export function createHistoryAdapter(

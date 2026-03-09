@@ -1,10 +1,11 @@
 import { cn } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
+import { getPublicEnvVar } from "@/lib/env";
 import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { usePathname } from "next/navigation";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -534,11 +535,8 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
 
-  // Extract projectId from URL path (e.g., /projects/abc123/...)
-  const pathname = usePathname();
-  const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : null;
-
   const trimmedQuery = query.trim();
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
 
   const {
     messages,
@@ -547,8 +545,13 @@ const AIChatPreviewInner = memo(function AIChatPreview({
     error: aiError,
   } = useChat({
     transport: new DefaultChatTransport({
-      api: "/api/ai-search",
-      body: { projectId },
+      api: `${backendBaseUrl}/api/latest/ai/query/stream`,
+      body: {
+        systemPrompt: "command-center-ask-ai",
+        tools: ["docs"],
+        quality: "smart",
+        speed: "fast",
+      },
     }),
   });
 

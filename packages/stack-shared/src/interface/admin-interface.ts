@@ -3,7 +3,6 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
-import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -440,86 +439,6 @@ export class StackAdminInterface extends StackServerInterface {
       { method: "GET" },
       null,
     );
-    return await response.json();
-  }
-
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    const response = await this.sendAdminRequest(
-      `/internal/wysiwyg-edit`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          source_type: options.sourceType,
-          source_code: options.sourceCode,
-          old_text: options.oldText,
-          new_text: options.newText,
-          metadata: options.metadata,
-          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
-          html_context: options.htmlContext,
-        }),
-      },
-      null,
-    );
-    const result = await response.json();
-    return { updatedSource: result.updated_source };
-  }
-
-  async sendAiQuery(options: {
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    quality?: string,
-    speed?: string,
-    mode: "stream",
-  }): Promise<Response>;
-  async sendAiQuery(options: {
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    quality?: string,
-    speed?: string,
-    mode?: "generate",
-  }): Promise<{ content: ChatContent }>;
-  async sendAiQuery(options: {
-    systemPrompt: string,
-    tools: string[],
-    messages: Array<{ role: string, content: unknown }>,
-    quality?: string,
-    speed?: string,
-    mode?: "generate" | "stream",
-  }): Promise<{ content: ChatContent } | Response> {
-    const mode = options.mode ?? "generate";
-    const response = await this.sendAdminRequest(
-      `/ai/query/${mode}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          systemPrompt: options.systemPrompt,
-          tools: options.tools,
-          messages: options.messages,
-          quality: options.quality ?? "smartest",
-          speed: options.speed ?? "fast",
-        }),
-      },
-      null,
-    );
-    if (mode === "stream") {
-      return response;
-    }
     return await response.json();
   }
 

@@ -1,15 +1,15 @@
 import { forwardToProduction } from "@/lib/ai/forward";
-import { selectModel, type ModelQuality, type ModelSpeed } from "@/lib/ai/models";
-import { getFullSystemPrompt, type SystemPromptId } from "@/lib/ai/prompts";
+import { selectModel } from "@/lib/ai/models";
+import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
-import { getTools, validateToolNames, type ToolName } from "@/lib/ai/tools";
+import { getTools, validateToolNames } from "@/lib/ai/tools";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { ModelMessage, generateText, stepCountIs, streamText } from "ai";
+import { generateText, stepCountIs, streamText } from "ai";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -29,14 +29,8 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
     }
 
-    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
 
-    if (apiKey === "") {
-      throw new StatusError(
-        StatusError.InternalServerError,
-        "OpenRouter API key is not configured. Please set STACK_OPENROUTER_API_KEY environment variable."
-      );
-    }
 
     if (apiKey === "FORWARD_TO_PRODUCTION") {
       const prodResponse = await forwardToProduction(fullReq.headers, mode, body);
@@ -48,16 +42,12 @@ export const POST = createSmartRouteHandler({
     }
 
     const isAuthenticated = fullReq.auth != null;
-    const quality = body.quality as ModelQuality;
-    const speed = body.speed as ModelSpeed;
-    const systemPromptId = body.systemPrompt as SystemPromptId;
-    const toolNames = body.tools as ToolName[];
+    const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages } = body;
 
     const model = selectModel(quality, speed, isAuthenticated);
     const systemPrompt = getFullSystemPrompt(systemPromptId);
     const tools = await getTools(toolNames, { auth: fullReq.auth });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const messages = body.messages as ModelMessage[];
     const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
 

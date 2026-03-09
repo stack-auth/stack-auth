@@ -14,7 +14,8 @@ import {
   type ViewportMode,
   type WysiwygDebugInfo,
 } from "@/components/vibe-coding";
-import { ToolCallContent } from "@/components/vibe-coding/chat-adapters";
+import { applyWysiwygEdit, ToolCallContent } from "@/components/vibe-coding/chat-adapters";
+import { getPublicEnvVar } from "@/lib/env";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,6 +26,7 @@ import { useAdminApp } from "../../use-admin-app";
 
 export default function PageClient(props: { templateId: string }) {
   const stackAdminApp = useAdminApp();
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const templates = stackAdminApp.useEmailTemplates();
   const { setNeedConfirm } = useRouterConfirm();
   const templateFromHook = templates.find((t) => t.id === props.templateId);
@@ -146,7 +148,7 @@ export default function PageClient(props: { templateId: string }) {
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
-    const result = await stackAdminApp.applyWysiwygEdit({
+    const result = await applyWysiwygEdit(backendBaseUrl, {
       sourceType: 'template',
       sourceCode: currentCode,
       oldText: data.oldText,
@@ -157,7 +159,7 @@ export default function PageClient(props: { templateId: string }) {
     });
     setCurrentCode(result.updatedSource);
     return result.updatedSource;
-  }, [stackAdminApp, currentCode]);
+  }, [backendBaseUrl, currentCode]);
 
   if (!template) {
     // Show loading state while waiting for the template (either from hook or direct fetch)
@@ -271,7 +273,7 @@ export default function PageClient(props: { templateId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(stackAdminApp, "email-template", handleCodeUpdate, () => currentCode)}
+                chatAdapter={createChatAdapter(backendBaseUrl, "email-template", handleCodeUpdate, () => currentCode)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, template.id)}
                 toolComponents={<EmailTemplateUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
