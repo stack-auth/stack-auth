@@ -14,9 +14,13 @@ import {
   ArrowClockwiseIcon,
   WarningCircleIcon
 } from "@phosphor-icons/react";
+import { Alert, AlertDescription, Button } from "@/components/ui";
+import { useUser } from "@stackframe/stack";
+import { PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMemo, useRef } from "react";
+import { useAdminApp } from "../use-admin-app";
 
 // ============================================================================
 // Types
@@ -314,5 +318,85 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
         Retry
       </button>
     </div>
+  );
+}
+
+function resolvePlanId(products: Array<{ id: string | null, type: string }>): PlanId {
+  if (products.some(p => p.id === "growth" && p.type === "subscription")) return "growth";
+  if (products.some(p => p.id === "team" && p.type === "subscription")) return "team";
+  return "free";
+}
+
+/**
+ * Shows a warning banner when analytics event usage is at 80%+ or 100%.
+ * Fetches the billing team's analytics_events item and computes usage against the plan's total allocation.
+ */
+export function AnalyticsEventLimitBanner() {
+  const adminApp = useAdminApp();
+  const project = adminApp.useProject();
+  const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
+  const teams = user.useTeams();
+
+  const ownerTeam = useMemo(
+    () => teams.find(t => t.id === project.ownerTeamId),
+    [teams, project.ownerTeamId],
+  );
+
+  if (ownerTeam == null) {
+    return null;
+  }
+
+  return <AnalyticsEventLimitBannerInner team={ownerTeam} />;
+}
+
+function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type: string }>, createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string> } }) {
+  const eventsItem = team.useItem("analytics_events");
+  const products = team.useProducts();
+  const planId = resolvePlanId(products);
+  const totalAllocation = PLAN_LIMITS[planId].analyticsEvents;
+  const used = totalAllocation - eventsItem.quantity;
+  const usagePercent = totalAllocation > 0 ? (used / totalAllocation) * 100 : 0;
+
+  if (usagePercent < 80) {
+    return null;
+  }
+
+  const isExhausted = eventsItem.quantity <= 0;
+  const canUpgrade = planId !== "growth";
+
+  const handleUpgrade = async () => {
+    const targetProduct = planId === "free" ? "team" : "growth";
+    const checkoutUrl = await team.createCheckoutUrl({
+      productId: targetProduct,
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
+  };
+
+  return (
+    <Alert
+      variant={isExhausted ? "destructive" : "default"}
+      className={isExhausted ? undefined : "border-amber-500/50 text-amber-700 dark:text-amber-400 bg-amber-500/5 [&>svg]:text-amber-500"}
+    >
+      <WarningCircleIcon className="h-4 w-4" />
+      <AlertDescription className="flex items-center justify-between gap-3">
+        <span>
+          {isExhausted
+            ? "You've reached your analytics event limit. New events are no longer being tracked."
+            : "You're approaching your analytics event limit."
+          }
+          {canUpgrade && !isExhausted && " Consider upgrading your plan."}
+        </span>
+        {canUpgrade && (
+          <Button
+            size="sm"
+            variant={isExhausted ? "destructive" : "outline"}
+            onClick={handleUpgrade}
+          >
+            Upgrade plan
+          </Button>
+        )}
+      </AlertDescription>
+    </Alert>
   );
 }

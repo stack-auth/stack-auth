@@ -31,6 +31,7 @@ import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import {
+  AnalyticsEventLimitBanner,
   isDateValue,
   isJsonValue,
   JsonValue,
@@ -592,6 +593,7 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
+        <AnalyticsEventLimitBanner />
         <div className="flex flex-1 min-h-0 overflow-hidden -mx-2">
           {/* Left sidebar - table list (doesn't scroll, border extends full height) */}
           <div className="w-48 flex-shrink-0 border-r border-border/50 flex flex-col pl-2">
