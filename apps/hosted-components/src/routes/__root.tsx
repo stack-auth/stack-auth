@@ -117,7 +117,7 @@ function RootComponent() {
   }
 
   if (!projectId) {
-    return <FullPageError title="Invalid URL" message={`Could not determine project ID from subdomain. Visit <projectId>.localhost:8105.`} />;
+    return <FullPageError title="Invalid URL" message={`Could not determine project ID from subdomain. Visit <projectId>.${window.location.host}.`} />;
   }
 
   if (!isValidProjectId) {
