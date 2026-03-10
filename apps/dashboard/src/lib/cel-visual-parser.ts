@@ -174,7 +174,6 @@ function groupToCel(group: GroupNode): string {
   const celOperator = group.operator === 'and' ? ' && ' : ' || ';
   const childExpressions = group.children.map(child => {
     const expr = visualTreeToCel(child);
-    // Wrap child groups in parentheses if they have a different operator
     if (child.type === 'group' && child.operator !== group.operator) {
       return `(${expr})`;
     }

@@ -42,7 +42,7 @@ export function UserDialog(props: {
   } else {
     defaultValues = {
       signedUpAt: new Date(),
-      countryCode: "",
+      countryCode: null as string | null,
       botRiskScore: "",
       freeTrialAbuseRiskScore: "",
     };
@@ -75,7 +75,7 @@ export function UserDialog(props: {
     }).optional(),
     passwordEnabled: yup.boolean().optional(),
     updatePassword: yup.boolean().optional(),
-    countryCode: countryCodeSchema.transform((value) => value === "" ? undefined : value).optional(),
+    countryCode: countryCodeSchema.nullable().transform((value) => value === "" || value == null ? undefined : value).optional(),
     botRiskScore: yup.string().test({
       name: "bot-risk-score-format",
       message: "Bot risk score must be an integer between 0 and 100",

@@ -175,9 +175,8 @@ function ConditionRow({
 
   const handleOperatorChange = (operator: ConditionOperator) => {
     let value = condition.value;
-    // Convert between single value and array for in_list
     if (operator === 'in_list' && !Array.isArray(value)) {
-      value = value ? [String(value)] : [];
+      value = value ? [String(value)] : [''];
     } else if (operator !== 'in_list' && Array.isArray(value)) {
       value = value[0] ?? '';
     }
@@ -261,7 +260,6 @@ function ConditionRow({
                   aria-label={`Remove country code ${index + 1}`}
                   title="Remove country code"
                   onClick={() => handleRemoveCountryCodeListItem(index)}
-                  disabled={countryCodeListValues.length <= 1}
                 >
                   <MinusIcon className="h-4 w-4" />
                 </Button>

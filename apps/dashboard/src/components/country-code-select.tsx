@@ -125,7 +125,7 @@ export function CountryCodeField<F extends FieldValues>(props: {
             <FormControl>
               <CountryCodeSelect
                 value={field.value || null}
-                onChange={(val) => field.onChange(val ?? "")}
+                onChange={(val) => field.onChange(val)}
                 placeholder={props.placeholder ?? "Select country code..."}
                 disabled={props.disabled}
                 className="max-w-lg"

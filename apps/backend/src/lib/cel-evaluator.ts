@@ -332,3 +332,17 @@ import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ ex
   // Empty email should match empty string
   expect(evaluateCelExpression('email == ""', context)).toBe(true);
 });
+
+import.meta.vitest?.test('countryCode in_list vs equals', ({ expect }) => {
+  const usContext = createSignUpRuleContext({
+    email: 'test@example.com',
+    countryCode: 'US',
+    authMethod: 'password',
+    oauthProvider: null,
+    riskScores: { bot: 0, freeTrialAbuse: 0 },
+  });
+
+  expect(evaluateCelExpression('countryCode in ["US", "CA"]', usContext)).toBe(true);
+  expect(evaluateCelExpression('countryCode in ["CA"]', usContext)).toBe(false);
+  expect(evaluateCelExpression('countryCode == "US"', usContext)).toBe(true);
+});
