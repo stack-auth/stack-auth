@@ -82,3 +82,6 @@ A: The card playground now includes a `Header Actions` toggle that injects a sam
 
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: How can overview Recharts on the dashboard dim non-hovered data while keeping the active day emphasized?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, track `hoveredIndex` from Recharts' `activeTooltipIndex` via chart `onMouseMove`/`onMouseLeave`, then use that index to lower non-hovered `Cell` opacity for bar charts and reduce line/area `strokeOpacity`/`fillOpacity` while relying on `activeDot` plus a stronger tooltip cursor to keep the hovered point visually focused.

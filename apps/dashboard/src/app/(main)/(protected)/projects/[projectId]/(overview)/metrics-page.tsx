@@ -18,15 +18,18 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
 import {
-  ActivityBarChart,
   ChartCard,
   ComposedAnalyticsChart,
   ComposedDataPoint,
   DataPoint,
   DonutChartDisplay,
+  EmailStackedBarChartDisplay,
+  EmailStackedDataPoint,
   filterDatapointsByTimeRange,
+  filterStackedDatapointsByTimeRange,
   GradientColor,
   LineChartDisplayConfig,
+  StackedDataPoint,
   TabbedMetricsCard,
   TimeRange,
   TimeRangeToggle,
@@ -36,21 +39,11 @@ import { MetricsLoadingFallback } from "./metrics-loading";
 // ── Chart configs ────────────────────────────────────────────────────────────
 
 const dailySignUpsConfig: LineChartDisplayConfig = {
-  name: 'Daily Sign-Ups',
+  name: 'Daily Active Users',
   chart: {
     activity: {
       label: "Sign-Ups",
       theme: { light: "hsl(221, 83%, 53%)", dark: "hsl(240, 71%, 70%)" },
-    },
-  },
-};
-
-const dailyEmailsConfig: LineChartDisplayConfig = {
-  name: 'Emails Sent',
-  chart: {
-    activity: {
-      label: "Emails",
-      theme: { light: "hsl(38, 92%, 50%)", dark: "hsl(38, 92%, 65%)" },
     },
   },
 };
@@ -123,26 +116,37 @@ type AnalyticsStatPill = {
   delta?: number,
 };
 
-function StatPill({ stat }: { stat: AnalyticsStatPill }) {
+function StatCard({
+  stat,
+  compact = false,
+}: {
+  stat: AnalyticsStatPill,
+  compact?: boolean,
+}) {
   return (
-    <div className="flex flex-col items-center min-w-0">
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-        {stat.label}
-      </span>
-      <div className="flex items-baseline gap-1.5 mt-0.5">
-        <span className="text-base font-bold tabular-nums text-foreground leading-tight">
-          {stat.value}
+    <ChartCard gradientColor="blue" className="h-full">
+      <div className={cn(
+        "flex flex-col justify-between h-full",
+        compact ? "px-4 py-3" : "px-5 py-4",
+      )}>
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
+          {stat.label}
         </span>
-        {stat.delta != null && (
-          <span className={cn(
-            "text-[10px] font-medium tabular-nums leading-none shrink-0",
-            stat.delta > 0 ? "text-emerald-600 dark:text-emerald-400" : stat.delta < 0 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
-          )}>
-            {stat.delta > 0 ? "+" : ""}{stat.delta}%
+        <div className="flex items-baseline gap-1.5 mt-1.5">
+          <span className="text-xl font-bold tabular-nums text-foreground leading-none">
+            {stat.value}
           </span>
-        )}
+          {stat.delta != null && (
+            <span className={cn(
+              "text-[10px] font-medium tabular-nums leading-none shrink-0",
+              stat.delta > 0 ? "text-emerald-600 dark:text-emerald-400" : stat.delta < 0 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
+            )}>
+              {stat.delta > 0 ? "+" : ""}{stat.delta}%
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </ChartCard>
   );
 }
 
@@ -156,40 +160,33 @@ function HeroAnalyticsWidget({
   compact?: boolean,
 }) {
   return (
-    <ChartCard gradientColor="blue">
-      <div className="flex flex-col h-full">
-        {/* Stat pills row */}
-        <div className="grid grid-cols-3 border-b border-foreground/[0.05] divide-x divide-foreground/[0.05]">
-          {stats.map((stat) => (
-            <div key={stat.label} className={cn(
-              "flex flex-col items-center text-center",
-              compact ? "px-4 py-2.5" : "px-5 py-3",
-            )}>
-              <StatPill stat={stat} />
-            </div>
-          ))}
-        </div>
-
-        {/* Legend + chart */}
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className={cn(
-            "flex-1 min-h-0",
-            compact ? "px-3 pt-1 pb-2" : "px-4 pt-2 pb-3"
-          )}>
-            {composedData.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <Typography variant="secondary" className="text-xs">No data available</Typography>
-              </div>
-            ) : (
-              <ComposedAnalyticsChart
-                datapoints={composedData}
-                compact={compact}
-              />
-            )}
-          </div>
-        </div>
+    <div className="flex flex-col gap-3 h-full">
+      {/* Stat cards row */}
+      <div className="grid grid-cols-3 gap-3">
+        {stats.map((stat) => (
+          <StatCard key={stat.label} stat={stat} compact={compact} />
+        ))}
       </div>
-    </ChartCard>
+
+      {/* Chart card */}
+      <ChartCard gradientColor="blue" className="flex-1 min-h-0">
+        <div className={cn(
+          "flex-1 min-h-0 flex flex-col",
+          compact ? "px-4 pt-2 pb-2" : "px-4 pt-3 pb-3",
+        )}>
+          {composedData.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <Typography variant="secondary" className="text-xs">No data available</Typography>
+            </div>
+          ) : (
+            <ComposedAnalyticsChart
+              datapoints={composedData}
+              compact={compact}
+            />
+          )}
+        </div>
+      </ChartCard>
+    </div>
   );
 }
 
@@ -247,21 +244,27 @@ function EmailListRow({ email }: { email: EmailItem }) {
   );
 }
 
-// ── Tabbed Emails card (bar chart + recent list) ─────────────────────────────
+// ── Tabbed Emails card (stacked bar chart + recent list) ─────────────────────
+
+const emailLegendItems = [
+  { key: 'ok',          label: 'Delivered', color: 'hsl(168, 38%, 48%)' },
+  { key: 'in_progress', label: 'Sending',   color: 'hsl(213, 38%, 52%)' },
+  { key: 'error',       label: 'Error',     color: 'hsl(355, 45%, 52%)' },
+] as const;
 
 function TabbedEmailsCard({
-  chartData,
+  stackedChartData,
   recentEmails,
   timeRange,
   compact = false,
 }: {
-  chartData: DataPoint[],
+  stackedChartData: EmailStackedDataPoint[],
   recentEmails: Array<{ id: string, subject: string, status: string }>,
   timeRange: TimeRange,
   compact?: boolean,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
-  const filteredDatapoints = filterDatapointsByTimeRange(chartData, timeRange);
+  const filteredDatapoints = filterStackedDatapointsByTimeRange(stackedChartData, timeRange);
 
   const activeTabColor = "bg-orange-500 dark:bg-[hsl(240,71%,70%)]";
 
@@ -287,9 +290,19 @@ function TabbedEmailsCard({
           ))}
         </div>
       </div>
+      {view === 'chart' && (
+        <div className={cn("flex items-center gap-3 flex-wrap", compact ? "px-4 pt-2" : "px-5 pt-2.5")}>
+          {emailLegendItems.map((item) => (
+            <div key={item.key} className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+              <span className="text-[10px] font-medium text-muted-foreground">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className={cn(
         view === 'chart'
-          ? (compact ? "px-4 pt-2 pb-1" : "px-5 pt-3 pb-2")
+          ? (compact ? "px-4 pt-1.5 pb-1" : "px-5 pt-2 pb-2")
           : (compact ? "px-4 pt-1 pb-2" : "px-5 pt-2 pb-3"),
         "flex flex-col flex-1 min-h-0",
         view === 'chart' ? "overflow-visible" : "overflow-hidden"
@@ -300,7 +313,7 @@ function TabbedEmailsCard({
               <Typography variant="secondary" className="text-xs">No email data for this period</Typography>
             </div>
           ) : (
-            <ActivityBarChart datapoints={filteredDatapoints} config={dailyEmailsConfig} compact={compact} />
+            <EmailStackedBarChartDisplay datapoints={filteredDatapoints} compact={compact} />
           )
         ) : (
           <div className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
@@ -555,7 +568,37 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
   const topReferrers = (analytics.top_referrers ?? []) as Array<{ referrer: string, visitors: number }>;
 
   const signUpsInRange = sumRange(data.daily_users ?? [], timeRange);
-  const emailsInRange = sumRange(email.daily_emails ?? [], timeRange);
+
+  // ── DAU split stacked data for sign-ups chart ─────────────────────────────
+  const dauSplit = (auth.daily_active_users_split ?? {}) as {
+    new?: DataPoint[],
+    retained?: DataPoint[],
+    reactivated?: DataPoint[],
+  };
+  const dauStackedData = useMemo<StackedDataPoint[]>(() => {
+    const newPoints = dauSplit.new ?? [];
+    const retainedPoints = dauSplit.retained ?? [];
+    const reactivatedPoints = dauSplit.reactivated ?? [];
+    const dateSet = new Set([
+      ...newPoints.map(d => d.date),
+      ...retainedPoints.map(d => d.date),
+      ...reactivatedPoints.map(d => d.date),
+    ]);
+    const newMap = new Map(newPoints.map(d => [d.date, d.activity]));
+    const retainedMap = new Map(retainedPoints.map(d => [d.date, d.activity]));
+    const reactivatedMap = new Map(reactivatedPoints.map(d => [d.date, d.activity]));
+    return [...dateSet].sort().map(date => ({
+      date,
+      new: newMap.get(date) ?? 0,
+      retained: retainedMap.get(date) ?? 0,
+      reactivated: reactivatedMap.get(date) ?? 0,
+    }));
+  }, [dauSplit.new, dauSplit.retained, dauSplit.reactivated]);
+
+  // ── Email stacked data (ok/error/in_progress per day) ────────────────────
+  const emailStackedData = useMemo<EmailStackedDataPoint[]>(() => {
+    return (email.daily_emails_by_status ?? []) as EmailStackedDataPoint[];
+  }, [email.daily_emails_by_status]);
 
   // ── Composed chart data (visitors bars + revenue line) ───────────────────
   const composedData = useMemo<ComposedDataPoint[]>(() => {
@@ -689,6 +732,7 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
         <TabbedMetricsCard
           config={dailySignUpsConfig}
           chartData={data.daily_users ?? []}
+          stackedChartData={dauStackedData}
           listData={data.recently_registered ?? []}
           listTitle="Recent Sign-Ups"
           projectId={projectId}
@@ -698,7 +742,7 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
           timeRange={timeRange}
         />
         <TabbedEmailsCard
-          chartData={email.daily_emails ?? []}
+          stackedChartData={emailStackedData}
           recentEmails={recentEmails}
           timeRange={timeRange}
           compact

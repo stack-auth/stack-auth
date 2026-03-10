@@ -483,6 +483,9 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
 // ── Email Aggregates ─────────────────────────────────────────────────────────
 
 async function loadEmailOverview(tenancy: Tenancy) {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
   const [
     statusGroups,
     recentEmails,
@@ -490,6 +493,7 @@ async function loadEmailOverview(tenancy: Tenancy) {
     bouncedCount,
     clickedCount,
     finishedSendingCount,
+    emailsByDayAndStatus,
   ] = await Promise.all([
     // group by simpleStatus
     (async () => {
@@ -525,6 +529,17 @@ async function loadEmailOverview(tenancy: Tenancy) {
       const prisma = await getPrismaClientForTenancy(tenancy);
       return await prisma.emailOutbox.count({ where: { tenancyId: tenancy.id, finishedSendingAt: { not: null } } });
     })(),
+    // Per-day per-simpleStatus counts for the last 30 days
+    (async () => {
+      const prisma = await getPrismaClientForTenancy(tenancy);
+      return await prisma.emailOutbox.findMany({
+        where: {
+          tenancyId: tenancy.id,
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        select: { createdAt: true, simpleStatus: true },
+      });
+    })(),
   ]);
 
   const emailsByStatus: Record<string, number> = {};
@@ -533,8 +548,6 @@ async function loadEmailOverview(tenancy: Tenancy) {
   }
 
   // Daily email sends for last 30 days
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const emailByDay = new Map<string, number>();
   for (const email of recentEmails) {
     if (email.createdAt >= thirtyDaysAgo) {
@@ -555,10 +568,33 @@ async function loadEmailOverview(tenancy: Tenancy) {
   const bounceRate = Number(((bouncedCount / denom) * 100).toFixed(2));
   const clickRate = Number(((clickedCount / denom) * 100).toFixed(2));
 
+  // Build per-day per-status breakdown for stacked bar chart
+  type DayStatusCounts = { date: string, ok: number, error: number, in_progress: number };
+  const dayStatusMap = new Map<string, { ok: number, error: number, in_progress: number }>();
+  for (let i = 0; i <= 30; i++) {
+    const key = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    dayStatusMap.set(key, { ok: 0, error: 0, in_progress: 0 });
+  }
+  for (const email of emailsByDayAndStatus) {
+    const key = email.createdAt.toISOString().split('T')[0];
+    const entry = dayStatusMap.get(key);
+    if (entry != null) {
+      const s = email.simpleStatus;
+      if (s === 'OK') entry.ok += 1;
+      else if (s === 'ERROR') entry.error += 1;
+      else if (s === 'IN_PROGRESS') entry.in_progress += 1;
+    }
+  }
+  const dailyEmailsByStatus: DayStatusCounts[] = [...dayStatusMap.entries()].map(([date, counts]) => ({
+    date,
+    ...counts,
+  }));
+
   return {
     emails_by_status: emailsByStatus,
     total_emails: totalEmails,
     daily_emails: dailyEmails,
+    daily_emails_by_status: dailyEmailsByStatus,
     emails_sent: finishedSendingCount,
     recent_emails: recentEmails.slice(0, 6).map((email) => ({
       id: email.id,
