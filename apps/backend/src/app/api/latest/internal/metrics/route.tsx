@@ -869,6 +869,8 @@ function generateDevAnalyticsOverview(now: Date, totalUsers: number) {
 
   const dailyPageViews: DataPoints = [];
   const dailyClicks: DataPoints = [];
+  const dailyRevenue: Array<{ date: string, new_cents: number, refund_cents: number }> = [];
+  const dailyVisitors: DataPoints = [];
   for (let i = 0; i <= 30; i++) {
     const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
     const key = day.toISOString().split('T')[0];
@@ -882,22 +884,46 @@ function generateDevAnalyticsOverview(now: Date, totalUsers: number) {
     const cl = Math.max(1, Math.round(pv * 0.3 * clNoise));
     dailyPageViews.push({ date: key, activity: pv });
     dailyClicks.push({ date: key, activity: cl });
+
+    const baseRevenue = Math.round(300 + totalUsers * 8 * weekendFactor * trendFactor * (0.7 + rand() * 0.6));
+    const refundRate = 0.15 + rand() * 0.25;
+    const refundCents = Math.round(baseRevenue * refundRate);
+    dailyRevenue.push({ date: key, new_cents: baseRevenue, refund_cents: refundCents });
+
+    const vis = Math.max(5, Math.round(pv * (0.4 + rand() * 0.2)));
+    dailyVisitors.push({ date: key, activity: vis });
   }
 
   const visitors = Math.max(totalUsers, Math.round(totalUsers * 1.8 + rand() * totalUsers * 0.5));
   const avgSessionSeconds = 180 + Math.round(rand() * 440);
   const onlineLive = Math.max(1, Math.round(totalUsers * 0.05 + rand() * 3));
-  const revenuePerVisitor = Number((rand() * 4.5 + 0.5).toFixed(2));
+  const totalRevenueCents = dailyRevenue.reduce((sum, d) => sum + d.new_cents, 0);
+  const revenuePerVisitor = visitors > 0 ? Number(((totalRevenueCents / 100) / visitors).toFixed(2)) : 0;
+  const bounceRate = Number((55 + rand() * 30).toFixed(1));
+  const conversionRate = Number((0.2 + rand() * 0.8).toFixed(2));
 
   return {
     daily_page_views: dailyPageViews,
     daily_clicks: dailyClicks,
+    daily_revenue: dailyRevenue,
+    daily_visitors: dailyVisitors,
     total_replays: Math.round(visitors * 0.3),
     recent_replays: Math.round(visitors * 0.1),
     visitors,
+    total_revenue_cents: totalRevenueCents,
     avg_session_seconds: avgSessionSeconds,
     online_live: onlineLive,
     revenue_per_visitor: revenuePerVisitor,
+    bounce_rate: bounceRate,
+    conversion_rate: conversionRate,
+    deltas: {
+      visitors: Number((-15 + rand() * 30).toFixed(1)),
+      revenue: Number((-25 + rand() * 50).toFixed(1)),
+      conversion_rate: Number((-20 + rand() * 40).toFixed(1)),
+      revenue_per_visitor: Number((-20 + rand() * 40).toFixed(1)),
+      bounce_rate: Number((-10 + rand() * 20).toFixed(1)),
+      session_time: Number((-15 + rand() * 30).toFixed(1)),
+    },
     top_referrers: [
       { referrer: 'google.com', visitors: Math.round(visitors * 0.32 + rand() * 10) },
       { referrer: 'github.com', visitors: Math.round(visitors * 0.18 + rand() * 8) },

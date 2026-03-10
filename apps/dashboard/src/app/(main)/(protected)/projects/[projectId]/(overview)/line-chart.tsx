@@ -7,7 +7,7 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import { useId, useState } from "react";
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type TimeRange = '7d' | '30d' | 'all';
 
@@ -150,7 +150,7 @@ export function ActivityBarChart({
           tickLine={false}
           tickMargin={compact ? 4 : 8}
           axisLine={false}
-          interval="equidistantPreserveStart"
+          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tick={{
             fill: "hsl(var(--muted-foreground))",
             fontSize: compact ? 8 : 10,
@@ -289,7 +289,7 @@ export function StackedBarChartDisplay({
           tickLine={false}
           tickMargin={compact ? 4 : 8}
           axisLine={false}
-          interval="equidistantPreserveStart"
+          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
           tickFormatter={(value) => {
             const date = new Date(value);
@@ -302,6 +302,208 @@ export function StackedBarChartDisplay({
       </BarChart>
     </ChartContainer>
   );
+}
+
+// ── Combined bar+line analytics chart ─────────────────────────────────────────
+
+export type ComposedDataPoint = {
+  date: string,
+  new_cents: number,
+  refund_cents: number,
+  visitors: number,
+};
+
+const composedChartConfig: ChartConfig = {
+  visitors: {
+    label: "Visitors",
+    theme: { light: "hsl(210, 84%, 64%)", dark: "hsl(210, 84%, 72%)" },
+  },
+  revenue: {
+    label: "Revenue",
+    theme: { light: "hsl(268, 82%, 66%)", dark: "hsl(268, 82%, 74%)" },
+  },
+};
+
+function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null;
+
+  const row = payload[0]?.payload as ComposedDataPoint | undefined;
+  if (!row) return null;
+
+  const date = new Date(row.date);
+  const formattedDate = !isNaN(date.getTime())
+    ? date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
+    : row.date;
+
+  const revenueDollars = (row.new_cents / 100);
+  const revenuePerVisitor = row.visitors > 0 ? (revenueDollars / row.visitors) : 0;
+
+  return (
+    <div className="rounded-xl bg-background/95 px-4 py-3 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08] min-w-[180px]" style={{ zIndex: 9999 }}>
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
+          {formattedDate}
+        </span>
+
+        <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-visitors)" }} />
+            <span className="text-xs text-muted-foreground">Visitors</span>
+          </div>
+          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+            {row.visitors.toLocaleString()}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-revenue)" }} />
+            <span className="text-xs text-muted-foreground">Revenue</span>
+          </div>
+          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+            ${revenueDollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </span>
+        </div>
+
+        <div className="border-t border-foreground/[0.06] pt-2">
+          <div className="flex items-center justify-between gap-6">
+            <span className="text-[11px] text-muted-foreground">Revenue/visitor</span>
+            <span className="font-mono text-[11px] font-medium tabular-nums text-foreground">
+              ${revenuePerVisitor.toFixed(2)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ComposedAnalyticsChart({
+  datapoints,
+  height,
+  compact = false,
+}: {
+  datapoints: ComposedDataPoint[],
+  height?: number,
+  compact?: boolean,
+}) {
+  const id = useId();
+  const maxVisitors = Math.max(...datapoints.map(d => d.visitors), 1);
+  const maxRevenueCents = Math.max(...datapoints.map(d => d.new_cents), 1);
+  const visitorTicks = niceAxisTicks(Math.ceil(maxVisitors * 1.1), 5);
+  const revenueTicks = niceAxisTicks(Math.ceil(maxRevenueCents * 1.15), 5);
+  const visitorsMax = visitorTicks[visitorTicks.length - 1] ?? maxVisitors;
+  const revenueMax = revenueTicks[revenueTicks.length - 1] ?? maxRevenueCents;
+
+  return (
+    <ChartContainer
+      config={composedChartConfig}
+      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      maxHeight={height}
+    >
+      <ComposedChart
+        id={id}
+        data={datapoints}
+        margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
+      >
+        <defs>
+          <linearGradient id={`visitors-fill-${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-visitors)" stopOpacity={0.32} />
+            <stop offset="70%" stopColor="var(--color-visitors)" stopOpacity={0.08} />
+            <stop offset="100%" stopColor="var(--color-visitors)" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid
+          horizontal
+          vertical={false}
+          strokeDasharray="3 3"
+          stroke="hsl(var(--border))"
+          opacity={0.24}
+        />
+        <ChartTooltip
+          content={<ComposedTooltip />}
+          cursor={{ stroke: "hsl(var(--muted-foreground))", strokeOpacity: 0.3, strokeWidth: 1 }}
+          offset={20}
+          allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+        />
+        <Area
+          type="monotone"
+          dataKey="visitors"
+          yAxisId="visitors"
+          stroke="var(--color-visitors)"
+          strokeWidth={2}
+          fill={`url(#visitors-fill-${id})`}
+          dot={false}
+          activeDot={{ r: 4, fill: "var(--color-visitors)" }}
+          isAnimationActive={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="new_cents"
+          yAxisId="revenue"
+          stroke="var(--color-revenue)"
+          strokeWidth={2.25}
+          strokeDasharray="4 4"
+          dot={false}
+          activeDot={{ r: 4, fill: "var(--color-revenue)" }}
+          isAnimationActive={false}
+        />
+        <YAxis
+          yAxisId="visitors"
+          tickLine={false}
+          axisLine={false}
+          width={compact ? 28 : 36}
+          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 9 : 10 }}
+          ticks={visitorTicks}
+          domain={[0, visitorsMax]}
+        />
+        <YAxis
+          yAxisId="revenue"
+          orientation="right"
+          hide
+          domain={[0, revenueMax]}
+        />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          tickMargin={compact ? 4 : 6}
+          axisLine={false}
+          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
+          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
+          tickFormatter={(value) => {
+            const date = new Date(value);
+            if (!isNaN(date.getTime())) {
+              return `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getDate()}`;
+            }
+            return value;
+          }}
+        />
+      </ComposedChart>
+    </ChartContainer>
+  );
+}
+
+function niceAxisTicks(maxValue: number, count: number): number[] {
+  if (maxValue <= 0) return [0];
+  const rough = maxValue / (count - 1);
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+  const residual = rough / magnitude;
+  let step: number;
+  if (residual <= 1.5) {
+    step = magnitude;
+  } else if (residual <= 3) {
+    step = 2 * magnitude;
+  } else if (residual <= 7) {
+    step = 5 * magnitude;
+  } else {
+    step = 10 * magnitude;
+  }
+  const ticks: number[] = [];
+  for (let v = 0; v <= maxValue + step * 0.5; v += step) {
+    ticks.push(Math.round(v));
+  }
+  return ticks;
 }
 
 export type GradientColor = "blue" | "purple" | "green" | "orange" | "slate" | "cyan";
@@ -338,7 +540,7 @@ export function ChartCard({
         `}
       </style>
       <div className={cn(
-        "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
+        "group relative min-h-0 rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
         "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
         "shadow-sm hover:shadow-md hover:z-10",
         className
@@ -350,7 +552,7 @@ export function ChartCard({
           "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
           hoverTints[gradientColor]
         )} />
-        <div className="relative h-full flex flex-col">
+        <div className="relative h-full min-h-0 flex flex-col">
           {children}
         </div>
       </div>
@@ -451,7 +653,7 @@ export function TabbedMetricsCard({
   const hoverAccentClass = hoverAccentColors[gradientColor];
 
   return (
-    <ChartCard className="h-full flex flex-col" gradientColor={gradientColor}>
+    <ChartCard className="h-full min-h-0 flex flex-col" gradientColor={gradientColor}>
       <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
         <div className="flex items-center gap-1">
           <button
@@ -495,7 +697,13 @@ export function TabbedMetricsCard({
         </div>
       )}
 
-      <div className={cn(compact ? "p-4 pt-3" : "p-5 pt-4", "flex flex-col justify-center flex-1 min-h-0 overflow-visible")}>
+      <div className={cn(
+        view === 'chart'
+          ? (compact ? "px-4 pt-2 pb-1" : "px-5 pt-3 pb-2")
+          : (compact ? "px-4 pt-1 pb-2" : "px-5 pt-2 pb-3"),
+        "flex flex-col flex-1 min-h-0",
+        view === 'chart' ? "overflow-visible" : "overflow-hidden"
+      )}>
         {view === 'chart' ? (
           filteredDatapoints.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
@@ -512,7 +720,7 @@ export function TabbedMetricsCard({
             />
           )
         ) : (
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {listData.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Typography variant="secondary" className="text-xs">
@@ -520,46 +728,56 @@ export function TabbedMetricsCard({
                 </Typography>
               </div>
             ) : (
-              <div className="space-y-0.5">
-                {listData.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
-                    className={cn(
-                      "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
-                      hoverAccentClass
-                    )}
-                  >
-                    <div className="shrink-0">
-                      <UserAvatar
-                        user={{
-                          profileImageUrl: user.profile_image_url ?? undefined,
-                          displayName: user.display_name ?? undefined,
-                          primaryEmail: user.primary_email ?? undefined,
-                        }}
-                        size={32}
-                        border
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate text-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none">
-                        {user.display_name || user.primary_email || 'Anonymous User'}
+              <div className="divide-y divide-foreground/[0.04]">
+                {listData.map((user) => {
+                  const displayName = user.display_name || user.primary_email || 'Anonymous User';
+                  const secondaryEmail = user.display_name && user.primary_email ? user.primary_email : null;
+                  const timeLabel = config.name === 'Daily Active Users'
+                    ? user.last_active_at_millis
+                      ? fromNow(new Date(user.last_active_at_millis))
+                      : null
+                    : user.signed_up_at_millis
+                      ? fromNow(new Date(user.signed_up_at_millis))
+                      : null;
+
+                  return (
+                    <button
+                      key={user.id}
+                      onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-1 py-2.5 transition-all duration-150 hover:transition-none text-left group",
+                        hoverAccentClass
+                      )}
+                    >
+                      <div className="shrink-0">
+                        <UserAvatar
+                          user={{
+                            profileImageUrl: user.profile_image_url ?? undefined,
+                            displayName: user.display_name ?? undefined,
+                            primaryEmail: user.primary_email ?? undefined,
+                          }}
+                          size={30}
+                          border
+                        />
                       </div>
-                      <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
-                        <span>
-                          {config.name === 'Daily Active Users'
-                            ? user.last_active_at_millis
-                              ? `Active ${fromNow(new Date(user.last_active_at_millis))}`
-                              : 'Never active'
-                            : user.signed_up_at_millis
-                              ? `Signed up ${fromNow(new Date(user.signed_up_at_millis))}`
-                              : 'Unknown'
-                          }
-                        </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12.5px] font-medium truncate text-foreground leading-tight">
+                          {displayName}
+                        </div>
+                        {secondaryEmail && (
+                          <div className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
+                            {secondaryEmail}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </button>
-                ))}
+                      {timeLabel && (
+                        <div className="shrink-0 text-[10.5px] text-muted-foreground tabular-nums">
+                          {timeLabel}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

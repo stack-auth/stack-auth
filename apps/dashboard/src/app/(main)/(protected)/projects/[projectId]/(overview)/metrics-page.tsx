@@ -7,11 +7,10 @@ import { cn, Typography } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId, getAppPath } from "@/lib/apps-frontend";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { DesignListItemRow } from "@/components/design-components/list";
-import { CompassIcon, GlobeIcon, SquaresFourIcon } from "@phosphor-icons/react";
+import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
-import { UserAvatar, useUser } from "@stackframe/stack";
+import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -21,13 +20,13 @@ import { GlobeSectionWithData } from "./globe-section-with-data";
 import {
   ActivityBarChart,
   ChartCard,
+  ComposedAnalyticsChart,
+  ComposedDataPoint,
   DataPoint,
   DonutChartDisplay,
   filterDatapointsByTimeRange,
   GradientColor,
   LineChartDisplayConfig,
-  StackedBarChartDisplay,
-  StackedDataPoint,
   TabbedMetricsCard,
   TimeRange,
   TimeRangeToggle,
@@ -58,12 +57,6 @@ const dailyEmailsConfig: LineChartDisplayConfig = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type SplitSeries = {
-  new?: DataPoint[],
-  reactivated?: DataPoint[],
-  retained?: DataPoint[],
-};
-
 function formatUsdFromCents(cents: number): string {
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
@@ -79,33 +72,10 @@ function sumRange(points: DataPoint[], range: TimeRange): number {
   return filterDatapointsByTimeRange(points, range).reduce((s, p) => s + p.activity, 0);
 }
 
-function mergeSplitToStacked(split: SplitSeries, range: TimeRange): StackedDataPoint[] {
-  const newPts = filterDatapointsByTimeRange(split.new ?? [], range);
-  const reactivatedPts = filterDatapointsByTimeRange(split.reactivated ?? [], range);
-  const retainedPts = filterDatapointsByTimeRange(split.retained ?? [], range);
-
-  const dateMap = new Map<string, StackedDataPoint>();
-  for (const arr of [newPts, reactivatedPts, retainedPts]) {
-    for (const p of arr) {
-      if (!dateMap.has(p.date)) {
-        dateMap.set(p.date, { date: p.date, new: 0, reactivated: 0, retained: 0 });
-      }
-    }
-  }
-  for (const p of newPts) {
-    const entry = dateMap.get(p.date);
-    if (entry) entry.new = p.activity;
-  }
-  for (const p of reactivatedPts) {
-    const entry = dateMap.get(p.date);
-    if (entry) entry.reactivated = p.activity;
-  }
-  for (const p of retainedPts) {
-    const entry = dateMap.get(p.date);
-    if (entry) entry.retained = p.activity;
-  }
-
-  return [...dateMap.values()].sort((a, b) => stringCompare(a.date, b.date));
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toLocaleString();
 }
 
 // ── Compact dual-value stat card ─────────────────────────────────────────────
@@ -145,126 +115,135 @@ function DualStatCard({
   );
 }
 
-// ── Tabbed DAU stacked chart + recently active list ──────────────────────────
+// ── Hero analytics widget (stat pills + composed bar+line chart) ─────────────
 
-type UserListItem = {
-  id: string,
-  profile_image_url?: string | null,
-  display_name?: string | null,
-  primary_email?: string | null,
-  last_active_at_millis?: number | null,
-  signed_up_at_millis?: number | null,
+type AnalyticsStatPill = {
+  label: string,
+  value: string,
+  delta?: number,
 };
 
-function TabbedDauCard({
-  dauSplit,
-  recentlyActive,
-  timeRange,
-  projectId,
-  router,
+function StatPill({ stat }: { stat: AnalyticsStatPill }) {
+  return (
+    <div className="flex flex-col items-center min-w-0">
+      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+        {stat.label}
+      </span>
+      <div className="flex items-baseline gap-1.5 mt-0.5">
+        <span className="text-base font-bold tabular-nums text-foreground leading-tight">
+          {stat.value}
+        </span>
+        {stat.delta != null && (
+          <span className={cn(
+            "text-[10px] font-medium tabular-nums leading-none shrink-0",
+            stat.delta > 0 ? "text-emerald-600 dark:text-emerald-400" : stat.delta < 0 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
+          )}>
+            {stat.delta > 0 ? "+" : ""}{stat.delta}%
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HeroAnalyticsWidget({
+  composedData,
+  stats,
   compact = false,
 }: {
-  dauSplit: SplitSeries,
-  recentlyActive: UserListItem[],
-  timeRange: TimeRange,
-  projectId: string,
-  router: ReturnType<typeof useRouter>,
+  composedData: ComposedDataPoint[],
+  stats: AnalyticsStatPill[],
   compact?: boolean,
 }) {
-  const [view, setView] = useState<'chart' | 'list'>('chart');
+  return (
+    <ChartCard gradientColor="blue">
+      <div className="flex flex-col h-full">
+        {/* Stat pills row */}
+        <div className="grid grid-cols-3 border-b border-foreground/[0.05] divide-x divide-foreground/[0.05]">
+          {stats.map((stat) => (
+            <div key={stat.label} className={cn(
+              "flex flex-col items-center text-center",
+              compact ? "px-4 py-2.5" : "px-5 py-3",
+            )}>
+              <StatPill stat={stat} />
+            </div>
+          ))}
+        </div>
 
-  const dauStacked = useMemo(() => mergeSplitToStacked(dauSplit, timeRange), [dauSplit, timeRange]);
+        {/* Legend + chart */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className={cn(
+            "flex-1 min-h-0",
+            compact ? "px-3 pt-1 pb-2" : "px-4 pt-2 pb-3"
+          )}>
+            {composedData.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <Typography variant="secondary" className="text-xs">No data available</Typography>
+              </div>
+            ) : (
+              <ComposedAnalyticsChart
+                datapoints={composedData}
+                compact={compact}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
 
-  const activeTabColor = "bg-cyan-500 dark:bg-[hsl(200,91%,70%)]";
+// ── Tabbed DAU stacked chart + recently active list ──────────────────────────
 
-  const tabs: Array<{ id: 'chart' | 'list', label: string }> = [
-    { id: 'chart', label: 'Daily Active Users' },
-    { id: 'list', label: 'Recently Active' },
-  ];
+// ── Email list row ────────────────────────────────────────────────────────────
+
+type EmailItem = { id: string, subject: string, status: string };
+
+const emailStatusConfig = new Map<string, {
+  label: string,
+  icon: React.ElementType,
+  bg: string,
+  text: string,
+  dot: string,
+}>([
+  ['sent',         { label: 'Sent',       icon: EnvelopeIcon,      bg: 'bg-blue-500/10 dark:bg-blue-500/15',    text: 'text-blue-600 dark:text-blue-400',    dot: 'bg-blue-500' }],
+  ['opened',       { label: 'Opened',     icon: EnvelopeOpenIcon,  bg: 'bg-emerald-500/10 dark:bg-emerald-500/15', text: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500' }],
+  ['delivered',    { label: 'Delivered',  icon: EnvelopeIcon,      bg: 'bg-emerald-500/10 dark:bg-emerald-500/15', text: 'text-emerald-600 dark:text-emerald-400', dot: 'bg-emerald-500' }],
+  ['bounced',      { label: 'Bounced',    icon: XCircleIcon,       bg: 'bg-red-500/10 dark:bg-red-500/15',      text: 'text-red-600 dark:text-red-400',      dot: 'bg-red-500' }],
+  ['error',        { label: 'Error',      icon: WarningCircleIcon, bg: 'bg-amber-500/10 dark:bg-amber-500/15',  text: 'text-amber-600 dark:text-amber-400',  dot: 'bg-amber-500' }],
+  ['in_progress',  { label: 'Sending',    icon: EnvelopeIcon,      bg: 'bg-sky-500/10 dark:bg-sky-500/15',      text: 'text-sky-600 dark:text-sky-400',      dot: 'bg-sky-400' }],
+]);
+
+const fallbackEmailStatus = { label: 'Unknown', icon: EnvelopeIcon, bg: 'bg-foreground/[0.06]', text: 'text-muted-foreground', dot: 'bg-muted-foreground' };
+
+function EmailListRow({ email }: { email: EmailItem }) {
+  const key = email.status.toLowerCase().replace(/\s+/g, '_');
+  const cfg = emailStatusConfig.get(key) ?? fallbackEmailStatus;
+  const StatusIcon = cfg.icon;
 
   return (
-    <ChartCard gradientColor="cyan">
-      <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
-        <div className="flex items-center gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setView(tab.id)}
-              className={cn(
-                "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
-                view === tab.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab.label}
-              {view === tab.id && (
-                <div className={cn("absolute bottom-0 left-3 right-3 h-0.5 rounded-full", activeTabColor)} />
-              )}
-            </button>
-          ))}
+    <div className="flex items-center gap-3 px-1 py-2.5 group">
+      {/* Icon badge */}
+      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0", cfg.bg)}>
+        <StatusIcon className={cn("h-3.5 w-3.5", cfg.text)} weight="fill" />
+      </div>
+
+      {/* Subject */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[12.5px] font-medium truncate text-foreground leading-tight">
+          {email.subject}
         </div>
       </div>
 
+      {/* Status pill */}
       <div className={cn(
-        view === 'chart'
-          ? (compact ? "px-4 pt-2 pb-1" : "px-5 pt-3 pb-2")
-          : (compact ? "p-4 pt-3" : "p-5 pt-4"),
-        "flex flex-col flex-1 min-h-0 overflow-visible"
+        "shrink-0 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        cfg.bg, cfg.text
       )}>
-        {view === 'chart' && (
-          dauStacked.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <Typography variant="secondary" className="text-xs">No activity data</Typography>
-            </div>
-          ) : (
-            <div className="flex-1 min-h-0">
-              <StackedBarChartDisplay datapoints={dauStacked} compact={compact} height={compact ? 220 : 260} />
-            </div>
-          )
-        )}
-        {view === 'list' && (
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
-            {recentlyActive.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <Typography variant="secondary" className="text-xs">No recently active users</Typography>
-              </div>
-            ) : (
-              <div className="space-y-0.5">
-                {recentlyActive.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
-                    className="w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group hover:bg-cyan-500/[0.06]"
-                  >
-                    <div className="shrink-0">
-                      <UserAvatar
-                        user={{
-                          profileImageUrl: user.profile_image_url ?? undefined,
-                          displayName: user.display_name ?? undefined,
-                          primaryEmail: user.primary_email ?? undefined,
-                        }}
-                        size={32}
-                        border
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate text-foreground">
-                        {user.display_name || user.primary_email || 'Anonymous User'}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {user.last_active_at_millis
-                          ? `Active ${fromNow(new Date(user.last_active_at_millis))}`
-                          : 'Never active'}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", cfg.dot)} />
+        {cfg.label}
       </div>
-    </ChartCard>
+    </div>
   );
 }
 
@@ -287,7 +266,7 @@ function TabbedEmailsCard({
   const activeTabColor = "bg-orange-500 dark:bg-[hsl(240,71%,70%)]";
 
   return (
-    <ChartCard gradientColor="orange">
+    <ChartCard gradientColor="orange" className="h-full min-h-0 flex flex-col">
       <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
         <div className="flex items-center gap-1">
           {(['chart', 'list'] as const).map((tab) => (
@@ -308,7 +287,13 @@ function TabbedEmailsCard({
           ))}
         </div>
       </div>
-      <div className={cn(compact ? "p-4 pt-3" : "p-5 pt-4", "flex flex-col justify-center min-h-[260px] overflow-visible")}>
+      <div className={cn(
+        view === 'chart'
+          ? (compact ? "px-4 pt-2 pb-1" : "px-5 pt-3 pb-2")
+          : (compact ? "px-4 pt-1 pb-2" : "px-5 pt-2 pb-3"),
+        "flex flex-col flex-1 min-h-0",
+        view === 'chart' ? "overflow-visible" : "overflow-hidden"
+      )}>
         {view === 'chart' ? (
           filteredDatapoints.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
@@ -324,9 +309,9 @@ function TabbedEmailsCard({
                 <Typography variant="secondary" className="text-xs">No recent emails</Typography>
               </div>
             ) : (
-              <div className="space-y-0.5">
+              <div className="divide-y divide-foreground/[0.04]">
                 {recentEmails.map((email) => (
-                  <DesignListItemRow key={email.id} size="sm" title={email.subject} subtitle={email.status} />
+                  <EmailListRow key={email.id} email={email} />
                 ))}
               </div>
             )}
@@ -413,12 +398,8 @@ function EmailBreakdownCard({
 
 function ReferrersWithAnalyticsCard({
   topReferrers,
-  avgSession,
-  revenuePerVisitor,
 }: {
   topReferrers: Array<{ referrer: string, visitors: number }>,
-  avgSession: number,
-  revenuePerVisitor: number,
 }) {
   return (
     <ChartCard gradientColor="purple" className="h-full">
@@ -447,17 +428,6 @@ function ReferrersWithAnalyticsCard({
             })}
           </div>
         )}
-
-        <div className="mt-auto pt-2 border-t border-foreground/[0.05] grid grid-cols-2 gap-2 text-center">
-          <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg. Session</div>
-            <div className="text-sm font-semibold tabular-nums">{formatSeconds(avgSession)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Revenue / User</div>
-            <div className="text-sm font-semibold tabular-nums">${revenuePerVisitor}</div>
-          </div>
-        </div>
       </div>
     </ChartCard>
   );
@@ -537,7 +507,7 @@ function QuickAccessApps({ projectId, installedApps }: { projectId: string, inst
 
 export default function MetricsPage(props: { toSetup: () => void }) {
   const includeAnonymous = false;
-  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
+  const [timeRange, setTimeRange] = useState<TimeRange>("7d");
   const user = useUser();
 
   const displayName = user?.displayName || user?.primaryEmail || "User";
@@ -586,6 +556,56 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
 
   const signUpsInRange = sumRange(data.daily_users ?? [], timeRange);
   const emailsInRange = sumRange(email.daily_emails ?? [], timeRange);
+
+  // ── Composed chart data (visitors bars + revenue line) ───────────────────
+  const composedData = useMemo<ComposedDataPoint[]>(() => {
+    const analyticsObj = data.analytics_overview ?? {};
+    const dailyRev = (analyticsObj.daily_revenue ?? []) as Array<{ date: string, new_cents: number, refund_cents: number }>;
+    const dailyVis = (analyticsObj.daily_visitors ?? []) as DataPoint[];
+
+    const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
+    const revenueMap = new Map(dailyRev.map(d => [d.date, d]));
+
+    const allDates = new Set([
+      ...dailyVis.map(d => d.date),
+      ...dailyRev.map(d => d.date),
+    ]);
+
+    const points = [...allDates].map(date => ({
+      date,
+      visitors: visitorMap.get(date) ?? 0,
+      new_cents: revenueMap.get(date)?.new_cents ?? 0,
+      refund_cents: revenueMap.get(date)?.refund_cents ?? 0,
+    })).sort((a, b) => stringCompare(a.date, b.date));
+
+    if (timeRange === '7d') return points.slice(-7);
+    if (timeRange === '30d') return points.slice(-30);
+    return points;
+  }, [data.analytics_overview, timeRange]);
+
+  const heroStats = useMemo<AnalyticsStatPill[]>(() => {
+    const analyticsObj = data.analytics_overview ?? {};
+    const paymentsObj = data.payments_overview ?? {};
+    const deltasObj = (analyticsObj.deltas ?? {}) as Record<string, number>;
+    const totalRevenueCents = analyticsObj.total_revenue_cents ?? (paymentsObj.revenue_cents ?? 0);
+    return [
+      {
+        label: "Visitors",
+        value: formatCompact(analyticsObj.visitors ?? 0),
+        delta: deltasObj.visitors,
+      },
+      {
+        label: "Revenue",
+        value: formatUsdFromCents(totalRevenueCents),
+        delta: deltasObj.revenue,
+      },
+      {
+        label: "Session time",
+        value: formatSeconds(analyticsObj.avg_session_seconds ?? 0),
+        delta: deltasObj.session_time,
+      },
+    ];
+  }, [data.analytics_overview, data.payments_overview]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -640,26 +660,13 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
         )}
 
         <div className={cn(
-          "flex flex-col gap-4",
           shouldShowGlobe ? "lg:col-span-7 h-full" : "lg:col-span-12",
         )}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <DualStatCard label="Revenue" value={formatUsdFromCents(payments.revenue_cents ?? 0)} subLabel="Recurring" subValue={formatUsdFromCents(payments.mrr_cents ?? 0)} gradientColor="green" />
-            <DualStatCard label="Active Subscriptions" value={payments.active_subscription_count ?? 0} subLabel="Total Orders" subValue={payments.total_orders ?? 0} gradientColor="cyan" />
-            <DualStatCard label="Visitors" value={analytics.visitors ?? 0} subLabel="Online Now" subValue={analytics.online_live ?? 0} gradientColor="purple" />
-            <DualStatCard label="Emails Sent" value={emailsInRange} subLabel="Conversion" subValue={`${payments.checkout_conversion_rate ?? 0}%`} gradientColor="orange" />
-          </div>
-
-          <div className={shouldShowGlobe ? "flex-1 min-h-0" : "h-[300px]"}>
-            <TabbedDauCard
-              dauSplit={(auth.daily_active_users_split ?? {}) as SplitSeries}
-              recentlyActive={data.recently_active ?? []}
-              timeRange={timeRange}
-              projectId={projectId}
-              router={router}
-              compact
-            />
-          </div>
+          <HeroAnalyticsWidget
+            composedData={composedData}
+            stats={heroStats}
+            compact={shouldShowGlobe}
+          />
         </div>
       </div>
 
@@ -678,7 +685,7 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
       {/* ──────────────────────────────────────────────────────────────────────
           ROW 2 — Daily Sign-ups + Emails trend
          ────────────────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[340px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[340px] min-h-0">
         <TabbedMetricsCard
           config={dailySignUpsConfig}
           chartData={data.daily_users ?? []}
@@ -715,8 +722,6 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
         />
         <ReferrersWithAnalyticsCard
           topReferrers={topReferrers}
-          avgSession={analytics.avg_session_seconds ?? 0}
-          revenuePerVisitor={analytics.revenue_per_visitor ?? 0}
         />
       </div>
     </div>
