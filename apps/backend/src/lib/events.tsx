@@ -284,10 +284,6 @@ export async function logEvent<T extends EventType[]>(
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
       const isDebited = await eventsItem.tryDecreaseQuantity(1);
       if (!isDebited) {
-        captureError("logEvent", new StackAssertionError(
-          `Analytics event limit exceeded, dropping event. Project: ${projectId}, owner team: ${billingTeamId}, remaining quantity: ${eventsItem.quantity}`,
-          { projectId, ownerTeamId: billingTeamId },
-        ));
         return;
       }
     }

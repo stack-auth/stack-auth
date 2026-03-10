@@ -180,7 +180,6 @@ function TeamAddUserDialogContent(props: {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load invitations";
       setInvitationsError(message);
-      throw error;
     }
   }, [props.team.id]);
 
