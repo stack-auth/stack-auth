@@ -32,6 +32,26 @@ export type EmailOutboxUpdateOptions = {
   cancel?: boolean,
 };
 
+export type ManagedEmailProviderSetupResult = {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  nameServerRecords: string[],
+  status: ManagedEmailProviderStatus["status"],
+};
+
+export type ManagedEmailProviderStatus = {
+  status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+};
+
+export type ManagedEmailProviderListItem = {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  status: ManagedEmailProviderStatus["status"],
+  nameServerRecords: string[],
+};
+
 import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
 
@@ -90,6 +110,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+    setupManagedEmailProvider(options: { subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderSetupResult>,
+    checkManagedEmailStatus(options: { domainId: string, subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderStatus>,
+    listManagedEmailDomains(): Promise<ManagedEmailProviderListItem[]>,
+    applyManagedEmailProvider(options: { domainId: string }): Promise<{ status: "applied" }>,
 
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
