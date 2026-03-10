@@ -4,8 +4,10 @@ import {
   Typography
 } from "@/components/ui";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { DesignCardTint, DesignCategoryTabs, DesignPillToggle } from "@/components/design-components";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
@@ -181,13 +183,13 @@ export function ChartCard({
   className?: string,
   gradientColor?: GradientColor,
 }) {
-  const hoverTints: Record<GradientColor, string> = {
-    blue: "group-hover:bg-slate-500/[0.02]",
-    purple: "group-hover:bg-slate-500/[0.02]",
-    green: "group-hover:bg-slate-500/[0.02]",
-    orange: "group-hover:bg-slate-500/[0.02]",
-    slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-slate-500/[0.02]",
+  const designCardGradients: Record<GradientColor, "blue" | "cyan" | "purple" | "green" | "orange" | "default"> = {
+    blue: "blue",
+    purple: "purple",
+    green: "green",
+    orange: "orange",
+    slate: "default",
+    cyan: "cyan",
   };
 
   return (
@@ -203,23 +205,17 @@ export function ChartCard({
           }
         `}
       </style>
-      <div className={cn(
-        "group relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
-        "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-        "shadow-sm hover:shadow-md hover:z-10",
-        className
-      )}>
-        {/* Subtle glassmorphic background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.02] dark:from-foreground/[0.03] dark:via-foreground/[0.01] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-        {/* Accent hover tint */}
-        <div className={cn(
-          "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-          hoverTints[gradientColor]
-        )} />
-        <div className="relative h-full flex flex-col">
+      <DesignCardTint
+        gradient={designCardGradients[gradientColor]}
+        className={cn(
+          "chart-card-tooltip-escape h-full overflow-visible hover:z-10 [&>div]:h-full [&>div]:min-h-0 [&>div]:flex [&>div]:flex-col [&>div]:overflow-visible",
+          className
+        )}
+      >
+        <div className="h-full flex flex-col">
           {children}
         </div>
-      </div>
+      </DesignCardTint>
     </>
   );
 }
@@ -231,30 +227,26 @@ export function TimeRangeToggle({
   timeRange: TimeRange,
   onTimeRangeChange: (range: TimeRange) => void,
 }) {
-  const options: { value: TimeRange, label: string }[] = [
-    { value: '7d', label: '7d' },
-    { value: '30d', label: '30d' },
-    { value: 'all', label: 'All' },
+  const options: { id: TimeRange, label: string }[] = [
+    { id: '7d', label: '7d' },
+    { id: '30d', label: '30d' },
+    { id: 'all', label: 'All' },
   ];
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl bg-foreground/[0.04] p-1 backdrop-blur-sm">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onTimeRangeChange(option.value)}
-          className={cn(
-            "px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 hover:transition-none",
-            timeRange === option.value
-              ? "bg-background text-foreground shadow-sm ring-1 ring-foreground/[0.06] dark:bg-[hsl(240,71%,70%)]/10 dark:text-[hsl(240,71%,90%)] dark:ring-[hsl(240,71%,70%)]/20"
-              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <DesignPillToggle
+      options={options}
+      selected={timeRange}
+      size="sm"
+      glassmorphic
+      onSelect={(selectedId) => {
+        if (selectedId === '7d' || selectedId === '30d' || selectedId === 'all') {
+          onTimeRangeChange(selectedId);
+          return;
+        }
+        throw new Error(`Unsupported time range selected: ${selectedId}`);
+      }}
+    />
   );
 }
 
@@ -295,15 +287,6 @@ export function TabbedMetricsCard({
   // For "all" time range, use totalAllTime if provided (which includes data beyond 30 days)
   const displayTotal = timeRange === 'all' && totalAllTime !== undefined ? totalAllTime : total;
 
-  const activeTabColors: Record<GradientColor, string> = {
-    blue: "bg-blue-500 dark:bg-[hsl(240,71%,70%)]",
-    purple: "bg-purple-500 dark:bg-[hsl(200,91%,70%)]",
-    green: "bg-emerald-500 dark:bg-[hsl(200,91%,70%)]",
-    orange: "bg-orange-500 dark:bg-[hsl(240,71%,70%)]",
-    slate: "bg-slate-500 dark:bg-[hsl(240,71%,70%)]",
-    cyan: "bg-cyan-500 dark:bg-[hsl(200,91%,70%)]",
-  };
-
   const hoverAccentColors: Record<GradientColor, string> = {
     blue: "hover:bg-blue-500/[0.06]",
     purple: "hover:bg-purple-500/[0.06]",
@@ -313,40 +296,31 @@ export function TabbedMetricsCard({
     cyan: "hover:bg-cyan-500/[0.06]",
   };
 
-  const activeColorClass = activeTabColors[gradientColor];
   const hoverAccentClass = hoverAccentColors[gradientColor];
+  const tabsGradient: "blue" | "cyan" | "purple" | "green" | "orange" | "default" = gradientColor === "slate" ? "default" : gradientColor;
 
   return (
     <ChartCard className="h-full flex flex-col" gradientColor={gradientColor}>
       <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setView('chart')}
-            className={cn(
-              "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
-              view === 'chart' ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {config.name}
-            {view === 'chart' && (
-              <div className={cn("absolute bottom-0 left-3 right-3 h-0.5 rounded-full", activeColorClass)} />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('list')}
-            className={cn(
-              "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
-              view === 'list' ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {listTitle}
-            {view === 'list' && (
-              <div className={cn("absolute bottom-0 left-3 right-3 h-0.5 rounded-full", activeColorClass)} />
-            )}
-          </button>
-        </div>
+        <DesignCategoryTabs
+          categories={[
+            { id: "chart", label: config.name },
+            { id: "list", label: listTitle },
+          ]}
+          selectedCategory={view}
+          onSelect={(selectedId) => {
+            if (selectedId === "chart" || selectedId === "list") {
+              setView(selectedId);
+              return;
+            }
+            throw new Error(`Unsupported metrics tab selected: ${selectedId}`);
+          }}
+          showBadge={false}
+          size="sm"
+          glassmorphic={false}
+          gradient={tabsGradient}
+          className="flex-1 min-w-0 border-0 [&>button]:rounded-none [&>button]:px-3 [&>button]:py-3.5 [&>button]:text-xs"
+        />
 
         {view === 'chart' && showTotal && (
           <span className="text-lg font-semibold text-foreground tabular-nums">
@@ -390,7 +364,7 @@ export function TabbedMetricsCard({
                 {listData.map((user) => (
                   <button
                     key={user.id}
-                    onClick={() => router.push(`/projects/${projectId}/users/${user.id}`)}
+                    onClick={() => router.push(urlString`/projects/${projectId}/users/${user.id}`)}
                     className={cn(
                       "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all duration-150 hover:transition-none text-left group",
                       hoverAccentClass
