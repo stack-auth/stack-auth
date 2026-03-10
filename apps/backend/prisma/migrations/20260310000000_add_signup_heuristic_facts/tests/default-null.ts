@@ -39,7 +39,8 @@ export const preMigration = async (sql: Sql) => {
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
   const rows = await sql`
     SELECT
-      "signUpHeuristicRecordedAt",
+      "signUpAt",
+      "createdAt",
       "signUpIp",
       "signUpIpTrusted",
       "signUpEmailNormalized",
@@ -49,7 +50,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
 
   expect(rows).toHaveLength(1);
-  expect(rows[0].signUpHeuristicRecordedAt).toBeNull();
+  expect(rows[0].signUpAt?.toISOString()).toBe(rows[0].createdAt?.toISOString());
   expect(rows[0].signUpIp).toBeNull();
   expect(rows[0].signUpIpTrusted).toBeNull();
   expect(rows[0].signUpEmailNormalized).toBeNull();

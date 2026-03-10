@@ -1,5 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { Result } from "@stackframe/stack-shared/utils/results";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 
 export type Connection = {
   /**

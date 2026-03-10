@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+const turnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY;
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });
@@ -18,6 +19,34 @@ export default function PageClient() {
       <Typography type='h3'>Welcome to the Stack demo app!</Typography>
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
+      <Card className='max-w-xl w-full text-left'>
+        <CardHeader>
+          <Typography type='h4'>Turnstile demo status</Typography>
+        </CardHeader>
+        <CardContent className='space-y-2'>
+          <Typography>
+            Hosted auth pages in this demo will execute Turnstile on sign up, magic link, and OAuth authenticate flows.
+          </Typography>
+          <Typography className='text-sm'>
+            Status: {turnstileSiteKey == null || turnstileSiteKey === '' ? 'disabled' : 'enabled'}
+          </Typography>
+          {turnstileSiteKey != null && turnstileSiteKey !== '' ? (
+            <Typography className='text-sm break-all'>
+              Site key: <span className='font-mono'>{turnstileSiteKey}</span>
+            </Typography>
+          ) : (
+            <Typography className='text-sm'>
+              Set <span className='font-mono'>NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY</span> in the demo env to test it visually.
+            </Typography>
+          )}
+        </CardContent>
+        <CardFooter>
+          <div className='flex gap-2'>
+            <Button onClick={() => router.push(app.urls.signUp)}>Open sign-up flow</Button>
+            <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open sign-in flow</Button>
+          </div>
+        </CardFooter>
+      </Card>
       <div className='flex gap-2'>
         <Button onClick={() => router.push(app.urls.signIn)}>Sign In</Button>
         <Button onClick={() => router.push(app.urls.signUp)}>Sign Up</Button>

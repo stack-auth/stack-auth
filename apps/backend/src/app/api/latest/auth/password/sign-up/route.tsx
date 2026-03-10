@@ -1,5 +1,7 @@
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -25,6 +27,7 @@ export const POST = createSmartRouteHandler({
       email: signInEmailSchema.defined(),
       password: passwordSchema.defined(),
       verification_callback_url: emailVerificationCallbackUrlSchema.optional(),
+      turnstile_token: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -36,7 +39,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, turnstile_token: turnstileToken } }) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -54,6 +57,13 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
+    const requestContext = await getBestEffortEndUserRequestContext();
+    const turnstileAssessment = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: requestContext.ipAddress,
+      expectedAction: "sign_up_with_credential",
+    });
+
     const createdUser = await createOrUpgradeAnonymousUserWithRules(
       tenancy,
       currentUser ?? null,
@@ -67,9 +77,10 @@ export const POST = createSmartRouteHandler({
       {
         authMethod: 'password',
         oauthProvider: null,
-        ipAddress: null,
-        ipTrusted: null,
-        countryCode: null,
+        ipAddress: requestContext.ipAddress,
+        ipTrusted: requestContext.ipTrusted,
+        countryCode: requestContext.location?.countryCode ?? null,
+        turnstileAssessment,
       }
     );
 

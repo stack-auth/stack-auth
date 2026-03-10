@@ -1,5 +1,5 @@
-import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/interface/crud/users";
-import { normalizeCountryCode } from "@stackframe/stack-shared/schema-fields";
+import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { evaluate } from "cel-js";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";

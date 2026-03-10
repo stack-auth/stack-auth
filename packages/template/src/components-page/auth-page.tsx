@@ -1,6 +1,6 @@
 'use client';
 
-import { runAsynchronously } from '@stackframe/stack-shared/utils/promises';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from '@stackframe/stack-ui';
 import { Suspense, useEffect } from 'react';
 import { useStackApp, useUser } from '..';

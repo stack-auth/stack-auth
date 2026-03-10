@@ -1,5 +1,5 @@
-import { isIpAddress } from "@stackframe/stack-shared/utils/ips";
-import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { normalizeEmail } from "./emails";
 
 type EmailProviderRule = {
@@ -22,7 +22,7 @@ const emailProviderRules = new Map<string, EmailProviderRule>([
 ]);
 
 export type DerivedSignUpHeuristicFacts = {
-  signUpHeuristicRecordedAt: Date,
+  signUpAt: Date,
   signUpIp: string | null,
   signUpIpTrusted: boolean | null,
   signUpEmailNormalized: string | null,
@@ -113,7 +113,7 @@ export function deriveSignUpHeuristicFacts(params: {
   const emailBase = getBaseEmailForSignUpHeuristics(params.primaryEmail);
 
   return {
-    signUpHeuristicRecordedAt: recordedAt,
+    signUpAt: recordedAt,
     signUpIp: normalizedIp,
     signUpIpTrusted: normalizedIp == null ? null : params.ipTrusted,
     signUpEmailNormalized: emailNormalized,
@@ -195,7 +195,7 @@ import.meta.vitest?.test("deriveSignUpHeuristicFacts(...)", ({ expect }) => {
       ipTrusted: testCase.ipTrusted,
       recordedAt,
     })).toMatchObject({
-      signUpHeuristicRecordedAt: recordedAt,
+      signUpAt: recordedAt,
       ...testCase.expected,
       emailNormalized: testCase.expected.signUpEmailNormalized,
       emailBase: testCase.expected.signUpEmailBase,

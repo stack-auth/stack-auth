@@ -75,7 +75,10 @@
     },
     "dev": {
       "persistent": true,
-      "cache": false
+      "cache": false,
+      "dependsOn": [
+        "^build"
+      ]
     },
     "start": {
       "persistent": true,

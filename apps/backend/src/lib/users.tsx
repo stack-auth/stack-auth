@@ -1,14 +1,15 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { UsersCrud } from "@stackframe/stack-shared/interface/crud/users";
-import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/schema-fields";
-import { KeyIntersect } from "@stackframe/stack-shared/utils/types";
+import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
+import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { getBestEffortEndUserRequestContext } from "./end-users";
 import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
+import { SignUpTurnstileAssessment } from "./turnstile";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -19,12 +20,13 @@ export type SignUpRuleOptions = {
   ipAddress: string | null,
   ipTrusted: boolean | null,
   countryCode: string | null,
+  turnstileAssessment: SignUpTurnstileAssessment | null,
 };
 
 async function persistSignUpHeuristicFacts(params: {
   tenancy: Tenancy,
   userId: string,
-  signUpHeuristicRecordedAt: Date,
+  signUpAt: Date,
   signUpIp: string | null,
   signUpIpTrusted: boolean | null,
   signUpEmailNormalized: string | null,
@@ -39,7 +41,7 @@ async function persistSignUpHeuristicFacts(params: {
       },
     },
     data: {
-      signUpHeuristicRecordedAt: params.signUpHeuristicRecordedAt,
+      signUpAt: params.signUpAt,
       signUpIp: params.signUpIp,
       signUpIpTrusted: params.signUpIpTrusted,
       signUpEmailNormalized: params.signUpEmailNormalized,
@@ -136,6 +138,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
     oauthProvider: signUpRuleOptions.oauthProvider,
     ipAddress: requestIpAddress,
     ipTrusted: requestIpTrusted,
+    turnstileAssessment: signUpRuleOptions.turnstileAssessment ?? { status: "not_configured" },
   });
   const riskScores = riskAssessment.scores;
 
@@ -175,22 +178,34 @@ export async function createOrUpgradeAnonymousUserWithRules(
     },
   };
 
+  const signUpHeuristicFactsToPersist = {
+    tenancy,
+    signUpAt: riskAssessment.heuristicFacts.signUpAt,
+    signUpIp: riskAssessment.heuristicFacts.signUpIp,
+    signUpIpTrusted: riskAssessment.heuristicFacts.signUpIpTrusted,
+    signUpEmailNormalized: riskAssessment.heuristicFacts.signUpEmailNormalized,
+    signUpEmailBase: riskAssessment.heuristicFacts.signUpEmailBase,
+  } as const;
+
+  if (currentUser?.is_anonymous) {
+    await persistSignUpHeuristicFacts({
+      ...signUpHeuristicFactsToPersist,
+      userId: currentUser.id,
+    });
+  }
+
   const user = await createOrUpgradeAnonymousUserWithoutRules(
     tenancy,
     currentUser,
     enrichedCreateOrUpdate as KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
     allowedErrorTypes,
   );
-
-  await persistSignUpHeuristicFacts({
-    tenancy,
-    userId: user.id,
-    signUpHeuristicRecordedAt: riskAssessment.heuristicFacts.signUpHeuristicRecordedAt,
-    signUpIp: riskAssessment.heuristicFacts.signUpIp,
-    signUpIpTrusted: riskAssessment.heuristicFacts.signUpIpTrusted,
-    signUpEmailNormalized: riskAssessment.heuristicFacts.signUpEmailNormalized,
-    signUpEmailBase: riskAssessment.heuristicFacts.signUpEmailBase,
-  });
+  if (!currentUser?.is_anonymous) {
+    await persistSignUpHeuristicFacts({
+      ...signUpHeuristicFactsToPersist,
+      userId: user.id,
+    });
+  }
 
   return user;
 }

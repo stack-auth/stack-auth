@@ -1,6 +1,8 @@
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, emailOtpSignInCallbackUrlSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/utils/errors";
+import { adaptSchema, clientOrHigherAuthTypeSchema, emailOtpSignInCallbackUrlSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ensureUserForEmailAllowsOtp, signInVerificationCodeHandler } from "../sign-in/verification-code-handler";
 
 export const POST = createSmartRouteHandler({
@@ -17,6 +19,7 @@ export const POST = createSmartRouteHandler({
     body: yupObject({
       email: signInEmailSchema.defined(),
       callback_url: emailOtpSignInCallbackUrlSchema.defined(),
+      turnstile_token: yupString().optional(),
     }).defined(),
     clientVersion: yupObject({
       version: yupString().optional(),
@@ -30,19 +33,28 @@ export const POST = createSmartRouteHandler({
       nonce: yupString().defined().meta({ openapiField: { description: "A token that must be stored temporarily and provided when verifying the 6-digit code", exampleValue: "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2" } }),
     }).defined(),
   }),
-  async handler({ auth: { tenancy }, body: { email, callback_url: callbackUrl }, clientVersion }, fullReq) {
+  async handler({ auth: { tenancy }, body: { email, callback_url: callbackUrl, turnstile_token: turnstileToken }, clientVersion }) {
     if (!tenancy.config.auth.otp.allowSignIn) {
       throw new StatusError(StatusError.Forbidden, "OTP sign-in is not enabled for this project");
     }
 
     await ensureUserForEmailAllowsOtp(tenancy, email);
 
+    const requestContext = await getBestEffortEndUserRequestContext();
+    const turnstileAssessment = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: requestContext.ipAddress,
+      expectedAction: "send_magic_link_email",
+    });
+
     const { nonce } = await signInVerificationCodeHandler.sendCode(
       {
         tenancy,
         callbackUrl,
         method: { email },
-        data: {},
+        data: {
+          turnstile_result: turnstileAssessment.status,
+        },
       },
       { email }
     );

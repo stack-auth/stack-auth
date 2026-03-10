@@ -1,7 +1,7 @@
-import { ProductionModeError } from "@stackframe/stack-shared/helpers/production-mode";
-import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
+import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
+import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 
-import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/config/schema";
+import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
 import { AdminProjectConfig, AdminProjectConfigUpdateOptions, ProjectConfig } from "../project-configs";
 

@@ -2244,8 +2244,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
-  async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"));
+  async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string, turnstileToken?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+    return await this._interface.sendMagicLinkEmail(
+      email,
+      options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"),
+      options?.turnstileToken,
+    );
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2504,7 +2508,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
+  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string, turnstileToken?: string }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
@@ -2518,6 +2522,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
+        turnstileToken: options?.turnstileToken,
       },
       session,
     );
@@ -2589,6 +2594,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
+    turnstileToken?: string,
   }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
@@ -2601,7 +2607,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       options.email,
       options.password,
       emailVerificationRedirectUrl,
-      session
+      session,
+      options.turnstileToken,
     );
 
     // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
@@ -2616,7 +2623,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         options.email,
         options.password,
         undefined, // No email verification
-        session
+        session,
+        options.turnstileToken,
       );
     }
 
@@ -3094,6 +3102,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           tokenStore: this._tokenStoreInit,
           urls: this._urlOptions,
           oauthScopesOnSignIn: this._oauthScopesOnSignIn,
+          fraudProtection: this._options.fraudProtection,
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,

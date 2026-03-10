@@ -5,6 +5,8 @@ import { evaluateSignUpRulesWithTrace } from "@/lib/sign-up-rules";
 import { getDerivedSignUpCountryCode } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { riskScoreFieldSchema } from "@stackframe/stack-shared/dist/interface/crud/users";
+import type { TurnstileResult } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { turnstileResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { adaptSchema, adminAuthTypeSchema, countryCodeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const AUTH_METHODS = ['password', 'otp', 'oauth', 'passkey'] as const;
@@ -26,6 +28,7 @@ export const POST = createSmartRouteHandler({
       auth_method: yupString().oneOf(AUTH_METHODS).defined(),
       oauth_provider: yupString().nullable().defined(),
       country_code: countryCodeSchema.nullable().defined(),
+      turnstile_result: yupString().oneOf(["ok", "invalid", "missing", "error"]).optional(),
       risk_scores: yupObject({
         bot: riskScoreFieldSchema,
         free_trial_abuse: riskScoreFieldSchema,
@@ -42,6 +45,7 @@ export const POST = createSmartRouteHandler({
         country_code: yupString().defined(),
         auth_method: yupString().oneOf(AUTH_METHODS).defined(),
         oauth_provider: yupString().defined(),
+        turnstile_result: yupString().oneOf(turnstileResultValues).defined(),
         risk_scores: yupObject({
           bot: riskScoreFieldSchema,
           free_trial_abuse: riskScoreFieldSchema,
@@ -70,6 +74,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const endUserRequestContext = await getBestEffortEndUserRequestContext();
     const derivedCountryCode = getDerivedSignUpCountryCode(endUserRequestContext.location?.countryCode ?? null, req.body.email);
+    const normalizedTurnstileResult: TurnstileResult = req.body.turnstile_result ?? "not_configured";
     const derivedRiskScores = await calculateSignUpRiskScores(req.auth.tenancy, {
       primaryEmail: req.body.email,
       primaryEmailVerified: req.body.auth_method === "otp",
@@ -77,6 +82,9 @@ export const POST = createSmartRouteHandler({
       oauthProvider: req.body.oauth_provider,
       ipAddress: endUserRequestContext.ipAddress,
       ipTrusted: endUserRequestContext.ipTrusted,
+      turnstileAssessment: {
+        status: normalizedTurnstileResult,
+      },
     });
     const riskScores = req.body.risk_scores === undefined
       ? derivedRiskScores
@@ -100,6 +108,7 @@ export const POST = createSmartRouteHandler({
           country_code: context.countryCode,
           auth_method: context.authMethod,
           oauth_provider: context.oauthProvider,
+          turnstile_result: normalizedTurnstileResult,
           risk_scores: {
             bot: context.riskScores.bot,
             free_trial_abuse: context.riskScores.free_trial_abuse,

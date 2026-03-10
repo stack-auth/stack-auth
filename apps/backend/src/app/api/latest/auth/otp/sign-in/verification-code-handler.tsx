@@ -7,6 +7,7 @@ import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { turnstileResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { usersCrudHandlers } from "../../../users/crud";
@@ -73,7 +74,9 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
     codeDescription: `A 45-character verification code. For magic links, this is the code found in the "code" URL query parameter. For OTP, this is formed by concatenating the 6-digit code entered by the user with the nonce (received during code creation)`,
   },
   type: VerificationCodeType.ONE_TIME_PASSWORD,
-  data: yupObject({}),
+  data: yupObject({
+    turnstile_result: yupString().oneOf(turnstileResultValues).optional(),
+  }),
   method: yupObject({
     email: emailSchema.defined(),
   }),
@@ -123,6 +126,9 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           ipAddress: null,
           ipTrusted: null,
           countryCode: null,
+          turnstileAssessment: {
+            status: data.turnstile_result ?? "not_configured",
+          },
           // TODO: Pass request context when available in verification code handler
         }
       );

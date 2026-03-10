@@ -18,6 +18,9 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   tokenStore?: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
   inheritsFrom?: StackClientApp<any, any>,
+  fraudProtection?: {
+    turnstileSiteKey?: string,
+  },
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
@@ -54,14 +57,14 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     readonly urls: Readonly<HandlerUrls>,
 
-    signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
+    signInWithOAuth(provider: string, options?: { returnTo?: string, turnstileToken?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
-    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
+    signUpWithCredential(options: { email: string, password: string, noRedirect?: boolean, turnstileToken?: string } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
-    sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>,
+    sendMagicLinkEmail(email: string, options?: { callbackUrl?: string, turnstileToken?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyPasswordResetCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,

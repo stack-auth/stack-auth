@@ -1,4 +1,4 @@
-import { XOR } from "@stackframe/stack-shared/utils/types";
+import { XOR } from "@stackframe/stack-shared/dist/utils/types";
 
 export type AdminSentEmail = {
   id: string,

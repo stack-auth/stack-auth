@@ -1,6 +1,6 @@
-import { isBrowserLike } from "@stackframe/stack-shared/utils/env";
-import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
-import { Result } from "@stackframe/stack-shared/utils/results";
+import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { generateUuid } from "./session-replay";
 
 const FLUSH_INTERVAL_MS = 10_000;

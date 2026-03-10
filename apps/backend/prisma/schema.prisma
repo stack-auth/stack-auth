@@ -263,7 +263,7 @@ model ProjectUser {
   signUpRiskScoreBot              Int @db.SmallInt
   signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
   countryCode                     String?
-  signUpHeuristicRecordedAt       DateTime?
+  signUpAt                       DateTime?
   signUpIp                        String?
   signUpIpTrusted                 Boolean?
   signUpEmailNormalized           String?
@@ -293,8 +293,10 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
-  @@index([tenancyId, signUpIp, signUpHeuristicRecordedAt], name: "ProjectUser_signUpIp_recent_idx")
-  @@index([tenancyId, signUpEmailBase, signUpHeuristicRecordedAt], name: "ProjectUser_signUpEmailBase_recent_idx")
+  @@index([tenancyId, signUpAt(sort: Asc)], name: "ProjectUser_signUpAt_asc")
+  @@index([tenancyId, signUpAt(sort: Desc)], name: "ProjectUser_signUpAt_desc")
+  @@index([tenancyId, signUpIp, signUpAt], name: "ProjectUser_signUpIp_recent_idx")
+  @@index([tenancyId, signUpEmailBase, signUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
   @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
   @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUser_shouldUpdateSequenceId_idx")
 }

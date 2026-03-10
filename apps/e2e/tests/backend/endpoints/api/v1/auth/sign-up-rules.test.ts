@@ -1,4 +1,4 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";

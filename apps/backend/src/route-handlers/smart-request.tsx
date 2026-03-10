@@ -7,14 +7,14 @@ import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from
 import { decodeAccessToken } from "@/lib/tokens";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { ProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
-import { UsersCrud } from "@stackframe/stack-shared/interface/crud/users";
-import { StackAdaptSentinel, yupValidate } from "@stackframe/stack-shared/schema-fields";
-import { groupBy, typedIncludes } from "@stackframe/stack-shared/utils/arrays";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/utils/env";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/utils/errors";
-import { deindent } from "@stackframe/stack-shared/utils/strings";
-import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/utils/telemetry";
+import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { StackAdaptSentinel, yupValidate } from "@stackframe/stack-shared/dist/schema-fields";
+import { groupBy, typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { NextRequest } from "next/server";
 import * as yup from "yup";
 

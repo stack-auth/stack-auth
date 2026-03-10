@@ -79,6 +79,15 @@ A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
 
+Q: Which env files should be updated when adding Turnstile support for local Stack Auth development?
+A: Use Cloudflare's documented Turnstile test keys, not real keys, in `apps/backend/.env.development`, and document the same variables in `apps/backend/.env` plus `docker/server/.env.example` (`NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY`, `STACK_TURNSTILE_SECRET_KEY`, `STACK_RISK_BOT_TURNSTILE_FAILED_WEIGHT`, `STACK_RISK_FTA_TURNSTILE_FAILED_WEIGHT`).
+
+Q: Can client users read or update `risk_scores` on `/api/v1/users/me`?
+A: No. The client-facing current-user schema in `packages/stack-shared/src/interface/crud/current-user.ts` omits `risk_scores` and `country_code`, so client reads do not expose them and client PATCH requests including them should fail request validation before reaching the admin update path.
+
+Q: What does `Config override is invalid ... emails.server contains unknown properties: managedSubdomain, managedSenderLocalPart` mean during seed?
+A: It means backend is validating config overrides against a stale built `@stackframe/stack-shared` `dist/config/schema` artifact that does not include the managed-email fields, even though source does. Patch or rebuild the built config schema artifacts so runtime validation and imported types include `provider: "managed"`, `managedSubdomain`, and `managedSenderLocalPart`.
+
 Q: What should `getSpoofableEndUserLocation()` return for normal browser/proxy traffic?
 A: It should return location fields from `spoofedInfo` when `getEndUserInfo()` reports `maybeSpoofed: true`, and from `exactInfo` otherwise. Returning only exact info drops country data for the normal header-derived browser path and breaks geo-based signup rules.
 
@@ -141,3 +150,9 @@ A: Yes. The official package is `emailable` (`https://github.com/emailable/email
 
 Q: Where should the sign-up risk-score shape come from?
 A: Reuse the shared CRUD schema in `packages/stack-shared/src/interface/crud/users.ts`. Export `riskScoreFieldSchema`, `signUpRiskScoresSchema`, and the inferred `SignUpRiskScoresCrud` type there, then import them into backend code instead of re-declaring the same `bot` / `free_trial_abuse` shape in `apps/backend/src/lib/risk-scores.tsx` or internal route schemas.
+
+Q: What was the root cause of `pnpm dev` crashing on missing workspace package files?
+A: The Turbo `dev` task graph was starting app/package `dev` tasks without first running dependency `build` tasks, so apps could boot while workspace package `dist` outputs were still missing. Adding `dependsOn: ["^build"]` to the root `dev` task in `turbo.json` fixes the startup ordering at the source. On this machine, `apps/backend` also had a separate bad `tsx watch --exclude ...` flag in `codegen-docs:watch`; removing the unsupported `--exclude` keeps that watcher alive.
+
+Q: How should `ProjectUser.signUpAt` be maintained once it becomes the canonical signup timestamp?
+A: Treat `signUpAt` as the authoritative source for `signed_up_at_millis`, recent-signup heuristics, metrics, and external DB sync. Direct user creation paths should set it immediately, existing rows should be backfilled from `createdAt` in the migration, and anonymous upgrades must write `signUpAt` before flipping `isAnonymous` to `false` so read paths never observe a signed-up user without a signup timestamp.

@@ -2,7 +2,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "outDir": "dist",
-    "rootDir": "..",
+    "rootDir": "src",
     "declaration": true,
     "target": "ES2021",
     "lib": ["DOM", "DOM.Iterable", "ES2021", "ES2022.Error"],

@@ -9,9 +9,9 @@ import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient 
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
-import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/utils/errors";
-import { deindent, extractScopes } from "@stackframe/stack-shared/utils/strings";
+import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { deindent, extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
@@ -339,6 +339,9 @@ const handler = createSmartRouteHandler({
                       ipAddress: null,
                       ipTrusted: null,
                       countryCode: null,
+                      turnstileAssessment: {
+                        status: outerInfo.turnstileResult ?? "not_configured",
+                      },
                       // Note: Request context not easily available in OAuth callback
                       // TODO: Pass IP and user agent from stored OAuth state if needed
                     },

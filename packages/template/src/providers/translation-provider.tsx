@@ -1,4 +1,4 @@
-import { throwErr } from "@stackframe/stack-shared/utils/errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { quetzalKeys, quetzalLocales } from "../generated/quetzal-translations";
 import { TranslationProviderClient } from "./translation-provider-client";
 

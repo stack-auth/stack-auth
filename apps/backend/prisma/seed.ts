@@ -315,6 +315,7 @@ export async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
+          signUpAt: new Date(),
           signUpRiskScoreBot: 0,
           signUpRiskScoreFreeTrialAbuse: 0,
         }
@@ -450,6 +451,7 @@ export async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
+          signUpAt: new Date(),
           signUpRiskScoreBot: 0,
           signUpRiskScoreFreeTrialAbuse: 0,
         }

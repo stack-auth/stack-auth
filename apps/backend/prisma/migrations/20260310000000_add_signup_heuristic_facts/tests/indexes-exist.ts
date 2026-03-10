@@ -8,6 +8,8 @@ export const postMigration = async (sql: Sql) => {
     WHERE schemaname = current_schema()
       AND tablename = 'ProjectUser'
       AND indexname IN (
+        'ProjectUser_signUpAt_asc',
+        'ProjectUser_signUpAt_desc',
         'ProjectUser_signUpIp_recent_idx',
         'ProjectUser_signUpEmailBase_recent_idx'
       )
@@ -15,6 +17,8 @@ export const postMigration = async (sql: Sql) => {
   `;
 
   expect(indexes.map((row) => row.indexname)).toEqual([
+    'ProjectUser_signUpAt_asc',
+    'ProjectUser_signUpAt_desc',
     'ProjectUser_signUpEmailBase_recent_idx',
     'ProjectUser_signUpIp_recent_idx',
   ]);

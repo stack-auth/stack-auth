@@ -1,4 +1,4 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
@@ -59,6 +59,53 @@ describe("risk scores", () => {
         },
       });
     });
+
+    it("should persist Turnstile-derived risk scores for invalid and error assessments", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const invalidResult = await Auth.Password.signUpWithEmail({
+        noWaitForEmail: true,
+        turnstileToken: "stack-turnstile-test:invalid",
+      });
+      expect(invalidResult.signUpResponse.status).toBe(200);
+
+      const invalidUserResponse = await niceBackendFetch(`/api/v1/users/${invalidResult.userId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(invalidUserResponse.status).toBe(200);
+      expect(invalidUserResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 80,
+          free_trial_abuse: 40,
+        },
+      });
+
+      backendContext.set({ userAuth: null });
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const errorResult = await Auth.Password.signUpWithEmail({
+        noWaitForEmail: true,
+        turnstileToken: "stack-turnstile-test:error",
+      });
+      expect(errorResult.signUpResponse.status).toBe(200);
+
+      const errorUserResponse = await niceBackendFetch(`/api/v1/users/${errorResult.userId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(errorUserResponse.status).toBe(200);
+      expect(errorUserResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
+      });
+    });
   });
 
   describe("persistence on OTP signup", () => {
@@ -78,6 +125,31 @@ describe("risk scores", () => {
         sign_up: {
           bot: 0,
           free_trial_abuse: 0,
+        },
+      });
+    });
+
+    it("should persist Turnstile-derived risk scores from the OTP send step", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { magic_link_enabled: true },
+      });
+
+      const sendResult = await Auth.Otp.sendSignInCode({
+        turnstileToken: "stack-turnstile-test:invalid",
+      });
+      const signInResult = await Auth.Otp.signInWithCode(
+        await Auth.Otp.getSignInCodeFromMailbox(sendResult.sendSignInCodeResponse.body.nonce)
+      );
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${signInResult.userId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 80,
+          free_trial_abuse: 40,
         },
       });
     });
@@ -104,6 +176,31 @@ describe("risk scores", () => {
         sign_up: {
           bot: 0,
           free_trial_abuse: 0,
+        },
+      });
+    });
+
+    it("should persist Turnstile-derived risk scores from OAuth authorize", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          oauth_providers: [{ id: "spotify", type: "shared" }],
+        },
+      });
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const response = await Auth.OAuth.signIn({
+        turnstileToken: "stack-turnstile-test:invalid",
+      });
+      expect(response.tokenResponse.status).toBe(200);
+
+      const meResponse = await niceBackendFetch("/api/v1/users/me", {
+        accessType: "server",
+      });
+      expect(meResponse.status).toBe(200);
+      expect(meResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 80,
+          free_trial_abuse: 40,
         },
       });
     });
@@ -184,6 +281,43 @@ describe("risk scores", () => {
         sign_up: {
           bot: 100,
           free_trial_abuse: 100,
+        },
+      });
+    });
+
+    it("should persist Turnstile-derived risk scores when converting an anonymous user", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const anonResponse = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+        accessType: "client",
+        method: "POST",
+        body: {},
+      });
+      expect(anonResponse.status).toBe(200);
+
+      const convertResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        headers: { "x-stack-access-token": anonResponse.body.access_token },
+        body: {
+          email: `convert-turnstile-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+          turnstile_token: "stack-turnstile-test:invalid",
+        },
+      });
+      expect(convertResponse.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${convertResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 80,
+          free_trial_abuse: 40,
         },
       });
     });
@@ -784,6 +918,46 @@ describe("risk scores", () => {
     });
   });
 
+  describe("client-side access", () => {
+    it("should reject client attempts to update risk_scores on the current user", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const signUpResult = await Auth.Password.signUpWithEmail({
+        noWaitForEmail: true,
+        turnstileToken: "stack-turnstile-test:invalid",
+      });
+      expect(signUpResult.signUpResponse.status).toBe(200);
+
+      const updateResponse = await niceBackendFetch("/api/v1/users/me", {
+        method: "PATCH",
+        accessType: "client",
+        body: {
+          risk_scores: {
+            sign_up: {
+              bot: 0,
+              free_trial_abuse: 0,
+            },
+          },
+        },
+      });
+      expect(updateResponse.status).toBe(400);
+
+      const readResponse = await niceBackendFetch(`/api/v1/users/${signUpResult.userId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(readResponse.status).toBe(200);
+      expect(readResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 80,
+          free_trial_abuse: 40,
+        },
+      });
+    });
+  });
+
   // ==========================================
   // RISK SCORES + SIGN-UP RULES INTERACTION
   // ==========================================
@@ -871,6 +1045,36 @@ describe("risk scores", () => {
 
       const res = await Auth.Password.signUpWithEmail();
       expect(res.signUpResponse.status).toBe(200);
+    });
+
+    it("should reject a Turnstile-invalid signup when rules block bot scores >= 80", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      await Project.updateConfig({
+        'auth.signUpRules.reject-high-bot': {
+          enabled: true,
+          displayName: 'Reject high bot score',
+          priority: 0,
+          condition: 'riskScores.bot >= 80',
+          action: { type: 'reject' },
+        },
+        'auth.signUpRulesDefaultAction': 'allow',
+      });
+
+      const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: `turnstile-rule-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+          turnstile_token: "stack-turnstile-test:invalid",
+        },
+      });
+
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe("SIGN_UP_REJECTED");
     });
   });
 

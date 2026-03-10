@@ -2,15 +2,16 @@ import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { withExternalDbSyncUpdate } from '@/lib/external-db-sync';
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { KnownErrors } from '@stackframe/stack-shared';
-import type { RestrictedReason } from "@stackframe/stack-shared/schema-fields";
-import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { AccessTokenPayload } from '@stackframe/stack-shared/sessions';
-import { generateSecureRandomString } from '@stackframe/stack-shared/utils/crypto';
-import { getEnvVariable } from '@stackframe/stack-shared/utils/env';
-import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/utils/errors';
-import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/utils/jwt';
-import { Result } from '@stackframe/stack-shared/utils/results';
-import { traceSpan } from '@stackframe/stack-shared/utils/telemetry';
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import { restrictedReasonSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { AccessTokenPayload } from '@stackframe/stack-shared/dist/sessions';
+import { generateSecureRandomString } from '@stackframe/stack-shared/dist/utils/crypto';
+import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
+import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
+import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
+import { Result } from '@stackframe/stack-shared/dist/utils/results';
+import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
+import { turnstileResultValues } from '@stackframe/stack-shared/dist/utils/turnstile';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
@@ -45,6 +46,7 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
+  turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
 });
 
 type UserType = 'normal' | 'restricted' | 'anonymous';

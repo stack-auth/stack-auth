@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
+import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
+import { urlString } from "@stackframe/stack-shared/utils/urls";
 import { it } from "../../../../../../helpers";
 import { Auth, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -48,8 +48,10 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
     }
   `);
 
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
   // Upgrade the user via password sign-up while logged in as anonymous
-  const { signUpResponse: upgradeRes } = await Auth.Password.signUpWithEmail();
+  const { signUpResponse: upgradeRes } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
   expect(upgradeRes).toMatchInlineSnapshot(`
     NiceResponse {
@@ -100,6 +102,7 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+  expect(upgradedMeRes.body.signed_up_at_millis).toBeGreaterThan(anonMeRes.body.signed_up_at_millis);
 
   // Old anonymous token should still work
   backendContext.set({

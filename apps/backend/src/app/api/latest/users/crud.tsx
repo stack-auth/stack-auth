@@ -14,17 +14,17 @@ import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { currentUserCrud } from "@stackframe/stack-shared/interface/crud/current-user";
-import { UsersCrud, usersCrud } from "@stackframe/stack-shared/interface/crud/users";
-import type { RestrictedReason } from "@stackframe/stack-shared/schema-fields";
-import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { validateBase64Image } from "@stackframe/stack-shared/utils/base64";
-import { decodeBase64 } from "@stackframe/stack-shared/utils/bytes";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/utils/errors";
-import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/utils/hashes";
-import { has } from "@stackframe/stack-shared/utils/objects";
-import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
-import { isUuid } from "@stackframe/stack-shared/utils/uuids";
+import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
+import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
+import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { teamPrismaToCrud, teamsCrudHandlers } from "../teams/crud";
 
 export const userFullInclude = {
@@ -59,6 +59,20 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 };
 
 const personalTeamDefaultDisplayName = "Personal Team";
+
+function getSignedUpAt(params: {
+  signUpAt: Date | null,
+  createdAt: Date,
+  isAnonymous: boolean,
+}): Date {
+  if (params.signUpAt != null) {
+    return params.signUpAt;
+  }
+  if (params.isAnonymous) {
+    return params.createdAt;
+  }
+  throw new StackAssertionError("Expected non-anonymous user to have signUpAt recorded", params);
+}
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
   if (tenancy.config.teams.createPersonalTeamOnSignUp) {
@@ -161,7 +175,11 @@ export const userPrismaToCrud = (
     primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
-    signed_up_at_millis: prisma.createdAt.getTime(),
+    signed_up_at_millis: getSignedUpAt({
+      signUpAt: prisma.signUpAt,
+      createdAt: prisma.createdAt,
+      isAnonymous: prisma.isAnonymous,
+    }).getTime(),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
     server_metadata: prisma.serverMetadata,
@@ -378,7 +396,11 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
-        signed_up_at_millis: new Date(row.createdAt + "Z").getTime(),
+        signed_up_at_millis: getSignedUpAt({
+          signUpAt: row.signUpAt == null ? null : new Date(row.signUpAt + "Z"),
+          createdAt: new Date(row.createdAt + "Z"),
+          isAnonymous: row.isAnonymous,
+        }).getTime(),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
         server_metadata: row.serverMetadata,
@@ -577,7 +599,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       include: userFullInclude,
       orderBy: {
         [({
-          signed_up_at: 'createdAt',
+          signed_up_at: 'signUpAt',
         } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
       },
       // +1 because we need to know if there is a next page
@@ -657,6 +679,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
           countryCode: data.country_code,
+          signUpAt: new Date(),
           signUpRiskScoreBot: data.risk_scores?.sign_up.bot ?? 0,
           signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse ?? 0,
         },

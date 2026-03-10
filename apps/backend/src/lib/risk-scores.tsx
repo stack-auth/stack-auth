@@ -4,6 +4,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { checkEmailWithEmailable } from "./emailable";
 import { Tenancy } from "./tenancies";
+import { SignUpTurnstileAssessment } from "./turnstile";
 import { DerivedSignUpHeuristicFacts, deriveSignUpHeuristicFacts } from "./sign-up-heuristics";
 
 function parseWeight(envName: string, defaultValue: number): number {
@@ -33,6 +34,7 @@ export type SignUpRiskScoreContext = {
   oauthProvider: string | null,
   ipAddress: string | null,
   ipTrusted: boolean | null,
+  turnstileAssessment: SignUpTurnstileAssessment,
 };
 
 export type SignUpRiskAssessment = {
@@ -64,6 +66,11 @@ const disposableEmailWeights = {
   free_trial_abuse: parseWeight("STACK_RISK_FTA_DISPOSABLE_EMAIL_WEIGHT", 100),
 } as const;
 
+const turnstileFailedWeights = {
+  bot: parseWeight("STACK_RISK_BOT_TURNSTILE_FAILED_WEIGHT", 80),
+  free_trial_abuse: parseWeight("STACK_RISK_FTA_TURNSTILE_FAILED_WEIGHT", 40),
+} as const;
+
 function clampRiskScore(score: number): number {
   return Math.min(100, Math.max(0, score));
 }
@@ -73,6 +80,20 @@ function getRecentSameIpWeights(ipTrusted: boolean | null): SignUpRiskScores {
   return {
     bot: weights.bot,
     free_trial_abuse: weights.free_trial_abuse,
+  };
+}
+
+function getTurnstileWeights(turnstileAssessment: SignUpTurnstileAssessment): SignUpRiskScores {
+  if (turnstileAssessment.status === "missing" || turnstileAssessment.status === "invalid") {
+    return {
+      bot: turnstileFailedWeights.bot,
+      free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
+    };
+  }
+
+  return {
+    bot: 0,
+    free_trial_abuse: 0,
   };
 }
 
@@ -86,7 +107,7 @@ async function loadRecentSignUpStats(
   heuristicFacts: DerivedSignUpHeuristicFacts,
 ): Promise<RecentSignUpStats> {
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const windowStart = new Date(heuristicFacts.signUpHeuristicRecordedAt.getTime() - recentWindowHours * 60 * 60 * 1000);
+  const windowStart = new Date(heuristicFacts.signUpAt.getTime() - recentWindowHours * 60 * 60 * 1000);
 
   const sameIpPromise = heuristicFacts.signUpIp == null
     ? Promise.resolve(0)
@@ -94,7 +115,7 @@ async function loadRecentSignUpStats(
       .findMany({
         where: {
           tenancyId: tenancy.id,
-          signUpHeuristicRecordedAt: {
+          signUpAt: {
             gte: windowStart,
           },
           signUpIp: heuristicFacts.signUpIp,
@@ -112,7 +133,7 @@ async function loadRecentSignUpStats(
       .findMany({
         where: {
           tenancyId: tenancy.id,
-          signUpHeuristicRecordedAt: {
+          signUpAt: {
             gte: windowStart,
           },
           signUpEmailBase: heuristicFacts.signUpEmailBase,
@@ -188,16 +209,20 @@ export async function calculateSignUpRiskAssessment(
     free_trial_abuse: 0,
   };
 
+  const turnstileContribution = getTurnstileWeights(context.turnstileAssessment);
+
   const scores = {
     bot: clampRiskScore(
       disposableContribution.bot
       + sameIpContribution.bot
-      + similarEmailContribution.bot,
+      + similarEmailContribution.bot
+      + turnstileContribution.bot,
     ),
     free_trial_abuse: clampRiskScore(
       disposableContribution.free_trial_abuse
       + sameIpContribution.free_trial_abuse
-      + similarEmailContribution.free_trial_abuse,
+      + similarEmailContribution.free_trial_abuse
+      + turnstileContribution.free_trial_abuse,
     ),
   };
 
@@ -219,5 +244,28 @@ import.meta.vitest?.test("getRecentSameIpWeights(...)", ({ expect }) => {
   expect(getRecentSameIpWeights(false)).toEqual({
     bot: spoofableSameIpWeights.bot,
     free_trial_abuse: spoofableSameIpWeights.free_trial_abuse,
+  });
+});
+
+import.meta.vitest?.test("getTurnstileWeights(...)", ({ expect }) => {
+  expect(getTurnstileWeights({ status: "ok" })).toEqual({
+    bot: 0,
+    free_trial_abuse: 0,
+  });
+  expect(getTurnstileWeights({ status: "error" })).toEqual({
+    bot: 0,
+    free_trial_abuse: 0,
+  });
+  expect(getTurnstileWeights({ status: "not_configured" })).toEqual({
+    bot: 0,
+    free_trial_abuse: 0,
+  });
+  expect(getTurnstileWeights({ status: "missing" })).toEqual({
+    bot: turnstileFailedWeights.bot,
+    free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
+  });
+  expect(getTurnstileWeights({ status: "invalid" })).toEqual({
+    bot: turnstileFailedWeights.bot,
+    free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
   });
 });

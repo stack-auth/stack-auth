@@ -1,12 +1,12 @@
-import type { ProjectConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
-import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
-import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
+import type { ProjectConfigOverride } from "@stackframe/stack-shared/config/schema";
+import { AdminUserProjectsCrud } from "@stackframe/stack-shared/interface/crud/projects";
+import { encodeBase64 } from "@stackframe/stack-shared/utils/bytes";
+import { generateSecureRandomString } from "@stackframe/stack-shared/utils/crypto";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/utils/oauth";
+import { filterUndefined, omit } from "@stackframe/stack-shared/utils/objects";
+import { wait } from "@stackframe/stack-shared/utils/promises";
+import { nicify } from "@stackframe/stack-shared/utils/strings";
 import * as jose from "jose";
 import { createHmac, randomUUID } from "node:crypto";
 import { expect } from "vitest";
@@ -431,7 +431,7 @@ export namespace Auth {
   }
 
   export namespace Otp {
-    export async function sendSignInCode() {
+    export async function sendSignInCode(options: { turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
         method: "POST",
@@ -439,6 +439,7 @@ export namespace Auth {
         body: {
           email: mailbox.emailAddress,
           callback_url: "http://localhost:12345/some-callback-url",
+          turnstile_token: options.turnstileToken,
         },
       });
       expect(response).toMatchInlineSnapshot(`
@@ -522,7 +523,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean } = {}) {
+    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean, turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -533,6 +534,7 @@ export namespace Auth {
           email,
           password,
           verification_callback_url: "http://localhost:12345/some-callback-url",
+          turnstile_token: options.turnstileToken,
         },
       });
       expect(response).toMatchObject({
@@ -707,7 +709,7 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getAuthorizeQuery(options: { forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
@@ -728,10 +730,11 @@ export namespace Auth {
         code_challenge: "some-code-challenge",
         code_challenge_method: "plain",
         token: userAuth?.accessToken ?? undefined,
+        turnstile_token: options.turnstileToken,
       });
     }
 
-    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
@@ -757,7 +760,7 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
       const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
       const authLocation = new URL(authorizeResponse.headers.get("location")!);
@@ -838,7 +841,7 @@ export namespace Auth {
       };
     }
 
-    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -862,7 +865,7 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
       const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
@@ -884,7 +887,7 @@ export namespace Auth {
       };
     }
 
-    export async function signIn(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function signIn(options: { forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
       const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode(options);
 
       const projectKeys = backendContext.value.projectKeys;

@@ -8,7 +8,8 @@ import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label, Typography
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp } from "..";
+import { useStackApp } from "../lib/hooks";
+import { getTurnstileSiteKey, useTurnstile } from "../lib/turnstile";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -78,6 +79,10 @@ function OTP(props: {
 export function MagicLinkSignIn() {
   const { t } = useTranslation();
   const app = useStackApp();
+  const { executeTurnstile, turnstileWidget } = useTurnstile({
+    siteKey: getTurnstileSiteKey(app),
+    action: "send_magic_link_email",
+  });
   const [loading, setLoading] = useState(false);
   const [nonce, setNonce] = useState<string | null>(null);
 
@@ -93,7 +98,10 @@ export function MagicLinkSignIn() {
     setLoading(true);
     try {
       const { email } = data;
-      const result = await app.sendMagicLinkEmail(email);
+      const turnstileToken = await executeTurnstile();
+      const result = await app.sendMagicLinkEmail(email, {
+        ...(turnstileToken ? { turnstileToken } : {}),
+      });
       if (result.status === 'error') {
         setError('email', { type: 'manual', message: result.error.message });
         return;
@@ -132,6 +140,7 @@ export function MagicLinkSignIn() {
         <Button type="submit" className="mt-6" loading={loading}>
           {t('Send email')}
         </Button>
+        {turnstileWidget}
       </form>
     );
   }

@@ -590,6 +590,7 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
+    turnstileToken?: string,
   ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
@@ -601,6 +602,7 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
+          turnstile_token: turnstileToken,
         }),
       },
       null,
@@ -906,6 +908,7 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
+    turnstileToken?: string,
   ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
@@ -918,6 +921,7 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
+          turnstile_token: turnstileToken,
         }),
       },
       session,
@@ -1049,6 +1053,7 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
+      turnstileToken?: string,
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1090,6 +1095,9 @@ export class StackClientInterface {
     }
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
+    }
+    if (options.turnstileToken) {
+      url.searchParams.set("turnstile_token", options.turnstileToken);
     }
 
     return url.toString();

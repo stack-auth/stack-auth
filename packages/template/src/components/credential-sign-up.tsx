@@ -1,14 +1,15 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { getPasswordError } from "@stackframe/stack-shared/helpers/password";
-import { passwordSchema, strictEmailSchema, yupObject } from "@stackframe/stack-shared/schema-fields";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
+import { passwordSchema, strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Input, Label, PasswordInput } from "@stackframe/stack-ui";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp } from "..";
+import { useStackApp } from "../lib/hooks";
+import { getTurnstileSiteKey, useTurnstile } from "../lib/turnstile";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -37,13 +38,22 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     resolver: yupResolver(schema)
   });
   const app = useStackApp();
+  const { executeTurnstile, turnstileWidget } = useTurnstile({
+    siteKey: getTurnstileSiteKey(app),
+    action: "sign_up_with_credential",
+  });
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
     setLoading(true);
     try {
       const { email, password } = data;
-      const result = await app.signUpWithCredential({ email, password });
+      const turnstileToken = await executeTurnstile();
+      const result = await app.signUpWithCredential({
+        email,
+        password,
+        ...(turnstileToken ? { turnstileToken } : {}),
+      });
       if (result.status === 'error') {
         setError('email', { type: 'manual', message: result.error.message });
       }
@@ -98,6 +108,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
       <Button type="submit" className="mt-6" loading={loading}>
         {t('Sign Up')}
       </Button>
+      {turnstileWidget}
     </form>
   );
 }

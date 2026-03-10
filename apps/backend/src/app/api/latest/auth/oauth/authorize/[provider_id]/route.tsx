@@ -1,13 +1,15 @@
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { KnownErrors } from "@stackframe/stack-shared/known-errors";
-import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
-import { getNodeEnvironment } from "@stackframe/stack-shared/utils/env";
-import { StatusError } from "@stackframe/stack-shared/utils/errors";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
@@ -36,6 +38,7 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: yupString().optional(),
+      turnstile_token: yupString().optional(),
 
       // oauth parameters
       client_id: yupString().defined(),
@@ -54,7 +57,7 @@ export const GET = createSmartRouteHandler({
     statusCode: yupNumber().oneOf([302]).defined(),
     bodyType: yupString().oneOf(["empty"]).defined(),
   }),
-  async handler({ params, query }, fullReq) {
+  async handler({ params, query }) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
@@ -75,6 +78,15 @@ export const GET = createSmartRouteHandler({
     if (query.type === "link" && !query.token) {
       throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
     }
+
+    const requestContext = await getBestEffortEndUserRequestContext();
+    const turnstileAssessment = query.type === "authenticate"
+      ? await verifyTurnstileToken({
+        token: query.turnstile_token,
+        remoteIp: requestContext.ipAddress,
+        expectedAction: "oauth_authenticate",
+      })
+      : null;
 
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
@@ -126,6 +138,7 @@ export const GET = createSmartRouteHandler({
           providerScope: query.provider_scope,
           errorRedirectUrl: query.error_redirect_uri || query.error_redirect_url,
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
+          turnstileResult: turnstileAssessment?.status,
         } satisfies yup.InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },

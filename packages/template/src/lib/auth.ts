@@ -14,6 +14,7 @@ export async function signInWithOAuth(
     redirectUrl: string,
     errorRedirectUrl: string,
     providerScope?: string,
+    turnstileToken?: string,
   },
   session: InternalSession,
 ) {
@@ -26,6 +27,7 @@ export async function signInWithOAuth(
     state,
     type: "authenticate",
     providerScope: options.providerScope,
+    turnstileToken: options.turnstileToken,
     session,
   });
   window.location.assign(location);

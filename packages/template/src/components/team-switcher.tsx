@@ -1,6 +1,6 @@
 'use client';
-import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   Button,
   Select,
