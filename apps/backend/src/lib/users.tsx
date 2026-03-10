@@ -128,10 +128,10 @@ export async function createOrUpgradeAnonymousUserWithRules(
 
   const enrichedCreateOrUpdate = {
     ...createOrUpdate,
-    ...!!ruleResult.restrictedBecauseOfSignUpRuleId ? {
+    ...(ruleResult.restrictedBecauseOfSignUpRuleId != null ? {
       restricted_by_admin: true,
       restricted_by_admin_private_details: existingRestrictionPrivateDetails != null ? `${existingRestrictionPrivateDetails}\n\n${restrictionPrivateDetails}` : restrictionPrivateDetails,
-    } : {},
+    } : {}),
     ...(countryCodeToPersist !== null ? { country_code: countryCodeToPersist } : {}),
     risk_scores: {
       sign_up: {
