@@ -27,12 +27,6 @@
       "@/*": [
         "./src/*"
       ],
-      "@stackframe/stack-shared/utils/turnstile": [
-        "../../packages/stack-shared/src/utils/turnstile.ts"
-      ],
-      "@stackframe/stack-shared/dist/utils/turnstile": [
-        "../../packages/stack-shared/src/utils/turnstile.ts"
-      ],
       "@stackframe/stack-shared/*": [
         "../../packages/stack-shared/dist/*"
       ],

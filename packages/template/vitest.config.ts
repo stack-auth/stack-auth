@@ -13,11 +13,11 @@ export default mergeConfig(
   defineConfig({
     resolve: {
       alias: {
-        react: templateReactPath,
         "react/jsx-runtime": templateReactJsxRuntimePath,
         "react/jsx-dev-runtime": templateReactJsxDevRuntimePath,
-        "react-dom": templateReactDomPath,
         "react-dom/client": templateReactDomClientPath,
+        "react-dom": templateReactDomPath,
+        react: templateReactPath,
       },
     },
   }),
