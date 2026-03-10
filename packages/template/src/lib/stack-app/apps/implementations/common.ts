@@ -1,13 +1,13 @@
-import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
-import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
-import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
-import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
-import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { Store } from "@stackframe/stack-shared/dist/utils/stores";
+import { InternalSession } from "@stackframe/stack-shared/sessions";
+import { AsyncCache } from "@stackframe/stack-shared/utils/caches";
+import { isBrowserLike } from "@stackframe/stack-shared/utils/env";
+import { StackAssertionError, concatStacktraces, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { getGlobal } from "@stackframe/stack-shared/utils/globals";
+import { filterUndefined, omit } from "@stackframe/stack-shared/utils/objects";
+import { ReactPromise } from "@stackframe/stack-shared/utils/promises";
+import { suspendIfSsr, use } from "@stackframe/stack-shared/utils/react";
+import { Result } from "@stackframe/stack-shared/utils/results";
+import { Store } from "@stackframe/stack-shared/utils/stores";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { HandlerUrls, stackAppInternalsSymbol } from "../../common";
 

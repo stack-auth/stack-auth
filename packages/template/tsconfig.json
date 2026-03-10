@@ -2,7 +2,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "..",
     "declaration": true,
     "target": "ES2021",
     "lib": ["DOM", "DOM.Iterable", "ES2021", "ES2022.Error"],
@@ -14,15 +14,6 @@
     "strict": true,
     "sourceMap": true,
     "declarationMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@stackframe/stack-shared/*": [
-        "../stack-shared/dist/*"
-      ],
-      "@stackframe/stack-shared/dist/*": [
-        "../stack-shared/dist/*"
-      ]
-    },
     "types": [
       "vitest/importMeta"
     ]

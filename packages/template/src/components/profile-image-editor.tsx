@@ -1,5 +1,5 @@
-import { fileToBase64 } from '@stackframe/stack-shared/dist/utils/base64';
-import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
+import { fileToBase64 } from '@stackframe/stack-shared/utils/base64';
+import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/utils/promises';
 import { Button, Slider, Typography } from '@stackframe/stack-ui';
 import imageCompression from 'browser-image-compression';
 import { Upload } from 'lucide-react';

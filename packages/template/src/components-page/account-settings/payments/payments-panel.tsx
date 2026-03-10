@@ -1,7 +1,7 @@
 'use client';
 
 import { KnownErrors } from "@stackframe/stack-shared";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
 import { ActionDialog, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, toast, Typography } from "@stackframe/stack-ui";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { Result } from "@stackframe/stack-shared/utils/results";
 import type { CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions } from "../../../lib/stack-app/customers";
 
 type PaymentMethodSummary = {

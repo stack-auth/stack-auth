@@ -1,4 +1,4 @@
-import { inlineProductSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { inlineProductSchema } from "@stackframe/stack-shared/schema-fields";
 import * as yup from "yup";
 import { AsyncStoreProperty } from "../common";
 

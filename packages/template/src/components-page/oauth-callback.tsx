@@ -1,7 +1,7 @@
 'use client';
 
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { captureError } from "@stackframe/stack-shared/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/utils/promises";
 import { Spinner, cn } from "@stackframe/stack-ui";
 import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";

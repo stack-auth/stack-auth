@@ -1,5 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
-import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { Result } from "@stackframe/stack-shared/utils/results";
 import type { GenericQueryCtx } from "convex/server";
 import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
