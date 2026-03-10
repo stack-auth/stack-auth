@@ -68,7 +68,6 @@ export const PATCH = createSmartRouteHandler({
       [`emails.templates.${templateId}.tsxSource`]: body.tsx_source,
     };
 
-    // Only add themeId if it's explicitly provided
     if (body.theme_id !== undefined) {
       configOverride[`emails.templates.${templateId}.themeId`] = body.theme_id;
     }
@@ -120,6 +119,7 @@ export const DELETE = createSmartRouteHandler({
       projectId: tenancy.project.id,
       branchId: tenancy.branchId,
       environmentConfigOverrideOverride: {
+        // null means delete this key, but the override map type does not model null-valued deletes.
         [`emails.templates.${templateId}`]: null as any,
       },
     });

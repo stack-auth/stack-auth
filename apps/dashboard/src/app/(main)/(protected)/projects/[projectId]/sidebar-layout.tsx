@@ -570,7 +570,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">
           {/* Vertical blur layer behind header - light mode only */}
           <div
-            className="absolute inset-0 h-[calc(100%+1.5rem)] pointer-events-none dark:hidden"
+            className="absolute inset-0 h-[calc(100%+0.75rem)] pointer-events-none dark:hidden"
             style={{
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',

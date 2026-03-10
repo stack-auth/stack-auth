@@ -1,18 +1,7 @@
 import { decryptValue, hashKey } from "@stackframe/stack-shared/dist/helpers/vault/client-side";
 import { it } from "../../../../../../../helpers";
 import { Auth, InternalApiKey, InternalProjectKeys, backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
-
-export async function provisionProject() {
-  return await niceBackendFetch("/api/v1/integrations/neon/projects/provision", {
-    method: "POST",
-    body: {
-      display_name: "Test project",
-    },
-    headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
-    },
-  });
-}
+import { provisionProject } from "./provision-helpers";
 
 it("should be able to provision a new project if neon client details are correct", async ({ expect }) => {
   const response = await provisionProject();
@@ -112,7 +101,7 @@ it("should be able to provision a new project if neon client details are correct
   `);
 
   // ensure we can create a user in the new project (make sure it's writable)
-  const signInResponse = await Auth.Password.signUpWithEmail({ password: "test1234" });
+  const signInResponse = await Auth.Password.signUpWithEmail({ password: "test1234", noWaitForEmail: true });
   expect(signInResponse).toMatchInlineSnapshot(`
     {
       "email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
