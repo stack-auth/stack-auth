@@ -1,5 +1,15 @@
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Tenancy } from "./tenancies";
+
+function parseWeight(envName: string, defaultValue: number): number {
+  const raw = getEnvVariable(envName, String(defaultValue));
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    throw new StackAssertionError(`Invalid ${envName}: expected integer 0-100, got "${raw}"`);
+  }
+  return parsed;
+}
 
 export type SignUpRiskScores = {
   bot: number,
@@ -45,7 +55,7 @@ const disposableEmailDomainPatterns = [
 const botRiskHeuristics: readonly SignUpRiskHeuristic[] = [
   {
     id: "disposable-email-domain",
-    weight: 100,
+    weight: parseWeight("STACK_RISK_BOT_DISPOSABLE_EMAIL_WEIGHT", 100),
     matches: (context) => disposableEmailDomainPatterns.some((pattern) => pattern.test(normalizeEmailDomain(context.primaryEmail))),
   },
 ] as const;
@@ -53,7 +63,7 @@ const botRiskHeuristics: readonly SignUpRiskHeuristic[] = [
 const freeTrialAbuseRiskHeuristics: readonly SignUpRiskHeuristic[] = [
   {
     id: "disposable-email-domain",
-    weight: 100,
+    weight: parseWeight("STACK_RISK_FTA_DISPOSABLE_EMAIL_WEIGHT", 100),
     matches: (context) => disposableEmailDomainPatterns.some((pattern) => pattern.test(normalizeEmailDomain(context.primaryEmail))),
   },
 ] as const;
@@ -71,14 +81,10 @@ function calculateWeightedRiskScore(
   heuristics: readonly SignUpRiskHeuristic[],
   context: SignUpRiskScoreContext,
 ): number {
-  const maxScore = heuristics.reduce((sum, heuristic) => sum + heuristic.weight, 0);
-  if (maxScore !== 100) {
-    throw new StackAssertionError(`Sign-up risk heuristic weights must sum to 100, received ${maxScore}`);
-  }
-
-  return heuristics.reduce((sum, heuristic) => {
+  const raw = heuristics.reduce((sum, heuristic) => {
     return heuristic.matches(context) ? sum + heuristic.weight : sum;
   }, 0);
+  return Math.min(100, Math.max(0, raw));
 }
 
 function calculateDisposableEmailHeuristicScores(context: SignUpRiskScoreContext): SignUpRiskScores {
