@@ -1,6 +1,11 @@
 "use client";
 
-import { Button, Card, CardContent, CardHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Input, Label, toast } from "@/components/ui";
+import {
+  DesignButton,
+  DesignInput,
+  DesignListItemRow,
+} from "@/components/design-components";
+import { ActionDialog, Label, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { DatabaseIcon, PlusIcon } from "@phosphor-icons/react";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
@@ -19,7 +24,6 @@ export default function PageClient() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newStoreId, setNewStoreId] = useState("");
   const [newStoreDisplayName, setNewStoreDisplayName] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
 
   const config = project.useConfig();
   const stores = config.dataVault.stores;
@@ -28,38 +32,30 @@ export default function PageClient() {
   const handleCreateStore = async () => {
     if (!newStoreId.trim()) {
       alert("Store ID is required");
-      return;
+      return "prevent-close" as const;
     }
 
     if (!isValidUserSpecifiedId(newStoreId)) {
       alert(getUserSpecifiedIdErrorMessage("storeId"));
-      return;
+      return "prevent-close" as const;
     }
 
     if (newStoreId in stores) {
       alert("A store with this ID already exists");
-      return;
+      return "prevent-close" as const;
     }
 
-    setIsCreating(true);
-    try {
-      await updateConfig({
-        adminApp: stackAdminApp,
-        configUpdate: {
-          [`dataVault.stores.${newStoreId}`]: {
-            displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,
-          },
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: {
+        [`dataVault.stores.${newStoreId}`]: {
+          displayName: newStoreDisplayName.trim() || `Store ${newStoreId}`,
         },
-        pushable: true,
-      });
+      },
+      pushable: true,
+    });
 
-      toast({ title: "Data vault store created successfully" });
-      setIsCreateDialogOpen(false);
-      setNewStoreId("");
-      setNewStoreDisplayName("");
-    } finally {
-      setIsCreating(false);
-    }
+    toast({ title: "Data vault store created successfully" });
   };
 
   const handleStoreClick = (storeId: string) => {
@@ -70,106 +66,80 @@ export default function PageClient() {
     <AppEnabledGuard appId="data-vault">
       <PageLayout
         title="Data Vault Stores"
+        description="Securely store and manage encrypted data in isolated stores"
         actions={
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <DesignButton onClick={() => setIsCreateDialogOpen(true)}>
             <PlusIcon className="h-4 w-4 mr-2" />
             Create Store
-          </Button>
+          </DesignButton>
         }
       >
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-muted-foreground">
-                Securely store and manage encrypted data in isolated stores
+        {storeEntries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="p-3 rounded-2xl bg-foreground/[0.04] mb-4">
+              <DatabaseIcon className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-base font-semibold mb-1">No data vault stores yet</h3>
+            <p className="text-sm text-muted-foreground text-center mb-5 max-w-sm">
+              Create your first data vault store to start securely storing encrypted data
+            </p>
+            <DesignButton onClick={() => setIsCreateDialogOpen(true)}>
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Create Your First Store
+            </DesignButton>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {storeEntries.map(([storeId, store]) => (
+              <DesignListItemRow
+                key={storeId}
+                icon={DatabaseIcon}
+                title={storeId}
+                subtitle={store.displayName || "No display name"}
+                onClick={() => handleStoreClick(storeId)}
+              />
+            ))}
+          </div>
+        )}
+
+        <ActionDialog
+          open={isCreateDialogOpen}
+          onOpenChange={(open) => {
+            setIsCreateDialogOpen(open);
+            if (!open) {
+              setNewStoreId("");
+              setNewStoreDisplayName("");
+            }
+          }}
+          title="Create Data Vault Store"
+          description="Create a new isolated store for encrypted data"
+          okButton={{ label: "Create Store", onClick: handleCreateStore }}
+          cancelButton
+        >
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="storeId">Store ID</Label>
+              <DesignInput
+                id="storeId"
+                placeholder="e.g., user-secrets, api-keys"
+                value={newStoreId}
+                onChange={(e) => setNewStoreId(sanitizeUserSpecifiedId(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Letters, numbers, underscores, and hyphens only (cannot start with a hyphen)
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="displayName">Display Name (optional)</Label>
+              <DesignInput
+                id="displayName"
+                placeholder="e.g., User Secrets"
+                value={newStoreDisplayName}
+                onChange={(e) => setNewStoreDisplayName(e.target.value)}
+              />
             </div>
           </div>
-
-          {storeEntries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <DatabaseIcon className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No data vault stores yet</h3>
-              <p className="text-muted-foreground text-center mb-4">
-                Create your first data vault store to start securely storing encrypted data
-              </p>
-              <Button onClick={() => setIsCreateDialogOpen(true)}>
-                <PlusIcon className="h-4 w-4 mr-2" />
-                Create Your First Store
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {storeEntries.map(([storeId, store]) => (
-                <Card
-                  key={storeId}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => handleStoreClick(storeId)}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <DatabaseIcon className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-1">
-                      <h3 className="font-semibold text-sm truncate">{storeId}</h3>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {store.displayName || "No display name"}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Data Vault Store</DialogTitle>
-                <DialogDescription>
-                  Create a new isolated store for encrypted data
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="storeId">Store ID</Label>
-                  <Input
-                    id="storeId"
-                    placeholder="e.g., user-secrets, api-keys"
-                    value={newStoreId}
-                    onChange={(e) => setNewStoreId(sanitizeUserSpecifiedId(e.target.value))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Letters, numbers, underscores, and hyphens only (cannot start with a hyphen)
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">Display Name (optional)</Label>
-                  <Input
-                    id="displayName"
-                    placeholder="e.g., User Secrets"
-                    value={newStoreDisplayName}
-                    onChange={(e) => setNewStoreDisplayName(e.target.value)}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsCreateDialogOpen(false)}
-                    disabled={isCreating}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateStore} disabled={isCreating}>
-                    {isCreating ? "Creating..." : "Create Store"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+        </ActionDialog>
       </PageLayout>
     </AppEnabledGuard>
   );
