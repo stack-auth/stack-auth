@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { StackClientApp, StackProvider, StackTheme } from '@stackframe/react';
 import {
   HeadContent,
   Outlet,
@@ -6,9 +7,8 @@ import {
   createRootRoute,
   useNavigate
 } from '@tanstack/react-router';
-import { Component, useEffect, useMemo, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { StackClientApp, StackProvider, StackTheme } from '@stackframe/react';
+import { Component, useEffect, useMemo, useState } from 'react';
 
 
 export function getProjectId(): string | null {
@@ -86,7 +86,7 @@ function RootDocument({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const [projectId, setProjectId] = useState<string | null | undefined>(undefined);
+  const [projectId, setProjectId] = useState<string | null | undefined>("internal");
 
   useEffect(() => {
     setProjectId(getProjectId());
