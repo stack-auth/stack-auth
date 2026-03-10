@@ -165,7 +165,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
   const serverType = emailConfig.isShared
     ? 'Shared'
     : emailConfig.provider === 'managed'
-      ? 'Managed Resend'
+      ? 'Managed By Stack Auth'
       : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared

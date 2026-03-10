@@ -16,6 +16,10 @@ type ManagedEmailDomainRow = {
   status: "PENDING_DNS" | "PENDING_VERIFICATION" | "VERIFIED" | "APPLIED" | "FAILED",
   providerStatusRaw: string | null,
   isActive: boolean,
+  /**
+   * Internal diagnostic error from the email provider (e.g. Resend webhook failure reason).
+   * Not intended to be shown to end users directly.
+   */
   lastError: string | null,
   verifiedAt: Date | null,
   appliedAt: Date | null,
@@ -36,6 +40,10 @@ export type ManagedEmailDomain = {
   status: ManagedEmailDomainStatus,
   providerStatusRaw: string | null,
   isActive: boolean,
+  /**
+   * Internal diagnostic error from the email provider (e.g. Resend webhook failure reason).
+   * Not intended to be shown to end users directly.
+   */
   lastError: string | null,
   verifiedAt: Date | null,
   appliedAt: Date | null,
