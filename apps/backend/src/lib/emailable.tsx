@@ -1,7 +1,7 @@
 import createEmailableClient from "emailable";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import { getEnvVariable } from "@stackframe/stack-shared/utils/env";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/utils/errors";
+import { traceSpan } from "@stackframe/stack-shared/utils/telemetry";
 
 export const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
 

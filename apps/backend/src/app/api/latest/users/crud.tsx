@@ -14,17 +14,17 @@ import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
-import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
-import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
-import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
-import { has } from "@stackframe/stack-shared/dist/utils/objects";
-import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { currentUserCrud } from "@stackframe/stack-shared/interface/crud/current-user";
+import { UsersCrud, usersCrud } from "@stackframe/stack-shared/interface/crud/users";
+import type { RestrictedReason } from "@stackframe/stack-shared/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/schema-fields";
+import { validateBase64Image } from "@stackframe/stack-shared/utils/base64";
+import { decodeBase64 } from "@stackframe/stack-shared/utils/bytes";
+import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/utils/errors";
+import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/utils/hashes";
+import { has } from "@stackframe/stack-shared/utils/objects";
+import { createLazyProxy } from "@stackframe/stack-shared/utils/proxies";
+import { isUuid } from "@stackframe/stack-shared/utils/uuids";
 import { teamPrismaToCrud, teamsCrudHandlers } from "../teams/crud";
 
 export const userFullInclude = {

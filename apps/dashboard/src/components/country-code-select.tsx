@@ -19,7 +19,7 @@ import {
 } from "@/components/ui";
 import { FieldLabel } from "@/components/form-fields";
 import { CaretSortIcon, CheckIcon } from "@radix-ui/react-icons";
-import { ISO_3166_ALPHA_2_COUNTRY_CODES } from "@stackframe/stack-shared/dist/schema-fields";
+import { ISO_3166_ALPHA_2_COUNTRY_CODES } from "@stackframe/stack-shared/schema-fields";
 import { Control, FieldValues, Path } from "react-hook-form";
 import { useState } from "react";
 

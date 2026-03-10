@@ -8,14 +8,14 @@ import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissio
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
 import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
-import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
-import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
-import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
-import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
-import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
-import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
-import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { ALL_APPS } from '@stackframe/stack-shared/apps/apps-config';
+import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/helpers/emails';
+import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/interface/crud/projects';
+import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/plans';
+import { DayInterval } from '@stackframe/stack-shared/utils/dates';
+import { throwErr } from '@stackframe/stack-shared/utils/errors';
+import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/utils/objects';
+import { generateUuid } from '@stackframe/stack-shared/utils/uuids';
 
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';

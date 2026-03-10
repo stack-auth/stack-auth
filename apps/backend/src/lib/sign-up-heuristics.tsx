@@ -1,5 +1,5 @@
-import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { isIpAddress } from "@stackframe/stack-shared/utils/ips";
+import { StackAssertionError } from "@stackframe/stack-shared/utils/errors";
 import { normalizeEmail } from "./emails";
 
 type EmailProviderRule = {

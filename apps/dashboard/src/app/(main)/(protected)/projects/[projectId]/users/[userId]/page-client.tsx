@@ -45,12 +45,12 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { normalizeCountryCode } from "@stackframe/stack-shared/schema-fields";
 import { CountryCodeSelect } from "@/components/country-code-select";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { fromNow } from "@stackframe/stack-shared/utils/dates";
+import { captureError, StackAssertionError } from '@stackframe/stack-shared/utils/errors';
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
+import { deindent } from "@stackframe/stack-shared/utils/strings";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";

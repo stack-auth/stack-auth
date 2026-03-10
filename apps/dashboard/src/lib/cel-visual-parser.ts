@@ -15,7 +15,7 @@
  * - riskScores.bot > 80 / riskScores.freeTrialAbuse >= 60
  */
 
-import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { normalizeCountryCode } from "@stackframe/stack-shared/schema-fields";
 
 export type ConditionOperator =
   | 'equals'

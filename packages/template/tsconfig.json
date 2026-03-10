@@ -14,6 +14,15 @@
     "strict": true,
     "sourceMap": true,
     "declarationMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@stackframe/stack-shared/*": [
+        "../stack-shared/dist/*"
+      ],
+      "@stackframe/stack-shared/dist/*": [
+        "../stack-shared/dist/*"
+      ]
+    },
     "types": [
       "vitest/importMeta"
     ]

@@ -1,9 +1,9 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
-import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
+import { UsersCrud } from "@stackframe/stack-shared/interface/crud/users";
+import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/schema-fields";
+import { KeyIntersect } from "@stackframe/stack-shared/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { getBestEffortEndUserRequestContext } from "./end-users";
 import { calculateSignUpRiskAssessment } from "./risk-scores";
