@@ -11,15 +11,6 @@
     "noErrorTruncation": true,
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@stackframe/stack-shared/*": [
-        "../../packages/stack-shared/dist/*"
-      ],
-      "@stackframe/stack-shared/dist/*": [
-        "../../packages/stack-shared/dist/*"
-      ]
-    },
     "types": [
       "vitest/importMeta"
     ]

@@ -1,8 +1,8 @@
 'use client';
 
 import { KnownErrors } from "@stackframe/stack-shared";
-import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { cacheFunction } from "@stackframe/stack-shared/utils/caches";
+import { throwErr } from "@stackframe/stack-shared/utils/errors";
 import React from "react";
 import { StackClientApp, useStackApp, useUser } from "..";
 import { MessageCard } from "../components/message-cards/message-card";

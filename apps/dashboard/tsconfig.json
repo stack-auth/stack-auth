@@ -26,12 +26,6 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ],
-      "@stackframe/stack-shared/*": [
-        "../../packages/stack-shared/dist/*"
-      ],
-      "@stackframe/stack-shared/dist/*": [
-        "../../packages/stack-shared/dist/*"
       ]
     },
     "skipLibCheck": true,

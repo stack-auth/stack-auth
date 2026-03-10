@@ -1,6 +1,6 @@
 import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
-import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
-import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { isBrowserLike } from '@stackframe/stack-shared/utils/env';
+import { StackAssertionError } from '@stackframe/stack-shared/utils/errors';
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 

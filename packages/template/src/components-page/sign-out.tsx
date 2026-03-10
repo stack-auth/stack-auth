@@ -1,7 +1,7 @@
 'use client';
 
-import { cacheFunction } from "@stackframe/stack-shared/dist/utils/caches";
-import { use } from "@stackframe/stack-shared/dist/utils/react";
+import { cacheFunction } from "@stackframe/stack-shared/utils/caches";
+import { use } from "@stackframe/stack-shared/utils/react";
 import { CurrentUser, useUser } from "..";
 import { PredefinedMessageCard } from "../components/message-cards/predefined-message-card";
 

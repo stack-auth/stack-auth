@@ -1,6 +1,6 @@
 import { yupResolver } from "@hookform/resolvers/yup";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/schema-fields";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/utils/promises";
 import { Button, Input, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@stackframe/stack-ui";
 import { Trash } from "lucide-react";
 import { useEffect, useState } from "react";

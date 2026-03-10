@@ -1,8 +1,7 @@
-import { fileURLToPath } from "node:url";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from 'vitest/config';
 
-const stackSharedDistPath = fileURLToPath(new URL("./packages/stack-shared/dist/", import.meta.url));
+import { fileURLToPath } from "node:url";
 const templateReactPath = fileURLToPath(new URL("./packages/template/node_modules/react/index.js", import.meta.url));
 const templateReactJsxRuntimePath = fileURLToPath(new URL("./packages/template/node_modules/react/jsx-runtime.js", import.meta.url));
 const templateReactJsxDevRuntimePath = fileURLToPath(new URL("./packages/template/node_modules/react/jsx-dev-runtime.js", import.meta.url));
@@ -17,14 +16,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      {
-        find: /^@stackframe\/stack-shared\/dist\/(.+)$/,
-        replacement: `${stackSharedDistPath}$1`,
-      },
-      {
-        find: /^@stackframe\/stack-shared\/(.+)$/,
-        replacement: `${stackSharedDistPath}$1`,
-      },
       {
         find: "react/jsx-runtime",
         replacement: templateReactJsxRuntimePath,
