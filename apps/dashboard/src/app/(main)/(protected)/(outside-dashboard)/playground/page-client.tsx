@@ -21,7 +21,7 @@ import {
   DesignSelectorDropdown,
   DesignUserList,
 } from "@/components/design-components";
-import { DataTableColumnHeader, Typography } from "@/components/ui";
+import { DataTableColumnHeader, SearchToolbarItem, Typography } from "@/components/ui";
 import {
   CheckCircle,
   Cube,
@@ -246,6 +246,8 @@ export default function PageClient() {
   // Data Table
   const [tableClickableRows, setTableClickableRows] = useState(false);
   const [tableLastRowClick, setTableLastRowClick] = useState("");
+  const [tableGlass, setTableGlass] = useState<boolean | undefined>(undefined);
+  const [tableShowToolbar, setTableShowToolbar] = useState(false);
 
   // Editable Grid
   const [gridCols, setGridCols] = useState<1 | 2>(2);
@@ -546,6 +548,8 @@ export default function PageClient() {
             data={DEMO_PRODUCTS}
             columns={tableColumns}
             defaultSorting={[{ id: "name", desc: false }]}
+            glassmorphic={tableGlass}
+            toolbarRender={tableShowToolbar ? (table) => <SearchToolbarItem table={table} keyName="name" placeholder="Filter by name" /> : undefined}
             onRowClick={tableClickableRows ? (row) => setTableLastRowClick(row.name) : undefined}
           />
           {tableLastRowClick && (
@@ -1049,6 +1053,12 @@ export default function PageClient() {
     if (selected === "data-table") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
+          <PropField label="Glassmorphic">
+            <GlassmorphicToggle value={tableGlass} onChange={setTableGlass} />
+          </PropField>
+          <PropField label="Toolbar">
+            <BoolToggle value={tableShowToolbar} onChange={setTableShowToolbar} on="Shown" off="Hidden" />
+          </PropField>
           <PropField label="Row Click">
             <BoolToggle value={tableClickableRows} onChange={setTableClickableRows} on="Enabled" off="Disabled" />
           </PropField>
@@ -1475,10 +1485,12 @@ export default function PageClient() {
 />`;
     }
     if (selected === "data-table") {
+      const glassProp = tableGlass === undefined ? "" : `\n  glassmorphic={${tableGlass}}`;
+      const toolbarProp = tableShowToolbar ? `\n  toolbarRender={(table) => <SearchToolbarItem table={table} keyName="name" placeholder="Filter by name" />}` : "";
       return `<DesignDataTable
   data={products}
   columns={columns}
-  defaultSorting={[{ id: "name", desc: false }]}
+  defaultSorting={[{ id: "name", desc: false }]}${glassProp}${toolbarProp}
   onRowClick={${tableClickableRows ? "(row) => setLastClickedRow(row.name)" : "undefined"}}
 />`;
     }
