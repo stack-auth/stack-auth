@@ -1,17 +1,6 @@
 import { it } from "../../../../../../../helpers";
 import { backendContext, niceBackendFetch } from "../../../../../../backend-helpers";
-
-export async function provisionProject() {
-  return await niceBackendFetch("/api/v1/integrations/custom/projects/provision", {
-    method: "POST",
-    body: {
-      display_name: "Test project",
-    },
-    headers: {
-      "Authorization": "Basic bmVvbi1sb2NhbDpuZW9uLWxvY2FsLXNlY3JldA==",
-    },
-  });
-}
+import { provisionProject } from "./provision-helpers";
 
 it("should be able to provision a new project if client details are correct", async ({ expect }) => {
   const response = await provisionProject();
