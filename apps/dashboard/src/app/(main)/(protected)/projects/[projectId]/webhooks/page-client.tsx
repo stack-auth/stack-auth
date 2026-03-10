@@ -17,7 +17,7 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { getSvixResult } from "./utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 import { AppPortal } from "svix-react";
 import "svix-react/style.css";
 

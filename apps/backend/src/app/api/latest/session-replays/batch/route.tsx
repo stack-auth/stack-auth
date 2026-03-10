@@ -14,7 +14,7 @@ const gzip = promisify(gzipCb);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const MAX_BODY_BYTES = 5_000_000;
+const MAX_BODY_BYTES = 1_000_000;
 const MAX_EVENTS = 5_000;
 
 function extractEventTimesMs(events: unknown[], fallbackMs: number) {

@@ -312,6 +312,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     is_anonymous: user.is_anonymous,
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,
+    requires_totp_mfa: user.requires_totp_mfa,
   };
 
   // Validate the payload matches the accessTokenSchema before signing, to catch inconsistencies early

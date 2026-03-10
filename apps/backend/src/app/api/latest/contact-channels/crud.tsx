@@ -1,10 +1,10 @@
+import { Prisma } from "@/generated/prisma/client";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryById } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { markProjectUserForExternalDbSync, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureContactChannelDoesNotExists, ensureContactChannelExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { contactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -62,6 +62,7 @@ export const contactChannelsCrudHandlers = createLazyProxy(() => createCrudHandl
   onCreate: async ({ auth, data }) => {
     let value = data.value;
     switch (data.type) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       case 'email': {
         value = normalizeEmail(value);
         break;

@@ -2,6 +2,7 @@ import { encodeBase32, encodeBase64 } from "./bytes";
 import { StackAssertionError } from "./errors";
 import { globalVar } from "./globals";
 import { Result } from "./results";
+import { toArrayBufferBacked } from "./typed-arrays";
 
 export function generateRandomValues(array: Uint8Array): typeof array {
   if (!globalVar.crypto) {
@@ -26,11 +27,12 @@ export function generateSecureRandomString(minBitsOfEntropy: number = 224) {
 }
 
 async function getDerivedSymmetricKey(purpose: string, secret: string | Uint8Array, salt: Uint8Array) {
-  const originalSecretKey = await crypto.subtle.importKey("raw", typeof secret === "string" ? new TextEncoder().encode(secret) : secret, "HKDF", false, ["deriveKey"]);
+  const secretBytes = typeof secret === "string" ? new TextEncoder().encode(secret) : toArrayBufferBacked(secret);
+  const originalSecretKey = await crypto.subtle.importKey("raw", secretBytes, "HKDF", false, ["deriveKey"]);
   return await crypto.subtle.deriveKey(
     {
       name: "HKDF",
-      salt,
+      salt: toArrayBufferBacked(salt),
       hash: "SHA-256",
       info: new TextEncoder().encode(JSON.stringify([
         "stack-crypto-helper-derived-symmetric-key",
@@ -54,7 +56,7 @@ export async function encrypt({ purpose, secret, value }: { purpose: string, sec
   const cipher = await crypto.subtle.encrypt({
     name: "AES-GCM",
     iv,
-  }, derivedSecretKey, value);
+  }, derivedSecretKey, toArrayBufferBacked(value));
 
   const version = [0x01, 0x00];
   return new Uint8Array([...version, ...salt, ...iv, ...new Uint8Array(cipher)]);
@@ -113,7 +115,7 @@ export async function hash(options: HashOptions) {
 }
 
 export async function iteratedHash(options: HashOptions & { iterations: number }) {
-  const stringOrUint8ArrayToUint8Array = (value: string | Uint8Array) => typeof value === "string" ? new TextEncoder().encode(value) : value;
+  const stringOrUint8ArrayToUint8Array = (value: string | Uint8Array) => typeof value === "string" ? new TextEncoder().encode(value) : toArrayBufferBacked(value);
   const stringOrUint8ArrayToBase64 = (value: string | Uint8Array) => encodeBase64(stringOrUint8ArrayToUint8Array(value));
   const input = await crypto.subtle.importKey(
     "raw",

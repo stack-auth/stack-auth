@@ -401,57 +401,63 @@ export function setOrganizationConfigOverride(options: {
 export async function overrideProjectConfigOverride(options: {
   projectId: string,
   projectConfigOverrideOverride: ProjectConfigOverrideOverride,
-}): Promise<void> {
+}): Promise<ProjectConfigOverride> {
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getProjectConfigOverrideQuery(options));
   const newConfigUnmigrated = override(
     oldConfig,
     options.projectConfigOverrideOverride,
-  );
+  ) as ProjectConfigOverride;
 
   await setProjectConfigOverride({
     projectId: options.projectId,
-    projectConfigOverride: newConfigUnmigrated as ProjectConfigOverride,
+    projectConfigOverride: newConfigUnmigrated,
   });
+
+  return newConfigUnmigrated;
 }
 
 export async function overrideBranchConfigOverride(options: {
   projectId: string,
   branchId: string,
   branchConfigOverrideOverride: BranchConfigOverrideOverride,
-}): Promise<void> {
+}): Promise<BranchConfigOverride> {
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getBranchConfigOverrideQuery(options));
   const newConfigUnmigrated = override(
     oldConfig,
     options.branchConfigOverrideOverride,
-  );
+  ) as BranchConfigOverride;
 
   // setBranchConfigOverride uses upsert and preserves existing source automatically
   await setBranchConfigOverride({
     projectId: options.projectId,
     branchId: options.branchId,
-    branchConfigOverride: newConfigUnmigrated as BranchConfigOverride,
+    branchConfigOverride: newConfigUnmigrated,
   });
+
+  return newConfigUnmigrated;
 }
 
 export async function overrideEnvironmentConfigOverride(options: {
   projectId: string,
   branchId: string,
   environmentConfigOverrideOverride: EnvironmentConfigOverrideOverride,
-}): Promise<void> {
+}): Promise<EnvironmentConfigOverride> {
   // TODO put this in a serializable transaction (or a single SQL query) to prevent race conditions
   const oldConfig = await rawQuery(globalPrismaClient, getEnvironmentConfigOverrideQuery(options));
   const newConfigUnmigrated = override(
     oldConfig,
     options.environmentConfigOverrideOverride,
-  );
+  ) as EnvironmentConfigOverride;
 
   await setEnvironmentConfigOverride({
     projectId: options.projectId,
     branchId: options.branchId,
-    environmentConfigOverride: newConfigUnmigrated as EnvironmentConfigOverride,
+    environmentConfigOverride: newConfigUnmigrated,
   });
+
+  return newConfigUnmigrated;
 }
 
 export function overrideOrganizationConfigOverride(options: {
@@ -459,7 +465,7 @@ export function overrideOrganizationConfigOverride(options: {
   branchId: string,
   organizationId: string | null,
   organizationConfigOverrideOverride: OrganizationConfigOverrideOverride,
-}): Promise<void> {
+}): Promise<OrganizationConfigOverride> {
   // save organization config override on DB (either our own, or the source of truth one)
   throw new StackAssertionError('Not implemented');
 }

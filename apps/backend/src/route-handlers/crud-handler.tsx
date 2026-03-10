@@ -272,9 +272,9 @@ export function createCrudHandlers<
                       data,
                       auth: {
                         user,
-                        project: project ?? throwErr("Project not found in CRUD handler invocation", { project, tenancy, branchId }),
-                        branchId: branchId ?? throwErr("Branch ID not found in CRUD handler invocation", { project, tenancy, branchId }),
-                        tenancy: tenancy ?? throwErr("Tenancy not found in CRUD handler invocation", { project, tenancy, branchId }),
+                        project: project,
+                        branchId: branchId,
+                        tenancy: tenancy,
                         type: accessType,
                       },
                     });
