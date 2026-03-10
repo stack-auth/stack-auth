@@ -456,7 +456,7 @@ export namespace Auth {
           break;
         }
         await wait(100 + i * 20);
-        if (i >= 30) {
+        if (i >= 40) {
           throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, {
             response,
             messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),

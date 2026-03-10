@@ -13,6 +13,7 @@ import {
   validateEnvironmentConfigOverride,
 } from "@/lib/config";
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
+import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } from "@/lib/local-emulator";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
@@ -220,6 +221,10 @@ export const PUT = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
+      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
+    }
+
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_string, levelConfig);
 
@@ -273,6 +278,10 @@ export const PATCH = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
+      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
+    }
+
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig);
 
