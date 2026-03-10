@@ -3,6 +3,7 @@ import path from 'node:path'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+import { nitro } from 'nitro/vite'
 import tsConfigPaths from 'vite-tsconfig-paths'
 
 /**
@@ -84,6 +85,7 @@ export default defineConfig({
     watchNodeModules(['@stackframe/react', '@stackframe/stack-shared']),
     tsConfigPaths(),
     tanstackStart(),
+    nitro(),
     // react's vite plugin must come after start's vite plugin
     viteReact(),
   ],

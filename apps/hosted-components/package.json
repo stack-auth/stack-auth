@@ -19,8 +19,9 @@
     "@tanstack/react-start-client": "^1.121.3",
     "@tanstack/react-start-server": "^1.121.3",
     "@tanstack/start-client-core": "^1.121.3",
-    "@tanstack/start-server-core": "^1.121.3",
     "@tanstack/start-plugin-core": "^1.121.3",
+    "@tanstack/start-server-core": "^1.121.3",
+    "nitro": "^3.0.0",
     "react": "19.2.1",
     "react-dom": "19.2.1"
   },

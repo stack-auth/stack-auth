@@ -2,7 +2,7 @@ import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { expect } from "vitest";
 import { it } from "../../../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../../../backend-helpers";
-import { provisionProject } from "./provision.test";
+import { provisionProject } from "./provision-helpers";
 
 async function initiateTransfer(projectId: string) {
   const response = await niceBackendFetch("/api/v1/integrations/neon/projects/transfer/initiate", {
