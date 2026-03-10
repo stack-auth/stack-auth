@@ -156,3 +156,6 @@ A: The Turbo `dev` task graph was starting app/package `dev` tasks without first
 
 Q: How should `ProjectUser.signUpAt` be maintained once it becomes the canonical signup timestamp?
 A: Treat `signUpAt` as the authoritative source for `signed_up_at_millis`, recent-signup heuristics, metrics, and external DB sync. Direct user creation paths should set it immediately, existing rows should be backfilled from `createdAt` in the migration, and anonymous upgrades must write `signUpAt` before flipping `isAnonymous` to `false` so read paths never observe a signed-up user without a signup timestamp.
+
+Q: Why can `pnpm restart-deps` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED` from `apps/backend/prisma/seed.ts`?
+A: `restart-deps` runs `db:init`, which executes `apps/backend/prisma/seed.ts`. If that file imports package-root subpaths like `@stackframe/stack-shared/apps/apps-config` but `packages/stack-shared/package.json` only exports `.` and `./dist/*`, Node cannot resolve the new subpath imports and the seed step fails. Keep the wildcard subpath exports (`./*`, `./*/*`, etc.) in `packages/stack-shared/package.json` or revert the imports back to `dist/*`.

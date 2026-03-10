@@ -30,41 +30,6 @@
         "default": "./dist/*.js"
       },
       "default": "./dist/esm/*.js"
-    },
-    "./utils/*": {
-      "types": "./dist/utils/*.d.ts",
-      "require": {
-        "default": "./dist/utils/*.js"
-      },
-      "default": "./dist/esm/utils/*.js"
-    },
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "require": {
-        "default": "./dist/*.js"
-      },
-      "default": "./dist/esm/*.js"
-    },
-    "./*/*": {
-      "types": "./dist/*/*.d.ts",
-      "require": {
-        "default": "./dist/*/*.js"
-      },
-      "default": "./dist/esm/*/*.js"
-    },
-    "./*/*/*": {
-      "types": "./dist/*/*/*.d.ts",
-      "require": {
-        "default": "./dist/*/*/*.js"
-      },
-      "default": "./dist/esm/*/*/*.js"
-    },
-    "./*/*/*/*": {
-      "types": "./dist/*/*/*/*.d.ts",
-      "require": {
-        "default": "./dist/*/*/*/*.js"
-      },
-      "default": "./dist/esm/*/*/*/*.js"
     }
   },
   "peerDependencies": {

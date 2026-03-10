@@ -12,8 +12,8 @@ import {
 } from "@/lib/cel-visual-parser";
 import { MinusIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { CountryCodeSelect } from "@/components/country-code-select";
-import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/schema-fields";
-import { standardProviders } from "@stackframe/stack-shared/utils/oauth";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import React from "react";
 
 /**
