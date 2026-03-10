@@ -689,24 +689,9 @@ var DashboardUI = (() => {
   }
   var Fragment9 = import_react2.default.Fragment;
 
-  // ../stack-shared/dist/esm/utils/globals.js
-  var globalVar = typeof globalThis !== "undefined" ? globalThis : typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {};
-  if (typeof globalThis === "undefined") {
-    globalVar.globalThis = globalVar;
-  }
-  var stackGlobalsSymbol = Symbol.for("__stack-globals");
-  globalVar[stackGlobalsSymbol] ??= {};
-
-  // ../stack-shared/dist/esm/utils/functions.js
-  function identityArgs(...args) {
-    return args;
-  }
-
   // ../stack-shared/dist/esm/utils/arrays.js
   function findLastIndex(arr, predicate) {
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (predicate(arr[i])) return i;
-    }
+    for (let i = arr.length - 1; i >= 0; i--) if (predicate(arr[i])) return i;
     return -1;
   }
   function range(startInclusive, endExclusive, step) {
@@ -716,9 +701,7 @@ var DashboardUI = (() => {
     }
     if (step === void 0) step = 1;
     const result = [];
-    for (let i = startInclusive; step > 0 ? i < endExclusive : i > endExclusive; i += step) {
-      result.push(i);
-    }
+    for (let i = startInclusive; step > 0 ? i < endExclusive : i > endExclusive; i += step) result.push(i);
     return result;
   }
   function unique(arr) {
@@ -727,8 +710,11 @@ var DashboardUI = (() => {
 
   // ../stack-shared/dist/esm/utils/strings.js
   function stringCompare(a10, b) {
-    if (typeof a10 !== "string" || typeof b !== "string") throw new StackAssertionError(`Expected two strings for stringCompare, found ${typeof a10} and ${typeof b}`, { a: a10, b });
-    const cmp = (a22, b2) => a22 < b2 ? -1 : a22 > b2 ? 1 : 0;
+    if (typeof a10 !== "string" || typeof b !== "string") throw new StackAssertionError(`Expected two strings for stringCompare, found ${typeof a10} and ${typeof b}`, {
+      a: a10,
+      b
+    });
+    const cmp = (a11, b2) => a11 < b2 ? -1 : a11 > b2 ? 1 : 0;
     return cmp(a10.toUpperCase(), b.toUpperCase()) || cmp(b, a10);
   }
   function getWhitespacePrefix(s4) {
@@ -746,7 +732,10 @@ var DashboardUI = (() => {
     return lines.slice(0, lastNonEmptyLineIndex + 1).join("\n");
   }
   function templateIdentity(strings, ...values) {
-    if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", { strings, values });
+    if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", {
+      strings,
+      values
+    });
     return strings.reduce((result, str, i) => result + str + (values[i] ?? ""), "");
   }
   function deindent(strings, ...values) {
@@ -754,7 +743,10 @@ var DashboardUI = (() => {
     return templateIdentity(...deindentTemplate(strings, ...values));
   }
   function deindentTemplate(strings, ...values) {
-    if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", { strings, values });
+    if (values.length !== strings.length - 1) throw new StackAssertionError("Invalid number of values; must be one less than strings", {
+      strings,
+      values
+    });
     const trimmedStrings = [...strings];
     trimmedStrings[0] = trimEmptyLinesStart(trimmedStrings[0] + "+").slice(0, -1);
     trimmedStrings[trimmedStrings.length - 1] = trimEmptyLinesEnd("+" + trimmedStrings[trimmedStrings.length - 1]).slice(1);
@@ -762,19 +754,16 @@ var DashboardUI = (() => {
     const deindentedStrings = trimmedStrings.map((string2, stringIndex) => {
       return string2.split("\n").map((line, lineIndex) => stringIndex !== 0 && lineIndex === 0 ? line : line.substring(indentation)).join("\n");
     });
-    const indentedValues = values.map((value, i) => {
+    return [deindentedStrings, ...values.map((value, i) => {
       const firstLineIndentation = getWhitespacePrefix(deindentedStrings[i].split("\n").at(-1));
       return `${value}`.replaceAll("\n", `
 ${firstLineIndentation}`);
-    });
-    return [deindentedStrings, ...indentedValues];
+    })];
   }
   function escapeTemplateLiteral(s4) {
     return s4.replaceAll("\\", "\\\\").replaceAll("`", "\\`").replaceAll("${", "\\${");
   }
-  var nicifiableClassNameOverrides = new Map(Object.entries({
-    Headers
-  }).map(([k, v]) => [v, k]));
+  var nicifiableClassNameOverrides = new Map(Object.entries({ Headers }).map(([k, v]) => [v, k]));
   function nicify(value, options = {}) {
     const fullOptions = {
       maxDepth: 5,
@@ -789,24 +778,17 @@ ${firstLineIndentation}`);
       hideFields: [],
       ...filterUndefined(options)
     };
-    const {
-      maxDepth,
-      currentIndent,
-      lineIndent,
-      multiline,
-      refs,
-      path,
-      overrides,
-      hideFields
-    } = fullOptions;
+    const { maxDepth, currentIndent, lineIndent, multiline, refs, path, overrides, hideFields } = fullOptions;
     const nl = `
 ${currentIndent}`;
     const overrideResult = overrides(value, options);
     if (overrideResult !== null) return overrideResult;
-    if (["function", "object", "symbol"].includes(typeof value) && value !== null) {
-      if (refs.has(value)) {
-        return `Ref<${refs.get(value)}>`;
-      }
+    if ([
+      "function",
+      "object",
+      "symbol"
+    ].includes(typeof value) && value !== null) {
+      if (refs.has(value)) return `Ref<${refs.get(value)}>`;
       refs.set(value, path);
     }
     const newOptions = {
@@ -817,7 +799,10 @@ ${currentIndent}`;
       refs,
       path: path + "->[unknown property]",
       overrides,
-      parent: { value, options: fullOptions },
+      parent: {
+        value,
+        options: fullOptions
+      },
       keyInParent: null,
       hideFields: []
     };
@@ -832,9 +817,8 @@ ${currentIndent}`;
     };
     switch (typeof value) {
       case "boolean":
-      case "number": {
+      case "number":
         return JSON.stringify(value);
-      }
       case "string": {
         const isDeindentable = (v) => deindent(v) === v && v.includes("\n");
         const wrapInDeindent = (v) => deindent`
@@ -842,27 +826,19 @@ ${currentIndent}`;
         ${currentIndent + lineIndent}${escapeTemplateLiteral(v).replaceAll("\n", nl + lineIndent)}
         ${currentIndent}\`
       `;
-        if (isDeindentable(value)) {
-          return wrapInDeindent(value);
-        } else if (value.endsWith("\n") && isDeindentable(value.slice(0, -1))) {
-          return wrapInDeindent(value.slice(0, -1)) + ' + "\\n"';
-        } else {
-          return JSON.stringify(value);
-        }
+        if (isDeindentable(value)) return wrapInDeindent(value);
+        else if (value.endsWith("\n") && isDeindentable(value.slice(0, -1))) return wrapInDeindent(value.slice(0, -1)) + ' + "\\n"';
+        else return JSON.stringify(value);
       }
-      case "undefined": {
+      case "undefined":
         return "undefined";
-      }
-      case "symbol": {
+      case "symbol":
         return value.toString();
-      }
-      case "bigint": {
+      case "bigint":
         return `${value}n`;
-      }
-      case "function": {
+      case "function":
         if (value.name) return `function ${value.name}(...) { ... }`;
         return `(...) => { ... }`;
-      }
       case "object": {
         if (value === null) return "null";
         if (Array.isArray(value)) {
@@ -872,26 +848,18 @@ ${currentIndent}`;
           if (maxDepth <= 0) return `[...]`;
           const resValues2 = value.map((v, i) => nestedNicify(v, `${path}[${i}]`, i));
           resValues2.push(...extraLines2);
-          if (resValues2.length !== resValueLength2) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues: resValues2, resValueLength: resValueLength2 });
-          const shouldIndent2 = resValues2.length > 4 || resValues2.some((x) => resValues2.length > 1 && x.length > 4 || x.includes("\n"));
-          if (shouldIndent2) {
-            return `[${nl}${resValues2.map((x) => `${lineIndent}${x},${nl}`).join("")}]`;
-          } else {
-            return `[${resValues2.join(", ")}]`;
-          }
+          if (resValues2.length !== resValueLength2) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", {
+            value,
+            resValues: resValues2,
+            resValueLength: resValueLength2
+          });
+          if (resValues2.length > 4 || resValues2.some((x) => resValues2.length > 1 && x.length > 4 || x.includes("\n"))) return `[${nl}${resValues2.map((x) => `${lineIndent}${x},${nl}`).join("")}]`;
+          else return `[${resValues2.join(", ")}]`;
         }
-        if (value instanceof Date) {
-          return `Date(${nestedNicify(value.toISOString(), `${path}.toISOString()`, null)})`;
-        }
-        if (value instanceof URL) {
-          return `URL(${nestedNicify(value.toString(), `${path}.toString()`, null)})`;
-        }
-        if (ArrayBuffer.isView(value)) {
-          return `${value.constructor.name}([${value.toString()}])`;
-        }
-        if (value instanceof ArrayBuffer) {
-          return `ArrayBuffer [${new Uint8Array(value).toString()}]`;
-        }
+        if (value instanceof Date) return `Date(${nestedNicify(value.toISOString(), `${path}.toISOString()`, null)})`;
+        if (value instanceof URL) return `URL(${nestedNicify(value.toString(), `${path}.toString()`, null)})`;
+        if (ArrayBuffer.isView(value)) return `${value.constructor.name}([${value.toString()}])`;
+        if (value instanceof ArrayBuffer) return `ArrayBuffer [${new Uint8Array(value).toString()}]`;
         if (value instanceof Error) {
           let stack = value.stack ?? "";
           const toString2 = value.toString();
@@ -903,15 +871,11 @@ ${lineIndent}${lineIndent}`);
           stack = stack.replace("\n", `
 ${lineIndent}Stack:
 `);
-          if (Object.keys(value).length > 0) {
-            stack += `
+          if (Object.keys(value).length > 0) stack += `
 ${lineIndent}Extra properties: ${nestedNicify(Object.fromEntries(Object.entries(value)), path, null)}`;
-          }
-          if (value.cause) {
-            stack += `
+          if (value.cause) stack += `
 ${lineIndent}Cause:
 ${lineIndent}${lineIndent}${nestedNicify(value.cause, path, null, { currentIndent: currentIndent + lineIndent + lineIndent })}`;
-          }
           stack = stack.replaceAll("\n", `
 ${currentIndent}`);
           return stack;
@@ -919,35 +883,29 @@ ${currentIndent}`);
         const constructorName = [null, Object.prototype].includes(Object.getPrototypeOf(value)) ? null : nicifiableClassNameOverrides.get(value.constructor) ?? value.constructor.name;
         const constructorString = constructorName ? `${constructorName} ` : "";
         const entries = getNicifiableEntries(value).filter(([k]) => !hideFields.includes(k));
-        const extraLines = [
-          ...getNicifiedObjectExtraLines(value),
-          ...hideFields.length > 0 ? [`<some fields may have been hidden>`] : []
-        ];
+        const extraLines = [...getNicifiedObjectExtraLines(value), ...hideFields.length > 0 ? [`<some fields may have been hidden>`] : []];
         const resValueLength = entries.length + extraLines.length;
         if (resValueLength === 0) return `${constructorString}{}`;
         if (maxDepth <= 0) return `${constructorString}{ ... }`;
         const resValues = entries.map(([k, v], keyIndex) => {
           const keyNicified = nestedNicify(k, `Object.keys(${path})[${keyIndex}]`, null);
           const keyInObjectLiteral = typeof k === "string" ? nicifyPropertyString(k) : `[${keyNicified}]`;
-          if (typeof v === "function" && v.name === k) {
-            return `${keyInObjectLiteral}(...): { ... }`;
-          } else {
-            return `${keyInObjectLiteral}: ${nestedNicify(v, `${path}[${keyNicified}]`, k)}`;
-          }
+          if (typeof v === "function" && v.name === k) return `${keyInObjectLiteral}(...): { ... }`;
+          else return `${keyInObjectLiteral}: ${nestedNicify(v, `${path}[${keyNicified}]`, k)}`;
         });
         resValues.push(...extraLines);
-        if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", { value, resValues, resValueLength });
+        if (resValues.length !== resValueLength) throw new StackAssertionError("nicify of object: resValues.length !== resValueLength", {
+          value,
+          resValues,
+          resValueLength
+        });
         const shouldIndent = resValues.length > 1 || resValues.some((x) => x.includes("\n"));
         if (resValues.length === 0) return `${constructorString}{}`;
-        if (shouldIndent) {
-          return `${constructorString}{${nl}${resValues.map((x) => `${lineIndent}${x},${nl}`).join("")}}`;
-        } else {
-          return `${constructorString}{ ${resValues.join(", ")} }`;
-        }
+        if (shouldIndent) return `${constructorString}{${nl}${resValues.map((x) => `${lineIndent}${x},${nl}`).join("")}}`;
+        else return `${constructorString}{ ${resValues.join(", ")} }`;
       }
-      default: {
+      default:
         return `${typeof value}<${value}>`;
-      }
     }
   }
   function nicifyPropertyString(str) {
@@ -956,25 +914,24 @@ ${currentIndent}`);
   function getNicifiableKeys(value) {
     const overridden = ("getNicifiableKeys" in value ? value.getNicifiableKeys?.bind(value) : null)?.();
     if (overridden != null) return overridden;
-    if (value instanceof Response) {
-      return ["status", "headers"];
-    }
-    const keys = Object.keys(value).sort();
-    return unique(keys);
+    if (value instanceof Response) return ["status", "headers"];
+    return unique(Object.keys(value).sort());
   }
   function getNicifiableEntries(value) {
     const recordLikes = [Headers];
     function isRecordLike(value2) {
       return recordLikes.some((x) => value2 instanceof x);
     }
-    if (isRecordLike(value)) {
-      return [...value.entries()].sort(([a10], [b]) => stringCompare(`${a10}`, `${b}`));
-    }
-    const keys = getNicifiableKeys(value);
-    return keys.map((k) => [k, value[k]]);
+    if (isRecordLike(value)) return [...value.entries()].sort(([a10], [b]) => stringCompare(`${a10}`, `${b}`));
+    return getNicifiableKeys(value).map((k) => [k, value[k]]);
   }
   function getNicifiedObjectExtraLines(value) {
     return ("getNicifiedObjectExtraLines" in value ? value.getNicifiedObjectExtraLines : null)?.() ?? [];
+  }
+
+  // ../stack-shared/dist/esm/utils/functions.js
+  function identityArgs(...args) {
+    return args;
   }
 
   // ../stack-shared/dist/esm/utils/types.js
@@ -1045,12 +1002,10 @@ ${currentIndent}`);
       case "boolean":
       case "bigint":
       case "symbol":
-      case "function": {
+      case "function":
         return false;
-      }
-      default: {
+      default:
         throw new Error("Unexpected typeof " + typeof obj1);
-      }
     }
   }
   function deepPlainClone(obj) {
@@ -1071,27 +1026,32 @@ ${currentIndent}`);
     return Object.fromEntries(Object.entries(obj).filter(([k]) => keys.includes(k)));
   }
   function omit(obj, keys) {
-    if (!Array.isArray(keys)) throw new StackAssertionError("omit: keys must be an array", { obj, keys });
+    if (!Array.isArray(keys)) throw new StackAssertionError("omit: keys must be an array", {
+      obj,
+      keys
+    });
     return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
   }
 
+  // ../stack-shared/dist/esm/utils/globals.js
+  var globalVar = typeof globalThis !== "undefined" ? globalThis : typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {};
+  if (typeof globalThis === "undefined") globalVar.globalThis = globalVar;
+  var stackGlobalsSymbol = Symbol.for("__stack-globals");
+  globalVar[stackGlobalsSymbol] ??= {};
+
   // ../stack-shared/dist/esm/utils/errors.js
   function throwErr(...args) {
-    if (typeof args[0] === "string") {
-      throw new StackAssertionError(args[0], args[1]);
-    } else if (args[0] instanceof Error) {
-      throw args[0];
-    } else {
-      throw new StatusError(...args);
-    }
+    if (typeof args[0] === "string") throw new StackAssertionError(args[0], args[1]);
+    else if (args[0] instanceof Error) throw args[0];
+    else throw new StatusError(...args);
   }
   function removeStacktraceNameLine(stack) {
-    const addsNameLine = new Error().stack?.startsWith("Error\n");
+    const addsNameLine = (/* @__PURE__ */ new Error()).stack?.startsWith("Error\n");
     return stack.split("\n").slice(addsNameLine ? 1 : 0).join("\n");
   }
   function concatStacktraces(first, ...errors) {
     const addsEmptyLineAtEnd = first.stack?.endsWith("\n");
-    const separator = removeStacktraceNameLine(new Error().stack ?? "").split("\n")[0];
+    const separator = removeStacktraceNameLine((/* @__PURE__ */ new Error()).stack ?? "").split("\n")[0];
     for (const error of errors) {
       const toAppend = removeStacktraceNameLine(error.stack ?? "");
       first.stack += (addsEmptyLineAtEnd ? "" : "\n") + separator + "\n" + toAppend;
@@ -1110,9 +1070,7 @@ This is likely an error in Stack. Please make sure you are running the newest ve
         },
         enumerable: false
       });
-      if (process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR === "true") {
-        debugger;
-      }
+      if (process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR === "true") debugger;
     }
   };
   StackAssertionError.prototype.name = "StackAssertionError";
@@ -1122,35 +1080,25 @@ This is likely an error in Stack. Please make sure you are running the newest ve
   }
   var errorSinks = /* @__PURE__ */ new Set();
   function registerErrorSink(sink) {
-    if (errorSinks.has(sink)) {
-      return;
-    }
+    if (errorSinks.has(sink)) return;
     errorSinks.add(sink);
   }
   registerErrorSink((location, error, ...extraArgs) => {
-    console.error(
-      `\x1B[41mCaptured error in ${location}:`,
-      // HACK: Log a nicified version of the error to get around buggy Next.js pretty-printing
-      // https://www.reddit.com/r/nextjs/comments/1gkxdqe/comment/m19kxgn/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button
-      errorToNiceString(error),
-      ...extraArgs,
-      "\x1B[0m"
-    );
+    console.error(`\x1B[41mCaptured error in ${location}:`, errorToNiceString(error), ...extraArgs, "\x1B[0m");
   });
   registerErrorSink((location, error, ...extraArgs) => {
     globalVar.stackCapturedErrors = globalVar.stackCapturedErrors ?? [];
-    globalVar.stackCapturedErrors.push({ location, error, extraArgs });
+    globalVar.stackCapturedErrors.push({
+      location,
+      error,
+      extraArgs
+    });
   });
   function captureError(location, error) {
-    for (const sink of errorSinks) {
-      sink(
-        location,
-        error,
-        ...error && (typeof error === "object" || typeof error === "function") && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? error.customCaptureExtraArgs : []
-      );
-    }
+    for (const sink of errorSinks) sink(location, error, ...error && (typeof error === "object" || typeof error === "function") && "customCaptureExtraArgs" in error && Array.isArray(error.customCaptureExtraArgs) ? error.customCaptureExtraArgs : []);
   }
-  var StatusError = class extends Error {
+  var _a;
+  var StatusError = (_a = class extends Error {
     constructor(status, message) {
       if (typeof status === "object") {
         message ??= status.message;
@@ -1160,9 +1108,7 @@ This is likely an error in Stack. Please make sure you are running the newest ve
       this.__stackStatusErrorBrand = "stack-status-error-brand-sentinel";
       this.name = "StatusError";
       this.statusCode = status;
-      if (!message) {
-        throw new StackAssertionError("StatusError always requires a message unless a Status object is passed", { cause: this });
-      }
+      if (!message) throw new StackAssertionError("StatusError always requires a message unless a Status object is passed", { cause: this });
     }
     static isStatusError(error) {
       return typeof error === "object" && error !== null && "__stackStatusErrorBrand" in error && error.__stackStatusErrorBrand === "stack-status-error-brand-sentinel";
@@ -1180,9 +1126,7 @@ This is likely an error in Stack. Please make sure you are running the newest ve
       return new TextEncoder().encode(this.message);
     }
     getHeaders() {
-      return {
-        "Content-Type": ["text/plain; charset=utf-8"]
-      };
+      return { "Content-Type": ["text/plain; charset=utf-8"] };
     }
     toDescriptiveJson() {
       return {
@@ -1192,8 +1136,8 @@ This is likely an error in Stack. Please make sure you are running the newest ve
       };
     }
     /**
-     * @deprecated this is not a good way to make status errors human-readable, use toDescriptiveJson instead
-     */
+    * @deprecated this is not a good way to make status errors human-readable, use toDescriptiveJson instead
+    */
     toHttpJson() {
       return {
         status_code: this.statusCode,
@@ -1201,5591 +1145,128 @@ This is likely an error in Stack. Please make sure you are running the newest ve
         headers: this.getHeaders()
       };
     }
-  };
-  StatusError.BadRequest = { statusCode: 400, message: "Bad Request" };
-  StatusError.Unauthorized = { statusCode: 401, message: "Unauthorized" };
-  StatusError.PaymentRequired = { statusCode: 402, message: "Payment Required" };
-  StatusError.Forbidden = { statusCode: 403, message: "Forbidden" };
-  StatusError.NotFound = { statusCode: 404, message: "Not Found" };
-  StatusError.MethodNotAllowed = { statusCode: 405, message: "Method Not Allowed" };
-  StatusError.NotAcceptable = { statusCode: 406, message: "Not Acceptable" };
-  StatusError.ProxyAuthenticationRequired = { statusCode: 407, message: "Proxy Authentication Required" };
-  StatusError.RequestTimeout = { statusCode: 408, message: "Request Timeout" };
-  StatusError.Conflict = { statusCode: 409, message: "Conflict" };
-  StatusError.Gone = { statusCode: 410, message: "Gone" };
-  StatusError.LengthRequired = { statusCode: 411, message: "Length Required" };
-  StatusError.PreconditionFailed = { statusCode: 412, message: "Precondition Failed" };
-  StatusError.PayloadTooLarge = { statusCode: 413, message: "Payload Too Large" };
-  StatusError.URITooLong = { statusCode: 414, message: "URI Too Long" };
-  StatusError.UnsupportedMediaType = { statusCode: 415, message: "Unsupported Media Type" };
-  StatusError.RangeNotSatisfiable = { statusCode: 416, message: "Range Not Satisfiable" };
-  StatusError.ExpectationFailed = { statusCode: 417, message: "Expectation Failed" };
-  StatusError.ImATeapot = { statusCode: 418, message: "I'm a teapot" };
-  StatusError.MisdirectedRequest = { statusCode: 421, message: "Misdirected Request" };
-  StatusError.UnprocessableEntity = { statusCode: 422, message: "Unprocessable Entity" };
-  StatusError.Locked = { statusCode: 423, message: "Locked" };
-  StatusError.FailedDependency = { statusCode: 424, message: "Failed Dependency" };
-  StatusError.TooEarly = { statusCode: 425, message: "Too Early" };
-  StatusError.UpgradeRequired = { statusCode: 426, message: "Upgrade Required" };
-  StatusError.PreconditionRequired = { statusCode: 428, message: "Precondition Required" };
-  StatusError.TooManyRequests = { statusCode: 429, message: "Too Many Requests" };
-  StatusError.RequestHeaderFieldsTooLarge = { statusCode: 431, message: "Request Header Fields Too Large" };
-  StatusError.UnavailableForLegalReasons = { statusCode: 451, message: "Unavailable For Legal Reasons" };
-  StatusError.InternalServerError = { statusCode: 500, message: "Internal Server Error" };
-  StatusError.NotImplemented = { statusCode: 501, message: "Not Implemented" };
-  StatusError.BadGateway = { statusCode: 502, message: "Bad Gateway" };
-  StatusError.ServiceUnavailable = { statusCode: 503, message: "Service Unavailable" };
-  StatusError.GatewayTimeout = { statusCode: 504, message: "Gateway Timeout" };
-  StatusError.HTTPVersionNotSupported = { statusCode: 505, message: "HTTP Version Not Supported" };
-  StatusError.VariantAlsoNegotiates = { statusCode: 506, message: "Variant Also Negotiates" };
-  StatusError.InsufficientStorage = { statusCode: 507, message: "Insufficient Storage" };
-  StatusError.LoopDetected = { statusCode: 508, message: "Loop Detected" };
-  StatusError.NotExtended = { statusCode: 510, message: "Not Extended" };
-  StatusError.NetworkAuthenticationRequired = { statusCode: 511, message: "Network Authentication Required" };
+  }, _a.BadRequest = {
+    statusCode: 400,
+    message: "Bad Request"
+  }, _a.Unauthorized = {
+    statusCode: 401,
+    message: "Unauthorized"
+  }, _a.PaymentRequired = {
+    statusCode: 402,
+    message: "Payment Required"
+  }, _a.Forbidden = {
+    statusCode: 403,
+    message: "Forbidden"
+  }, _a.NotFound = {
+    statusCode: 404,
+    message: "Not Found"
+  }, _a.MethodNotAllowed = {
+    statusCode: 405,
+    message: "Method Not Allowed"
+  }, _a.NotAcceptable = {
+    statusCode: 406,
+    message: "Not Acceptable"
+  }, _a.ProxyAuthenticationRequired = {
+    statusCode: 407,
+    message: "Proxy Authentication Required"
+  }, _a.RequestTimeout = {
+    statusCode: 408,
+    message: "Request Timeout"
+  }, _a.Conflict = {
+    statusCode: 409,
+    message: "Conflict"
+  }, _a.Gone = {
+    statusCode: 410,
+    message: "Gone"
+  }, _a.LengthRequired = {
+    statusCode: 411,
+    message: "Length Required"
+  }, _a.PreconditionFailed = {
+    statusCode: 412,
+    message: "Precondition Failed"
+  }, _a.PayloadTooLarge = {
+    statusCode: 413,
+    message: "Payload Too Large"
+  }, _a.URITooLong = {
+    statusCode: 414,
+    message: "URI Too Long"
+  }, _a.UnsupportedMediaType = {
+    statusCode: 415,
+    message: "Unsupported Media Type"
+  }, _a.RangeNotSatisfiable = {
+    statusCode: 416,
+    message: "Range Not Satisfiable"
+  }, _a.ExpectationFailed = {
+    statusCode: 417,
+    message: "Expectation Failed"
+  }, _a.ImATeapot = {
+    statusCode: 418,
+    message: "I'm a teapot"
+  }, _a.MisdirectedRequest = {
+    statusCode: 421,
+    message: "Misdirected Request"
+  }, _a.UnprocessableEntity = {
+    statusCode: 422,
+    message: "Unprocessable Entity"
+  }, _a.Locked = {
+    statusCode: 423,
+    message: "Locked"
+  }, _a.FailedDependency = {
+    statusCode: 424,
+    message: "Failed Dependency"
+  }, _a.TooEarly = {
+    statusCode: 425,
+    message: "Too Early"
+  }, _a.UpgradeRequired = {
+    statusCode: 426,
+    message: "Upgrade Required"
+  }, _a.PreconditionRequired = {
+    statusCode: 428,
+    message: "Precondition Required"
+  }, _a.TooManyRequests = {
+    statusCode: 429,
+    message: "Too Many Requests"
+  }, _a.RequestHeaderFieldsTooLarge = {
+    statusCode: 431,
+    message: "Request Header Fields Too Large"
+  }, _a.UnavailableForLegalReasons = {
+    statusCode: 451,
+    message: "Unavailable For Legal Reasons"
+  }, _a.InternalServerError = {
+    statusCode: 500,
+    message: "Internal Server Error"
+  }, _a.NotImplemented = {
+    statusCode: 501,
+    message: "Not Implemented"
+  }, _a.BadGateway = {
+    statusCode: 502,
+    message: "Bad Gateway"
+  }, _a.ServiceUnavailable = {
+    statusCode: 503,
+    message: "Service Unavailable"
+  }, _a.GatewayTimeout = {
+    statusCode: 504,
+    message: "Gateway Timeout"
+  }, _a.HTTPVersionNotSupported = {
+    statusCode: 505,
+    message: "HTTP Version Not Supported"
+  }, _a.VariantAlsoNegotiates = {
+    statusCode: 506,
+    message: "Variant Also Negotiates"
+  }, _a.InsufficientStorage = {
+    statusCode: 507,
+    message: "Insufficient Storage"
+  }, _a.LoopDetected = {
+    statusCode: 508,
+    message: "Loop Detected"
+  }, _a.NotExtended = {
+    statusCode: 510,
+    message: "Not Extended"
+  }, _a.NetworkAuthenticationRequired = {
+    statusCode: 511,
+    message: "Network Authentication Required"
+  }, _a);
   StatusError.prototype.name = "StatusError";
-
-  // ../stack-shared/dist/esm/utils/react.js
-  var import_react3 = __toESM(require_react());
-
-  // ../stack-shared/dist/esm/known-errors.js
-  var KnownError = class extends StatusError {
-    constructor(statusCode, humanReadableMessage, details) {
-      super(
-        statusCode,
-        humanReadableMessage
-      );
-      this.statusCode = statusCode;
-      this.humanReadableMessage = humanReadableMessage;
-      this.details = details;
-      this.__stackKnownErrorBrand = "stack-known-error-brand-sentinel";
-      this.name = "KnownError";
-    }
-    static isKnownError(error) {
-      return typeof error === "object" && error !== null && "__stackKnownErrorBrand" in error && error.__stackKnownErrorBrand === "stack-known-error-brand-sentinel";
-    }
-    getBody() {
-      return new TextEncoder().encode(JSON.stringify(this.toDescriptiveJson(), void 0, 2));
-    }
-    getHeaders() {
-      return {
-        "Content-Type": ["application/json; charset=utf-8"],
-        "X-Stack-Known-Error": [this.errorCode]
-      };
-    }
-    toDescriptiveJson() {
-      return {
-        code: this.errorCode,
-        ...this.details ? { details: this.details } : {},
-        error: this.humanReadableMessage
-      };
-    }
-    get errorCode() {
-      return this.constructor.errorCode ?? throwErr(`Can't find error code for this KnownError. Is its constructor a KnownErrorConstructor? ${this}`);
-    }
-    static constructorArgsFromJson(json) {
-      return [
-        400,
-        json.message,
-        json
-      ];
-    }
-    static fromJson(json) {
-      for (const [_, KnownErrorType] of Object.entries(KnownErrors)) {
-        if (json.code === KnownErrorType.prototype.errorCode) {
-          const constructorArgs = KnownErrorType.constructorArgsFromJson(json);
-          return new KnownErrorType(
-            ...constructorArgs
-          );
-        }
-      }
-      throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
-    }
-  };
-  var knownErrorConstructorErrorCodeSentinel = Symbol("knownErrorConstructorErrorCodeSentinel");
-  function createKnownErrorConstructor(SuperClass, errorCode, create, constructorArgsFromJson) {
-    const createFn = create === "inherit" ? identityArgs : create;
-    const constructorArgsFromJsonFn = constructorArgsFromJson === "inherit" ? SuperClass.constructorArgsFromJson : constructorArgsFromJson;
-    class KnownErrorImpl extends SuperClass {
-      constructor(...args) {
-        super(...createFn(...args));
-        this.name = `KnownError<${errorCode}>`;
-        this.constructorArgs = args;
-      }
-      static constructorArgsFromJson(json) {
-        return constructorArgsFromJsonFn(json.details);
-      }
-      static isInstance(error) {
-        if (!KnownError.isKnownError(error)) return false;
-        let current = error;
-        while (true) {
-          current = Object.getPrototypeOf(current);
-          if (!current) break;
-          if ("errorCode" in current.constructor && current.constructor.errorCode === errorCode) return true;
-        }
-        return false;
-      }
-    }
-    KnownErrorImpl.errorCode = errorCode;
-    ;
-    return KnownErrorImpl;
-  }
-  var UnsupportedError = createKnownErrorConstructor(
-    KnownError,
-    "UNSUPPORTED_ERROR",
-    (originalErrorCode) => [
-      500,
-      `An error occurred that is not currently supported (possibly because it was added in a version of Stack that is newer than this client). The original unsupported error code was: ${originalErrorCode}`,
-      {
-        originalErrorCode
-      }
-    ],
-    (json) => [
-      json?.originalErrorCode ?? throwErr("originalErrorCode not found in UnsupportedError details")
-    ]
-  );
-  var BodyParsingError = createKnownErrorConstructor(
-    KnownError,
-    "BODY_PARSING_ERROR",
-    (message) => [
-      400,
-      message
-    ],
-    (json) => [json.message]
-  );
-  var SchemaError = createKnownErrorConstructor(
-    KnownError,
-    "SCHEMA_ERROR",
-    (message) => [
-      400,
-      message || throwErr("SchemaError requires a message"),
-      {
-        message
-      }
-    ],
-    (json) => [json.message]
-  );
-  var AllOverloadsFailed = createKnownErrorConstructor(
-    KnownError,
-    "ALL_OVERLOADS_FAILED",
-    (overloadErrors) => [
-      400,
-      deindent`
-      This endpoint has multiple overloads, but they all failed to process the request.
-
-        ${overloadErrors.map((e16, i) => deindent`
-          Overload ${i + 1}: ${JSON.stringify(e16, void 0, 2)}
-        `).join("\n\n")}
-    `,
-      {
-        overload_errors: overloadErrors
-      }
-    ],
-    (json) => [
-      json?.overload_errors ?? throwErr("overload_errors not found in AllOverloadsFailed details")
-    ]
-  );
-  var ProjectAuthenticationError = createKnownErrorConstructor(
-    KnownError,
-    "PROJECT_AUTHENTICATION_ERROR",
-    "inherit",
-    "inherit"
-  );
-  var InvalidProjectAuthentication = createKnownErrorConstructor(
-    ProjectAuthenticationError,
-    "INVALID_PROJECT_AUTHENTICATION",
-    "inherit",
-    "inherit"
-  );
-  var ProjectKeyWithoutAccessType = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "PROJECT_KEY_WITHOUT_ACCESS_TYPE",
-    () => [
-      400,
-      "Either an API key or an admin access token was provided, but the x-stack-access-type header is missing. Set it to 'client', 'server', or 'admin' as appropriate."
-    ],
-    () => []
-  );
-  var InvalidAccessType = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "INVALID_ACCESS_TYPE",
-    (accessType) => [
-      400,
-      `The x-stack-access-type header must be 'client', 'server', or 'admin', but was '${accessType}'.`
-    ],
-    (json) => [
-      json?.accessType ?? throwErr("accessType not found in InvalidAccessType details")
-    ]
-  );
-  var AccessTypeWithoutProjectId = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "ACCESS_TYPE_WITHOUT_PROJECT_ID",
-    (accessType) => [
-      400,
-      deindent`
-      The x-stack-access-type header was '${accessType}', but the x-stack-project-id header was not provided.
-      
-      For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
-    `,
-      {
-        request_type: accessType
-      }
-    ],
-    (json) => [json.request_type]
-  );
-  var AccessTypeRequired = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "ACCESS_TYPE_REQUIRED",
-    () => [
-      400,
-      deindent`
-      You must specify an access level for this Stack project. Make sure project API keys are provided (eg. x-stack-publishable-client-key) and you set the x-stack-access-type header to 'client', 'server', or 'admin'.
-      
-      For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
-    `
-    ],
-    () => []
-  );
-  var InsufficientAccessType = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "INSUFFICIENT_ACCESS_TYPE",
-    (actualAccessType, allowedAccessTypes) => [
-      401,
-      `The x-stack-access-type header must be ${allowedAccessTypes.map((s4) => `'${s4}'`).join(" or ")}, but was '${actualAccessType}'.`,
-      {
-        actual_access_type: actualAccessType,
-        allowed_access_types: allowedAccessTypes
-      }
-    ],
-    (json) => [
-      json.actual_access_type,
-      json.allowed_access_types
-    ]
-  );
-  var InvalidPublishableClientKey = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "INVALID_PUBLISHABLE_CLIENT_KEY",
-    (projectId) => [
-      401,
-      `The publishable key is not valid for the project ${JSON.stringify(projectId)}. Does the project and/or the key exist?`,
-      {
-        project_id: projectId
-      }
-    ],
-    (json) => [json.project_id]
-  );
-  var InvalidSecretServerKey = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "INVALID_SECRET_SERVER_KEY",
-    (projectId) => [
-      401,
-      `The secret server key is not valid for the project ${JSON.stringify(projectId)}. Does the project and/or the key exist?`,
-      {
-        project_id: projectId
-      }
-    ],
-    (json) => [json.project_id]
-  );
-  var InvalidSuperSecretAdminKey = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "INVALID_SUPER_SECRET_ADMIN_KEY",
-    (projectId) => [
-      401,
-      `The super secret admin key is not valid for the project ${JSON.stringify(projectId)}. Does the project and/or the key exist?`,
-      {
-        project_id: projectId
-      }
-    ],
-    (json) => [json.project_id]
-  );
-  var InvalidAdminAccessToken = createKnownErrorConstructor(
-    InvalidProjectAuthentication,
-    "INVALID_ADMIN_ACCESS_TOKEN",
-    "inherit",
-    "inherit"
-  );
-  var UnparsableAdminAccessToken = createKnownErrorConstructor(
-    InvalidAdminAccessToken,
-    "UNPARSABLE_ADMIN_ACCESS_TOKEN",
-    () => [
-      401,
-      "Admin access token is not parsable."
-    ],
-    () => []
-  );
-  var AdminAccessTokenExpired = createKnownErrorConstructor(
-    InvalidAdminAccessToken,
-    "ADMIN_ACCESS_TOKEN_EXPIRED",
-    (expiredAt) => [
-      401,
-      `Admin access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}`,
-      { expired_at_millis: expiredAt?.getTime() ?? null }
-    ],
-    (json) => [json.expired_at_millis ? new Date(json.expired_at_millis) : void 0]
-  );
-  var InvalidProjectForAdminAccessToken = createKnownErrorConstructor(
-    InvalidAdminAccessToken,
-    "INVALID_PROJECT_FOR_ADMIN_ACCESS_TOKEN",
-    () => [
-      401,
-      "Admin access tokens must be created on the internal project."
-    ],
-    () => []
-  );
-  var AdminAccessTokenIsNotAdmin = createKnownErrorConstructor(
-    InvalidAdminAccessToken,
-    "ADMIN_ACCESS_TOKEN_IS_NOT_ADMIN",
-    () => [
-      401,
-      "Admin access token does not have the required permissions to access this project."
-    ],
-    () => []
-  );
-  var ProjectAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationError,
-    "PROJECT_AUTHENTICATION_REQUIRED",
-    "inherit",
-    "inherit"
-  );
-  var ClientAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "CLIENT_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "The publishable client key must be provided."
-    ],
-    () => []
-  );
-  var PublishableClientKeyRequiredForProject = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
-    (projectId) => [
-      401,
-      "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
-      {
-        project_id: projectId ?? null
-      }
-    ],
-    (json) => [json.project_id ?? void 0]
-  );
-  var ServerAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "SERVER_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "The secret server key must be provided."
-    ],
-    () => []
-  );
-  var ClientOrServerAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "CLIENT_OR_SERVER_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "Either the publishable client key or the secret server key must be provided."
-    ],
-    () => []
-  );
-  var ClientOrAdminAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "CLIENT_OR_ADMIN_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "Either the publishable client key or the super secret admin key must be provided."
-    ],
-    () => []
-  );
-  var ClientOrServerOrAdminAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "CLIENT_OR_SERVER_OR_ADMIN_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "Either the publishable client key, the secret server key, or the super secret admin key must be provided."
-    ],
-    () => []
-  );
-  var AdminAuthenticationRequired = createKnownErrorConstructor(
-    ProjectAuthenticationRequired,
-    "ADMIN_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "The super secret admin key must be provided."
-    ],
-    () => []
-  );
-  var ExpectedInternalProject = createKnownErrorConstructor(
-    ProjectAuthenticationError,
-    "EXPECTED_INTERNAL_PROJECT",
-    () => [
-      401,
-      "The project ID is expected to be internal."
-    ],
-    () => []
-  );
-  var SessionAuthenticationError = createKnownErrorConstructor(
-    KnownError,
-    "SESSION_AUTHENTICATION_ERROR",
-    "inherit",
-    "inherit"
-  );
-  var InvalidSessionAuthentication = createKnownErrorConstructor(
-    SessionAuthenticationError,
-    "INVALID_SESSION_AUTHENTICATION",
-    "inherit",
-    "inherit"
-  );
-  var InvalidAccessToken = createKnownErrorConstructor(
-    InvalidSessionAuthentication,
-    "INVALID_ACCESS_TOKEN",
-    "inherit",
-    "inherit"
-  );
-  var UnparsableAccessToken = createKnownErrorConstructor(
-    InvalidAccessToken,
-    "UNPARSABLE_ACCESS_TOKEN",
-    () => [
-      401,
-      "Access token is not parsable."
-    ],
-    () => []
-  );
-  var AccessTokenExpired = createKnownErrorConstructor(
-    InvalidAccessToken,
-    "ACCESS_TOKEN_EXPIRED",
-    (expiredAt, projectId, userId, refreshTokenId) => [
-      401,
-      deindent`
-      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}${projectId ? ` Project ID: ${projectId}.` : ""}${userId ? ` User ID: ${userId}.` : ""}${refreshTokenId ? ` Refresh token ID: ${refreshTokenId}.` : ""}
-
-      Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
-    `,
-      {
-        expired_at_millis: expiredAt?.getTime() ?? null,
-        project_id: projectId ?? null,
-        user_id: userId ?? null,
-        refresh_token_id: refreshTokenId ?? null
-      }
-    ],
-    (json) => [
-      json.expired_at_millis ? new Date(json.expired_at_millis) : void 0,
-      json.project_id ?? void 0,
-      json.user_id ?? void 0,
-      json.refresh_token_id ?? void 0
-    ]
-  );
-  var InvalidProjectForAccessToken = createKnownErrorConstructor(
-    InvalidAccessToken,
-    "INVALID_PROJECT_FOR_ACCESS_TOKEN",
-    (expectedProjectId, actualProjectId) => [
-      401,
-      `Access token not valid for this project. Expected project ID ${JSON.stringify(expectedProjectId)}, but the token is for project ID ${JSON.stringify(actualProjectId)}.`,
-      {
-        expected_project_id: expectedProjectId,
-        actual_project_id: actualProjectId
-      }
-    ],
-    (json) => [json.expected_project_id, json.actual_project_id]
-  );
-  var RefreshTokenError = createKnownErrorConstructor(
-    KnownError,
-    "REFRESH_TOKEN_ERROR",
-    "inherit",
-    "inherit"
-  );
-  var RefreshTokenNotFoundOrExpired = createKnownErrorConstructor(
-    RefreshTokenError,
-    "REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED",
-    () => [
-      401,
-      "Refresh token not found for this project, or the session has expired/been revoked."
-    ],
-    () => []
-  );
-  var CannotDeleteCurrentSession = createKnownErrorConstructor(
-    RefreshTokenError,
-    "CANNOT_DELETE_CURRENT_SESSION",
-    () => [
-      400,
-      "Cannot delete the current session."
-    ],
-    () => []
-  );
-  var ProviderRejected = createKnownErrorConstructor(
-    RefreshTokenError,
-    "PROVIDER_REJECTED",
-    () => [
-      401,
-      "The provider refused to refresh their token. This usually means that the provider used to authenticate the user no longer regards this session as valid, and the user must re-authenticate."
-    ],
-    () => []
-  );
-  var UserWithEmailAlreadyExists = createKnownErrorConstructor(
-    KnownError,
-    "USER_EMAIL_ALREADY_EXISTS",
-    (email, wouldWorkIfEmailWasVerified = false) => [
-      409,
-      `A user with email ${JSON.stringify(email)} already exists${wouldWorkIfEmailWasVerified ? " but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method." : "."}`,
-      {
-        email,
-        would_work_if_email_was_verified: wouldWorkIfEmailWasVerified
-      }
-    ],
-    (json) => [json.email, json.would_work_if_email_was_verified ?? false]
-  );
-  var EmailNotVerified = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_NOT_VERIFIED",
-    () => [
-      400,
-      "The email is not verified."
-    ],
-    () => []
-  );
-  var CannotGetOwnUserWithoutUser = createKnownErrorConstructor(
-    KnownError,
-    "CANNOT_GET_OWN_USER_WITHOUT_USER",
-    () => [
-      400,
-      "You have specified 'me' as a userId, but did not provide authentication for a user."
-    ],
-    () => []
-  );
-  var UserIdDoesNotExist = createKnownErrorConstructor(
-    KnownError,
-    "USER_ID_DOES_NOT_EXIST",
-    (userId) => [
-      400,
-      `The given user with the ID ${userId} does not exist.`,
-      {
-        user_id: userId
-      }
-    ],
-    (json) => [json.user_id]
-  );
-  var UserNotFound = createKnownErrorConstructor(
-    KnownError,
-    "USER_NOT_FOUND",
-    () => [
-      404,
-      "User not found."
-    ],
-    () => []
-  );
-  var RestrictedUserNotAllowed = createKnownErrorConstructor(
-    KnownError,
-    "RESTRICTED_USER_NOT_ALLOWED",
-    (restrictedReason) => [
-      403,
-      `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
-      {
-        restricted_reason: restrictedReason
-      }
-    ],
-    (json) => [json.restricted_reason ?? { type: "anonymous" }]
-  );
-  var ProjectNotFound = createKnownErrorConstructor(
-    KnownError,
-    "PROJECT_NOT_FOUND",
-    (projectId) => {
-      if (typeof projectId !== "string") throw new StackAssertionError("projectId of KnownErrors.ProjectNotFound must be a string");
-      return [
-        404,
-        `Project ${projectId} not found or is not accessible with the current user.`,
-        {
-          project_id: projectId
-        }
-      ];
-    },
-    (json) => [json.project_id]
-  );
-  var CurrentProjectNotFound = createKnownErrorConstructor(
-    KnownError,
-    "CURRENT_PROJECT_NOT_FOUND",
-    (projectId) => [
-      400,
-      `The current project with ID ${projectId} was not found. Please check the value of the x-stack-project-id header.`,
-      {
-        project_id: projectId
-      }
-    ],
-    (json) => [json.project_id]
-  );
-  var BranchDoesNotExist = createKnownErrorConstructor(
-    KnownError,
-    "BRANCH_DOES_NOT_EXIST",
-    (branchId) => [
-      400,
-      `The branch with ID ${branchId} does not exist.`,
-      {
-        branch_id: branchId
-      }
-    ],
-    (json) => [json.branch_id]
-  );
-  var SignUpNotEnabled = createKnownErrorConstructor(
-    KnownError,
-    "SIGN_UP_NOT_ENABLED",
-    () => [
-      400,
-      "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it."
-    ],
-    () => []
-  );
-  var SignUpRejected = createKnownErrorConstructor(
-    KnownError,
-    "SIGN_UP_REJECTED",
-    (message) => [
-      403,
-      message ?? "Your sign up was rejected by an administrator's sign-up rule.",
-      {
-        message: message ?? "Your sign up was rejected by an administrator's sign-up rule."
-      }
-    ],
-    (json) => [json.message]
-  );
-  var PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
-    KnownError,
-    "PASSWORD_AUTHENTICATION_NOT_ENABLED",
-    () => [
-      400,
-      "Password authentication is not enabled for this project."
-    ],
-    () => []
-  );
-  var DataVaultStoreDoesNotExist = createKnownErrorConstructor(
-    KnownError,
-    "DATA_VAULT_STORE_DOES_NOT_EXIST",
-    (storeId) => [
-      400,
-      `Data vault store with ID ${storeId} does not exist.`,
-      {
-        store_id: storeId
-      }
-    ],
-    (json) => [json.store_id]
-  );
-  var DataVaultStoreHashedKeyDoesNotExist = createKnownErrorConstructor(
-    KnownError,
-    "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST",
-    (storeId, hashedKey) => [
-      400,
-      `Data vault store with ID ${storeId} does not contain a key with hash ${hashedKey}.`,
-      {
-        store_id: storeId,
-        hashed_key: hashedKey
-      }
-    ],
-    (json) => [json.store_id, json.hashed_key]
-  );
-  var PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(
-    KnownError,
-    "PASSKEY_AUTHENTICATION_NOT_ENABLED",
-    () => [
-      400,
-      "Passkey authentication is not enabled for this project."
-    ],
-    () => []
-  );
-  var AnonymousAccountsNotEnabled = createKnownErrorConstructor(
-    KnownError,
-    "ANONYMOUS_ACCOUNTS_NOT_ENABLED",
-    () => [
-      400,
-      "Anonymous accounts are not enabled for this project."
-    ],
-    () => []
-  );
-  var AnonymousAuthenticationNotAllowed = createKnownErrorConstructor(
-    KnownError,
-    "ANONYMOUS_AUTHENTICATION_NOT_ALLOWED",
-    () => [
-      401,
-      "X-Stack-Access-Token is for an anonymous user, but anonymous users are not enabled. Set the X-Stack-Allow-Anonymous-User header of this request to 'true' to allow anonymous users."
-    ],
-    () => []
-  );
-  var EmailPasswordMismatch = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_PASSWORD_MISMATCH",
-    () => [
-      400,
-      "Wrong e-mail or password."
-    ],
-    () => []
-  );
-  var RedirectUrlNotWhitelisted = createKnownErrorConstructor(
-    KnownError,
-    "REDIRECT_URL_NOT_WHITELISTED",
-    () => [
-      400,
-      "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?"
-    ],
-    () => []
-  );
-  var PasswordRequirementsNotMet = createKnownErrorConstructor(
-    KnownError,
-    "PASSWORD_REQUIREMENTS_NOT_MET",
-    "inherit",
-    "inherit"
-  );
-  var PasswordTooShort = createKnownErrorConstructor(
-    PasswordRequirementsNotMet,
-    "PASSWORD_TOO_SHORT",
-    (minLength) => [
-      400,
-      `Password too short. Minimum length is ${minLength}.`,
-      {
-        min_length: minLength
-      }
-    ],
-    (json) => [
-      json?.min_length ?? throwErr("min_length not found in PasswordTooShort details")
-    ]
-  );
-  var PasswordTooLong = createKnownErrorConstructor(
-    PasswordRequirementsNotMet,
-    "PASSWORD_TOO_LONG",
-    (maxLength) => [
-      400,
-      `Password too long. Maximum length is ${maxLength}.`,
-      {
-        maxLength
-      }
-    ],
-    (json) => [
-      json?.maxLength ?? throwErr("maxLength not found in PasswordTooLong details")
-    ]
-  );
-  var UserDoesNotHavePassword = createKnownErrorConstructor(
-    KnownError,
-    "USER_DOES_NOT_HAVE_PASSWORD",
-    () => [
-      400,
-      "This user does not have password authentication enabled."
-    ],
-    () => []
-  );
-  var VerificationCodeError = createKnownErrorConstructor(
-    KnownError,
-    "VERIFICATION_ERROR",
-    "inherit",
-    "inherit"
-  );
-  var VerificationCodeNotFound = createKnownErrorConstructor(
-    VerificationCodeError,
-    "VERIFICATION_CODE_NOT_FOUND",
-    () => [
-      404,
-      "The verification code does not exist for this project."
-    ],
-    () => []
-  );
-  var VerificationCodeExpired = createKnownErrorConstructor(
-    VerificationCodeError,
-    "VERIFICATION_CODE_EXPIRED",
-    () => [
-      400,
-      "The verification code has expired."
-    ],
-    () => []
-  );
-  var VerificationCodeAlreadyUsed = createKnownErrorConstructor(
-    VerificationCodeError,
-    "VERIFICATION_CODE_ALREADY_USED",
-    () => [
-      409,
-      "The verification link has already been used."
-    ],
-    () => []
-  );
-  var VerificationCodeMaxAttemptsReached = createKnownErrorConstructor(
-    VerificationCodeError,
-    "VERIFICATION_CODE_MAX_ATTEMPTS_REACHED",
-    () => [
-      400,
-      "The verification code nonce has reached the maximum number of attempts. This code is not valid anymore."
-    ],
-    () => []
-  );
-  var PasswordConfirmationMismatch = createKnownErrorConstructor(
-    KnownError,
-    "PASSWORD_CONFIRMATION_MISMATCH",
-    () => [
-      400,
-      "Passwords do not match."
-    ],
-    () => []
-  );
-  var EmailAlreadyVerified = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_ALREADY_VERIFIED",
-    () => [
-      409,
-      "The e-mail is already verified."
-    ],
-    () => []
-  );
-  var EmailNotAssociatedWithUser = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_NOT_ASSOCIATED_WITH_USER",
-    () => [
-      400,
-      "The e-mail is not associated with a user that could log in with that e-mail."
-    ],
-    () => []
-  );
-  var EmailIsNotPrimaryEmail = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_IS_NOT_PRIMARY_EMAIL",
-    (email, primaryEmail) => [
-      400,
-      `The given e-mail (${email}) must equal the user's primary e-mail (${primaryEmail}).`,
-      {
-        email,
-        primary_email: primaryEmail
-      }
-    ],
-    (json) => [json.email, json.primary_email]
-  );
-  var PasskeyRegistrationFailed = createKnownErrorConstructor(
-    KnownError,
-    "PASSKEY_REGISTRATION_FAILED",
-    (message) => [
-      400,
-      message
-    ],
-    (json) => [json.message]
-  );
-  var PasskeyWebAuthnError = createKnownErrorConstructor(
-    KnownError,
-    "PASSKEY_WEBAUTHN_ERROR",
-    (message, code) => [
-      400,
-      message,
-      {
-        message,
-        code
-      }
-    ],
-    (json) => [json.message, json.code]
-  );
-  var PasskeyAuthenticationFailed = createKnownErrorConstructor(
-    KnownError,
-    "PASSKEY_AUTHENTICATION_FAILED",
-    (message) => [
-      400,
-      message
-    ],
-    (json) => [json.message]
-  );
-  var PermissionNotFound = createKnownErrorConstructor(
-    KnownError,
-    "PERMISSION_NOT_FOUND",
-    (permissionId) => [
-      404,
-      `Permission "${permissionId}" not found. Make sure you created it on the dashboard.`,
-      {
-        permission_id: permissionId
-      }
-    ],
-    (json) => [json.permission_id]
-  );
-  var PermissionScopeMismatch = createKnownErrorConstructor(
-    KnownError,
-    "WRONG_PERMISSION_SCOPE",
-    (permissionId, expectedScope, actualScope) => [
-      404,
-      `Permission ${JSON.stringify(permissionId)} not found. (It was found for a different scope ${JSON.stringify(actualScope)}, but scope ${JSON.stringify(expectedScope)} was expected.)`,
-      {
-        permission_id: permissionId,
-        expected_scope: expectedScope,
-        actual_scope: actualScope
-      }
-    ],
-    (json) => [json.permission_id, json.expected_scope, json.actual_scope]
-  );
-  var ContainedPermissionNotFound = createKnownErrorConstructor(
-    KnownError,
-    "CONTAINED_PERMISSION_NOT_FOUND",
-    (permissionId) => [
-      400,
-      `Contained permission with ID "${permissionId}" not found. Make sure you created it on the dashboard.`,
-      {
-        permission_id: permissionId
-      }
-    ],
-    (json) => [json.permission_id]
-  );
-  var TeamNotFound = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_NOT_FOUND",
-    (teamId) => [
-      404,
-      `Team ${teamId} not found.`,
-      {
-        team_id: teamId
-      }
-    ],
-    (json) => [json.team_id]
-  );
-  var TeamAlreadyExists = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_ALREADY_EXISTS",
-    (teamId) => [
-      409,
-      `Team ${teamId} already exists.`,
-      {
-        team_id: teamId
-      }
-    ],
-    (json) => [json.team_id]
-  );
-  var TeamMembershipNotFound = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_MEMBERSHIP_NOT_FOUND",
-    (teamId, userId) => [
-      404,
-      `User ${userId} is not found in team ${teamId}.`,
-      {
-        team_id: teamId,
-        user_id: userId
-      }
-    ],
-    (json) => [json.team_id, json.user_id]
-  );
-  var TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED",
-    (restrictedReason) => [
-      403,
-      `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
-      {
-        restricted_reason: restrictedReason
-      }
-    ],
-    (json) => [json.restricted_reason ?? { type: "anonymous" }]
-  );
-  var EmailTemplateAlreadyExists = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_TEMPLATE_ALREADY_EXISTS",
-    () => [
-      409,
-      "Email template already exists."
-    ],
-    () => []
-  );
-  var OAuthConnectionNotConnectedToUser = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_CONNECTION_NOT_CONNECTED_TO_USER",
-    () => [
-      400,
-      "The OAuth connection is not connected to any user."
-    ],
-    () => []
-  );
-  var OAuthConnectionAlreadyConnectedToAnotherUser = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_CONNECTION_ALREADY_CONNECTED_TO_ANOTHER_USER",
-    () => [
-      409,
-      "The OAuth connection is already connected to another user."
-    ],
-    () => []
-  );
-  var OAuthConnectionDoesNotHaveRequiredScope = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE",
-    () => [
-      400,
-      "The OAuth connection does not have the required scope."
-    ],
-    () => []
-  );
-  var OAuthAccessTokenNotAvailable = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE",
-    (provider, details) => [
-      400,
-      `Failed to retrieve an OAuth access token for the connected account (provider: ${provider}). ${details}`,
-      {
-        provider,
-        details
-      }
-    ],
-    (json) => [json.provider, json.details]
-  );
-  var OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
-    () => [
-      400,
-      "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes."
-    ],
-    () => []
-  );
-  var OAuthAccessTokenNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
-    () => [
-      400,
-      "Access tokens are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use access tokens."
-    ],
-    () => []
-  );
-  var InvalidOAuthClientIdOrSecret = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_OAUTH_CLIENT_ID_OR_SECRET",
-    (clientId) => [
-      400,
-      "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID (potentially with a hash and a branch ID), and the client secret must be a publishable client key.",
-      {
-        client_id: clientId ?? null
-      }
-    ],
-    (json) => [json.client_id ?? void 0]
-  );
-  var InvalidScope = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_SCOPE",
-    (scope) => [
-      400,
-      `The scope "${scope}" is not a valid OAuth scope for Stack.`
-    ],
-    (json) => [json.scope]
-  );
-  var UserAlreadyConnectedToAnotherOAuthConnection = createKnownErrorConstructor(
-    KnownError,
-    "USER_ALREADY_CONNECTED_TO_ANOTHER_OAUTH_CONNECTION",
-    () => [
-      409,
-      "The user is already connected to another OAuth account. Did you maybe selected the wrong account?"
-    ],
-    () => []
-  );
-  var OuterOAuthTimeout = createKnownErrorConstructor(
-    KnownError,
-    "OUTER_OAUTH_TIMEOUT",
-    () => [
-      408,
-      "The OAuth flow has timed out. Please sign in again."
-    ],
-    () => []
-  );
-  var OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_PROVIDER_NOT_FOUND_OR_NOT_ENABLED",
-    () => [
-      400,
-      "The OAuth provider is not found or not enabled."
-    ],
-    () => []
-  );
-  var AppleBundleIdNotConfigured = createKnownErrorConstructor(
-    KnownError,
-    "APPLE_BUNDLE_ID_NOT_CONFIGURED",
-    () => [
-      400,
-      "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs."
-    ],
-    () => []
-  );
-  var OAuthProviderAccountIdAlreadyUsedForSignIn = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN",
-    () => [
-      400,
-      `A provider with the same account ID is already used for signing in.`
-    ],
-    () => []
-  );
-  var MultiFactorAuthenticationRequired = createKnownErrorConstructor(
-    KnownError,
-    "MULTI_FACTOR_AUTHENTICATION_REQUIRED",
-    (attemptCode) => [
-      400,
-      `Multi-factor authentication is required for this user.`,
-      {
-        attempt_code: attemptCode
-      }
-    ],
-    (json) => [json.attempt_code]
-  );
-  var InvalidTotpCode = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_TOTP_CODE",
-    () => [
-      400,
-      "The TOTP code is invalid. Please try again."
-    ],
-    () => []
-  );
-  var UserAuthenticationRequired = createKnownErrorConstructor(
-    KnownError,
-    "USER_AUTHENTICATION_REQUIRED",
-    () => [
-      401,
-      "User authentication required for this endpoint."
-    ],
-    () => []
-  );
-  var TeamMembershipAlreadyExists = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_MEMBERSHIP_ALREADY_EXISTS",
-    () => [
-      409,
-      "Team membership already exists."
-    ],
-    () => []
-  );
-  var ProjectPermissionRequired = createKnownErrorConstructor(
-    KnownError,
-    "PROJECT_PERMISSION_REQUIRED",
-    (userId, permissionId) => [
-      401,
-      `User ${userId} does not have permission ${permissionId}.`,
-      {
-        user_id: userId,
-        permission_id: permissionId
-      }
-    ],
-    (json) => [json.user_id, json.permission_id]
-  );
-  var TeamPermissionRequired = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_PERMISSION_REQUIRED",
-    (teamId, userId, permissionId) => [
-      401,
-      `User ${userId} does not have permission ${permissionId} in team ${teamId}.`,
-      {
-        team_id: teamId,
-        user_id: userId,
-        permission_id: permissionId
-      }
-    ],
-    (json) => [json.team_id, json.user_id, json.permission_id]
-  );
-  var TeamPermissionNotFound = createKnownErrorConstructor(
-    KnownError,
-    "TEAM_PERMISSION_NOT_FOUND",
-    (teamId, userId, permissionId) => [
-      401,
-      `User ${userId} does not have permission ${permissionId} in team ${teamId}.`,
-      {
-        team_id: teamId,
-        user_id: userId,
-        permission_id: permissionId
-      }
-    ],
-    (json) => [json.team_id, json.user_id, json.permission_id]
-  );
-  var InvalidSharedOAuthProviderId = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_SHARED_OAUTH_PROVIDER_ID",
-    (providerId) => [
-      400,
-      `The shared OAuth provider with ID ${providerId} is not valid.`,
-      {
-        provider_id: providerId
-      }
-    ],
-    (json) => [json.provider_id]
-  );
-  var InvalidStandardOAuthProviderId = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_STANDARD_OAUTH_PROVIDER_ID",
-    (providerId) => [
-      400,
-      `The standard OAuth provider with ID ${providerId} is not valid.`,
-      {
-        provider_id: providerId
-      }
-    ],
-    (json) => [json.provider_id]
-  );
-  var InvalidAuthorizationCode = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_AUTHORIZATION_CODE",
-    () => [
-      400,
-      "The given authorization code is invalid."
-    ],
-    () => []
-  );
-  var InvalidAppleCredentials = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_APPLE_CREDENTIALS",
-    () => [
-      400,
-      "The Apple Sign In credentials could not be verified. Please try signing in again."
-    ],
-    () => []
-  );
-  var OAuthProviderAccessDenied = createKnownErrorConstructor(
-    KnownError,
-    "OAUTH_PROVIDER_ACCESS_DENIED",
-    () => [
-      400,
-      "The OAuth provider denied access to the user."
-    ],
-    () => []
-  );
-  var ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
-    KnownError,
-    "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-    (type, contactChannelValue, wouldWorkIfEmailWasVerified = false) => [
-      409,
-      `This ${type} ${contactChannelValue ? `"(${contactChannelValue})"` : ""} is already used for authentication by another account${wouldWorkIfEmailWasVerified ? " but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method." : "."}`,
-      {
-        type,
-        contact_channel_value: contactChannelValue ?? null,
-        would_work_if_email_was_verified: wouldWorkIfEmailWasVerified
-      }
-    ],
-    (json) => [json.type, json.contact_channel_value, json.would_work_if_email_was_verified ?? false]
-  );
-  var InvalidPollingCodeError = createKnownErrorConstructor(
-    KnownError,
-    "INVALID_POLLING_CODE",
-    (details) => [
-      400,
-      "The polling code is invalid or does not exist.",
-      details
-    ],
-    (json) => [json]
-  );
-  var CliAuthError = createKnownErrorConstructor(
-    KnownError,
-    "CLI_AUTH_ERROR",
-    (message) => [
-      400,
-      message
-    ],
-    (json) => [json.message]
-  );
-  var CliAuthExpiredError = createKnownErrorConstructor(
-    KnownError,
-    "CLI_AUTH_EXPIRED_ERROR",
-    (message = "CLI authentication request expired. Please try again.") => [
-      400,
-      message
-    ],
-    (json) => [json.message]
-  );
-  var CliAuthUsedError = createKnownErrorConstructor(
-    KnownError,
-    "CLI_AUTH_USED_ERROR",
-    (message = "This authentication token has already been used.") => [
-      400,
-      message
-    ],
-    (json) => [json.message]
-  );
-  var ApiKeyNotValid = createKnownErrorConstructor(
-    KnownError,
-    "API_KEY_NOT_VALID",
-    "inherit",
-    "inherit"
-  );
-  var ApiKeyExpired = createKnownErrorConstructor(
-    ApiKeyNotValid,
-    "API_KEY_EXPIRED",
-    () => [
-      401,
-      "API key has expired."
-    ],
-    () => []
-  );
-  var ApiKeyRevoked = createKnownErrorConstructor(
-    ApiKeyNotValid,
-    "API_KEY_REVOKED",
-    () => [
-      401,
-      "API key has been revoked."
-    ],
-    () => []
-  );
-  var WrongApiKeyType = createKnownErrorConstructor(
-    ApiKeyNotValid,
-    "WRONG_API_KEY_TYPE",
-    (expectedType, actualType) => [
-      400,
-      `This endpoint is for ${expectedType} API keys, but a ${actualType} API key was provided.`,
-      { expected_type: expectedType, actual_type: actualType }
-    ],
-    (json) => [json.expected_type, json.actual_type]
-  );
-  var ApiKeyNotFound = createKnownErrorConstructor(
-    ApiKeyNotValid,
-    "API_KEY_NOT_FOUND",
-    () => [
-      404,
-      "API key not found."
-    ],
-    () => []
-  );
-  var PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(
-    ApiKeyNotValid,
-    "PUBLIC_API_KEY_CANNOT_BE_REVOKED",
-    () => [
-      400,
-      "Public API keys cannot be revoked by the secretscanner endpoint."
-    ],
-    () => []
-  );
-  var PermissionIdAlreadyExists = createKnownErrorConstructor(
-    KnownError,
-    "PERMISSION_ID_ALREADY_EXISTS",
-    (permissionId) => [
-      400,
-      `Permission with ID "${permissionId}" already exists. Choose a different ID.`,
-      {
-        permission_id: permissionId
-      }
-    ],
-    (json) => [json.permission_id]
-  );
-  var EmailRenderingError = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_RENDERING_ERROR",
-    (error) => [
-      400,
-      `Failed to render email with theme: ${error}`,
-      { error }
-    ],
-    (json) => [json.error]
-  );
-  var RequiresCustomEmailServer = createKnownErrorConstructor(
-    KnownError,
-    "REQUIRES_CUSTOM_EMAIL_SERVER",
-    () => [
-      400,
-      `This action requires a custom SMTP server. Please edit your email server configuration and try again.`
-    ],
-    () => []
-  );
-  var EmailNotEditable = createKnownErrorConstructor(
-    KnownError,
-    "EMAIL_NOT_EDITABLE",
-    (emailId, status) => [
-      400,
-      `Email with ID "${emailId}" cannot be edited because it is in status "${status}". Only emails in PAUSED, PREPARING, RENDERING, RENDER_ERROR, SCHEDULED, QUEUED, or SERVER_ERROR status can be edited.`,
-      {
-        email_id: emailId,
-        status
-      }
-    ],
-    (json) => [json.email_id, json.status]
-  );
-  var ItemNotFound = createKnownErrorConstructor(
-    KnownError,
-    "ITEM_NOT_FOUND",
-    (itemId) => [
-      404,
-      `Item with ID "${itemId}" not found.`,
-      {
-        item_id: itemId
-      }
-    ],
-    (json) => [json.item_id]
-  );
-  var ItemCustomerTypeDoesNotMatch = createKnownErrorConstructor(
-    KnownError,
-    "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH",
-    (itemId, customerId, itemCustomerType, actualCustomerType) => [
-      400,
-      `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the item with ID ${JSON.stringify(itemId)}. ${itemCustomerType ? `The item is configured to only be available for ${itemCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The item is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
-      {
-        item_id: itemId,
-        customer_id: customerId,
-        item_customer_type: itemCustomerType ?? null,
-        actual_customer_type: actualCustomerType
-      }
-    ],
-    (json) => [json.item_id, json.customer_id, json.item_customer_type ?? void 0, json.actual_customer_type]
-  );
-  var CustomerDoesNotExist = createKnownErrorConstructor(
-    KnownError,
-    "CUSTOMER_DOES_NOT_EXIST",
-    (customerId) => [
-      400,
-      `Customer with ID ${JSON.stringify(customerId)} does not exist.`,
-      {
-        customer_id: customerId
-      }
-    ],
-    (json) => [json.customer_id]
-  );
-  var SubscriptionInvoiceNotFound = createKnownErrorConstructor(
-    KnownError,
-    "SUBSCRIPTION_INVOICE_NOT_FOUND",
-    (subscriptionInvoiceId) => [
-      404,
-      `Subscription invoice with ID ${JSON.stringify(subscriptionInvoiceId)} does not exist.`,
-      {
-        subscription_invoice_id: subscriptionInvoiceId
-      }
-    ],
-    (json) => [json.subscription_invoice_id]
-  );
-  var OneTimePurchaseNotFound = createKnownErrorConstructor(
-    KnownError,
-    "ONE_TIME_PURCHASE_NOT_FOUND",
-    (purchaseId) => [
-      404,
-      `One-time purchase with ID ${JSON.stringify(purchaseId)} does not exist.`,
-      {
-        one_time_purchase_id: purchaseId
-      }
-    ],
-    (json) => [json.one_time_purchase_id]
-  );
-  var SubscriptionAlreadyRefunded = createKnownErrorConstructor(
-    KnownError,
-    "SUBSCRIPTION_ALREADY_REFUNDED",
-    (subscriptionId) => [
-      400,
-      `Subscription with ID ${JSON.stringify(subscriptionId)} was already refunded.`,
-      {
-        subscription_id: subscriptionId
-      }
-    ],
-    (json) => [json.subscription_id]
-  );
-  var OneTimePurchaseAlreadyRefunded = createKnownErrorConstructor(
-    KnownError,
-    "ONE_TIME_PURCHASE_ALREADY_REFUNDED",
-    (purchaseId) => [
-      400,
-      `One-time purchase with ID ${JSON.stringify(purchaseId)} was already refunded.`,
-      {
-        one_time_purchase_id: purchaseId
-      }
-    ],
-    (json) => [json.one_time_purchase_id]
-  );
-  var TestModePurchaseNonRefundable = createKnownErrorConstructor(
-    KnownError,
-    "TEST_MODE_PURCHASE_NON_REFUNDABLE",
-    () => [
-      400,
-      "Test mode purchases are not refundable."
-    ],
-    () => []
-  );
-  var ProductDoesNotExist = createKnownErrorConstructor(
-    KnownError,
-    "PRODUCT_DOES_NOT_EXIST",
-    (productId, context) => [
-      400,
-      `Product with ID ${JSON.stringify(productId)} ${context === "server_only" ? "is marked as server-only and cannot be accessed client side." : context === "item_exists" ? "does not exist, but an item with this ID exists." : "does not exist."}`,
-      {
-        product_id: productId,
-        context
-      }
-    ],
-    (json) => [json.product_id, json.context]
-  );
-  var ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(
-    KnownError,
-    "PRODUCT_CUSTOMER_TYPE_DOES_NOT_MATCH",
-    (productId, customerId, productCustomerType, actualCustomerType) => [
-      400,
-      `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline product that has been passed in. ${productCustomerType ? `The product is configured to only be available for ${productCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The product is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
-      {
-        product_id: productId ?? null,
-        customer_id: customerId,
-        product_customer_type: productCustomerType ?? null,
-        actual_customer_type: actualCustomerType
-      }
-    ],
-    (json) => [json.product_id ?? void 0, json.customer_id, json.product_customer_type ?? void 0, json.actual_customer_type]
-  );
-  var ProductAlreadyGranted = createKnownErrorConstructor(
-    KnownError,
-    "PRODUCT_ALREADY_GRANTED",
-    (productId, customerId) => [
-      400,
-      `Customer with ID ${JSON.stringify(customerId)} already owns product ${JSON.stringify(productId)}.`,
-      {
-        product_id: productId,
-        customer_id: customerId
-      }
-    ],
-    (json) => [json.product_id, json.customer_id]
-  );
-  var ItemQuantityInsufficientAmount = createKnownErrorConstructor(
-    KnownError,
-    "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
-    (itemId, customerId, quantity) => [
-      400,
-      `The item with ID ${JSON.stringify(itemId)} has an insufficient quantity for the customer with ID ${JSON.stringify(customerId)}. An attempt was made to charge ${quantity} credits.`,
-      {
-        item_id: itemId,
-        customer_id: customerId,
-        quantity
-      }
-    ],
-    (json) => [json.item_id, json.customer_id, json.quantity]
-  );
-  var StripeAccountInfoNotFound = createKnownErrorConstructor(
-    KnownError,
-    "STRIPE_ACCOUNT_INFO_NOT_FOUND",
-    () => [
-      404,
-      "Stripe account information not found. Please make sure the user has onboarded with Stripe."
-    ],
-    () => []
-  );
-  var AnalyticsQueryTimeout = createKnownErrorConstructor(
-    KnownError,
-    "ANALYTICS_QUERY_TIMEOUT",
-    (timeoutMs) => [
-      400,
-      `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
-      { timeout_ms: timeoutMs }
-    ],
-    (json) => [json.timeout_ms]
-  );
-  var AnalyticsQueryError = createKnownErrorConstructor(
-    KnownError,
-    "ANALYTICS_QUERY_ERROR",
-    (error) => [
-      400,
-      `${error}`,
-      { error }
-    ],
-    (json) => [json.error]
-  );
-  var AnalyticsNotEnabled = createKnownErrorConstructor(
-    KnownError,
-    "ANALYTICS_NOT_ENABLED",
-    () => [
-      400,
-      "Analytics is not enabled for this project."
-    ],
-    () => []
-  );
-  var DefaultPaymentMethodRequired = createKnownErrorConstructor(
-    KnownError,
-    "DEFAULT_PAYMENT_METHOD_REQUIRED",
-    (customerType, customerId) => [
-      400,
-      "No default payment method is set for this customer.",
-      {
-        customer_type: customerType,
-        customer_id: customerId
-      }
-    ],
-    (json) => [json.customer_type, json.customer_id]
-  );
-  var NewPurchasesBlocked = createKnownErrorConstructor(
-    KnownError,
-    "NEW_PURCHASES_BLOCKED",
-    () => [
-      403,
-      "New purchases are currently blocked for this project. Please contact support for more information."
-    ],
-    () => []
-  );
-  var KnownErrors = {
-    CannotDeleteCurrentSession,
-    UnsupportedError,
-    BodyParsingError,
-    SchemaError,
-    AllOverloadsFailed,
-    ProjectAuthenticationError,
-    PermissionIdAlreadyExists,
-    CliAuthError,
-    CliAuthExpiredError,
-    CliAuthUsedError,
-    InvalidProjectAuthentication,
-    ProjectKeyWithoutAccessType,
-    InvalidAccessType,
-    AccessTypeWithoutProjectId,
-    AccessTypeRequired,
-    CannotGetOwnUserWithoutUser,
-    InsufficientAccessType,
-    InvalidPublishableClientKey,
-    InvalidSecretServerKey,
-    InvalidSuperSecretAdminKey,
-    InvalidAdminAccessToken,
-    UnparsableAdminAccessToken,
-    AdminAccessTokenExpired,
-    InvalidProjectForAdminAccessToken,
-    AdminAccessTokenIsNotAdmin,
-    ProjectAuthenticationRequired,
-    ClientAuthenticationRequired,
-    PublishableClientKeyRequiredForProject,
-    ServerAuthenticationRequired,
-    ClientOrServerAuthenticationRequired,
-    ClientOrAdminAuthenticationRequired,
-    ClientOrServerOrAdminAuthenticationRequired,
-    AdminAuthenticationRequired,
-    ExpectedInternalProject,
-    SessionAuthenticationError,
-    InvalidSessionAuthentication,
-    InvalidAccessToken,
-    UnparsableAccessToken,
-    AccessTokenExpired,
-    InvalidProjectForAccessToken,
-    RefreshTokenError,
-    ProviderRejected,
-    RefreshTokenNotFoundOrExpired,
-    UserWithEmailAlreadyExists,
-    EmailNotVerified,
-    UserIdDoesNotExist,
-    UserNotFound,
-    RestrictedUserNotAllowed,
-    ApiKeyNotFound,
-    PublicApiKeyCannotBeRevoked,
-    ProjectNotFound,
-    CurrentProjectNotFound,
-    BranchDoesNotExist,
-    SignUpNotEnabled,
-    SignUpRejected,
-    PasswordAuthenticationNotEnabled,
-    PasskeyAuthenticationNotEnabled,
-    AnonymousAccountsNotEnabled,
-    AnonymousAuthenticationNotAllowed,
-    EmailPasswordMismatch,
-    RedirectUrlNotWhitelisted,
-    PasswordRequirementsNotMet,
-    PasswordTooShort,
-    PasswordTooLong,
-    UserDoesNotHavePassword,
-    VerificationCodeError,
-    VerificationCodeNotFound,
-    VerificationCodeExpired,
-    VerificationCodeAlreadyUsed,
-    VerificationCodeMaxAttemptsReached,
-    PasswordConfirmationMismatch,
-    EmailAlreadyVerified,
-    EmailNotAssociatedWithUser,
-    EmailIsNotPrimaryEmail,
-    PasskeyRegistrationFailed,
-    PasskeyWebAuthnError,
-    PasskeyAuthenticationFailed,
-    PermissionNotFound,
-    PermissionScopeMismatch,
-    ContainedPermissionNotFound,
-    TeamNotFound,
-    TeamMembershipNotFound,
-    TeamInvitationRestrictedUserNotAllowed,
-    EmailTemplateAlreadyExists,
-    OAuthConnectionNotConnectedToUser,
-    OAuthConnectionAlreadyConnectedToAnotherUser,
-    OAuthConnectionDoesNotHaveRequiredScope,
-    OAuthAccessTokenNotAvailable,
-    OAuthExtraScopeNotAvailableWithSharedOAuthKeys,
-    OAuthAccessTokenNotAvailableWithSharedOAuthKeys,
-    InvalidOAuthClientIdOrSecret,
-    InvalidScope,
-    UserAlreadyConnectedToAnotherOAuthConnection,
-    OuterOAuthTimeout,
-    OAuthProviderNotFoundOrNotEnabled,
-    AppleBundleIdNotConfigured,
-    OAuthProviderAccountIdAlreadyUsedForSignIn,
-    MultiFactorAuthenticationRequired,
-    InvalidTotpCode,
-    UserAuthenticationRequired,
-    TeamMembershipAlreadyExists,
-    ProjectPermissionRequired,
-    TeamPermissionRequired,
-    InvalidSharedOAuthProviderId,
-    InvalidStandardOAuthProviderId,
-    InvalidAuthorizationCode,
-    InvalidAppleCredentials,
-    TeamPermissionNotFound,
-    OAuthProviderAccessDenied,
-    ContactChannelAlreadyUsedForAuthBySomeoneElse,
-    InvalidPollingCodeError,
-    ApiKeyNotValid,
-    ApiKeyExpired,
-    ApiKeyRevoked,
-    WrongApiKeyType,
-    EmailRenderingError,
-    RequiresCustomEmailServer,
-    EmailNotEditable,
-    ItemNotFound,
-    ItemCustomerTypeDoesNotMatch,
-    CustomerDoesNotExist,
-    ProductDoesNotExist,
-    ProductCustomerTypeDoesNotMatch,
-    ProductAlreadyGranted,
-    SubscriptionInvoiceNotFound,
-    OneTimePurchaseNotFound,
-    SubscriptionAlreadyRefunded,
-    OneTimePurchaseAlreadyRefunded,
-    TestModePurchaseNonRefundable,
-    ItemQuantityInsufficientAmount,
-    StripeAccountInfoNotFound,
-    DefaultPaymentMethodRequired,
-    NewPurchasesBlocked,
-    DataVaultStoreDoesNotExist,
-    DataVaultStoreHashedKeyDoesNotExist,
-    AnalyticsQueryTimeout,
-    AnalyticsQueryError,
-    AnalyticsNotEnabled
-  };
-  var knownErrorCodes = /* @__PURE__ */ new Set();
-  for (const [_, KnownError2] of Object.entries(KnownErrors)) {
-    if (knownErrorCodes.has(KnownError2.errorCode)) {
-      throw new Error(`Duplicate known error code: ${KnownError2.errorCode}`);
-    }
-    knownErrorCodes.add(KnownError2.errorCode);
-  }
-
-  // ../stack-shared/dist/esm/utils/results.js
-  var Result = {
-    fromThrowing,
-    fromThrowingAsync,
-    fromPromise: promiseToResult,
-    ok(data) {
-      return {
-        status: "ok",
-        data
-      };
-    },
-    error(error) {
-      return {
-        status: "error",
-        error
-      };
-    },
-    map: mapResult,
-    or: (result, fallback) => {
-      return result.status === "ok" ? result.data : fallback;
-    },
-    orThrow: (result) => {
-      if (result.status === "error") {
-        throw result.error;
-      }
-      return result.data;
-    },
-    orThrowAsync: async (result) => {
-      return Result.orThrow(await result);
-    },
-    retry
-  };
-  var AsyncResult = {
-    fromThrowing,
-    fromPromise: promiseToResult,
-    ok: Result.ok,
-    error: Result.error,
-    pending,
-    map: mapResult,
-    or: (result, fallback) => {
-      if (result.status === "pending") {
-        return fallback;
-      }
-      return Result.or(result, fallback);
-    },
-    orThrow: (result) => {
-      if (result.status === "pending") {
-        throw new Error("Result still pending");
-      }
-      return Result.orThrow(result);
-    },
-    retry
-  };
-  function pending(progress) {
-    return {
-      status: "pending",
-      progress
-    };
-  }
-  async function promiseToResult(promise) {
-    try {
-      const value = await promise;
-      return Result.ok(value);
-    } catch (error) {
-      return Result.error(error);
-    }
-  }
-  function fromThrowing(fn) {
-    try {
-      return Result.ok(fn());
-    } catch (error) {
-      return Result.error(error);
-    }
-  }
-  async function fromThrowingAsync(fn) {
-    try {
-      return Result.ok(await fn());
-    } catch (error) {
-      return Result.error(error);
-    }
-  }
-  function mapResult(result, fn) {
-    if (result.status === "error") return {
-      status: "error",
-      error: result.error
-    };
-    if (result.status === "pending") return {
-      status: "pending",
-      ..."progress" in result ? { progress: result.progress } : {}
-    };
-    return Result.ok(fn(result.data));
-  }
-  var RetryError = class extends AggregateError {
-    constructor(errors) {
-      const strings = errors.map((e16) => nicify(e16));
-      const isAllSame = strings.length > 1 && strings.every((s4) => s4 === strings[0]);
-      super(
-        errors,
-        deindent`
-      Error after ${errors.length} attempts.
-      
-      ${isAllSame ? deindent`
-        Attempts 1-${errors.length}:
-          ${strings[0]}
-      ` : strings.map((s4, i) => deindent`
-          Attempt ${i + 1}:
-            ${s4}
-        `).join("\n\n")}
-      `,
-        { cause: errors[errors.length - 1] }
-      );
-      this.errors = errors;
-      this.name = "RetryError";
-    }
-    get attempts() {
-      return this.errors.length;
-    }
-  };
-  RetryError.prototype.name = "RetryError";
-  async function retry(fn, totalAttempts, { exponentialDelayBase = 1e3 } = {}) {
-    const errors = [];
-    for (let i = 0; i < totalAttempts; i++) {
-      const res = await fn(i);
-      if (res.status === "ok") {
-        return Object.assign(Result.ok(res.data), { attempts: i + 1 });
-      } else {
-        errors.push(res.error);
-        if (i < totalAttempts - 1) {
-          await wait((Math.random() + 0.5) * exponentialDelayBase * 2 ** i);
-        }
-      }
-    }
-    return Object.assign(Result.error(new RetryError(errors)), { attempts: totalAttempts });
-  }
-
-  // ../stack-shared/dist/esm/utils/bytes.js
-  function decodeBase64(input) {
-    return new Uint8Array(atob(input).split("").map((char) => char.charCodeAt(0)));
-  }
-  function isBase64(input) {
-    const regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-    return regex.test(input);
-  }
-
-  // ../stack-shared/dist/esm/utils/crypto.js
-  function generateRandomValues(array2) {
-    if (!globalVar.crypto) {
-      throw new StackAssertionError("Crypto API is not available in this environment. Are you using an old browser?");
-    }
-    if (!globalVar.crypto.getRandomValues) {
-      throw new StackAssertionError("crypto.getRandomValues is not available in this environment. Are you using an old browser?");
-    }
-    return globalVar.crypto.getRandomValues(array2);
-  }
-
-  // ../../node_modules/.pnpm/yup@1.7.1/node_modules/yup/index.esm.js
-  var import_property_expr = __toESM(require_property_expr());
-  var import_tiny_case = __toESM(require_tiny_case());
-  var import_toposort = __toESM(require_toposort());
-  var toString = Object.prototype.toString;
-  var errorToString = Error.prototype.toString;
-  var regExpToString = RegExp.prototype.toString;
-  var symbolToString = typeof Symbol !== "undefined" ? Symbol.prototype.toString : () => "";
-  var SYMBOL_REGEXP = /^Symbol\((.*)\)(.*)$/;
-  function printNumber(val) {
-    if (val != +val) return "NaN";
-    const isNegativeZero = val === 0 && 1 / val < 0;
-    return isNegativeZero ? "-0" : "" + val;
-  }
-  function printSimpleValue(val, quoteStrings = false) {
-    if (val == null || val === true || val === false) return "" + val;
-    const typeOf = typeof val;
-    if (typeOf === "number") return printNumber(val);
-    if (typeOf === "string") return quoteStrings ? `"${val}"` : val;
-    if (typeOf === "function") return "[Function " + (val.name || "anonymous") + "]";
-    if (typeOf === "symbol") return symbolToString.call(val).replace(SYMBOL_REGEXP, "Symbol($1)");
-    const tag = toString.call(val).slice(8, -1);
-    if (tag === "Date") return isNaN(val.getTime()) ? "" + val : val.toISOString(val);
-    if (tag === "Error" || val instanceof Error) return "[" + errorToString.call(val) + "]";
-    if (tag === "RegExp") return regExpToString.call(val);
-    return null;
-  }
-  function printValue(value, quoteStrings) {
-    let result = printSimpleValue(value, quoteStrings);
-    if (result !== null) return result;
-    return JSON.stringify(value, function(key, value2) {
-      let result2 = printSimpleValue(this[key], quoteStrings);
-      if (result2 !== null) return result2;
-      return value2;
-    }, 2);
-  }
-  function toArray(value) {
-    return value == null ? [] : [].concat(value);
-  }
-  var _Symbol$toStringTag;
-  var _Symbol$hasInstance;
-  var _Symbol$toStringTag2;
-  var strReg = /\$\{\s*(\w+)\s*\}/g;
-  _Symbol$toStringTag = Symbol.toStringTag;
-  var ValidationErrorNoStack = class {
-    constructor(errorOrErrors, value, field, type) {
-      this.name = void 0;
-      this.message = void 0;
-      this.value = void 0;
-      this.path = void 0;
-      this.type = void 0;
-      this.params = void 0;
-      this.errors = void 0;
-      this.inner = void 0;
-      this[_Symbol$toStringTag] = "Error";
-      this.name = "ValidationError";
-      this.value = value;
-      this.path = field;
-      this.type = type;
-      this.errors = [];
-      this.inner = [];
-      toArray(errorOrErrors).forEach((err) => {
-        if (ValidationError.isError(err)) {
-          this.errors.push(...err.errors);
-          const innerErrors = err.inner.length ? err.inner : [err];
-          this.inner.push(...innerErrors);
-        } else {
-          this.errors.push(err);
-        }
-      });
-      this.message = this.errors.length > 1 ? `${this.errors.length} errors occurred` : this.errors[0];
-    }
-  };
-  _Symbol$hasInstance = Symbol.hasInstance;
-  _Symbol$toStringTag2 = Symbol.toStringTag;
-  var ValidationError = class _ValidationError extends Error {
-    static formatError(message, params) {
-      const path = params.label || params.path || "this";
-      params = Object.assign({}, params, {
-        path,
-        originalPath: params.path
-      });
-      if (typeof message === "string") return message.replace(strReg, (_, key) => printValue(params[key]));
-      if (typeof message === "function") return message(params);
-      return message;
-    }
-    static isError(err) {
-      return err && err.name === "ValidationError";
-    }
-    constructor(errorOrErrors, value, field, type, disableStack) {
-      const errorNoStack = new ValidationErrorNoStack(errorOrErrors, value, field, type);
-      if (disableStack) {
-        return errorNoStack;
-      }
-      super();
-      this.value = void 0;
-      this.path = void 0;
-      this.type = void 0;
-      this.params = void 0;
-      this.errors = [];
-      this.inner = [];
-      this[_Symbol$toStringTag2] = "Error";
-      this.name = errorNoStack.name;
-      this.message = errorNoStack.message;
-      this.type = errorNoStack.type;
-      this.value = errorNoStack.value;
-      this.path = errorNoStack.path;
-      this.errors = errorNoStack.errors;
-      this.inner = errorNoStack.inner;
-      if (Error.captureStackTrace) {
-        Error.captureStackTrace(this, _ValidationError);
-      }
-    }
-    static [_Symbol$hasInstance](inst) {
-      return ValidationErrorNoStack[Symbol.hasInstance](inst) || super[Symbol.hasInstance](inst);
-    }
-  };
-  var mixed = {
-    default: "${path} is invalid",
-    required: "${path} is a required field",
-    defined: "${path} must be defined",
-    notNull: "${path} cannot be null",
-    oneOf: "${path} must be one of the following values: ${values}",
-    notOneOf: "${path} must not be one of the following values: ${values}",
-    notType: ({
-      path,
-      type,
-      value,
-      originalValue
-    }) => {
-      const castMsg = originalValue != null && originalValue !== value ? ` (cast from the value \`${printValue(originalValue, true)}\`).` : ".";
-      return type !== "mixed" ? `${path} must be a \`${type}\` type, but the final value was: \`${printValue(value, true)}\`` + castMsg : `${path} must match the configured type. The validated value was: \`${printValue(value, true)}\`` + castMsg;
-    }
-  };
-  var string = {
-    length: "${path} must be exactly ${length} characters",
-    min: "${path} must be at least ${min} characters",
-    max: "${path} must be at most ${max} characters",
-    matches: '${path} must match the following: "${regex}"',
-    email: "${path} must be a valid email",
-    url: "${path} must be a valid URL",
-    uuid: "${path} must be a valid UUID",
-    datetime: "${path} must be a valid ISO date-time",
-    datetime_precision: "${path} must be a valid ISO date-time with a sub-second precision of exactly ${precision} digits",
-    datetime_offset: '${path} must be a valid ISO date-time with UTC "Z" timezone',
-    trim: "${path} must be a trimmed string",
-    lowercase: "${path} must be a lowercase string",
-    uppercase: "${path} must be a upper case string"
-  };
-  var number = {
-    min: "${path} must be greater than or equal to ${min}",
-    max: "${path} must be less than or equal to ${max}",
-    lessThan: "${path} must be less than ${less}",
-    moreThan: "${path} must be greater than ${more}",
-    positive: "${path} must be a positive number",
-    negative: "${path} must be a negative number",
-    integer: "${path} must be an integer"
-  };
-  var date = {
-    min: "${path} field must be later than ${min}",
-    max: "${path} field must be at earlier than ${max}"
-  };
-  var boolean = {
-    isValue: "${path} field must be ${value}"
-  };
-  var object = {
-    noUnknown: "${path} field has unspecified keys: ${unknown}",
-    exact: "${path} object contains unknown properties: ${properties}"
-  };
-  var array = {
-    min: "${path} field must have at least ${min} items",
-    max: "${path} field must have less than or equal to ${max} items",
-    length: "${path} must have ${length} items"
-  };
-  var tuple = {
-    notType: (params) => {
-      const {
-        path,
-        value,
-        spec
-      } = params;
-      const typeLen = spec.types.length;
-      if (Array.isArray(value)) {
-        if (value.length < typeLen) return `${path} tuple value has too few items, expected a length of ${typeLen} but got ${value.length} for value: \`${printValue(value, true)}\``;
-        if (value.length > typeLen) return `${path} tuple value has too many items, expected a length of ${typeLen} but got ${value.length} for value: \`${printValue(value, true)}\``;
-      }
-      return ValidationError.formatError(mixed.notType, params);
-    }
-  };
-  var locale = Object.assign(/* @__PURE__ */ Object.create(null), {
-    mixed,
-    string,
-    number,
-    date,
-    object,
-    array,
-    boolean,
-    tuple
-  });
-  var isSchema = (obj) => obj && obj.__isYupSchema__;
-  var Condition = class _Condition {
-    static fromOptions(refs, config) {
-      if (!config.then && !config.otherwise) throw new TypeError("either `then:` or `otherwise:` is required for `when()` conditions");
-      let {
-        is,
-        then,
-        otherwise
-      } = config;
-      let check = typeof is === "function" ? is : (...values) => values.every((value) => value === is);
-      return new _Condition(refs, (values, schema) => {
-        var _branch;
-        let branch = check(...values) ? then : otherwise;
-        return (_branch = branch == null ? void 0 : branch(schema)) != null ? _branch : schema;
-      });
-    }
-    constructor(refs, builder) {
-      this.fn = void 0;
-      this.refs = refs;
-      this.refs = refs;
-      this.fn = builder;
-    }
-    resolve(base, options) {
-      let values = this.refs.map((ref) => (
-        // TODO: ? operator here?
-        ref.getValue(options == null ? void 0 : options.value, options == null ? void 0 : options.parent, options == null ? void 0 : options.context)
-      ));
-      let schema = this.fn(values, base, options);
-      if (schema === void 0 || // @ts-ignore this can be base
-      schema === base) {
-        return base;
-      }
-      if (!isSchema(schema)) throw new TypeError("conditions must return a schema object");
-      return schema.resolve(options);
-    }
-  };
-  var prefixes = {
-    context: "$",
-    value: "."
-  };
-  var Reference = class {
-    constructor(key, options = {}) {
-      this.key = void 0;
-      this.isContext = void 0;
-      this.isValue = void 0;
-      this.isSibling = void 0;
-      this.path = void 0;
-      this.getter = void 0;
-      this.map = void 0;
-      if (typeof key !== "string") throw new TypeError("ref must be a string, got: " + key);
-      this.key = key.trim();
-      if (key === "") throw new TypeError("ref must be a non-empty string");
-      this.isContext = this.key[0] === prefixes.context;
-      this.isValue = this.key[0] === prefixes.value;
-      this.isSibling = !this.isContext && !this.isValue;
-      let prefix = this.isContext ? prefixes.context : this.isValue ? prefixes.value : "";
-      this.path = this.key.slice(prefix.length);
-      this.getter = this.path && (0, import_property_expr.getter)(this.path, true);
-      this.map = options.map;
-    }
-    getValue(value, parent, context) {
-      let result = this.isContext ? context : this.isValue ? value : parent;
-      if (this.getter) result = this.getter(result || {});
-      if (this.map) result = this.map(result);
-      return result;
-    }
-    /**
-     *
-     * @param {*} value
-     * @param {Object} options
-     * @param {Object=} options.context
-     * @param {Object=} options.parent
-     */
-    cast(value, options) {
-      return this.getValue(value, options == null ? void 0 : options.parent, options == null ? void 0 : options.context);
-    }
-    resolve() {
-      return this;
-    }
-    describe() {
-      return {
-        type: "ref",
-        key: this.key
-      };
-    }
-    toString() {
-      return `Ref(${this.key})`;
-    }
-    static isRef(value) {
-      return value && value.__isYupRef;
-    }
-  };
-  Reference.prototype.__isYupRef = true;
-  var isAbsent = (value) => value == null;
-  function createValidation(config) {
-    function validate({
-      value,
-      path = "",
-      options,
-      originalValue,
-      schema
-    }, panic, next) {
-      const {
-        name,
-        test,
-        params,
-        message,
-        skipAbsent
-      } = config;
-      let {
-        parent,
-        context,
-        abortEarly = schema.spec.abortEarly,
-        disableStackTrace = schema.spec.disableStackTrace
-      } = options;
-      const resolveOptions = {
-        value,
-        parent,
-        context
-      };
-      function createError(overrides = {}) {
-        const nextParams = resolveParams(Object.assign({
-          value,
-          originalValue,
-          label: schema.spec.label,
-          path: overrides.path || path,
-          spec: schema.spec,
-          disableStackTrace: overrides.disableStackTrace || disableStackTrace
-        }, params, overrides.params), resolveOptions);
-        const error = new ValidationError(ValidationError.formatError(overrides.message || message, nextParams), value, nextParams.path, overrides.type || name, nextParams.disableStackTrace);
-        error.params = nextParams;
-        return error;
-      }
-      const invalid = abortEarly ? panic : next;
-      let ctx = {
-        path,
-        parent,
-        type: name,
-        from: options.from,
-        createError,
-        resolve(item) {
-          return resolveMaybeRef(item, resolveOptions);
-        },
-        options,
-        originalValue,
-        schema
-      };
-      const handleResult = (validOrError) => {
-        if (ValidationError.isError(validOrError)) invalid(validOrError);
-        else if (!validOrError) invalid(createError());
-        else next(null);
-      };
-      const handleError = (err) => {
-        if (ValidationError.isError(err)) invalid(err);
-        else panic(err);
-      };
-      const shouldSkip = skipAbsent && isAbsent(value);
-      if (shouldSkip) {
-        return handleResult(true);
-      }
-      let result;
-      try {
-        var _result;
-        result = test.call(ctx, value, ctx);
-        if (typeof ((_result = result) == null ? void 0 : _result.then) === "function") {
-          if (options.sync) {
-            throw new Error(`Validation test of type: "${ctx.type}" returned a Promise during a synchronous validate. This test will finish after the validate call has returned`);
-          }
-          return Promise.resolve(result).then(handleResult, handleError);
-        }
-      } catch (err) {
-        handleError(err);
-        return;
-      }
-      handleResult(result);
-    }
-    validate.OPTIONS = config;
-    return validate;
-  }
-  function resolveParams(params, options) {
-    if (!params) return params;
-    for (const key of Object.keys(params)) {
-      params[key] = resolveMaybeRef(params[key], options);
-    }
-    return params;
-  }
-  function resolveMaybeRef(item, options) {
-    return Reference.isRef(item) ? item.getValue(options.value, options.parent, options.context) : item;
-  }
-  function getIn(schema, path, value, context = value) {
-    let parent, lastPart, lastPartDebug;
-    if (!path) return {
-      parent,
-      parentPath: path,
-      schema
-    };
-    (0, import_property_expr.forEach)(path, (_part, isBracket, isArray) => {
-      let part = isBracket ? _part.slice(1, _part.length - 1) : _part;
-      schema = schema.resolve({
-        context,
-        parent,
-        value
-      });
-      let isTuple = schema.type === "tuple";
-      let idx = isArray ? parseInt(part, 10) : 0;
-      if (schema.innerType || isTuple) {
-        if (isTuple && !isArray) throw new Error(`Yup.reach cannot implicitly index into a tuple type. the path part "${lastPartDebug}" must contain an index to the tuple element, e.g. "${lastPartDebug}[0]"`);
-        if (value && idx >= value.length) {
-          throw new Error(`Yup.reach cannot resolve an array item at index: ${_part}, in the path: ${path}. because there is no value at that index. `);
-        }
-        parent = value;
-        value = value && value[idx];
-        schema = isTuple ? schema.spec.types[idx] : schema.innerType;
-      }
-      if (!isArray) {
-        if (!schema.fields || !schema.fields[part]) throw new Error(`The schema does not contain the path: ${path}. (failed at: ${lastPartDebug} which is a type: "${schema.type}")`);
-        parent = value;
-        value = value && value[part];
-        schema = schema.fields[part];
-      }
-      lastPart = part;
-      lastPartDebug = isBracket ? "[" + _part + "]" : "." + _part;
-    });
-    return {
-      schema,
-      parent,
-      parentPath: lastPart
-    };
-  }
-  function reach(obj, path, value, context) {
-    return getIn(obj, path, value, context).schema;
-  }
-  var ReferenceSet = class _ReferenceSet extends Set {
-    describe() {
-      const description = [];
-      for (const item of this.values()) {
-        description.push(Reference.isRef(item) ? item.describe() : item);
-      }
-      return description;
-    }
-    resolveAll(resolve) {
-      let result = [];
-      for (const item of this.values()) {
-        result.push(resolve(item));
-      }
-      return result;
-    }
-    clone() {
-      return new _ReferenceSet(this.values());
-    }
-    merge(newItems, removeItems) {
-      const next = this.clone();
-      newItems.forEach((value) => next.add(value));
-      removeItems.forEach((value) => next.delete(value));
-      return next;
-    }
-  };
-  function clone(src, seen = /* @__PURE__ */ new Map()) {
-    if (isSchema(src) || !src || typeof src !== "object") return src;
-    if (seen.has(src)) return seen.get(src);
-    let copy;
-    if (src instanceof Date) {
-      copy = new Date(src.getTime());
-      seen.set(src, copy);
-    } else if (src instanceof RegExp) {
-      copy = new RegExp(src);
-      seen.set(src, copy);
-    } else if (Array.isArray(src)) {
-      copy = new Array(src.length);
-      seen.set(src, copy);
-      for (let i = 0; i < src.length; i++) copy[i] = clone(src[i], seen);
-    } else if (src instanceof Map) {
-      copy = /* @__PURE__ */ new Map();
-      seen.set(src, copy);
-      for (const [k, v] of src.entries()) copy.set(k, clone(v, seen));
-    } else if (src instanceof Set) {
-      copy = /* @__PURE__ */ new Set();
-      seen.set(src, copy);
-      for (const v of src) copy.add(clone(v, seen));
-    } else if (src instanceof Object) {
-      copy = {};
-      seen.set(src, copy);
-      for (const [k, v] of Object.entries(src)) copy[k] = clone(v, seen);
-    } else {
-      throw Error(`Unable to clone ${src}`);
-    }
-    return copy;
-  }
-  function createStandardPath(path) {
-    if (!(path != null && path.length)) {
-      return void 0;
-    }
-    const segments = [];
-    let currentSegment = "";
-    let inBrackets = false;
-    let inQuotes = false;
-    for (let i = 0; i < path.length; i++) {
-      const char = path[i];
-      if (char === "[" && !inQuotes) {
-        if (currentSegment) {
-          segments.push(...currentSegment.split(".").filter(Boolean));
-          currentSegment = "";
-        }
-        inBrackets = true;
-        continue;
-      }
-      if (char === "]" && !inQuotes) {
-        if (currentSegment) {
-          if (/^\d+$/.test(currentSegment)) {
-            segments.push(currentSegment);
-          } else {
-            segments.push(currentSegment.replace(/^"|"$/g, ""));
-          }
-          currentSegment = "";
-        }
-        inBrackets = false;
-        continue;
-      }
-      if (char === '"') {
-        inQuotes = !inQuotes;
-        continue;
-      }
-      if (char === "." && !inBrackets && !inQuotes) {
-        if (currentSegment) {
-          segments.push(currentSegment);
-          currentSegment = "";
-        }
-        continue;
-      }
-      currentSegment += char;
-    }
-    if (currentSegment) {
-      segments.push(...currentSegment.split(".").filter(Boolean));
-    }
-    return segments;
-  }
-  function createStandardIssues(error, parentPath) {
-    const path = parentPath ? `${parentPath}.${error.path}` : error.path;
-    return error.errors.map((err) => ({
-      message: err,
-      path: createStandardPath(path)
-    }));
-  }
-  function issuesFromValidationError(error, parentPath) {
-    var _error$inner;
-    if (!((_error$inner = error.inner) != null && _error$inner.length) && error.errors.length) {
-      return createStandardIssues(error, parentPath);
-    }
-    const path = parentPath ? `${parentPath}.${error.path}` : error.path;
-    return error.inner.flatMap((err) => issuesFromValidationError(err, path));
-  }
-  var Schema = class {
-    constructor(options) {
-      this.type = void 0;
-      this.deps = [];
-      this.tests = void 0;
-      this.transforms = void 0;
-      this.conditions = [];
-      this._mutate = void 0;
-      this.internalTests = {};
-      this._whitelist = new ReferenceSet();
-      this._blacklist = new ReferenceSet();
-      this.exclusiveTests = /* @__PURE__ */ Object.create(null);
-      this._typeCheck = void 0;
-      this.spec = void 0;
-      this.tests = [];
-      this.transforms = [];
-      this.withMutation(() => {
-        this.typeError(mixed.notType);
-      });
-      this.type = options.type;
-      this._typeCheck = options.check;
-      this.spec = Object.assign({
-        strip: false,
-        strict: false,
-        abortEarly: true,
-        recursive: true,
-        disableStackTrace: false,
-        nullable: false,
-        optional: true,
-        coerce: true
-      }, options == null ? void 0 : options.spec);
-      this.withMutation((s4) => {
-        s4.nonNullable();
-      });
-    }
-    // TODO: remove
-    get _type() {
-      return this.type;
-    }
-    clone(spec) {
-      if (this._mutate) {
-        if (spec) Object.assign(this.spec, spec);
-        return this;
-      }
-      const next = Object.create(Object.getPrototypeOf(this));
-      next.type = this.type;
-      next._typeCheck = this._typeCheck;
-      next._whitelist = this._whitelist.clone();
-      next._blacklist = this._blacklist.clone();
-      next.internalTests = Object.assign({}, this.internalTests);
-      next.exclusiveTests = Object.assign({}, this.exclusiveTests);
-      next.deps = [...this.deps];
-      next.conditions = [...this.conditions];
-      next.tests = [...this.tests];
-      next.transforms = [...this.transforms];
-      next.spec = clone(Object.assign({}, this.spec, spec));
-      return next;
-    }
-    label(label) {
-      let next = this.clone();
-      next.spec.label = label;
-      return next;
-    }
-    meta(...args) {
-      if (args.length === 0) return this.spec.meta;
-      let next = this.clone();
-      next.spec.meta = Object.assign(next.spec.meta || {}, args[0]);
-      return next;
-    }
-    withMutation(fn) {
-      let before = this._mutate;
-      this._mutate = true;
-      let result = fn(this);
-      this._mutate = before;
-      return result;
-    }
-    concat(schema) {
-      if (!schema || schema === this) return this;
-      if (schema.type !== this.type && this.type !== "mixed") throw new TypeError(`You cannot \`concat()\` schema's of different types: ${this.type} and ${schema.type}`);
-      let base = this;
-      let combined = schema.clone();
-      const mergedSpec = Object.assign({}, base.spec, combined.spec);
-      combined.spec = mergedSpec;
-      combined.internalTests = Object.assign({}, base.internalTests, combined.internalTests);
-      combined._whitelist = base._whitelist.merge(schema._whitelist, schema._blacklist);
-      combined._blacklist = base._blacklist.merge(schema._blacklist, schema._whitelist);
-      combined.tests = base.tests;
-      combined.exclusiveTests = base.exclusiveTests;
-      combined.withMutation((next) => {
-        schema.tests.forEach((fn) => {
-          next.test(fn.OPTIONS);
-        });
-      });
-      combined.transforms = [...base.transforms, ...combined.transforms];
-      return combined;
-    }
-    isType(v) {
-      if (v == null) {
-        if (this.spec.nullable && v === null) return true;
-        if (this.spec.optional && v === void 0) return true;
-        return false;
-      }
-      return this._typeCheck(v);
-    }
-    resolve(options) {
-      let schema = this;
-      if (schema.conditions.length) {
-        let conditions = schema.conditions;
-        schema = schema.clone();
-        schema.conditions = [];
-        schema = conditions.reduce((prevSchema, condition) => condition.resolve(prevSchema, options), schema);
-        schema = schema.resolve(options);
-      }
-      return schema;
-    }
-    resolveOptions(options) {
-      var _options$strict, _options$abortEarly, _options$recursive, _options$disableStack;
-      return Object.assign({}, options, {
-        from: options.from || [],
-        strict: (_options$strict = options.strict) != null ? _options$strict : this.spec.strict,
-        abortEarly: (_options$abortEarly = options.abortEarly) != null ? _options$abortEarly : this.spec.abortEarly,
-        recursive: (_options$recursive = options.recursive) != null ? _options$recursive : this.spec.recursive,
-        disableStackTrace: (_options$disableStack = options.disableStackTrace) != null ? _options$disableStack : this.spec.disableStackTrace
-      });
-    }
-    /**
-     * Run the configured transform pipeline over an input value.
-     */
-    cast(value, options = {}) {
-      let resolvedSchema = this.resolve(Object.assign({}, options, {
-        value
-        // parent: options.parent,
-        // context: options.context,
-      }));
-      let allowOptionality = options.assert === "ignore-optionality";
-      let result = resolvedSchema._cast(value, options);
-      if (options.assert !== false && !resolvedSchema.isType(result)) {
-        if (allowOptionality && isAbsent(result)) {
-          return result;
-        }
-        let formattedValue = printValue(value);
-        let formattedResult = printValue(result);
-        throw new TypeError(`The value of ${options.path || "field"} could not be cast to a value that satisfies the schema type: "${resolvedSchema.type}". 
-
-attempted value: ${formattedValue} 
-` + (formattedResult !== formattedValue ? `result of cast: ${formattedResult}` : ""));
-      }
-      return result;
-    }
-    _cast(rawValue, options) {
-      let value = rawValue === void 0 ? rawValue : this.transforms.reduce((prevValue, fn) => fn.call(this, prevValue, rawValue, this, options), rawValue);
-      if (value === void 0) {
-        value = this.getDefault(options);
-      }
-      return value;
-    }
-    _validate(_value, options = {}, panic, next) {
-      let {
-        path,
-        originalValue = _value,
-        strict = this.spec.strict
-      } = options;
-      let value = _value;
-      if (!strict) {
-        value = this._cast(value, Object.assign({
-          assert: false
-        }, options));
-      }
-      let initialTests = [];
-      for (let test of Object.values(this.internalTests)) {
-        if (test) initialTests.push(test);
-      }
-      this.runTests({
-        path,
-        value,
-        originalValue,
-        options,
-        tests: initialTests
-      }, panic, (initialErrors) => {
-        if (initialErrors.length) {
-          return next(initialErrors, value);
-        }
-        this.runTests({
-          path,
-          value,
-          originalValue,
-          options,
-          tests: this.tests
-        }, panic, next);
-      });
-    }
-    /**
-     * Executes a set of validations, either schema, produced Tests or a nested
-     * schema validate result.
-     */
-    runTests(runOptions, panic, next) {
-      let fired = false;
-      let {
-        tests,
-        value,
-        originalValue,
-        path,
-        options
-      } = runOptions;
-      let panicOnce = (arg) => {
-        if (fired) return;
-        fired = true;
-        panic(arg, value);
-      };
-      let nextOnce = (arg) => {
-        if (fired) return;
-        fired = true;
-        next(arg, value);
-      };
-      let count4 = tests.length;
-      let nestedErrors = [];
-      if (!count4) return nextOnce([]);
-      let args = {
-        value,
-        originalValue,
-        path,
-        options,
-        schema: this
-      };
-      for (let i = 0; i < tests.length; i++) {
-        const test = tests[i];
-        test(args, panicOnce, function finishTestRun(err) {
-          if (err) {
-            Array.isArray(err) ? nestedErrors.push(...err) : nestedErrors.push(err);
-          }
-          if (--count4 <= 0) {
-            nextOnce(nestedErrors);
-          }
-        });
-      }
-    }
-    asNestedTest({
-      key,
-      index: index3,
-      parent,
-      parentPath,
-      originalParent,
-      options
-    }) {
-      const k = key != null ? key : index3;
-      if (k == null) {
-        throw TypeError("Must include `key` or `index` for nested validations");
-      }
-      const isIndex = typeof k === "number";
-      let value = parent[k];
-      const testOptions = Object.assign({}, options, {
-        // Nested validations fields are always strict:
-        //    1. parent isn't strict so the casting will also have cast inner values
-        //    2. parent is strict in which case the nested values weren't cast either
-        strict: true,
-        parent,
-        value,
-        originalValue: originalParent[k],
-        // FIXME: tests depend on `index` being passed around deeply,
-        //   we should not let the options.key/index bleed through
-        key: void 0,
-        // index: undefined,
-        [isIndex ? "index" : "key"]: k,
-        path: isIndex || k.includes(".") ? `${parentPath || ""}[${isIndex ? k : `"${k}"`}]` : (parentPath ? `${parentPath}.` : "") + key
-      });
-      return (_, panic, next) => this.resolve(testOptions)._validate(value, testOptions, panic, next);
-    }
-    validate(value, options) {
-      var _options$disableStack2;
-      let schema = this.resolve(Object.assign({}, options, {
-        value
-      }));
-      let disableStackTrace = (_options$disableStack2 = options == null ? void 0 : options.disableStackTrace) != null ? _options$disableStack2 : schema.spec.disableStackTrace;
-      return new Promise((resolve, reject) => schema._validate(value, options, (error, parsed) => {
-        if (ValidationError.isError(error)) error.value = parsed;
-        reject(error);
-      }, (errors, validated) => {
-        if (errors.length) reject(new ValidationError(errors, validated, void 0, void 0, disableStackTrace));
-        else resolve(validated);
-      }));
-    }
-    validateSync(value, options) {
-      var _options$disableStack3;
-      let schema = this.resolve(Object.assign({}, options, {
-        value
-      }));
-      let result;
-      let disableStackTrace = (_options$disableStack3 = options == null ? void 0 : options.disableStackTrace) != null ? _options$disableStack3 : schema.spec.disableStackTrace;
-      schema._validate(value, Object.assign({}, options, {
-        sync: true
-      }), (error, parsed) => {
-        if (ValidationError.isError(error)) error.value = parsed;
-        throw error;
-      }, (errors, validated) => {
-        if (errors.length) throw new ValidationError(errors, value, void 0, void 0, disableStackTrace);
-        result = validated;
-      });
-      return result;
-    }
-    isValid(value, options) {
-      return this.validate(value, options).then(() => true, (err) => {
-        if (ValidationError.isError(err)) return false;
-        throw err;
-      });
-    }
-    isValidSync(value, options) {
-      try {
-        this.validateSync(value, options);
-        return true;
-      } catch (err) {
-        if (ValidationError.isError(err)) return false;
-        throw err;
-      }
-    }
-    _getDefault(options) {
-      let defaultValue2 = this.spec.default;
-      if (defaultValue2 == null) {
-        return defaultValue2;
-      }
-      return typeof defaultValue2 === "function" ? defaultValue2.call(this, options) : clone(defaultValue2);
-    }
-    getDefault(options) {
-      let schema = this.resolve(options || {});
-      return schema._getDefault(options);
-    }
-    default(def) {
-      if (arguments.length === 0) {
-        return this._getDefault();
-      }
-      let next = this.clone({
-        default: def
-      });
-      return next;
-    }
-    strict(isStrict = true) {
-      return this.clone({
-        strict: isStrict
-      });
-    }
-    nullability(nullable, message) {
-      const next = this.clone({
-        nullable
-      });
-      next.internalTests.nullable = createValidation({
-        message,
-        name: "nullable",
-        test(value) {
-          return value === null ? this.schema.spec.nullable : true;
-        }
-      });
-      return next;
-    }
-    optionality(optional, message) {
-      const next = this.clone({
-        optional
-      });
-      next.internalTests.optionality = createValidation({
-        message,
-        name: "optionality",
-        test(value) {
-          return value === void 0 ? this.schema.spec.optional : true;
-        }
-      });
-      return next;
-    }
-    optional() {
-      return this.optionality(true);
-    }
-    defined(message = mixed.defined) {
-      return this.optionality(false, message);
-    }
-    nullable() {
-      return this.nullability(true);
-    }
-    nonNullable(message = mixed.notNull) {
-      return this.nullability(false, message);
-    }
-    required(message = mixed.required) {
-      return this.clone().withMutation((next) => next.nonNullable(message).defined(message));
-    }
-    notRequired() {
-      return this.clone().withMutation((next) => next.nullable().optional());
-    }
-    transform(fn) {
-      let next = this.clone();
-      next.transforms.push(fn);
-      return next;
-    }
-    /**
-     * Adds a test function to the schema's queue of tests.
-     * tests can be exclusive or non-exclusive.
-     *
-     * - exclusive tests, will replace any existing tests of the same name.
-     * - non-exclusive: can be stacked
-     *
-     * If a non-exclusive test is added to a schema with an exclusive test of the same name
-     * the exclusive test is removed and further tests of the same name will be stacked.
-     *
-     * If an exclusive test is added to a schema with non-exclusive tests of the same name
-     * the previous tests are removed and further tests of the same name will replace each other.
-     */
-    test(...args) {
-      let opts;
-      if (args.length === 1) {
-        if (typeof args[0] === "function") {
-          opts = {
-            test: args[0]
-          };
-        } else {
-          opts = args[0];
-        }
-      } else if (args.length === 2) {
-        opts = {
-          name: args[0],
-          test: args[1]
-        };
-      } else {
-        opts = {
-          name: args[0],
-          message: args[1],
-          test: args[2]
-        };
-      }
-      if (opts.message === void 0) opts.message = mixed.default;
-      if (typeof opts.test !== "function") throw new TypeError("`test` is a required parameters");
-      let next = this.clone();
-      let validate = createValidation(opts);
-      let isExclusive = opts.exclusive || opts.name && next.exclusiveTests[opts.name] === true;
-      if (opts.exclusive) {
-        if (!opts.name) throw new TypeError("Exclusive tests must provide a unique `name` identifying the test");
-      }
-      if (opts.name) next.exclusiveTests[opts.name] = !!opts.exclusive;
-      next.tests = next.tests.filter((fn) => {
-        if (fn.OPTIONS.name === opts.name) {
-          if (isExclusive) return false;
-          if (fn.OPTIONS.test === validate.OPTIONS.test) return false;
-        }
-        return true;
-      });
-      next.tests.push(validate);
-      return next;
-    }
-    when(keys, options) {
-      if (!Array.isArray(keys) && typeof keys !== "string") {
-        options = keys;
-        keys = ".";
-      }
-      let next = this.clone();
-      let deps = toArray(keys).map((key) => new Reference(key));
-      deps.forEach((dep) => {
-        if (dep.isSibling) next.deps.push(dep.key);
-      });
-      next.conditions.push(typeof options === "function" ? new Condition(deps, options) : Condition.fromOptions(deps, options));
-      return next;
-    }
-    typeError(message) {
-      let next = this.clone();
-      next.internalTests.typeError = createValidation({
-        message,
-        name: "typeError",
-        skipAbsent: true,
-        test(value) {
-          if (!this.schema._typeCheck(value)) return this.createError({
-            params: {
-              type: this.schema.type
-            }
-          });
-          return true;
-        }
-      });
-      return next;
-    }
-    oneOf(enums, message = mixed.oneOf) {
-      let next = this.clone();
-      enums.forEach((val) => {
-        next._whitelist.add(val);
-        next._blacklist.delete(val);
-      });
-      next.internalTests.whiteList = createValidation({
-        message,
-        name: "oneOf",
-        skipAbsent: true,
-        test(value) {
-          let valids = this.schema._whitelist;
-          let resolved2 = valids.resolveAll(this.resolve);
-          return resolved2.includes(value) ? true : this.createError({
-            params: {
-              values: Array.from(valids).join(", "),
-              resolved: resolved2
-            }
-          });
-        }
-      });
-      return next;
-    }
-    notOneOf(enums, message = mixed.notOneOf) {
-      let next = this.clone();
-      enums.forEach((val) => {
-        next._blacklist.add(val);
-        next._whitelist.delete(val);
-      });
-      next.internalTests.blacklist = createValidation({
-        message,
-        name: "notOneOf",
-        test(value) {
-          let invalids = this.schema._blacklist;
-          let resolved2 = invalids.resolveAll(this.resolve);
-          if (resolved2.includes(value)) return this.createError({
-            params: {
-              values: Array.from(invalids).join(", "),
-              resolved: resolved2
-            }
-          });
-          return true;
-        }
-      });
-      return next;
-    }
-    strip(strip = true) {
-      let next = this.clone();
-      next.spec.strip = strip;
-      return next;
-    }
-    /**
-     * Return a serialized description of the schema including validations, flags, types etc.
-     *
-     * @param options Provide any needed context for resolving runtime schema alterations (lazy, when conditions, etc).
-     */
-    describe(options) {
-      const next = (options ? this.resolve(options) : this).clone();
-      const {
-        label,
-        meta,
-        optional,
-        nullable
-      } = next.spec;
-      const description = {
-        meta,
-        label,
-        optional,
-        nullable,
-        default: next.getDefault(options),
-        type: next.type,
-        oneOf: next._whitelist.describe(),
-        notOneOf: next._blacklist.describe(),
-        tests: next.tests.filter((n3, idx, list) => list.findIndex((c3) => c3.OPTIONS.name === n3.OPTIONS.name) === idx).map((fn) => {
-          const params = fn.OPTIONS.params && options ? resolveParams(Object.assign({}, fn.OPTIONS.params), options) : fn.OPTIONS.params;
-          return {
-            name: fn.OPTIONS.name,
-            params
-          };
-        })
-      };
-      return description;
-    }
-    get ["~standard"]() {
-      const schema = this;
-      const standard = {
-        version: 1,
-        vendor: "yup",
-        async validate(value) {
-          try {
-            const result = await schema.validate(value, {
-              abortEarly: false
-            });
-            return {
-              value: result
-            };
-          } catch (err) {
-            if (err instanceof ValidationError) {
-              return {
-                issues: issuesFromValidationError(err)
-              };
-            }
-            throw err;
-          }
-        }
-      };
-      return standard;
-    }
-  };
-  Schema.prototype.__isYupSchema__ = true;
-  for (const method of ["validate", "validateSync"]) Schema.prototype[`${method}At`] = function(path, value, options = {}) {
-    const {
-      parent,
-      parentPath,
-      schema
-    } = getIn(this, path, value, options.context);
-    return schema[method](parent && parent[parentPath], Object.assign({}, options, {
-      parent,
-      path
-    }));
-  };
-  for (const alias of ["equals", "is"]) Schema.prototype[alias] = Schema.prototype.oneOf;
-  for (const alias of ["not", "nope"]) Schema.prototype[alias] = Schema.prototype.notOneOf;
-  var returnsTrue = () => true;
-  function create$8(spec) {
-    return new MixedSchema(spec);
-  }
-  var MixedSchema = class extends Schema {
-    constructor(spec) {
-      super(typeof spec === "function" ? {
-        type: "mixed",
-        check: spec
-      } : Object.assign({
-        type: "mixed",
-        check: returnsTrue
-      }, spec));
-    }
-  };
-  create$8.prototype = MixedSchema.prototype;
-  function create$7() {
-    return new BooleanSchema();
-  }
-  var BooleanSchema = class extends Schema {
-    constructor() {
-      super({
-        type: "boolean",
-        check(v) {
-          if (v instanceof Boolean) v = v.valueOf();
-          return typeof v === "boolean";
-        }
-      });
-      this.withMutation(() => {
-        this.transform((value, _raw) => {
-          if (this.spec.coerce && !this.isType(value)) {
-            if (/^(true|1)$/i.test(String(value))) return true;
-            if (/^(false|0)$/i.test(String(value))) return false;
-          }
-          return value;
-        });
-      });
-    }
-    isTrue(message = boolean.isValue) {
-      return this.test({
-        message,
-        name: "is-value",
-        exclusive: true,
-        params: {
-          value: "true"
-        },
-        test(value) {
-          return isAbsent(value) || value === true;
-        }
-      });
-    }
-    isFalse(message = boolean.isValue) {
-      return this.test({
-        message,
-        name: "is-value",
-        exclusive: true,
-        params: {
-          value: "false"
-        },
-        test(value) {
-          return isAbsent(value) || value === false;
-        }
-      });
-    }
-    default(def) {
-      return super.default(def);
-    }
-    defined(msg) {
-      return super.defined(msg);
-    }
-    optional() {
-      return super.optional();
-    }
-    required(msg) {
-      return super.required(msg);
-    }
-    notRequired() {
-      return super.notRequired();
-    }
-    nullable() {
-      return super.nullable();
-    }
-    nonNullable(msg) {
-      return super.nonNullable(msg);
-    }
-    strip(v) {
-      return super.strip(v);
-    }
-  };
-  create$7.prototype = BooleanSchema.prototype;
-  var isoReg = /^(\d{4}|[+-]\d{6})(?:-?(\d{2})(?:-?(\d{2}))?)?(?:[ T]?(\d{2}):?(\d{2})(?::?(\d{2})(?:[,.](\d{1,}))?)?(?:(Z)|([+-])(\d{2})(?::?(\d{2}))?)?)?$/;
-  function parseIsoDate(date2) {
-    const struct = parseDateStruct(date2);
-    if (!struct) return Date.parse ? Date.parse(date2) : Number.NaN;
-    if (struct.z === void 0 && struct.plusMinus === void 0) {
-      return new Date(struct.year, struct.month, struct.day, struct.hour, struct.minute, struct.second, struct.millisecond).valueOf();
-    }
-    let totalMinutesOffset = 0;
-    if (struct.z !== "Z" && struct.plusMinus !== void 0) {
-      totalMinutesOffset = struct.hourOffset * 60 + struct.minuteOffset;
-      if (struct.plusMinus === "+") totalMinutesOffset = 0 - totalMinutesOffset;
-    }
-    return Date.UTC(struct.year, struct.month, struct.day, struct.hour, struct.minute + totalMinutesOffset, struct.second, struct.millisecond);
-  }
-  function parseDateStruct(date2) {
-    var _regexResult$7$length, _regexResult$;
-    const regexResult = isoReg.exec(date2);
-    if (!regexResult) return null;
-    return {
-      year: toNumber(regexResult[1]),
-      month: toNumber(regexResult[2], 1) - 1,
-      day: toNumber(regexResult[3], 1),
-      hour: toNumber(regexResult[4]),
-      minute: toNumber(regexResult[5]),
-      second: toNumber(regexResult[6]),
-      millisecond: regexResult[7] ? (
-        // allow arbitrary sub-second precision beyond milliseconds
-        toNumber(regexResult[7].substring(0, 3))
-      ) : 0,
-      precision: (_regexResult$7$length = (_regexResult$ = regexResult[7]) == null ? void 0 : _regexResult$.length) != null ? _regexResult$7$length : void 0,
-      z: regexResult[8] || void 0,
-      plusMinus: regexResult[9] || void 0,
-      hourOffset: toNumber(regexResult[10]),
-      minuteOffset: toNumber(regexResult[11])
-    };
-  }
-  function toNumber(str, defaultValue2 = 0) {
-    return Number(str) || defaultValue2;
-  }
-  var rEmail = (
-    // eslint-disable-next-line
-    /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
-  );
-  var rUrl = (
-    // eslint-disable-next-line
-    /^((https?|ftp):)?\/\/(((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:)*@)?(((\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.(\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.(\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.(\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5]))|((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?)(:\d*)?)(\/((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)+(\/(([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)*)*)?)?(\?((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)|[\uE000-\uF8FF]|\/|\?)*)?(\#((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)|\/|\?)*)?$/i
-  );
-  var rUUID = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i;
-  var yearMonthDay = "^\\d{4}-\\d{2}-\\d{2}";
-  var hourMinuteSecond = "\\d{2}:\\d{2}:\\d{2}";
-  var zOrOffset = "(([+-]\\d{2}(:?\\d{2})?)|Z)";
-  var rIsoDateTime = new RegExp(`${yearMonthDay}T${hourMinuteSecond}(\\.\\d+)?${zOrOffset}$`);
-  var isTrimmed = (value) => isAbsent(value) || value === value.trim();
-  var objStringTag = {}.toString();
-  function create$6() {
-    return new StringSchema();
-  }
-  var StringSchema = class extends Schema {
-    constructor() {
-      super({
-        type: "string",
-        check(value) {
-          if (value instanceof String) value = value.valueOf();
-          return typeof value === "string";
-        }
-      });
-      this.withMutation(() => {
-        this.transform((value, _raw) => {
-          if (!this.spec.coerce || this.isType(value)) return value;
-          if (Array.isArray(value)) return value;
-          const strValue = value != null && value.toString ? value.toString() : value;
-          if (strValue === objStringTag) return value;
-          return strValue;
-        });
-      });
-    }
-    required(message) {
-      return super.required(message).withMutation((schema) => schema.test({
-        message: message || mixed.required,
-        name: "required",
-        skipAbsent: true,
-        test: (value) => !!value.length
-      }));
-    }
-    notRequired() {
-      return super.notRequired().withMutation((schema) => {
-        schema.tests = schema.tests.filter((t) => t.OPTIONS.name !== "required");
-        return schema;
-      });
-    }
-    length(length, message = string.length) {
-      return this.test({
-        message,
-        name: "length",
-        exclusive: true,
-        params: {
-          length
-        },
-        skipAbsent: true,
-        test(value) {
-          return value.length === this.resolve(length);
-        }
-      });
-    }
-    min(min2, message = string.min) {
-      return this.test({
-        message,
-        name: "min",
-        exclusive: true,
-        params: {
-          min: min2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value.length >= this.resolve(min2);
-        }
-      });
-    }
-    max(max2, message = string.max) {
-      return this.test({
-        name: "max",
-        exclusive: true,
-        message,
-        params: {
-          max: max2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value.length <= this.resolve(max2);
-        }
-      });
-    }
-    matches(regex, options) {
-      let excludeEmptyString = false;
-      let message;
-      let name;
-      if (options) {
-        if (typeof options === "object") {
-          ({
-            excludeEmptyString = false,
-            message,
-            name
-          } = options);
-        } else {
-          message = options;
-        }
-      }
-      return this.test({
-        name: name || "matches",
-        message: message || string.matches,
-        params: {
-          regex
-        },
-        skipAbsent: true,
-        test: (value) => value === "" && excludeEmptyString || value.search(regex) !== -1
-      });
-    }
-    email(message = string.email) {
-      return this.matches(rEmail, {
-        name: "email",
-        message,
-        excludeEmptyString: true
-      });
-    }
-    url(message = string.url) {
-      return this.matches(rUrl, {
-        name: "url",
-        message,
-        excludeEmptyString: true
-      });
-    }
-    uuid(message = string.uuid) {
-      return this.matches(rUUID, {
-        name: "uuid",
-        message,
-        excludeEmptyString: false
-      });
-    }
-    datetime(options) {
-      let message = "";
-      let allowOffset;
-      let precision;
-      if (options) {
-        if (typeof options === "object") {
-          ({
-            message = "",
-            allowOffset = false,
-            precision = void 0
-          } = options);
-        } else {
-          message = options;
-        }
-      }
-      return this.matches(rIsoDateTime, {
-        name: "datetime",
-        message: message || string.datetime,
-        excludeEmptyString: true
-      }).test({
-        name: "datetime_offset",
-        message: message || string.datetime_offset,
-        params: {
-          allowOffset
-        },
-        skipAbsent: true,
-        test: (value) => {
-          if (!value || allowOffset) return true;
-          const struct = parseDateStruct(value);
-          if (!struct) return false;
-          return !!struct.z;
-        }
-      }).test({
-        name: "datetime_precision",
-        message: message || string.datetime_precision,
-        params: {
-          precision
-        },
-        skipAbsent: true,
-        test: (value) => {
-          if (!value || precision == void 0) return true;
-          const struct = parseDateStruct(value);
-          if (!struct) return false;
-          return struct.precision === precision;
-        }
-      });
-    }
-    //-- transforms --
-    ensure() {
-      return this.default("").transform((val) => val === null ? "" : val);
-    }
-    trim(message = string.trim) {
-      return this.transform((val) => val != null ? val.trim() : val).test({
-        message,
-        name: "trim",
-        test: isTrimmed
-      });
-    }
-    lowercase(message = string.lowercase) {
-      return this.transform((value) => !isAbsent(value) ? value.toLowerCase() : value).test({
-        message,
-        name: "string_case",
-        exclusive: true,
-        skipAbsent: true,
-        test: (value) => isAbsent(value) || value === value.toLowerCase()
-      });
-    }
-    uppercase(message = string.uppercase) {
-      return this.transform((value) => !isAbsent(value) ? value.toUpperCase() : value).test({
-        message,
-        name: "string_case",
-        exclusive: true,
-        skipAbsent: true,
-        test: (value) => isAbsent(value) || value === value.toUpperCase()
-      });
-    }
-  };
-  create$6.prototype = StringSchema.prototype;
-  var isNaN$1 = (value) => value != +value;
-  function create$5() {
-    return new NumberSchema();
-  }
-  var NumberSchema = class extends Schema {
-    constructor() {
-      super({
-        type: "number",
-        check(value) {
-          if (value instanceof Number) value = value.valueOf();
-          return typeof value === "number" && !isNaN$1(value);
-        }
-      });
-      this.withMutation(() => {
-        this.transform((value, _raw) => {
-          if (!this.spec.coerce) return value;
-          let parsed = value;
-          if (typeof parsed === "string") {
-            parsed = parsed.replace(/\s/g, "");
-            if (parsed === "") return NaN;
-            parsed = +parsed;
-          }
-          if (this.isType(parsed) || parsed === null) return parsed;
-          return parseFloat(parsed);
-        });
-      });
-    }
-    min(min2, message = number.min) {
-      return this.test({
-        message,
-        name: "min",
-        exclusive: true,
-        params: {
-          min: min2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value >= this.resolve(min2);
-        }
-      });
-    }
-    max(max2, message = number.max) {
-      return this.test({
-        message,
-        name: "max",
-        exclusive: true,
-        params: {
-          max: max2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value <= this.resolve(max2);
-        }
-      });
-    }
-    lessThan(less, message = number.lessThan) {
-      return this.test({
-        message,
-        name: "max",
-        exclusive: true,
-        params: {
-          less
-        },
-        skipAbsent: true,
-        test(value) {
-          return value < this.resolve(less);
-        }
-      });
-    }
-    moreThan(more, message = number.moreThan) {
-      return this.test({
-        message,
-        name: "min",
-        exclusive: true,
-        params: {
-          more
-        },
-        skipAbsent: true,
-        test(value) {
-          return value > this.resolve(more);
-        }
-      });
-    }
-    positive(msg = number.positive) {
-      return this.moreThan(0, msg);
-    }
-    negative(msg = number.negative) {
-      return this.lessThan(0, msg);
-    }
-    integer(message = number.integer) {
-      return this.test({
-        name: "integer",
-        message,
-        skipAbsent: true,
-        test: (val) => Number.isInteger(val)
-      });
-    }
-    truncate() {
-      return this.transform((value) => !isAbsent(value) ? value | 0 : value);
-    }
-    round(method) {
-      var _method;
-      let avail = ["ceil", "floor", "round", "trunc"];
-      method = ((_method = method) == null ? void 0 : _method.toLowerCase()) || "round";
-      if (method === "trunc") return this.truncate();
-      if (avail.indexOf(method.toLowerCase()) === -1) throw new TypeError("Only valid options for round() are: " + avail.join(", "));
-      return this.transform((value) => !isAbsent(value) ? Math[method](value) : value);
-    }
-  };
-  create$5.prototype = NumberSchema.prototype;
-  var invalidDate = /* @__PURE__ */ new Date("");
-  var isDate = (obj) => Object.prototype.toString.call(obj) === "[object Date]";
-  function create$4() {
-    return new DateSchema();
-  }
-  var DateSchema = class _DateSchema extends Schema {
-    constructor() {
-      super({
-        type: "date",
-        check(v) {
-          return isDate(v) && !isNaN(v.getTime());
-        }
-      });
-      this.withMutation(() => {
-        this.transform((value, _raw) => {
-          if (!this.spec.coerce || this.isType(value) || value === null) return value;
-          value = parseIsoDate(value);
-          return !isNaN(value) ? new Date(value) : _DateSchema.INVALID_DATE;
-        });
-      });
-    }
-    prepareParam(ref, name) {
-      let param;
-      if (!Reference.isRef(ref)) {
-        let cast = this.cast(ref);
-        if (!this._typeCheck(cast)) throw new TypeError(`\`${name}\` must be a Date or a value that can be \`cast()\` to a Date`);
-        param = cast;
-      } else {
-        param = ref;
-      }
-      return param;
-    }
-    min(min2, message = date.min) {
-      let limit = this.prepareParam(min2, "min");
-      return this.test({
-        message,
-        name: "min",
-        exclusive: true,
-        params: {
-          min: min2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value >= this.resolve(limit);
-        }
-      });
-    }
-    max(max2, message = date.max) {
-      let limit = this.prepareParam(max2, "max");
-      return this.test({
-        message,
-        name: "max",
-        exclusive: true,
-        params: {
-          max: max2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value <= this.resolve(limit);
-        }
-      });
-    }
-  };
-  DateSchema.INVALID_DATE = invalidDate;
-  create$4.prototype = DateSchema.prototype;
-  create$4.INVALID_DATE = invalidDate;
-  function sortFields(fields, excludedEdges = []) {
-    let edges = [];
-    let nodes = /* @__PURE__ */ new Set();
-    let excludes = new Set(excludedEdges.map(([a10, b]) => `${a10}-${b}`));
-    function addNode(depPath, key) {
-      let node = (0, import_property_expr.split)(depPath)[0];
-      nodes.add(node);
-      if (!excludes.has(`${key}-${node}`)) edges.push([key, node]);
-    }
-    for (const key of Object.keys(fields)) {
-      let value = fields[key];
-      nodes.add(key);
-      if (Reference.isRef(value) && value.isSibling) addNode(value.path, key);
-      else if (isSchema(value) && "deps" in value) value.deps.forEach((path) => addNode(path, key));
-    }
-    return import_toposort.default.array(Array.from(nodes), edges).reverse();
-  }
-  function findIndex(arr, err) {
-    let idx = Infinity;
-    arr.some((key, ii) => {
-      var _err$path;
-      if ((_err$path = err.path) != null && _err$path.includes(key)) {
-        idx = ii;
-        return true;
-      }
-    });
-    return idx;
-  }
-  function sortByKeyOrder(keys) {
-    return (a10, b) => {
-      return findIndex(keys, a10) - findIndex(keys, b);
-    };
-  }
-  var parseJson = (value, _, schema) => {
-    if (typeof value !== "string") {
-      return value;
-    }
-    let parsed = value;
-    try {
-      parsed = JSON.parse(value);
-    } catch (err) {
-    }
-    return schema.isType(parsed) ? parsed : value;
-  };
-  function deepPartial(schema) {
-    if ("fields" in schema) {
-      const partial = {};
-      for (const [key, fieldSchema] of Object.entries(schema.fields)) {
-        partial[key] = deepPartial(fieldSchema);
-      }
-      return schema.setFields(partial);
-    }
-    if (schema.type === "array") {
-      const nextArray = schema.optional();
-      if (nextArray.innerType) nextArray.innerType = deepPartial(nextArray.innerType);
-      return nextArray;
-    }
-    if (schema.type === "tuple") {
-      return schema.optional().clone({
-        types: schema.spec.types.map(deepPartial)
-      });
-    }
-    if ("optional" in schema) {
-      return schema.optional();
-    }
-    return schema;
-  }
-  var deepHas = (obj, p2) => {
-    const path = [...(0, import_property_expr.normalizePath)(p2)];
-    if (path.length === 1) return path[0] in obj;
-    let last = path.pop();
-    let parent = (0, import_property_expr.getter)((0, import_property_expr.join)(path), true)(obj);
-    return !!(parent && last in parent);
-  };
-  var isObject = (obj) => Object.prototype.toString.call(obj) === "[object Object]";
-  function unknown(ctx, value) {
-    let known = Object.keys(ctx.fields);
-    return Object.keys(value).filter((key) => known.indexOf(key) === -1);
-  }
-  var defaultSort = sortByKeyOrder([]);
-  function create$3(spec) {
-    return new ObjectSchema(spec);
-  }
-  var ObjectSchema = class extends Schema {
-    constructor(spec) {
-      super({
-        type: "object",
-        check(value) {
-          return isObject(value) || typeof value === "function";
-        }
-      });
-      this.fields = /* @__PURE__ */ Object.create(null);
-      this._sortErrors = defaultSort;
-      this._nodes = [];
-      this._excludedEdges = [];
-      this.withMutation(() => {
-        if (spec) {
-          this.shape(spec);
-        }
-      });
-    }
-    _cast(_value, options = {}) {
-      var _options$stripUnknown;
-      let value = super._cast(_value, options);
-      if (value === void 0) return this.getDefault(options);
-      if (!this._typeCheck(value)) return value;
-      let fields = this.fields;
-      let strip = (_options$stripUnknown = options.stripUnknown) != null ? _options$stripUnknown : this.spec.noUnknown;
-      let props = [].concat(this._nodes, Object.keys(value).filter((v) => !this._nodes.includes(v)));
-      let intermediateValue = {};
-      let innerOptions = Object.assign({}, options, {
-        parent: intermediateValue,
-        __validating: options.__validating || false
-      });
-      let isChanged = false;
-      for (const prop of props) {
-        let field = fields[prop];
-        let exists = prop in value;
-        let inputValue = value[prop];
-        if (field) {
-          let fieldValue;
-          innerOptions.path = (options.path ? `${options.path}.` : "") + prop;
-          field = field.resolve({
-            value: inputValue,
-            context: options.context,
-            parent: intermediateValue
-          });
-          let fieldSpec = field instanceof Schema ? field.spec : void 0;
-          let strict = fieldSpec == null ? void 0 : fieldSpec.strict;
-          if (fieldSpec != null && fieldSpec.strip) {
-            isChanged = isChanged || prop in value;
-            continue;
-          }
-          fieldValue = !options.__validating || !strict ? field.cast(inputValue, innerOptions) : inputValue;
-          if (fieldValue !== void 0) {
-            intermediateValue[prop] = fieldValue;
-          }
-        } else if (exists && !strip) {
-          intermediateValue[prop] = inputValue;
-        }
-        if (exists !== prop in intermediateValue || intermediateValue[prop] !== inputValue) {
-          isChanged = true;
-        }
-      }
-      return isChanged ? intermediateValue : value;
-    }
-    _validate(_value, options = {}, panic, next) {
-      let {
-        from = [],
-        originalValue = _value,
-        recursive = this.spec.recursive
-      } = options;
-      options.from = [{
-        schema: this,
-        value: originalValue
-      }, ...from];
-      options.__validating = true;
-      options.originalValue = originalValue;
-      super._validate(_value, options, panic, (objectErrors, value) => {
-        if (!recursive || !isObject(value)) {
-          next(objectErrors, value);
-          return;
-        }
-        originalValue = originalValue || value;
-        let tests = [];
-        for (let key of this._nodes) {
-          let field = this.fields[key];
-          if (!field || Reference.isRef(field)) {
-            continue;
-          }
-          tests.push(field.asNestedTest({
-            options,
-            key,
-            parent: value,
-            parentPath: options.path,
-            originalParent: originalValue
-          }));
-        }
-        this.runTests({
-          tests,
-          value,
-          originalValue,
-          options
-        }, panic, (fieldErrors) => {
-          next(fieldErrors.sort(this._sortErrors).concat(objectErrors), value);
-        });
-      });
-    }
-    clone(spec) {
-      const next = super.clone(spec);
-      next.fields = Object.assign({}, this.fields);
-      next._nodes = this._nodes;
-      next._excludedEdges = this._excludedEdges;
-      next._sortErrors = this._sortErrors;
-      return next;
-    }
-    concat(schema) {
-      let next = super.concat(schema);
-      let nextFields = next.fields;
-      for (let [field, schemaOrRef] of Object.entries(this.fields)) {
-        const target = nextFields[field];
-        nextFields[field] = target === void 0 ? schemaOrRef : target;
-      }
-      return next.withMutation((s4) => (
-        // XXX: excludes here is wrong
-        s4.setFields(nextFields, [...this._excludedEdges, ...schema._excludedEdges])
-      ));
-    }
-    _getDefault(options) {
-      if ("default" in this.spec) {
-        return super._getDefault(options);
-      }
-      if (!this._nodes.length) {
-        return void 0;
-      }
-      let dft = {};
-      this._nodes.forEach((key) => {
-        var _innerOptions;
-        const field = this.fields[key];
-        let innerOptions = options;
-        if ((_innerOptions = innerOptions) != null && _innerOptions.value) {
-          innerOptions = Object.assign({}, innerOptions, {
-            parent: innerOptions.value,
-            value: innerOptions.value[key]
-          });
-        }
-        dft[key] = field && "getDefault" in field ? field.getDefault(innerOptions) : void 0;
-      });
-      return dft;
-    }
-    setFields(shape, excludedEdges) {
-      let next = this.clone();
-      next.fields = shape;
-      next._nodes = sortFields(shape, excludedEdges);
-      next._sortErrors = sortByKeyOrder(Object.keys(shape));
-      if (excludedEdges) next._excludedEdges = excludedEdges;
-      return next;
-    }
-    shape(additions, excludes = []) {
-      return this.clone().withMutation((next) => {
-        let edges = next._excludedEdges;
-        if (excludes.length) {
-          if (!Array.isArray(excludes[0])) excludes = [excludes];
-          edges = [...next._excludedEdges, ...excludes];
-        }
-        return next.setFields(Object.assign(next.fields, additions), edges);
-      });
-    }
-    partial() {
-      const partial = {};
-      for (const [key, schema] of Object.entries(this.fields)) {
-        partial[key] = "optional" in schema && schema.optional instanceof Function ? schema.optional() : schema;
-      }
-      return this.setFields(partial);
-    }
-    deepPartial() {
-      const next = deepPartial(this);
-      return next;
-    }
-    pick(keys) {
-      const picked = {};
-      for (const key of keys) {
-        if (this.fields[key]) picked[key] = this.fields[key];
-      }
-      return this.setFields(picked, this._excludedEdges.filter(([a10, b]) => keys.includes(a10) && keys.includes(b)));
-    }
-    omit(keys) {
-      const remaining = [];
-      for (const key of Object.keys(this.fields)) {
-        if (keys.includes(key)) continue;
-        remaining.push(key);
-      }
-      return this.pick(remaining);
-    }
-    from(from, to, alias) {
-      let fromGetter = (0, import_property_expr.getter)(from, true);
-      return this.transform((obj) => {
-        if (!obj) return obj;
-        let newObj = obj;
-        if (deepHas(obj, from)) {
-          newObj = Object.assign({}, obj);
-          if (!alias) delete newObj[from];
-          newObj[to] = fromGetter(obj);
-        }
-        return newObj;
-      });
-    }
-    /** Parse an input JSON string to an object */
-    json() {
-      return this.transform(parseJson);
-    }
-    /**
-     * Similar to `noUnknown` but only validates that an object is the right shape without stripping the unknown keys
-     */
-    exact(message) {
-      return this.test({
-        name: "exact",
-        exclusive: true,
-        message: message || object.exact,
-        test(value) {
-          if (value == null) return true;
-          const unknownKeys = unknown(this.schema, value);
-          return unknownKeys.length === 0 || this.createError({
-            params: {
-              properties: unknownKeys.join(", ")
-            }
-          });
-        }
-      });
-    }
-    stripUnknown() {
-      return this.clone({
-        noUnknown: true
-      });
-    }
-    noUnknown(noAllow = true, message = object.noUnknown) {
-      if (typeof noAllow !== "boolean") {
-        message = noAllow;
-        noAllow = true;
-      }
-      let next = this.test({
-        name: "noUnknown",
-        exclusive: true,
-        message,
-        test(value) {
-          if (value == null) return true;
-          const unknownKeys = unknown(this.schema, value);
-          return !noAllow || unknownKeys.length === 0 || this.createError({
-            params: {
-              unknown: unknownKeys.join(", ")
-            }
-          });
-        }
-      });
-      next.spec.noUnknown = noAllow;
-      return next;
-    }
-    unknown(allow = true, message = object.noUnknown) {
-      return this.noUnknown(!allow, message);
-    }
-    transformKeys(fn) {
-      return this.transform((obj) => {
-        if (!obj) return obj;
-        const result = {};
-        for (const key of Object.keys(obj)) result[fn(key)] = obj[key];
-        return result;
-      });
-    }
-    camelCase() {
-      return this.transformKeys(import_tiny_case.camelCase);
-    }
-    snakeCase() {
-      return this.transformKeys(import_tiny_case.snakeCase);
-    }
-    constantCase() {
-      return this.transformKeys((key) => (0, import_tiny_case.snakeCase)(key).toUpperCase());
-    }
-    describe(options) {
-      const next = (options ? this.resolve(options) : this).clone();
-      const base = super.describe(options);
-      base.fields = {};
-      for (const [key, value] of Object.entries(next.fields)) {
-        var _innerOptions2;
-        let innerOptions = options;
-        if ((_innerOptions2 = innerOptions) != null && _innerOptions2.value) {
-          innerOptions = Object.assign({}, innerOptions, {
-            parent: innerOptions.value,
-            value: innerOptions.value[key]
-          });
-        }
-        base.fields[key] = value.describe(innerOptions);
-      }
-      return base;
-    }
-  };
-  create$3.prototype = ObjectSchema.prototype;
-  function create$2(type) {
-    return new ArraySchema(type);
-  }
-  var ArraySchema = class extends Schema {
-    constructor(type) {
-      super({
-        type: "array",
-        spec: {
-          types: type
-        },
-        check(v) {
-          return Array.isArray(v);
-        }
-      });
-      this.innerType = void 0;
-      this.innerType = type;
-    }
-    _cast(_value, _opts) {
-      const value = super._cast(_value, _opts);
-      if (!this._typeCheck(value) || !this.innerType) {
-        return value;
-      }
-      let isChanged = false;
-      const castArray = value.map((v, idx) => {
-        const castElement = this.innerType.cast(v, Object.assign({}, _opts, {
-          path: `${_opts.path || ""}[${idx}]`,
-          parent: value,
-          originalValue: v,
-          value: v,
-          index: idx
-        }));
-        if (castElement !== v) {
-          isChanged = true;
-        }
-        return castElement;
-      });
-      return isChanged ? castArray : value;
-    }
-    _validate(_value, options = {}, panic, next) {
-      var _options$recursive;
-      let innerType = this.innerType;
-      let recursive = (_options$recursive = options.recursive) != null ? _options$recursive : this.spec.recursive;
-      options.originalValue != null ? options.originalValue : _value;
-      super._validate(_value, options, panic, (arrayErrors, value) => {
-        var _options$originalValu2;
-        if (!recursive || !innerType || !this._typeCheck(value)) {
-          next(arrayErrors, value);
-          return;
-        }
-        let tests = new Array(value.length);
-        for (let index3 = 0; index3 < value.length; index3++) {
-          var _options$originalValu;
-          tests[index3] = innerType.asNestedTest({
-            options,
-            index: index3,
-            parent: value,
-            parentPath: options.path,
-            originalParent: (_options$originalValu = options.originalValue) != null ? _options$originalValu : _value
-          });
-        }
-        this.runTests({
-          value,
-          tests,
-          originalValue: (_options$originalValu2 = options.originalValue) != null ? _options$originalValu2 : _value,
-          options
-        }, panic, (innerTypeErrors) => next(innerTypeErrors.concat(arrayErrors), value));
-      });
-    }
-    clone(spec) {
-      const next = super.clone(spec);
-      next.innerType = this.innerType;
-      return next;
-    }
-    /** Parse an input JSON string to an object */
-    json() {
-      return this.transform(parseJson);
-    }
-    concat(schema) {
-      let next = super.concat(schema);
-      next.innerType = this.innerType;
-      if (schema.innerType)
-        next.innerType = next.innerType ? (
-          // @ts-expect-error Lazy doesn't have concat and will break
-          next.innerType.concat(schema.innerType)
-        ) : schema.innerType;
-      return next;
-    }
-    of(schema) {
-      let next = this.clone();
-      if (!isSchema(schema)) throw new TypeError("`array.of()` sub-schema must be a valid yup schema not: " + printValue(schema));
-      next.innerType = schema;
-      next.spec = Object.assign({}, next.spec, {
-        types: schema
-      });
-      return next;
-    }
-    length(length, message = array.length) {
-      return this.test({
-        message,
-        name: "length",
-        exclusive: true,
-        params: {
-          length
-        },
-        skipAbsent: true,
-        test(value) {
-          return value.length === this.resolve(length);
-        }
-      });
-    }
-    min(min2, message) {
-      message = message || array.min;
-      return this.test({
-        message,
-        name: "min",
-        exclusive: true,
-        params: {
-          min: min2
-        },
-        skipAbsent: true,
-        // FIXME(ts): Array<typeof T>
-        test(value) {
-          return value.length >= this.resolve(min2);
-        }
-      });
-    }
-    max(max2, message) {
-      message = message || array.max;
-      return this.test({
-        message,
-        name: "max",
-        exclusive: true,
-        params: {
-          max: max2
-        },
-        skipAbsent: true,
-        test(value) {
-          return value.length <= this.resolve(max2);
-        }
-      });
-    }
-    ensure() {
-      return this.default(() => []).transform((val, original) => {
-        if (this._typeCheck(val)) return val;
-        return original == null ? [] : [].concat(original);
-      });
-    }
-    compact(rejector) {
-      let reject = !rejector ? (v) => !!v : (v, i, a10) => !rejector(v, i, a10);
-      return this.transform((values) => values != null ? values.filter(reject) : values);
-    }
-    describe(options) {
-      const next = (options ? this.resolve(options) : this).clone();
-      const base = super.describe(options);
-      if (next.innerType) {
-        var _innerOptions;
-        let innerOptions = options;
-        if ((_innerOptions = innerOptions) != null && _innerOptions.value) {
-          innerOptions = Object.assign({}, innerOptions, {
-            parent: innerOptions.value,
-            value: innerOptions.value[0]
-          });
-        }
-        base.innerType = next.innerType.describe(innerOptions);
-      }
-      return base;
-    }
-  };
-  create$2.prototype = ArraySchema.prototype;
-  function create$1(schemas) {
-    return new TupleSchema(schemas);
-  }
-  var TupleSchema = class extends Schema {
-    constructor(schemas) {
-      super({
-        type: "tuple",
-        spec: {
-          types: schemas
-        },
-        check(v) {
-          const types = this.spec.types;
-          return Array.isArray(v) && v.length === types.length;
-        }
-      });
-      this.withMutation(() => {
-        this.typeError(tuple.notType);
-      });
-    }
-    _cast(inputValue, options) {
-      const {
-        types
-      } = this.spec;
-      const value = super._cast(inputValue, options);
-      if (!this._typeCheck(value)) {
-        return value;
-      }
-      let isChanged = false;
-      const castArray = types.map((type, idx) => {
-        const castElement = type.cast(value[idx], Object.assign({}, options, {
-          path: `${options.path || ""}[${idx}]`,
-          parent: value,
-          originalValue: value[idx],
-          value: value[idx],
-          index: idx
-        }));
-        if (castElement !== value[idx]) isChanged = true;
-        return castElement;
-      });
-      return isChanged ? castArray : value;
-    }
-    _validate(_value, options = {}, panic, next) {
-      let itemTypes = this.spec.types;
-      super._validate(_value, options, panic, (tupleErrors, value) => {
-        var _options$originalValu2;
-        if (!this._typeCheck(value)) {
-          next(tupleErrors, value);
-          return;
-        }
-        let tests = [];
-        for (let [index3, itemSchema] of itemTypes.entries()) {
-          var _options$originalValu;
-          tests[index3] = itemSchema.asNestedTest({
-            options,
-            index: index3,
-            parent: value,
-            parentPath: options.path,
-            originalParent: (_options$originalValu = options.originalValue) != null ? _options$originalValu : _value
-          });
-        }
-        this.runTests({
-          value,
-          tests,
-          originalValue: (_options$originalValu2 = options.originalValue) != null ? _options$originalValu2 : _value,
-          options
-        }, panic, (innerTypeErrors) => next(innerTypeErrors.concat(tupleErrors), value));
-      });
-    }
-    describe(options) {
-      const next = (options ? this.resolve(options) : this).clone();
-      const base = super.describe(options);
-      base.innerType = next.spec.types.map((schema, index3) => {
-        var _innerOptions;
-        let innerOptions = options;
-        if ((_innerOptions = innerOptions) != null && _innerOptions.value) {
-          innerOptions = Object.assign({}, innerOptions, {
-            parent: innerOptions.value,
-            value: innerOptions.value[index3]
-          });
-        }
-        return schema.describe(innerOptions);
-      });
-      return base;
-    }
-  };
-  create$1.prototype = TupleSchema.prototype;
-  function addMethod(schemaType, name, fn) {
-    if (!schemaType || !isSchema(schemaType.prototype)) throw new TypeError("You must provide a yup schema constructor function");
-    if (typeof name !== "string") throw new TypeError("A Method name must be provided");
-    if (typeof fn !== "function") throw new TypeError("Method function must be provided");
-    schemaType.prototype[name] = fn;
-  }
-
-  // ../stack-shared/dist/esm/utils/currency-constants.js
-  var SUPPORTED_CURRENCIES = [
-    {
-      code: "USD",
-      decimals: 2,
-      stripeDecimals: 2
-    },
-    {
-      code: "EUR",
-      decimals: 2,
-      stripeDecimals: 2
-    },
-    {
-      code: "GBP",
-      decimals: 2,
-      stripeDecimals: 2
-    },
-    {
-      code: "JPY",
-      decimals: 0,
-      stripeDecimals: 0
-    },
-    {
-      code: "INR",
-      decimals: 2,
-      stripeDecimals: 2
-    },
-    {
-      code: "AUD",
-      decimals: 2,
-      stripeDecimals: 2
-    },
-    {
-      code: "CAD",
-      decimals: 2,
-      stripeDecimals: 2
-    }
-  ];
-
-  // ../stack-shared/dist/esm/utils/http.js
-  function decodeBasicAuthorizationHeader(value) {
-    const [type, encoded, ...rest] = value.split(" ");
-    if (rest.length > 0) return null;
-    if (!encoded) return null;
-    if (type !== "Basic") return null;
-    if (!isBase64(encoded)) return null;
-    const decoded = new TextDecoder().decode(decodeBase64(encoded));
-    const split2 = decoded.split(":");
-    return [split2[0], split2.slice(1).join(":")];
-  }
-
-  // ../stack-shared/dist/esm/utils/oauth.js
-  var standardProviders = ["google", "github", "microsoft", "spotify", "facebook", "discord", "gitlab", "bitbucket", "linkedin", "apple", "x", "twitch"];
-  var allProviders = standardProviders;
-
-  // ../stack-shared/dist/esm/utils/urls.js
-  function createUrlIfValid(...args) {
-    try {
-      return new URL(...args);
-    } catch (e16) {
-      return null;
-    }
-  }
-  function isValidUrl(url2) {
-    return !!createUrlIfValid(url2);
-  }
-  function isValidHostname(hostname) {
-    if (!hostname || hostname.startsWith(".") || hostname.endsWith(".") || hostname.includes("..")) {
-      return false;
-    }
-    const url2 = createUrlIfValid(`https://${hostname}`);
-    if (!url2) return false;
-    return url2.hostname === hostname;
-  }
-  function isValidHostnameWithWildcards(hostname) {
-    if (!hostname) return false;
-    const hasWildcard = hostname.includes("*");
-    if (!hasWildcard) {
-      return isValidHostname(hostname);
-    }
-    if (hostname.startsWith(".") || hostname.endsWith(".")) {
-      return false;
-    }
-    if (hostname.includes("..")) {
-      return false;
-    }
-    const testHostname = hostname.replace(/\*+/g, "wildcard");
-    if (!/^[a-zA-Z0-9.-]+$/.test(testHostname)) {
-      return false;
-    }
-    const segments = hostname.split(/\*+/);
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      if (segment === "") continue;
-      if (i === 0 && segment.startsWith(".")) {
-        return false;
-      }
-      if (i === segments.length - 1 && segment.endsWith(".")) {
-        return false;
-      }
-      if (segment.includes("..")) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  // ../stack-shared/dist/esm/utils/uuids.js
-  function generateUuid() {
-    return "10000000-1000-4000-8000-100000000000".replace(
-      /[018]/g,
-      (c3) => (+c3 ^ generateRandomValues(new Uint8Array(1))[0] & 15 >> +c3 / 4).toString(16)
-    );
-  }
-  function isUuid(str) {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(str);
-  }
-
-  // ../stack-shared/dist/esm/schema-fields.js
-  var MAX_IMAGE_SIZE_BASE64_BYTES = 1e6;
-  addMethod(create$6, "nonEmpty", function(message) {
-    return this.test(
-      "non-empty",
-      message ?? (({ path }) => `${path} must not be empty`),
-      (value) => {
-        return value !== "";
-      }
-    );
-  });
-  addMethod(Schema, "hasNested", function(path) {
-    if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
-    const schemaInfo = this.meta()?.stackSchemaInfo;
-    if (schemaInfo?.type === "record") {
-      return schemaInfo.keySchema.isValidSync(path);
-    } else if (schemaInfo?.type === "union") {
-      return schemaInfo.items.some((s4) => s4.hasNested(path));
-    } else {
-      try {
-        reach(this, path);
-        return true;
-      } catch (e16) {
-        if (e16 instanceof Error && e16.message.includes("The schema does not contain the path")) {
-          return false;
-        }
-        throw e16;
-      }
-    }
-  });
-  addMethod(Schema, "getNested", function(path) {
-    if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
-    if (!this.hasNested(path)) throw new StackAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, { path, schema: this });
-    const schemaInfo = this.meta()?.stackSchemaInfo;
-    if (schemaInfo?.type === "record") {
-      return schemaInfo.valueSchema;
-    } else if (schemaInfo?.type === "union") {
-      const schemasWithNested = schemaInfo.items.filter((s4) => s4.hasNested(path));
-      return yupUnion(...schemasWithNested.map((s4) => s4.getNested(path)));
-    } else {
-      return reach(this, path);
-    }
-  });
-  async function yupValidate(schema, obj, options) {
-    try {
-      return await schema.validate(obj, {
-        ...omit(options ?? {}, ["currentUserId"]),
-        context: {
-          ...options?.context,
-          stackAllowUserIdMe: options?.currentUserId !== void 0
-        }
-      });
-    } catch (error) {
-      if (error instanceof ReplaceFieldWithOwnUserId) {
-        const currentUserId = options?.currentUserId;
-        if (!currentUserId) throw new KnownErrors.CannotGetOwnUserWithoutUser();
-        let pathRemaining = error.path;
-        const fieldPath = [];
-        while (pathRemaining.length > 0) {
-          if (pathRemaining.startsWith("[")) {
-            const index3 = pathRemaining.indexOf("]");
-            if (index3 < 0) throw new StackAssertionError("Invalid path");
-            fieldPath.push(JSON.parse(pathRemaining.slice(1, index3)));
-            pathRemaining = pathRemaining.slice(index3 + 1);
-          } else {
-            let dotIndex = pathRemaining.indexOf(".");
-            if (dotIndex === -1) dotIndex = pathRemaining.length;
-            fieldPath.push(pathRemaining.slice(0, dotIndex));
-            pathRemaining = pathRemaining.slice(dotIndex + 1);
-          }
-        }
-        const newObj = deepPlainClone(obj);
-        let it = newObj;
-        for (const field of fieldPath.slice(0, -1)) {
-          if (!Object.prototype.hasOwnProperty.call(it, field)) {
-            throw new StackAssertionError(`Segment ${field} of path ${error.path} not found in object`);
-          }
-          it = it[field];
-        }
-        it[fieldPath[fieldPath.length - 1]] = currentUserId;
-        return await yupValidate(schema, newObj, options);
-      }
-      throw error;
-    }
-  }
-  var _idDescription = (identify) => `The unique identifier of the ${identify}`;
-  var _displayNameDescription = (identify) => `Human-readable ${identify} display name. This is not a unique identifier.`;
-  var _clientMetaDataDescription = (identify) => `Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client.`;
-  var _clientReadOnlyMetaDataDescription = (identify) => `Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status.`;
-  var _profileImageUrlDescription = (identify) => `URL of the profile image for ${identify}. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.`;
-  var _serverMetaDataDescription = (identify) => `Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the ${identify} here.`;
-  var _atMillisDescription = (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`;
-  var _createdAtMillisDescription = (identify) => `The time the ${identify} was created ${_atMillisDescription(identify)}`;
-  var _signedUpAtMillisDescription = `The time the user signed up ${_atMillisDescription}`;
-  var _lastActiveAtMillisDescription = `The time the user was last active ${_atMillisDescription}`;
-  function yupString(...args) {
-    return create$6(...args).meta({ stackSchemaInfo: { type: "string" } });
-  }
-  function yupNumber(...args) {
-    return create$5(...args).meta({ stackSchemaInfo: { type: "number" } });
-  }
-  function yupBoolean(...args) {
-    return create$7(...args).meta({ stackSchemaInfo: { type: "boolean" } });
-  }
-  function _yupMixedInternal(...args) {
-    return create$8(...args);
-  }
-  function yupMixed(...args) {
-    return _yupMixedInternal(...args).meta({ stackSchemaInfo: { type: "mixed" } });
-  }
-  function yupArray(...args) {
-    return create$2(...args).meta({ stackSchemaInfo: { type: "array" } });
-  }
-  function yupTuple(schemas) {
-    if (schemas.length === 0) throw new Error("yupTuple must have at least one schema");
-    return create$1(schemas).meta({ stackSchemaInfo: { type: "tuple", items: schemas } });
-  }
-  function yupObjectWithAutoDefault(...args) {
-    const object2 = create$3(...args).test(
-      "no-unknown-object-properties",
-      ({ path }) => `${path} contains unknown properties`,
-      (value, context) => {
-        if (context.options.context?.noUnknownPathPrefixes?.some((prefix) => context.path.startsWith(prefix))) {
-          if (context.schema.spec.noUnknown !== false) {
-            const availableKeys = new Set(Object.keys(context.schema.fields));
-            const unknownKeys = Object.keys(value ?? {}).filter((key) => !availableKeys.has(key));
-            if (unknownKeys.length > 0) {
-              return context.createError({
-                message: `${context.path || "Object"} contains unknown properties: ${unknownKeys.join(", ")}`,
-                path: context.path,
-                params: { unknownKeys, availableKeys }
-              });
-            }
-          }
-        }
-        return true;
-      }
-    ).meta({ stackSchemaInfo: { type: "object" } });
-    return object2;
-  }
-  function yupObject(...args) {
-    const object2 = yupObjectWithAutoDefault(...args);
-    return object2.default(void 0);
-  }
-  function yupUnion(...args) {
-    if (args.length === 0) throw new Error("yupUnion must have at least one schema");
-    return _yupMixedInternal().meta({ stackSchemaInfo: { type: "union", items: args } }).test("is-one-of", "Invalid value", async (value, context) => {
-      if (value == null) return true;
-      const errors = [];
-      for (const schema of args) {
-        try {
-          await yupValidate(schema, value, context.options);
-          return true;
-        } catch (e16) {
-          errors.push(e16);
-        }
-      }
-      return context.createError({
-        message: deindent`
-        ${context.path} is not matched by any of the provided schemas:
-          ${errors.map((e16, i) => deindent`
-            Schema ${i}:
-              ${e16.errors.join("\n")}
-          `).join("\n")}`,
-        path: context.path
-      });
-    });
-  }
-  function yupRecord(keySchema, valueSchema) {
-    return yupObject().meta({ stackSchemaInfo: { type: "record", keySchema, valueSchema } }).unknown(true).test(
-      "record",
-      "${path} must be a record of valid values",
-      async function(value, context) {
-        if (value == null) return true;
-        const { path, createError } = this;
-        if (typeof value !== "object") {
-          return createError({ message: `${path} must be an object` });
-        }
-        for (const key of Object.keys(value)) {
-          await yupValidate(keySchema, key, context.options);
-          try {
-            await yupValidate(valueSchema, value[key], {
-              ...context.options,
-              context: {
-                ...context.options.context,
-                path: path ? `${path}.${key}` : key
-              }
-            });
-          } catch (e16) {
-            return createError({
-              path: path ? `${path}.${key}` : key,
-              message: e16.message
-            });
-          }
-        }
-        return true;
-      }
-    );
-  }
-  var adaptSchema = yupMixed();
-  var urlSchema = yupString().test({
-    name: "no-spaces",
-    message: (params) => `${params.path} contains spaces`,
-    test: (value) => value == null || !value.includes(" ")
-  }).test({
-    name: "url",
-    message: (params) => `${params.path} is not a valid URL`,
-    test: (value) => value == null || isValidUrl(value)
-  });
-  var wildcardUrlSchema = yupString().test({
-    name: "no-spaces",
-    message: (params) => `${params.path} contains spaces`,
-    test: (value) => value == null || !value.includes(" ")
-  }).test({
-    name: "wildcard-url",
-    message: (params) => `${params.path} is not a valid URL or wildcard URL pattern`,
-    test: (value) => {
-      if (value == null) return true;
-      if (!value.includes("*")) {
-        return isValidUrl(value);
-      }
-      try {
-        const PLACEHOLDER = "wildcard-placeholder";
-        const normalizedUrl = value.replace(/\*/g, PLACEHOLDER);
-        const url = new URL(normalizedUrl);
-        if (url.username.includes(PLACEHOLDER) || url.password.includes(PLACEHOLDER) || url.pathname.includes(PLACEHOLDER) || url.search.includes(PLACEHOLDER) || url.hash.includes(PLACEHOLDER)) {
-          return false;
-        }
-        if (url.protocol !== "http:" && url.protocol !== "https:") {
-          return false;
-        }
-        const hostPattern = url.hostname.split(PLACEHOLDER).join("*");
-        return isValidHostnameWithWildcards(hostPattern);
-      } catch (e16) {
-        return false;
-      }
-    }
-  });
-  var wildcardProtocolAndDomainSchema = wildcardUrlSchema.test({
-    name: "is-protocol-and-domain",
-    message: (params) => `${params.path} must be a protocol and domain (with optional port) without any path, query parameters, or hash`,
-    test: (value) => {
-      if (value == null) return true;
-      try {
-        const PLACEHOLDER = "wildcard-placeholder";
-        const normalized = value.replace(/\*/g, PLACEHOLDER);
-        const url = new URL(normalized);
-        return url.protocol !== "" && url.hostname !== "" && url.pathname === "/" && url.search === "" && url.hash === "";
-      } catch (e16) {
-        return false;
-      }
-    }
-  });
-  var jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
-  var jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
-    if (value == null) return true;
-    try {
-      JSON.parse(value);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  });
-  var jsonStringOrEmptySchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
-    if (!value) return true;
-    try {
-      JSON.parse(value);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  });
-  var base64Schema = yupString().test("is-base64", (params) => `${params.path} is not valid base64`, (value) => {
-    if (value == null) return true;
-    return isBase64(value);
-  });
-  var passwordSchema = yupString().max(70);
-  var intervalSchema = yupTuple([yupNumber().min(0).integer().defined(), yupString().oneOf(["millisecond", "second", "minute", "hour", "day", "week", "month", "year"]).defined()]);
-  var dayIntervalSchema = yupTuple([yupNumber().min(0).integer().defined(), yupString().oneOf(["day", "week", "month", "year"]).defined()]);
-  var intervalOrNeverSchema = yupUnion(intervalSchema.defined(), yupString().oneOf(["never"]).defined());
-  var dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yupString().oneOf(["never"]).defined());
-  var USER_SPECIFIED_ID_PATTERN = /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/;
-  var USER_SPECIFIED_ID_MAX_LENGTH = 63;
-  function getUserSpecifiedIdErrorMessage(idName) {
-    return `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`;
-  }
-  var userSpecifiedIdSchema = (idName) => yupString().max(USER_SPECIFIED_ID_MAX_LENGTH).matches(USER_SPECIFIED_ID_PATTERN, getUserSpecifiedIdErrorMessage(idName));
-  var moneyAmountSchema = (currency) => yupString().test("money-amount", "Invalid money amount", (value, context) => {
-    if (value == null) return true;
-    const regex = /^([0-9]+)(\.([0-9]+))?$/;
-    const match = value.match(regex);
-    if (!match) return context.createError({ message: "Money amount must be in the format of <number> or <number>.<number>" });
-    const whole = match[1];
-    const decimals = match[3];
-    if (decimals && decimals.length > currency.decimals) return context.createError({ message: `Too many decimals; ${currency.code} only has ${currency.decimals} decimals` });
-    if (whole !== "0" && whole.startsWith("0")) return context.createError({ message: "Money amount must not have leading zeros" });
-    return true;
-  });
-  var strictEmailSchema = (message) => yupString().email(message).max(256).matches(/^[^.]+(\.[^.]+)*@.*\.[^.][^.]+$/, message);
-  var emailSchema = yupString().email();
-  var clientOrHigherAuthTypeSchema = yupString().oneOf(["client", "server", "admin"]).defined();
-  var serverOrHigherAuthTypeSchema = yupString().oneOf(["server", "admin"]).defined();
-  var adminAuthTypeSchema = yupString().oneOf(["admin"]).defined();
-  var projectIdSchema = yupString().test((v) => v === void 0 || v === "internal" || isUuid(v)).meta({ openapiField: { description: _idDescription("project"), exampleValue: "e0b52f4d-dece-408c-af49-d23061bb0f8d" } });
-  var projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ openapiField: { description: _idDescription("project branch"), exampleValue: "main" } });
-  var projectDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription("project"), exampleValue: "MyMusic" } });
-  var projectLogoUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: "URL of the logo for the project. This is usually a close to 1:1 image of the company logo.", exampleValue: "https://example.com/logo.png" } });
-  var projectLogoFullUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: "URL of the full logo for the project. This is usually a vertical image with the logo and the company name.", exampleValue: "https://example.com/full-logo.png" } });
-  var projectLogoDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: "URL of the dark mode logo for the project. This is usually a close to 1:1 image of the company logo optimized for dark backgrounds.", exampleValue: "https://example.com/logo-dark.png" } });
-  var projectLogoFullDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: "URL of the dark mode full logo for the project. This is usually a vertical image with the logo and the company name optimized for dark backgrounds.", exampleValue: "https://example.com/full-logo-dark.png" } });
-  var projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: "A human readable description of the project", exampleValue: "A music streaming service" } });
-  var projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription("project"), exampleValue: 163e10 } });
-  var projectIsProductionModeSchema = yupBoolean().meta({ openapiField: { description: "Whether the project is in production mode", exampleValue: true } });
-  var projectConfigIdSchema = yupString().meta({ openapiField: { description: _idDescription("project config"), exampleValue: "d09201f0-54f5-40bd-89ff-6d1815ddad24" } });
-  var projectAllowLocalhostSchema = yupBoolean().meta({ openapiField: { description: "Whether localhost is allowed as a domain for this project. Should only be allowed in development mode", exampleValue: true } });
-  var projectCreateTeamOnSignUpSchema = yupBoolean().meta({ openapiField: { description: "Whether a team should be created for each user that signs up", exampleValue: true } });
-  var projectMagicLinkEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether magic link authentication is enabled for this project", exampleValue: true } });
-  var projectPasskeyEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether passkey authentication is enabled for this project", exampleValue: true } });
-  var projectClientTeamCreationEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether client users can create teams", exampleValue: true } });
-  var projectClientUserDeletionEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether client users can delete their own account from the client", exampleValue: true } });
-  var projectSignUpEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether users can sign up new accounts, or whether they are only allowed to sign in to existing accounts. Regardless of this option, the server API can always create new users with the `POST /users` endpoint.", exampleValue: true } });
-  var projectCredentialEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether email password authentication is enabled for this project", exampleValue: true } });
-  var oauthIdSchema = yupString().oneOf(allProviders).meta({ openapiField: { description: `OAuth provider ID, one of ${allProviders.map((x) => `\`${x}\``).join(", ")}`, exampleValue: "google" } });
-  var oauthEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether the OAuth provider is enabled. If an provider is first enabled, then disabled, it will be shown in the list but with enabled=false", exampleValue: true } });
-  var oauthTypeSchema = yupString().oneOf(["shared", "standard"]).meta({ openapiField: { description: 'OAuth provider type, one of shared, standard. "shared" uses Stack shared OAuth keys and it is only meant for development. "standard" uses your own OAuth keys and will show your logo and company name when signing in with the provider.', exampleValue: "standard" } });
-  var oauthClientIdSchema = yupString().meta({ openapiField: { description: 'OAuth client ID. Needs to be specified when using type="standard"', exampleValue: "google-oauth-client-id" } });
-  var oauthClientSecretSchema = yupString().meta({ openapiField: { description: 'OAuth client secret. Needs to be specified when using type="standard"', exampleValue: "google-oauth-client-secret" } });
-  var oauthFacebookConfigIdSchema = yupString().meta({ openapiField: { description: "The configuration id for Facebook business login (for things like ads and marketing). This is only required if you are using the standard OAuth with Facebook and you are using Facebook business login." } });
-  var oauthMicrosoftTenantIdSchema = yupString().meta({ openapiField: { description: "The Microsoft tenant id for Microsoft directory. This is only required if you are using the standard OAuth with Microsoft and you have an Azure AD tenant." } });
-  var oauthAppleBundleIdsSchema = yupArray(yupString().defined()).meta({ openapiField: { description: "Apple Bundle IDs for native iOS/macOS apps. Required for native Sign In with Apple (in addition to web Apple OAuth which uses the Client ID/Services ID).", exampleValue: ["com.example.ios", "com.example.macos"] } });
-  var oauthAppleBundleIdSchema = yupString().defined().meta({ openapiField: { description: "Apple Bundle ID for native iOS/macOS apps.", exampleValue: "com.example.ios" } });
-  var oauthAccountMergeStrategySchema = yupString().oneOf(["link_method", "raise_error", "allow_duplicates"]).meta({ openapiField: { description: "Determines how to handle OAuth logins that match an existing user by email. `link_method` adds the OAuth method to the existing user. `raise_error` rejects the login with an error. `allow_duplicates` creates a new user.", exampleValue: "link_method" } });
-  var emailTypeSchema = yupString().oneOf(["shared", "standard"]).meta({ openapiField: { description: 'Email provider type, one of shared, standard. "shared" uses Stack shared email provider and it is only meant for development. "standard" uses your own email server and will have your email address as the sender.', exampleValue: "standard" } });
-  var emailSenderNameSchema = yupString().meta({ openapiField: { description: 'Email sender name. Needs to be specified when using type="standard"', exampleValue: "Stack" } });
-  var emailHostSchema = yupString().meta({ openapiField: { description: 'Email host. Needs to be specified when using type="standard"', exampleValue: "smtp.your-domain.com" } });
-  var emailPortSchema = yupNumber().min(0).max(65535).meta({ openapiField: { description: 'Email port. Needs to be specified when using type="standard"', exampleValue: 587 } });
-  var emailUsernameSchema = yupString().meta({ openapiField: { description: 'Email username. Needs to be specified when using type="standard"', exampleValue: "smtp-email" } });
-  var emailSenderEmailSchema = emailSchema.meta({ openapiField: { description: 'Email sender email. Needs to be specified when using type="standard"', exampleValue: "example@your-domain.com" } });
-  var emailPasswordSchema = passwordSchema.meta({ openapiField: { description: 'Email password. Needs to be specified when using type="standard"', exampleValue: "your-email-password" } });
-  var handlerPathSchema = yupString().test("is-handler-path", "Handler path must start with /", (value) => value?.startsWith("/")).meta({ openapiField: { description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /', exampleValue: "/handler" } });
-  var emailThemeSchema = yupString().meta({ openapiField: { description: "Email theme id for the project. Determines the visual style of emails sent by the project." } });
-  var emailThemeListSchema = yupRecord(
-    yupString().uuid(),
-    yupObject({
-      displayName: yupString().meta({ openapiField: { description: "Email theme name", exampleValue: "Default Light" } }).defined(),
-      tsxSource: yupString().meta({ openapiField: { description: "Email theme source code tsx component" } }).defined()
-    })
-  ).meta({ openapiField: { description: "Record of email theme IDs to their display name and source code" } });
-  var templateThemeIdSchema = yupMixed().test((v) => v === void 0 || v === false || v === null || typeof v === "string" && isUuid(v)).meta({ openapiField: { description: "Email theme id for the template" } }).optional();
-  var emailTemplateListSchema = yupRecord(
-    yupString().uuid(),
-    yupObject({
-      displayName: yupString().meta({ openapiField: { description: "Email template name", exampleValue: "Email Verification" } }).defined(),
-      tsxSource: yupString().meta({ openapiField: { description: "Email template source code tsx component" } }).defined(),
-      // themeId can be one of three values:
-      // 1. A valid theme id
-      // 2. false, which means the template uses no theme
-      // 3. undefined/not given, which means the template uses the project's active theme
-      themeId: templateThemeIdSchema
-    })
-  ).meta({ openapiField: { description: "Record of email template IDs to their display name and source code" } });
-  var customDashboardsSchema = yupRecord(
-    yupString().uuid(),
-    yupObject({
-      displayName: yupString().meta({ openapiField: { description: "Custom dashboard name", exampleValue: "User Growth Dashboard" } }).defined(),
-      tsxSource: yupString().meta({ openapiField: { description: "Custom dashboard source code tsx component" } }).defined()
-    })
-  ).meta({ openapiField: { description: "Record of custom dashboard IDs to their display name and source code" } });
-  var customerTypeSchema = yupString().oneOf(["user", "team", "custom"]);
-  var validateHasAtLeastOneSupportedCurrency = (value, context) => {
-    if (!value) return true;
-    const currencies = Object.keys(value).filter((key) => SUPPORTED_CURRENCIES.some((c3) => c3.code === key));
-    if (currencies.length === 0) {
-      return context.createError({ message: "At least one currency is required" });
-    }
-    return true;
-  };
-  var productPriceSchema = yupObject({
-    ...typedFromEntries(SUPPORTED_CURRENCIES.map((currency) => [currency.code, moneyAmountSchema(currency).optional()])),
-    interval: dayIntervalSchema.optional(),
-    serverOnly: yupBoolean(),
-    freeTrial: dayIntervalSchema.optional()
-  }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
-  var priceOrIncludeByDefaultSchema = yupUnion(
-    yupString().oneOf(["include-by-default"]).meta({ openapiField: { description: "Makes this item free and includes it by default for all customers.", exampleValue: "include-by-default" } }),
-    yupRecord(
-      userSpecifiedIdSchema("priceId"),
-      productPriceSchema
-    )
-  );
-  var productSchema = yupObject({
-    displayName: yupString(),
-    productLineId: userSpecifiedIdSchema("productLineId").optional().meta({ openapiField: { description: "The ID of the product line this product belongs to. Within a product line, all products are mutually exclusive unless they are an add-on to another product in the product line.", exampleValue: "product-line-id" } }),
-    isAddOnTo: yupUnion(
-      yupBoolean().isFalse(),
-      yupRecord(
-        userSpecifiedIdSchema("productId"),
-        yupBoolean().isTrue().defined()
-      )
-    ).optional().meta({ openapiField: { description: "The products that this product is an add-on to. If this is set, the customer must already have one of the products in the record to be able to purchase this product.", exampleValue: { "product-id": true } } }),
-    customerType: customerTypeSchema.defined(),
-    freeTrial: dayIntervalSchema.optional(),
-    serverOnly: yupBoolean(),
-    stackable: yupBoolean(),
-    prices: priceOrIncludeByDefaultSchema.defined(),
-    includedItems: yupRecord(
-      userSpecifiedIdSchema("itemId"),
-      yupObject({
-        quantity: yupNumber().defined(),
-        repeat: dayIntervalOrNeverSchema.optional(),
-        expires: yupString().oneOf(["never", "when-purchase-expires", "when-repeated"]).optional()
-      })
-    )
-  });
-  var productMetadataExample = { featureFlag: true, source: "marketing-campaign" };
-  var productClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription("product"), exampleValue: productMetadataExample } });
-  var productClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription("product"), exampleValue: productMetadataExample } });
-  var productServerMetadataSchema = jsonSchema.meta({ openapiField: { description: _serverMetaDataDescription("product"), exampleValue: productMetadataExample } });
-  var productSchemaWithMetadata = productSchema.concat(yupObject({
-    clientMetadata: productClientMetadataSchema.optional(),
-    clientReadOnlyMetadata: productClientReadOnlyMetadataSchema.optional(),
-    serverMetadata: productServerMetadataSchema.optional()
-  }));
-  var inlineProductSchema = yupObject({
-    display_name: yupString().defined(),
-    customer_type: customerTypeSchema.defined(),
-    free_trial: dayIntervalSchema.optional(),
-    server_only: yupBoolean().default(true),
-    stackable: yupBoolean().default(false),
-    prices: yupRecord(
-      userSpecifiedIdSchema("priceId"),
-      yupObject({
-        ...typedFromEntries(SUPPORTED_CURRENCIES.map((currency) => [currency.code, moneyAmountSchema(currency).optional()])),
-        interval: dayIntervalSchema.optional(),
-        free_trial: dayIntervalSchema.optional()
-      }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context))
-    ),
-    included_items: yupRecord(
-      userSpecifiedIdSchema("itemId"),
-      yupObject({
-        quantity: yupNumber(),
-        repeat: dayIntervalOrNeverSchema.optional(),
-        expires: yupString().oneOf(["never", "when-purchase-expires", "when-repeated"]).optional()
-      })
-    ),
-    client_metadata: productClientMetadataSchema.optional(),
-    client_read_only_metadata: productClientReadOnlyMetadataSchema.optional(),
-    server_metadata: productServerMetadataSchema.optional()
-  });
-  var ReplaceFieldWithOwnUserId = class extends Error {
-    constructor(path) {
-      super(`This error should be caught by whoever validated the schema, and the field in the path '${path}' should be replaced with the current user's id. This is a workaround to yup not providing access to the context inside the transform function.`);
-      this.path = path;
-    }
-  };
-  var userIdMeSentinelUuid = "cad564fd-f81b-43f4-b390-98abf3fcc17e";
-  var userIdOrMeSchema = yupString().uuid().transform((v) => {
-    if (v === "me") return userIdMeSentinelUuid;
-    else return v;
-  }).test((v, context) => {
-    if (!("stackAllowUserIdMe" in (context.options.context ?? {}))) throw new StackAssertionError("userIdOrMeSchema is not allowed in this context. Make sure you're using yupValidate from schema-fields.ts to validate, instead of schema.validate(...).");
-    if (!context.options.context?.stackAllowUserIdMe) throw new StackAssertionError("userIdOrMeSchema is not allowed in this context. Make sure you're passing in the currentUserId option in yupValidate.");
-    if (v === userIdMeSentinelUuid) throw new ReplaceFieldWithOwnUserId(context.path);
-    return true;
-  }).meta({ openapiField: { description: "The ID of the user, or the special value `me` for the currently authenticated user", exampleValue: "3241a285-8329-4d69-8f3d-316e08cf140c" } });
-  var userIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription("user"), exampleValue: "3241a285-8329-4d69-8f3d-316e08cf140c" } });
-  var primaryEmailSchema = emailSchema.meta({ openapiField: { description: "Primary email", exampleValue: "johndoe@example.com" } });
-  var primaryEmailAuthEnabledSchema = yupBoolean().meta({ openapiField: { description: "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP", exampleValue: true } });
-  var primaryEmailVerifiedSchema = yupBoolean().meta({ openapiField: { description: "Whether the primary email has been verified to belong to this user", exampleValue: true } });
-  var userDisplayNameSchema = yupString().nullable().max(256).meta({ openapiField: { description: _displayNameDescription("user"), exampleValue: "John Doe" } });
-  var selectedTeamIdSchema = yupString().uuid().meta({ openapiField: { description: "ID of the team currently selected by the user", exampleValue: "team-id" } });
-  var profileImageUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: { description: _profileImageUrlDescription("user"), exampleValue: "https://example.com/image.jpg" } });
-  var signedUpAtMillisSchema = yupNumber().meta({ openapiField: { description: _signedUpAtMillisDescription, exampleValue: 163e10 } });
-  var userClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription("user"), exampleValue: { key: "value" } } });
-  var userClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription("user"), exampleValue: { key: "value" } } });
-  var userServerMetadataSchema = jsonSchema.meta({ openapiField: { description: _serverMetaDataDescription("user"), exampleValue: { key: "value" } } });
-  var userOAuthProviderSchema = yupObject({
-    id: yupString().defined(),
-    type: yupString().oneOf(allProviders).defined(),
-    provider_user_id: yupString().defined()
-  });
-  var userLastActiveAtMillisSchema = yupNumber().nullable().meta({ openapiField: { description: _lastActiveAtMillisDescription, exampleValue: 163e10 } });
-  var userPasskeyAuthEnabledSchema = yupBoolean().meta({ openapiField: { hidden: true, description: "Whether the user has passkeys enabled", exampleValue: false } });
-  var userOtpAuthEnabledSchema = yupBoolean().meta({ openapiField: { hidden: true, description: "Whether the user has OTP/magic link enabled. ", exampleValue: true } });
-  var userOtpAuthEnabledMutationSchema = yupBoolean().meta({ openapiField: { hidden: true, description: "Whether the user has OTP/magic link enabled. Note that only accounts with verified emails can sign-in with OTP.", exampleValue: true } });
-  var userHasPasswordSchema = yupBoolean().meta({ openapiField: { hidden: true, description: "Whether the user has a password set. If the user does not have a password set, they will not be able to sign in with email/password.", exampleValue: true } });
-  var userPasswordMutationSchema = passwordSchema.nullable().meta({ openapiField: { description: "Sets the user's password. Doing so revokes all current sessions.", exampleValue: "my-new-password" } }).max(70);
-  var userPasswordHashMutationSchema = yupString().nonEmpty().meta({ openapiField: { description: "If `password` is not given, sets the user's password hash to the given string in Modular Crypt Format (ex.: `$2a$10$VIhIOofSMqGdGlL4wzE//e.77dAQGqNtF/1dT7bqCrVtQuInWy2qi`). Doing so revokes all current sessions." } });
-  var userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: { description: "Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.", exampleValue: "dG90cC1zZWNyZXQ=" } });
-  var restrictedReasonTypes = ["anonymous", "email_not_verified", "restricted_by_administrator"];
-  var restrictedReasonSchema = yupObject({
-    type: yupString().oneOf(restrictedReasonTypes).defined()
-  });
-  var accessTokenPayloadSchema = yupObject({
-    sub: yupString().defined(),
-    exp: yupNumber().optional(),
-    iat: yupNumber().defined(),
-    iss: yupString().defined(),
-    aud: yupString().defined(),
-    project_id: yupString().defined(),
-    branch_id: yupString().defined(),
-    refresh_token_id: yupString().defined(),
-    role: yupString().oneOf(["authenticated"]).defined(),
-    name: yupString().defined().nullable(),
-    email: yupString().defined().nullable(),
-    email_verified: yupBoolean().defined(),
-    selected_team_id: yupString().defined().nullable(),
-    is_anonymous: yupBoolean().defined(),
-    is_restricted: yupBoolean().defined(),
-    restricted_reason: restrictedReasonSchema.defined().nullable()
-  });
-  var signInEmailSchema = strictEmailSchema(void 0).meta({ openapiField: { description: "The email to sign in with.", exampleValue: "johndoe@example.com" } });
-  var emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: "The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.", exampleValue: "https://example.com/handler/magic-link-callback" } });
-  var emailVerificationCallbackUrlSchema = urlSchema.meta({ openapiField: { description: "The base callback URL to construct a verification link for the verification e-mail. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/contact-channels/verify` endpoint.", exampleValue: "https://example.com/handler/email-verification" } });
-  var accessTokenResponseSchema = yupString().meta({ openapiField: { description: "Short-lived access token that can be used to authenticate the user", exampleValue: "eyJhmMiJB2TO...diI4QT" } });
-  var refreshTokenResponseSchema = yupString().meta({ openapiField: { description: "Long-lived refresh token that can be used to obtain a new access token", exampleValue: "i8ns3aq2...14y" } });
-  var signInResponseSchema = yupObject({
-    refresh_token: refreshTokenResponseSchema.defined(),
-    access_token: accessTokenResponseSchema.defined(),
-    is_new_user: yupBoolean().meta({ openapiField: { description: "Whether the user is a new user", exampleValue: true } }).defined(),
-    user_id: userIdSchema.defined()
-  });
-  var teamSystemPermissions = [
-    "$update_team",
-    "$delete_team",
-    "$read_members",
-    "$remove_members",
-    "$invite_members",
-    "$manage_api_keys"
-  ];
-  var permissionDefinitionIdSchema = yupString().matches(/^\$?[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" and optional "$" at the beginning are allowed').test("is-system-permission", "System permissions must start with a dollar sign", (value, ctx) => {
-    if (!value) return true;
-    if (value.startsWith("$") && !teamSystemPermissions.includes(value)) {
-      return ctx.createError({ message: "Invalid system permission" });
-    }
-    return true;
-  }).meta({ openapiField: { description: `The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, \`:\`, and \`_\` characters, or one of the system permissions: ${teamSystemPermissions.map((x) => `\`${x}\``).join(", ")}`, exampleValue: "read_secret_info" } });
-  var customPermissionDefinitionIdSchema = yupString().matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" are allowed').meta({ openapiField: { description: 'The permission ID used to uniquely identify a permission. Can only contain lowercase letters, numbers, ":", and "_" characters', exampleValue: "read_secret_info" } });
-  var teamPermissionDescriptionSchema = yupString().meta({ openapiField: { description: "A human-readable description of the permission", exampleValue: "Read secret information" } });
-  var containedPermissionIdsSchema = yupArray(permissionDefinitionIdSchema.defined()).meta({ openapiField: { description: "The IDs of the permissions that are contained in this permission", exampleValue: ["read_public_info"] } });
-  var teamIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription("team"), exampleValue: "ad962777-8244-496a-b6a2-e0c6a449c79e" } });
-  var teamDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription("team"), exampleValue: "My Team" } });
-  var teamProfileImageUrlSchema = urlSchema.max(1e6).meta({ openapiField: { description: _profileImageUrlDescription("team"), exampleValue: "https://example.com/image.jpg" } });
-  var teamClientMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientMetaDataDescription("team"), exampleValue: { key: "value" } } });
-  var teamClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: { description: _clientReadOnlyMetaDataDescription("team"), exampleValue: { key: "value" } } });
-  var teamServerMetadataSchema = jsonSchema.meta({ openapiField: { description: _serverMetaDataDescription("team"), exampleValue: { key: "value" } } });
-  var teamCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription("team"), exampleValue: 163e10 } });
-  var teamInvitationEmailSchema = emailSchema.meta({ openapiField: { description: "The email of the user to invite.", exampleValue: "johndoe@example.com" } });
-  var teamInvitationCallbackUrlSchema = urlSchema.meta({ openapiField: { description: "The base callback URL to construct an invite link with. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/team-invitations/accept` endpoint.", exampleValue: "https://example.com/handler/team-invitation" } });
-  var teamCreatorUserIdSchema = userIdOrMeSchema.meta({ openapiField: { description: 'The ID of the creator of the team. If not specified, the user will not be added to the team. Can be either "me" or the ID of the user. Only used on the client side.', exampleValue: "me" } });
-  var teamMemberDisplayNameSchema = yupString().meta({ openapiField: { description: _displayNameDescription("team member") + " Note that this is separate from the display_name of the user.", exampleValue: "John Doe" } });
-  var teamMemberProfileImageUrlSchema = urlSchema.max(1e6).meta({ openapiField: { description: _profileImageUrlDescription("team member"), exampleValue: "https://example.com/image.jpg" } });
-  var contactChannelIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription("contact channel"), exampleValue: "b3d396b8-c574-4c80-97b3-50031675ceb2" } });
-  var contactChannelTypeSchema = yupString().oneOf(["email"]).meta({ openapiField: { description: `The type of the contact channel. Currently only "email" is supported.`, exampleValue: "email" } });
-  var contactChannelValueSchema = yupString().when("type", {
-    is: "email",
-    then: (schema) => schema.email()
-  }).meta({ openapiField: { description: "The value of the contact channel. For email, this should be a valid email address.", exampleValue: "johndoe@example.com" } });
-  var contactChannelUsedForAuthSchema = yupBoolean().meta({ openapiField: { description: "Whether the contact channel is used for authentication. If this is set to `true`, the user will be able to sign in with the contact channel with password or OTP.", exampleValue: true } });
-  var contactChannelIsVerifiedSchema = yupBoolean().meta({ openapiField: { description: "Whether the contact channel has been verified. If this is set to `true`, the contact channel has been verified to belong to the user.", exampleValue: true } });
-  var contactChannelIsPrimarySchema = yupBoolean().meta({ openapiField: { description: "Whether the contact channel is the primary contact channel. If this is set to `true`, it will be used for authentication and notifications by default.", exampleValue: true } });
-  var oauthProviderIdSchema = yupString().uuid().meta({ openapiField: { description: _idDescription("OAuth provider"), exampleValue: "b3d396b8-c574-4c80-97b3-50031675ceb2" } });
-  var oauthProviderEmailSchema = emailSchema.meta({ openapiField: { description: "Email of the OAuth provider. This is used to display and identify the OAuth provider in the UI.", exampleValue: "test@gmail.com" } });
-  var oauthProviderTypeSchema = yupString().oneOf(allProviders).meta({ openapiField: { description: `OAuth provider type, one of ${allProviders.map((x) => `\`${x}\``).join(", ")}`, exampleValue: "google" } });
-  var oauthProviderAllowSignInSchema = yupBoolean().meta({ openapiField: { description: "Whether the user can use this OAuth provider to sign in. Only one OAuth provider per type can have this set to `true`.", exampleValue: true } });
-  var oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ openapiField: { description: "Whether the user can use this OAuth provider as connected account. Multiple OAuth providers per type can have this set to `true`.", exampleValue: true } });
-  var oauthProviderAccountIdSchema = yupString().meta({ openapiField: { description: "Account ID of the OAuth provider. This uniquely identifies the account on the provider side.", exampleValue: "google-account-id-12345" } });
-  var oauthProviderProviderConfigIdSchema = yupString().meta({ openapiField: { description: "Provider config ID of the OAuth provider. This uniquely identifies the provider config on config.json file", exampleValue: "google" } });
-  var basicAuthorizationHeaderSchema = yupString().test("is-basic-authorization-header", 'Authorization header must be in the format "Basic <base64>"', (value) => {
-    if (!value) return true;
-    return decodeBasicAuthorizationHeader(value) !== null;
-  });
-  var neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test("is-authorization-header", "Invalid client_id:client_secret values; did you use the correct values for the integration?", (value) => {
-    if (!value) return true;
-    const [clientId, clientSecret] = decodeBasicAuthorizationHeader(value) ?? throwErr(`Authz header invalid? This should've been validated by basicAuthorizationHeaderSchema: ${value}`);
-    for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || "[]")) {
-      if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
-    }
-    return false;
-  });
-  var branchConfigSourceSchema = yupUnion(
-    yupObject({
-      type: yupString().oneOf(["pushed-from-github"]).defined(),
-      owner: yupString().defined(),
-      repo: yupString().defined(),
-      branch: yupString().defined(),
-      commit_hash: yupString().defined(),
-      config_file_path: yupString().defined()
-    }),
-    yupObject({
-      type: yupString().oneOf(["pushed-from-unknown"]).defined()
-    }),
-    yupObject({
-      type: yupString().oneOf(["unlinked"]).defined()
-    })
-  );
-
-  // ../../node_modules/.pnpm/async-mutex@0.5.0/node_modules/async-mutex/index.mjs
-  var E_TIMEOUT = new Error("timeout while waiting for mutex to become available");
-  var E_ALREADY_LOCKED = new Error("mutex already locked");
-  var E_CANCELED = new Error("request for lock canceled");
-  var __awaiter$2 = function(thisArg, _arguments, P, generator) {
-    function adopt(value) {
-      return value instanceof P ? value : new P(function(resolve) {
-        resolve(value);
-      });
-    }
-    return new (P || (P = Promise))(function(resolve, reject) {
-      function fulfilled(value) {
-        try {
-          step(generator.next(value));
-        } catch (e16) {
-          reject(e16);
-        }
-      }
-      function rejected2(value) {
-        try {
-          step(generator["throw"](value));
-        } catch (e16) {
-          reject(e16);
-        }
-      }
-      function step(result) {
-        result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected2);
-      }
-      step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-  };
-  var Semaphore = class {
-    constructor(_value, _cancelError = E_CANCELED) {
-      this._value = _value;
-      this._cancelError = _cancelError;
-      this._queue = [];
-      this._weightedWaiters = [];
-    }
-    acquire(weight = 1, priority = 0) {
-      if (weight <= 0)
-        throw new Error(`invalid weight ${weight}: must be positive`);
-      return new Promise((resolve, reject) => {
-        const task = { resolve, reject, weight, priority };
-        const i = findIndexFromEnd(this._queue, (other) => priority <= other.priority);
-        if (i === -1 && weight <= this._value) {
-          this._dispatchItem(task);
-        } else {
-          this._queue.splice(i + 1, 0, task);
-        }
-      });
-    }
-    runExclusive(callback_1) {
-      return __awaiter$2(this, arguments, void 0, function* (callback, weight = 1, priority = 0) {
-        const [value, release] = yield this.acquire(weight, priority);
-        try {
-          return yield callback(value);
-        } finally {
-          release();
-        }
-      });
-    }
-    waitForUnlock(weight = 1, priority = 0) {
-      if (weight <= 0)
-        throw new Error(`invalid weight ${weight}: must be positive`);
-      if (this._couldLockImmediately(weight, priority)) {
-        return Promise.resolve();
-      } else {
-        return new Promise((resolve) => {
-          if (!this._weightedWaiters[weight - 1])
-            this._weightedWaiters[weight - 1] = [];
-          insertSorted(this._weightedWaiters[weight - 1], { resolve, priority });
-        });
-      }
-    }
-    isLocked() {
-      return this._value <= 0;
-    }
-    getValue() {
-      return this._value;
-    }
-    setValue(value) {
-      this._value = value;
-      this._dispatchQueue();
-    }
-    release(weight = 1) {
-      if (weight <= 0)
-        throw new Error(`invalid weight ${weight}: must be positive`);
-      this._value += weight;
-      this._dispatchQueue();
-    }
-    cancel() {
-      this._queue.forEach((entry) => entry.reject(this._cancelError));
-      this._queue = [];
-    }
-    _dispatchQueue() {
-      this._drainUnlockWaiters();
-      while (this._queue.length > 0 && this._queue[0].weight <= this._value) {
-        this._dispatchItem(this._queue.shift());
-        this._drainUnlockWaiters();
-      }
-    }
-    _dispatchItem(item) {
-      const previousValue = this._value;
-      this._value -= item.weight;
-      item.resolve([previousValue, this._newReleaser(item.weight)]);
-    }
-    _newReleaser(weight) {
-      let called = false;
-      return () => {
-        if (called)
-          return;
-        called = true;
-        this.release(weight);
-      };
-    }
-    _drainUnlockWaiters() {
-      if (this._queue.length === 0) {
-        for (let weight = this._value; weight > 0; weight--) {
-          const waiters = this._weightedWaiters[weight - 1];
-          if (!waiters)
-            continue;
-          waiters.forEach((waiter) => waiter.resolve());
-          this._weightedWaiters[weight - 1] = [];
-        }
-      } else {
-        const queuedPriority = this._queue[0].priority;
-        for (let weight = this._value; weight > 0; weight--) {
-          const waiters = this._weightedWaiters[weight - 1];
-          if (!waiters)
-            continue;
-          const i = waiters.findIndex((waiter) => waiter.priority <= queuedPriority);
-          (i === -1 ? waiters : waiters.splice(0, i)).forEach((waiter) => waiter.resolve());
-        }
-      }
-    }
-    _couldLockImmediately(weight, priority) {
-      return (this._queue.length === 0 || this._queue[0].priority < priority) && weight <= this._value;
-    }
-  };
-  function insertSorted(a10, v) {
-    const i = findIndexFromEnd(a10, (other) => v.priority <= other.priority);
-    a10.splice(i + 1, 0, v);
-  }
-  function findIndexFromEnd(a10, predicate) {
-    for (let i = a10.length - 1; i >= 0; i--) {
-      if (predicate(a10[i])) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  // ../stack-shared/dist/esm/utils/locks.js
-  var ReadWriteLock = class {
-    constructor() {
-      this.semaphore = new Semaphore(1);
-      this.readers = 0;
-      this.readersMutex = new Semaphore(1);
-    }
-    async withReadLock(callback) {
-      await this._acquireReadLock();
-      try {
-        return await callback();
-      } finally {
-        await this._releaseReadLock();
-      }
-    }
-    async withWriteLock(callback) {
-      await this._acquireWriteLock();
-      try {
-        return await callback();
-      } finally {
-        await this._releaseWriteLock();
-      }
-    }
-    async _acquireReadLock() {
-      await this.readersMutex.acquire();
-      try {
-        this.readers += 1;
-        if (this.readers === 1) {
-          await this.semaphore.acquire();
-        }
-      } finally {
-        this.readersMutex.release();
-      }
-    }
-    async _releaseReadLock() {
-      await this.readersMutex.acquire();
-      try {
-        this.readers -= 1;
-        if (this.readers === 0) {
-          this.semaphore.release();
-        }
-      } finally {
-        this.readersMutex.release();
-      }
-    }
-    async _acquireWriteLock() {
-      await this.semaphore.acquire();
-    }
-    async _releaseWriteLock() {
-      this.semaphore.release();
-    }
-  };
-
-  // ../stack-shared/dist/esm/utils/stores.js
-  var storeLock = new ReadWriteLock();
-
-  // ../stack-shared/dist/esm/utils/maps.js
-  var WeakRefIfAvailable = class {
-    constructor(value) {
-      if (typeof WeakRef === "undefined") {
-        this._ref = { deref: () => value };
-      } else {
-        this._ref = new WeakRef(value);
-      }
-    }
-    deref() {
-      return this._ref.deref();
-    }
-  };
-  var _a;
-  var _b;
-  var IterableWeakMap = class {
-    constructor(entries) {
-      this[_a] = "IterableWeakMap";
-      const mappedEntries = entries?.map((e16) => [e16[0], { value: e16[1], keyRef: new WeakRefIfAvailable(e16[0]) }]);
-      this._weakMap = new WeakMap(mappedEntries ?? []);
-      this._keyRefs = new Set(mappedEntries?.map((e16) => e16[1].keyRef) ?? []);
-    }
-    get(key) {
-      return this._weakMap.get(key)?.value;
-    }
-    set(key, value) {
-      const existing = this._weakMap.get(key);
-      const updated = { value, keyRef: existing?.keyRef ?? new WeakRefIfAvailable(key) };
-      this._weakMap.set(key, updated);
-      this._keyRefs.add(updated.keyRef);
-      return this;
-    }
-    delete(key) {
-      const res = this._weakMap.get(key);
-      if (res) {
-        this._weakMap.delete(key);
-        this._keyRefs.delete(res.keyRef);
-        return true;
-      }
-      return false;
-    }
-    has(key) {
-      return this._weakMap.has(key) && this._keyRefs.has(this._weakMap.get(key).keyRef);
-    }
-    *[(_b = Symbol.iterator, _a = Symbol.toStringTag, _b)]() {
-      for (const keyRef of this._keyRefs) {
-        const key = keyRef.deref();
-        const existing = key ? this._weakMap.get(key) : void 0;
-        if (!key) {
-          this._keyRefs.delete(keyRef);
-        } else if (existing) {
-          yield [key, existing.value];
-        }
-      }
-    }
-  };
-  var _a2;
-  var _b2;
-  var MaybeWeakMap = class {
-    constructor(entries) {
-      this[_a2] = "MaybeWeakMap";
-      const entriesArray = [...entries ?? []];
-      this._primitiveMap = new Map(entriesArray.filter((e16) => !this._isAllowedInWeakMap(e16[0])));
-      this._weakMap = new IterableWeakMap(entriesArray.filter((e16) => this._isAllowedInWeakMap(e16[0])));
-    }
-    _isAllowedInWeakMap(key) {
-      return typeof key === "object" && key !== null || typeof key === "symbol" && Symbol.keyFor(key) === void 0;
-    }
-    get(key) {
-      if (this._isAllowedInWeakMap(key)) {
-        return this._weakMap.get(key);
-      } else {
-        return this._primitiveMap.get(key);
-      }
-    }
-    set(key, value) {
-      if (this._isAllowedInWeakMap(key)) {
-        this._weakMap.set(key, value);
-      } else {
-        this._primitiveMap.set(key, value);
-      }
-      return this;
-    }
-    delete(key) {
-      if (this._isAllowedInWeakMap(key)) {
-        return this._weakMap.delete(key);
-      } else {
-        return this._primitiveMap.delete(key);
-      }
-    }
-    has(key) {
-      if (this._isAllowedInWeakMap(key)) {
-        return this._weakMap.has(key);
-      } else {
-        return this._primitiveMap.has(key);
-      }
-    }
-    *[(_b2 = Symbol.iterator, _a2 = Symbol.toStringTag, _b2)]() {
-      yield* this._primitiveMap;
-      yield* this._weakMap;
-    }
-  };
-  var _a3;
-  var _b3;
-  var DependenciesMap = class {
-    constructor() {
-      this._inner = { map: new MaybeWeakMap(), hasValue: false, value: void 0 };
-      this[_a3] = "DependenciesMap";
-    }
-    _valueToResult(inner) {
-      if (inner.hasValue) {
-        return Result.ok(inner.value);
-      } else {
-        return Result.error(void 0);
-      }
-    }
-    _unwrapFromInner(dependencies, inner) {
-      if (dependencies.length === 0) {
-        return this._valueToResult(inner);
-      } else {
-        const [key, ...rest] = dependencies;
-        const newInner = inner.map.get(key);
-        if (!newInner) {
-          return Result.error(void 0);
-        }
-        return this._unwrapFromInner(rest, newInner);
-      }
-    }
-    _setInInner(dependencies, value, inner) {
-      if (dependencies.length === 0) {
-        const res = this._valueToResult(inner);
-        if (value.status === "ok") {
-          inner.hasValue = true;
-          inner.value = value.data;
-        } else {
-          inner.hasValue = false;
-          inner.value = void 0;
-        }
-        return res;
-      } else {
-        const [key, ...rest] = dependencies;
-        let newInner = inner.map.get(key);
-        if (!newInner) {
-          inner.map.set(key, newInner = { map: new MaybeWeakMap(), hasValue: false, value: void 0 });
-        }
-        return this._setInInner(rest, value, newInner);
-      }
-    }
-    *_iterateInner(dependencies, inner) {
-      if (inner.hasValue) {
-        yield [dependencies, inner.value];
-      }
-      for (const [key, value] of inner.map) {
-        yield* this._iterateInner([...dependencies, key], value);
-      }
-    }
-    get(dependencies) {
-      return Result.or(this._unwrapFromInner(dependencies, this._inner), void 0);
-    }
-    set(dependencies, value) {
-      this._setInInner(dependencies, Result.ok(value), this._inner);
-      return this;
-    }
-    delete(dependencies) {
-      return this._setInInner(dependencies, Result.error(void 0), this._inner).status === "ok";
-    }
-    has(dependencies) {
-      return this._unwrapFromInner(dependencies, this._inner).status === "ok";
-    }
-    clear() {
-      this._inner = { map: new MaybeWeakMap(), hasValue: false, value: void 0 };
-    }
-    *[(_b3 = Symbol.iterator, _a3 = Symbol.toStringTag, _b3)]() {
-      yield* this._iterateInner([], this._inner);
-    }
-  };
-
-  // ../stack-shared/dist/esm/utils/promises.js
-  var neverResolvePromise = pending2(new Promise(() => {
-  }));
-  function pending2(promise, options = {}) {
-    const res = promise.then(
-      (value) => {
-        res.status = "fulfilled";
-        res.value = value;
-        return value;
-      },
-      (actualReason) => {
-        res.status = "rejected";
-        res.reason = actualReason;
-        throw actualReason;
-      }
-    );
-    res.status = "pending";
-    return res;
-  }
-  function concatStacktracesIfRejected(promise) {
-    const currentError = new Error();
-    promise.catch((error) => {
-      if (error instanceof Error) {
-        concatStacktraces(error, currentError);
-      } else {
-      }
-    });
-  }
-  async function wait(ms) {
-    if (!Number.isFinite(ms) || ms < 0) {
-      throw new StackAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
-    }
-    if (ms >= 2 ** 31) {
-      throw new StackAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
-    }
-    return await new Promise((resolve) => setTimeout(resolve, ms));
-  }
-  function runAsynchronouslyWithAlert(...args) {
-    return runAsynchronously(
-      args[0],
-      {
-        ...args[1],
-        onError: (error) => {
-          if (KnownError.isKnownError(error) && typeof process !== "undefined" && "production"?.includes("production")) {
-            alert(error.message);
-          } else {
-            alert(`An unhandled error occurred. Please ${false ? `check the browser console for the full error.` : "report this to the developer."}
-
-${error}`);
-          }
-          args[1]?.onError?.(error);
-        }
-      },
-      ...args.slice(2)
-    );
-  }
-  function runAsynchronously(promiseOrFunc, options = {}) {
-    if (typeof promiseOrFunc === "function") {
-      promiseOrFunc = promiseOrFunc();
-    }
-    if (promiseOrFunc) {
-      concatStacktracesIfRejected(promiseOrFunc);
-      promiseOrFunc.catch((error) => {
-        options.onError?.(error);
-        const newError = new StackAssertionError(
-          "Uncaught error in asynchronous function: " + errorToNiceString(error),
-          { cause: error }
-        );
-        if (!options.noErrorLogging) {
-          captureError("runAsynchronously", newError);
-        }
-      });
-    }
-  }
-
-  // ../stack-shared/dist/esm/utils/react.js
-  function forwardRefIfNeeded(render) {
-    const version = import_react3.default.version;
-    const major = parseInt(version.split(".")[0]);
-    if (major < 19) {
-      return import_react3.default.forwardRef(render);
-    } else {
-      return (props) => render(props, props.ref);
-    }
-  }
-  function useRefState(initialValue) {
-    const lazyInitRef = import_react3.default.useRef(null);
-    if (lazyInitRef.current === null) {
-      lazyInitRef.current = {
-        v: typeof initialValue === "function" ? initialValue() : initialValue
-      };
-    }
-    const resolvedInitialValue = lazyInitRef.current.v;
-    const [, setState] = import_react3.default.useState(() => resolvedInitialValue);
-    const ref = import_react3.default.useRef(resolvedInitialValue);
-    const setValue = import_react3.default.useCallback((updater) => {
-      const value = typeof updater === "function" ? updater(ref.current) : updater;
-      ref.current = value;
-      setState(value);
-    }, []);
-    const res = import_react3.default.useMemo(() => ({
-      get current() {
-        return ref.current;
-      },
-      set: setValue
-    }), [setValue]);
-    return res;
-  }
-  function mapRefState(refState, mapper, reverseMapper) {
-    let last = null;
-    return {
-      get current() {
-        const input = refState.current;
-        if (last === null || input !== last[0]) {
-          last = [input, mapper(input)];
-        }
-        return last[1];
-      },
-      set(updater) {
-        const value = typeof updater === "function" ? updater(this.current) : updater;
-        refState.set(reverseMapper(refState.current, value));
-      }
-    };
-  }
-
-  // ../../node_modules/.pnpm/@radix-ui+react-icons@1.3.1_react@19.2.1/node_modules/@radix-ui/react-icons/dist/react-icons.esm.js
-  var import_react4 = __toESM(require_react());
-  function _objectWithoutPropertiesLoose(source, excluded) {
-    if (source == null) return {};
-    var target = {};
-    var sourceKeys = Object.keys(source);
-    var key, i;
-    for (i = 0; i < sourceKeys.length; i++) {
-      key = sourceKeys[i];
-      if (excluded.indexOf(key) >= 0) continue;
-      target[key] = source[key];
-    }
-    return target;
-  }
-  var _excluded$1r = ["color"];
-  var Cross2Icon = /* @__PURE__ */ (0, import_react4.forwardRef)(function(_ref2, forwardedRef) {
-    var _ref$color = _ref2.color, color = _ref$color === void 0 ? "currentColor" : _ref$color, props = _objectWithoutPropertiesLoose(_ref2, _excluded$1r);
-    return (0, import_react4.createElement)("svg", Object.assign({
-      width: "15",
-      height: "15",
-      viewBox: "0 0 15 15",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg"
-    }, props, {
-      ref: forwardedRef
-    }), (0, import_react4.createElement)("path", {
-      d: "M11.7816 4.03157C12.0062 3.80702 12.0062 3.44295 11.7816 3.2184C11.5571 2.99385 11.193 2.99385 10.9685 3.2184L7.50005 6.68682L4.03164 3.2184C3.80708 2.99385 3.44301 2.99385 3.21846 3.2184C2.99391 3.44295 2.99391 3.80702 3.21846 4.03157L6.68688 7.49999L3.21846 10.9684C2.99391 11.193 2.99391 11.557 3.21846 11.7816C3.44301 12.0061 3.80708 12.0061 4.03164 11.7816L7.50005 8.31316L10.9685 11.7816C11.193 12.0061 11.5571 12.0061 11.7816 11.7816C12.0062 11.557 12.0062 11.193 11.7816 10.9684L8.31322 7.49999L11.7816 4.03157Z",
-      fill: color,
-      fillRule: "evenodd",
-      clipRule: "evenodd"
-    }));
-  });
-  var _excluded$3E = ["color"];
-  var ReloadIcon = /* @__PURE__ */ (0, import_react4.forwardRef)(function(_ref2, forwardedRef) {
-    var _ref$color = _ref2.color, color = _ref$color === void 0 ? "currentColor" : _ref$color, props = _objectWithoutPropertiesLoose(_ref2, _excluded$3E);
-    return (0, import_react4.createElement)("svg", Object.assign({
-      width: "15",
-      height: "15",
-      viewBox: "0 0 15 15",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg"
-    }, props, {
-      ref: forwardedRef
-    }), (0, import_react4.createElement)("path", {
-      d: "M1.84998 7.49998C1.84998 4.66458 4.05979 1.84998 7.49998 1.84998C10.2783 1.84998 11.6515 3.9064 12.2367 5H10.5C10.2239 5 10 5.22386 10 5.5C10 5.77614 10.2239 6 10.5 6H13.5C13.7761 6 14 5.77614 14 5.5V2.5C14 2.22386 13.7761 2 13.5 2C13.2239 2 13 2.22386 13 2.5V4.31318C12.2955 3.07126 10.6659 0.849976 7.49998 0.849976C3.43716 0.849976 0.849976 4.18537 0.849976 7.49998C0.849976 10.8146 3.43716 14.15 7.49998 14.15C9.44382 14.15 11.0622 13.3808 12.2145 12.2084C12.8315 11.5806 13.3133 10.839 13.6418 10.0407C13.7469 9.78536 13.6251 9.49315 13.3698 9.38806C13.1144 9.28296 12.8222 9.40478 12.7171 9.66014C12.4363 10.3425 12.0251 10.9745 11.5013 11.5074C10.5295 12.4963 9.16504 13.15 7.49998 13.15C4.05979 13.15 1.84998 10.3354 1.84998 7.49998Z",
-      fill: color,
-      fillRule: "evenodd",
-      clipRule: "evenodd"
-    }));
-  });
-
-  // ../../node_modules/.pnpm/@radix-ui+react-slot@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-slot/dist/index.mjs
-  var React4 = __toESM(require_react(), 1);
-
-  // ../../node_modules/.pnpm/@radix-ui+react-compose-refs@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-compose-refs/dist/index.mjs
-  var React3 = __toESM(require_react(), 1);
-  function setRef(ref, value) {
-    if (typeof ref === "function") {
-      ref(value);
-    } else if (ref !== null && ref !== void 0) {
-      ref.current = value;
-    }
-  }
-  function composeRefs(...refs) {
-    return (node) => refs.forEach((ref) => setRef(ref, node));
-  }
-  function useComposedRefs(...refs) {
-    return React3.useCallback(composeRefs(...refs), refs);
-  }
-
-  // ../../node_modules/.pnpm/@radix-ui+react-slot@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-slot/dist/index.mjs
-  var Slot = React4.forwardRef((props, forwardedRef) => {
-    const { children, ...slotProps } = props;
-    const childrenArray = React4.Children.toArray(children);
-    const slottable = childrenArray.find(isSlottable);
-    if (slottable) {
-      const newElement = slottable.props.children;
-      const newChildren = childrenArray.map((child) => {
-        if (child === slottable) {
-          if (React4.Children.count(newElement) > 1) return React4.Children.only(null);
-          return React4.isValidElement(newElement) ? newElement.props.children : null;
-        } else {
-          return child;
-        }
-      });
-      return /* @__PURE__ */ jsx(SlotClone, { ...slotProps, ref: forwardedRef, children: React4.isValidElement(newElement) ? React4.cloneElement(newElement, void 0, newChildren) : null });
-    }
-    return /* @__PURE__ */ jsx(SlotClone, { ...slotProps, ref: forwardedRef, children });
-  });
-  Slot.displayName = "Slot";
-  var SlotClone = React4.forwardRef((props, forwardedRef) => {
-    const { children, ...slotProps } = props;
-    if (React4.isValidElement(children)) {
-      const childrenRef = getElementRef(children);
-      return React4.cloneElement(children, {
-        ...mergeProps(slotProps, children.props),
-        // @ts-ignore
-        ref: forwardedRef ? composeRefs(forwardedRef, childrenRef) : childrenRef
-      });
-    }
-    return React4.Children.count(children) > 1 ? React4.Children.only(null) : null;
-  });
-  SlotClone.displayName = "SlotClone";
-  var Slottable = ({ children }) => {
-    return /* @__PURE__ */ jsx(Fragment9, { children });
-  };
-  function isSlottable(child) {
-    return React4.isValidElement(child) && child.type === Slottable;
-  }
-  function mergeProps(slotProps, childProps) {
-    const overrideProps = { ...childProps };
-    for (const propName in childProps) {
-      const slotPropValue = slotProps[propName];
-      const childPropValue = childProps[propName];
-      const isHandler = /^on[A-Z]/.test(propName);
-      if (isHandler) {
-        if (slotPropValue && childPropValue) {
-          overrideProps[propName] = (...args) => {
-            childPropValue(...args);
-            slotPropValue(...args);
-          };
-        } else if (slotPropValue) {
-          overrideProps[propName] = slotPropValue;
-        }
-      } else if (propName === "style") {
-        overrideProps[propName] = { ...slotPropValue, ...childPropValue };
-      } else if (propName === "className") {
-        overrideProps[propName] = [slotPropValue, childPropValue].filter(Boolean).join(" ");
-      }
-    }
-    return { ...slotProps, ...overrideProps };
-  }
-  function getElementRef(element) {
-    let getter2 = Object.getOwnPropertyDescriptor(element.props, "ref")?.get;
-    let mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
-    if (mayWarn) {
-      return element.ref;
-    }
-    getter2 = Object.getOwnPropertyDescriptor(element, "ref")?.get;
-    mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
-    if (mayWarn) {
-      return element.props.ref;
-    }
-    return element.props.ref || element.ref;
-  }
-
-  // ../stack-shared/dist/esm/hooks/use-async-callback.js
-  var import_react5 = __toESM(require_react());
-  function useAsyncCallback(callback, deps) {
-    const [error, setError] = import_react5.default.useState(void 0);
-    const [loadingCount, setLoadingCount] = import_react5.default.useState(0);
-    const cb = import_react5.default.useCallback(
-      async (...args) => {
-        setLoadingCount((c3) => c3 + 1);
-        try {
-          return await callback(...args);
-        } catch (e16) {
-          setError(e16);
-          throw e16;
-        } finally {
-          setLoadingCount((c3) => c3 - 1);
-        }
-      },
-      deps
-    );
-    return [cb, loadingCount > 0, error];
-  }
 
   // ../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
   function r5(e16) {
@@ -9267,9 +3748,4860 @@ ${error}`);
     return twMerge(clsx(inputs));
   }
 
+  // ../stack-shared/dist/esm/utils/react.js
+  var import_react3 = __toESM(require_react());
+
+  // ../stack-shared/dist/esm/utils/results.js
+  var Result = {
+    fromThrowing,
+    fromThrowingAsync,
+    fromPromise: promiseToResult,
+    ok(data) {
+      return {
+        status: "ok",
+        data
+      };
+    },
+    error(error) {
+      return {
+        status: "error",
+        error
+      };
+    },
+    map: mapResult,
+    or: (result, fallback) => {
+      return result.status === "ok" ? result.data : fallback;
+    },
+    orThrow: (result) => {
+      if (result.status === "error") throw result.error;
+      return result.data;
+    },
+    orThrowAsync: async (result) => {
+      return Result.orThrow(await result);
+    },
+    retry
+  };
+  var AsyncResult = {
+    fromThrowing,
+    fromPromise: promiseToResult,
+    ok: Result.ok,
+    error: Result.error,
+    pending: pending$1,
+    map: mapResult,
+    or: (result, fallback) => {
+      if (result.status === "pending") return fallback;
+      return Result.or(result, fallback);
+    },
+    orThrow: (result) => {
+      if (result.status === "pending") throw new Error("Result still pending");
+      return Result.orThrow(result);
+    },
+    retry
+  };
+  function pending$1(progress) {
+    return {
+      status: "pending",
+      progress
+    };
+  }
+  async function promiseToResult(promise) {
+    try {
+      const value = await promise;
+      return Result.ok(value);
+    } catch (error) {
+      return Result.error(error);
+    }
+  }
+  function fromThrowing(fn) {
+    try {
+      return Result.ok(fn());
+    } catch (error) {
+      return Result.error(error);
+    }
+  }
+  async function fromThrowingAsync(fn) {
+    try {
+      return Result.ok(await fn());
+    } catch (error) {
+      return Result.error(error);
+    }
+  }
+  function mapResult(result, fn) {
+    if (result.status === "error") return {
+      status: "error",
+      error: result.error
+    };
+    if (result.status === "pending") return {
+      status: "pending",
+      ..."progress" in result ? { progress: result.progress } : {}
+    };
+    return Result.ok(fn(result.data));
+  }
+  var RetryError = class extends AggregateError {
+    constructor(errors) {
+      const strings = errors.map((e16) => nicify(e16));
+      const isAllSame = strings.length > 1 && strings.every((s4) => s4 === strings[0]);
+      super(errors, deindent`
+      Error after ${errors.length} attempts.
+      
+      ${isAllSame ? deindent`
+        Attempts 1-${errors.length}:
+          ${strings[0]}
+      ` : strings.map((s4, i) => deindent`
+          Attempt ${i + 1}:
+            ${s4}
+        `).join("\n\n")}
+      `, { cause: errors[errors.length - 1] });
+      this.errors = errors;
+      this.name = "RetryError";
+    }
+    get attempts() {
+      return this.errors.length;
+    }
+  };
+  RetryError.prototype.name = "RetryError";
+  async function retry(fn, totalAttempts, { exponentialDelayBase = 1e3 } = {}) {
+    const errors = [];
+    for (let i = 0; i < totalAttempts; i++) {
+      const res = await fn(i);
+      if (res.status === "ok") return Object.assign(Result.ok(res.data), { attempts: i + 1 });
+      else {
+        errors.push(res.error);
+        if (i < totalAttempts - 1) await wait((Math.random() + 0.5) * exponentialDelayBase * 2 ** i);
+      }
+    }
+    return Object.assign(Result.error(new RetryError(errors)), { attempts: totalAttempts });
+  }
+
+  // ../stack-shared/dist/esm/known-errors.js
+  var KnownError = class extends StatusError {
+    constructor(statusCode, humanReadableMessage, details) {
+      super(statusCode, humanReadableMessage);
+      this.statusCode = statusCode;
+      this.humanReadableMessage = humanReadableMessage;
+      this.details = details;
+      this.__stackKnownErrorBrand = "stack-known-error-brand-sentinel";
+      this.name = "KnownError";
+    }
+    static isKnownError(error) {
+      return typeof error === "object" && error !== null && "__stackKnownErrorBrand" in error && error.__stackKnownErrorBrand === "stack-known-error-brand-sentinel";
+    }
+    getBody() {
+      return new TextEncoder().encode(JSON.stringify(this.toDescriptiveJson(), void 0, 2));
+    }
+    getHeaders() {
+      return {
+        "Content-Type": ["application/json; charset=utf-8"],
+        "X-Stack-Known-Error": [this.errorCode]
+      };
+    }
+    toDescriptiveJson() {
+      return {
+        code: this.errorCode,
+        ...this.details ? { details: this.details } : {},
+        error: this.humanReadableMessage
+      };
+    }
+    get errorCode() {
+      return this.constructor.errorCode ?? throwErr(`Can't find error code for this KnownError. Is its constructor a KnownErrorConstructor? ${this}`);
+    }
+    static constructorArgsFromJson(json) {
+      return [
+        400,
+        json.message,
+        json
+      ];
+    }
+    static fromJson(json) {
+      for (const [_, KnownErrorType] of Object.entries(KnownErrors)) if (json.code === KnownErrorType.prototype.errorCode) return new KnownErrorType(...KnownErrorType.constructorArgsFromJson(json));
+      throw new Error(`An error occurred. Please update your version of the Stack Auth SDK. ${json.code}: ${json.message}`);
+    }
+  };
+  function createKnownErrorConstructor(SuperClass, errorCode, create, constructorArgsFromJson) {
+    const createFn = create === "inherit" ? identityArgs : create;
+    const constructorArgsFromJsonFn = constructorArgsFromJson === "inherit" ? SuperClass.constructorArgsFromJson : constructorArgsFromJson;
+    const _KnownErrorImpl = class _KnownErrorImpl extends SuperClass {
+      constructor(...args) {
+        super(...createFn(...args));
+        this.name = `KnownError<${errorCode}>`;
+        this.constructorArgs = args;
+      }
+      static constructorArgsFromJson(json) {
+        return constructorArgsFromJsonFn(json.details);
+      }
+      static isInstance(error) {
+        if (!KnownError.isKnownError(error)) return false;
+        let current = error;
+        while (true) {
+          current = Object.getPrototypeOf(current);
+          if (!current) break;
+          if ("errorCode" in current.constructor && current.constructor.errorCode === errorCode) return true;
+        }
+        return false;
+      }
+    };
+    _KnownErrorImpl.errorCode = errorCode;
+    let KnownErrorImpl = _KnownErrorImpl;
+    return KnownErrorImpl;
+  }
+  var UnsupportedError = createKnownErrorConstructor(KnownError, "UNSUPPORTED_ERROR", (originalErrorCode) => [
+    500,
+    `An error occurred that is not currently supported (possibly because it was added in a version of Stack that is newer than this client). The original unsupported error code was: ${originalErrorCode}`,
+    { originalErrorCode }
+  ], (json) => [json?.originalErrorCode ?? throwErr("originalErrorCode not found in UnsupportedError details")]);
+  var BodyParsingError = createKnownErrorConstructor(KnownError, "BODY_PARSING_ERROR", (message) => [400, message], (json) => [json.message]);
+  var SchemaError = createKnownErrorConstructor(KnownError, "SCHEMA_ERROR", (message) => [
+    400,
+    message || throwErr("SchemaError requires a message"),
+    { message }
+  ], (json) => [json.message]);
+  var AllOverloadsFailed = createKnownErrorConstructor(KnownError, "ALL_OVERLOADS_FAILED", (overloadErrors) => [
+    400,
+    deindent`
+      This endpoint has multiple overloads, but they all failed to process the request.
+
+        ${overloadErrors.map((e16, i) => deindent`
+          Overload ${i + 1}: ${JSON.stringify(e16, void 0, 2)}
+        `).join("\n\n")}
+    `,
+    { overload_errors: overloadErrors }
+  ], (json) => [json?.overload_errors ?? throwErr("overload_errors not found in AllOverloadsFailed details")]);
+  var ProjectAuthenticationError = createKnownErrorConstructor(KnownError, "PROJECT_AUTHENTICATION_ERROR", "inherit", "inherit");
+  var InvalidProjectAuthentication = createKnownErrorConstructor(ProjectAuthenticationError, "INVALID_PROJECT_AUTHENTICATION", "inherit", "inherit");
+  var ProjectKeyWithoutAccessType = createKnownErrorConstructor(InvalidProjectAuthentication, "PROJECT_KEY_WITHOUT_ACCESS_TYPE", () => [400, "Either an API key or an admin access token was provided, but the x-stack-access-type header is missing. Set it to 'client', 'server', or 'admin' as appropriate."], () => []);
+  var InvalidAccessType = createKnownErrorConstructor(InvalidProjectAuthentication, "INVALID_ACCESS_TYPE", (accessType) => [400, `The x-stack-access-type header must be 'client', 'server', or 'admin', but was '${accessType}'.`], (json) => [json?.accessType ?? throwErr("accessType not found in InvalidAccessType details")]);
+  var AccessTypeWithoutProjectId = createKnownErrorConstructor(InvalidProjectAuthentication, "ACCESS_TYPE_WITHOUT_PROJECT_ID", (accessType) => [
+    400,
+    deindent`
+      The x-stack-access-type header was '${accessType}', but the x-stack-project-id header was not provided.
+      
+      For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+    `,
+    { request_type: accessType }
+  ], (json) => [json.request_type]);
+  var AccessTypeRequired = createKnownErrorConstructor(InvalidProjectAuthentication, "ACCESS_TYPE_REQUIRED", () => [400, deindent`
+      You must specify an access level for this Stack project. Make sure project API keys are provided (eg. x-stack-publishable-client-key) and you set the x-stack-access-type header to 'client', 'server', or 'admin'.
+      
+      For more information, see the docs on REST API authentication: https://docs.stack-auth.com/rest-api/overview#authentication
+    `], () => []);
+  var InsufficientAccessType = createKnownErrorConstructor(InvalidProjectAuthentication, "INSUFFICIENT_ACCESS_TYPE", (actualAccessType, allowedAccessTypes) => [
+    401,
+    `The x-stack-access-type header must be ${allowedAccessTypes.map((s4) => `'${s4}'`).join(" or ")}, but was '${actualAccessType}'.`,
+    {
+      actual_access_type: actualAccessType,
+      allowed_access_types: allowedAccessTypes
+    }
+  ], (json) => [json.actual_access_type, json.allowed_access_types]);
+  var InvalidPublishableClientKey = createKnownErrorConstructor(InvalidProjectAuthentication, "INVALID_PUBLISHABLE_CLIENT_KEY", (projectId) => [
+    401,
+    `The publishable key is not valid for the project ${JSON.stringify(projectId)}. Does the project and/or the key exist?`,
+    { project_id: projectId }
+  ], (json) => [json.project_id]);
+  var InvalidSecretServerKey = createKnownErrorConstructor(InvalidProjectAuthentication, "INVALID_SECRET_SERVER_KEY", (projectId) => [
+    401,
+    `The secret server key is not valid for the project ${JSON.stringify(projectId)}. Does the project and/or the key exist?`,
+    { project_id: projectId }
+  ], (json) => [json.project_id]);
+  var InvalidSuperSecretAdminKey = createKnownErrorConstructor(InvalidProjectAuthentication, "INVALID_SUPER_SECRET_ADMIN_KEY", (projectId) => [
+    401,
+    `The super secret admin key is not valid for the project ${JSON.stringify(projectId)}. Does the project and/or the key exist?`,
+    { project_id: projectId }
+  ], (json) => [json.project_id]);
+  var InvalidAdminAccessToken = createKnownErrorConstructor(InvalidProjectAuthentication, "INVALID_ADMIN_ACCESS_TOKEN", "inherit", "inherit");
+  var UnparsableAdminAccessToken = createKnownErrorConstructor(InvalidAdminAccessToken, "UNPARSABLE_ADMIN_ACCESS_TOKEN", () => [401, "Admin access token is not parsable."], () => []);
+  var AdminAccessTokenExpired = createKnownErrorConstructor(InvalidAdminAccessToken, "ADMIN_ACCESS_TOKEN_EXPIRED", (expiredAt) => [
+    401,
+    `Admin access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}`,
+    { expired_at_millis: expiredAt?.getTime() ?? null }
+  ], (json) => [json.expired_at_millis ? new Date(json.expired_at_millis) : void 0]);
+  var InvalidProjectForAdminAccessToken = createKnownErrorConstructor(InvalidAdminAccessToken, "INVALID_PROJECT_FOR_ADMIN_ACCESS_TOKEN", () => [401, "Admin access tokens must be created on the internal project."], () => []);
+  var AdminAccessTokenIsNotAdmin = createKnownErrorConstructor(InvalidAdminAccessToken, "ADMIN_ACCESS_TOKEN_IS_NOT_ADMIN", () => [401, "Admin access token does not have the required permissions to access this project."], () => []);
+  var ProjectAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationError, "PROJECT_AUTHENTICATION_REQUIRED", "inherit", "inherit");
+  var ClientAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationRequired, "CLIENT_AUTHENTICATION_REQUIRED", () => [401, "The publishable client key must be provided."], () => []);
+  var PublishableClientKeyRequiredForProject = createKnownErrorConstructor(ProjectAuthenticationRequired, "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT", (projectId) => [
+    401,
+    "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+    { project_id: projectId ?? null }
+  ], (json) => [json.project_id ?? void 0]);
+  var ServerAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationRequired, "SERVER_AUTHENTICATION_REQUIRED", () => [401, "The secret server key must be provided."], () => []);
+  var ClientOrServerAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationRequired, "CLIENT_OR_SERVER_AUTHENTICATION_REQUIRED", () => [401, "Either the publishable client key or the secret server key must be provided."], () => []);
+  var ClientOrAdminAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationRequired, "CLIENT_OR_ADMIN_AUTHENTICATION_REQUIRED", () => [401, "Either the publishable client key or the super secret admin key must be provided."], () => []);
+  var ClientOrServerOrAdminAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationRequired, "CLIENT_OR_SERVER_OR_ADMIN_AUTHENTICATION_REQUIRED", () => [401, "Either the publishable client key, the secret server key, or the super secret admin key must be provided."], () => []);
+  var AdminAuthenticationRequired = createKnownErrorConstructor(ProjectAuthenticationRequired, "ADMIN_AUTHENTICATION_REQUIRED", () => [401, "The super secret admin key must be provided."], () => []);
+  var ExpectedInternalProject = createKnownErrorConstructor(ProjectAuthenticationError, "EXPECTED_INTERNAL_PROJECT", () => [401, "The project ID is expected to be internal."], () => []);
+  var SessionAuthenticationError = createKnownErrorConstructor(KnownError, "SESSION_AUTHENTICATION_ERROR", "inherit", "inherit");
+  var InvalidSessionAuthentication = createKnownErrorConstructor(SessionAuthenticationError, "INVALID_SESSION_AUTHENTICATION", "inherit", "inherit");
+  var InvalidAccessToken = createKnownErrorConstructor(InvalidSessionAuthentication, "INVALID_ACCESS_TOKEN", "inherit", "inherit");
+  var UnparsableAccessToken = createKnownErrorConstructor(InvalidAccessToken, "UNPARSABLE_ACCESS_TOKEN", () => [401, "Access token is not parsable."], () => []);
+  var AccessTokenExpired = createKnownErrorConstructor(InvalidAccessToken, "ACCESS_TOKEN_EXPIRED", (expiredAt, projectId, userId, refreshTokenId) => [
+    401,
+    deindent`
+      Access token has expired. Please refresh it and try again.${expiredAt ? ` (The access token expired at ${expiredAt.toISOString()}.)` : ""}${projectId ? ` Project ID: ${projectId}.` : ""}${userId ? ` User ID: ${userId}.` : ""}${refreshTokenId ? ` Refresh token ID: ${refreshTokenId}.` : ""}
+
+      Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
+    `,
+    {
+      expired_at_millis: expiredAt?.getTime() ?? null,
+      project_id: projectId ?? null,
+      user_id: userId ?? null,
+      refresh_token_id: refreshTokenId ?? null
+    }
+  ], (json) => [
+    json.expired_at_millis ? new Date(json.expired_at_millis) : void 0,
+    json.project_id ?? void 0,
+    json.user_id ?? void 0,
+    json.refresh_token_id ?? void 0
+  ]);
+  var InvalidProjectForAccessToken = createKnownErrorConstructor(InvalidAccessToken, "INVALID_PROJECT_FOR_ACCESS_TOKEN", (expectedProjectId, actualProjectId) => [
+    401,
+    `Access token not valid for this project. Expected project ID ${JSON.stringify(expectedProjectId)}, but the token is for project ID ${JSON.stringify(actualProjectId)}.`,
+    {
+      expected_project_id: expectedProjectId,
+      actual_project_id: actualProjectId
+    }
+  ], (json) => [json.expected_project_id, json.actual_project_id]);
+  var RefreshTokenError = createKnownErrorConstructor(KnownError, "REFRESH_TOKEN_ERROR", "inherit", "inherit");
+  var RefreshTokenNotFoundOrExpired = createKnownErrorConstructor(RefreshTokenError, "REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED", () => [401, "Refresh token not found for this project, or the session has expired/been revoked."], () => []);
+  var CannotDeleteCurrentSession = createKnownErrorConstructor(RefreshTokenError, "CANNOT_DELETE_CURRENT_SESSION", () => [400, "Cannot delete the current session."], () => []);
+  var ProviderRejected = createKnownErrorConstructor(RefreshTokenError, "PROVIDER_REJECTED", () => [401, "The provider refused to refresh their token. This usually means that the provider used to authenticate the user no longer regards this session as valid, and the user must re-authenticate."], () => []);
+  var UserWithEmailAlreadyExists = createKnownErrorConstructor(KnownError, "USER_EMAIL_ALREADY_EXISTS", (email, wouldWorkIfEmailWasVerified = false) => [
+    409,
+    `A user with email ${JSON.stringify(email)} already exists${wouldWorkIfEmailWasVerified ? " but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method." : "."}`,
+    {
+      email,
+      would_work_if_email_was_verified: wouldWorkIfEmailWasVerified
+    }
+  ], (json) => [json.email, json.would_work_if_email_was_verified ?? false]);
+  var EmailNotVerified = createKnownErrorConstructor(KnownError, "EMAIL_NOT_VERIFIED", () => [400, "The email is not verified."], () => []);
+  var CannotGetOwnUserWithoutUser = createKnownErrorConstructor(KnownError, "CANNOT_GET_OWN_USER_WITHOUT_USER", () => [400, "You have specified 'me' as a userId, but did not provide authentication for a user."], () => []);
+  var UserIdDoesNotExist = createKnownErrorConstructor(KnownError, "USER_ID_DOES_NOT_EXIST", (userId) => [
+    400,
+    `The given user with the ID ${userId} does not exist.`,
+    { user_id: userId }
+  ], (json) => [json.user_id]);
+  var UserNotFound = createKnownErrorConstructor(KnownError, "USER_NOT_FOUND", () => [404, "User not found."], () => []);
+  var RestrictedUserNotAllowed = createKnownErrorConstructor(KnownError, "RESTRICTED_USER_NOT_ALLOWED", (restrictedReason) => [
+    403,
+    `The user in the access token is in restricted state. Reason: ${restrictedReason.type}. Please pass the X-Stack-Allow-Restricted-User header if this is intended.`,
+    { restricted_reason: restrictedReason }
+  ], (json) => [json.restricted_reason ?? { type: "anonymous" }]);
+  var ProjectNotFound = createKnownErrorConstructor(KnownError, "PROJECT_NOT_FOUND", (projectId) => {
+    if (typeof projectId !== "string") throw new StackAssertionError("projectId of KnownErrors.ProjectNotFound must be a string");
+    return [
+      404,
+      `Project ${projectId} not found or is not accessible with the current user.`,
+      { project_id: projectId }
+    ];
+  }, (json) => [json.project_id]);
+  var CurrentProjectNotFound = createKnownErrorConstructor(KnownError, "CURRENT_PROJECT_NOT_FOUND", (projectId) => [
+    400,
+    `The current project with ID ${projectId} was not found. Please check the value of the x-stack-project-id header.`,
+    { project_id: projectId }
+  ], (json) => [json.project_id]);
+  var BranchDoesNotExist = createKnownErrorConstructor(KnownError, "BRANCH_DOES_NOT_EXIST", (branchId) => [
+    400,
+    `The branch with ID ${branchId} does not exist.`,
+    { branch_id: branchId }
+  ], (json) => [json.branch_id]);
+  var SignUpNotEnabled = createKnownErrorConstructor(KnownError, "SIGN_UP_NOT_ENABLED", () => [400, "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it."], () => []);
+  var SignUpRejected = createKnownErrorConstructor(KnownError, "SIGN_UP_REJECTED", (message) => [
+    403,
+    message ?? "Your sign up was rejected by an administrator's sign-up rule.",
+    { message: message ?? "Your sign up was rejected by an administrator's sign-up rule." }
+  ], (json) => [json.message]);
+  var PasswordAuthenticationNotEnabled = createKnownErrorConstructor(KnownError, "PASSWORD_AUTHENTICATION_NOT_ENABLED", () => [400, "Password authentication is not enabled for this project."], () => []);
+  var DataVaultStoreDoesNotExist = createKnownErrorConstructor(KnownError, "DATA_VAULT_STORE_DOES_NOT_EXIST", (storeId) => [
+    400,
+    `Data vault store with ID ${storeId} does not exist.`,
+    { store_id: storeId }
+  ], (json) => [json.store_id]);
+  var DataVaultStoreHashedKeyDoesNotExist = createKnownErrorConstructor(KnownError, "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST", (storeId, hashedKey) => [
+    400,
+    `Data vault store with ID ${storeId} does not contain a key with hash ${hashedKey}.`,
+    {
+      store_id: storeId,
+      hashed_key: hashedKey
+    }
+  ], (json) => [json.store_id, json.hashed_key]);
+  var PasskeyAuthenticationNotEnabled = createKnownErrorConstructor(KnownError, "PASSKEY_AUTHENTICATION_NOT_ENABLED", () => [400, "Passkey authentication is not enabled for this project."], () => []);
+  var AnonymousAccountsNotEnabled = createKnownErrorConstructor(KnownError, "ANONYMOUS_ACCOUNTS_NOT_ENABLED", () => [400, "Anonymous accounts are not enabled for this project."], () => []);
+  var AnonymousAuthenticationNotAllowed = createKnownErrorConstructor(KnownError, "ANONYMOUS_AUTHENTICATION_NOT_ALLOWED", () => [401, "X-Stack-Access-Token is for an anonymous user, but anonymous users are not enabled. Set the X-Stack-Allow-Anonymous-User header of this request to 'true' to allow anonymous users."], () => []);
+  var EmailPasswordMismatch = createKnownErrorConstructor(KnownError, "EMAIL_PASSWORD_MISMATCH", () => [400, "Wrong e-mail or password."], () => []);
+  var RedirectUrlNotWhitelisted = createKnownErrorConstructor(KnownError, "REDIRECT_URL_NOT_WHITELISTED", () => [400, "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?"], () => []);
+  var PasswordRequirementsNotMet = createKnownErrorConstructor(KnownError, "PASSWORD_REQUIREMENTS_NOT_MET", "inherit", "inherit");
+  var PasswordTooShort = createKnownErrorConstructor(PasswordRequirementsNotMet, "PASSWORD_TOO_SHORT", (minLength) => [
+    400,
+    `Password too short. Minimum length is ${minLength}.`,
+    { min_length: minLength }
+  ], (json) => [json?.min_length ?? throwErr("min_length not found in PasswordTooShort details")]);
+  var PasswordTooLong = createKnownErrorConstructor(PasswordRequirementsNotMet, "PASSWORD_TOO_LONG", (maxLength) => [
+    400,
+    `Password too long. Maximum length is ${maxLength}.`,
+    { maxLength }
+  ], (json) => [json?.maxLength ?? throwErr("maxLength not found in PasswordTooLong details")]);
+  var UserDoesNotHavePassword = createKnownErrorConstructor(KnownError, "USER_DOES_NOT_HAVE_PASSWORD", () => [400, "This user does not have password authentication enabled."], () => []);
+  var VerificationCodeError = createKnownErrorConstructor(KnownError, "VERIFICATION_ERROR", "inherit", "inherit");
+  var VerificationCodeNotFound = createKnownErrorConstructor(VerificationCodeError, "VERIFICATION_CODE_NOT_FOUND", () => [404, "The verification code does not exist for this project."], () => []);
+  var VerificationCodeExpired = createKnownErrorConstructor(VerificationCodeError, "VERIFICATION_CODE_EXPIRED", () => [400, "The verification code has expired."], () => []);
+  var VerificationCodeAlreadyUsed = createKnownErrorConstructor(VerificationCodeError, "VERIFICATION_CODE_ALREADY_USED", () => [409, "The verification link has already been used."], () => []);
+  var VerificationCodeMaxAttemptsReached = createKnownErrorConstructor(VerificationCodeError, "VERIFICATION_CODE_MAX_ATTEMPTS_REACHED", () => [400, "The verification code nonce has reached the maximum number of attempts. This code is not valid anymore."], () => []);
+  var PasswordConfirmationMismatch = createKnownErrorConstructor(KnownError, "PASSWORD_CONFIRMATION_MISMATCH", () => [400, "Passwords do not match."], () => []);
+  var EmailAlreadyVerified = createKnownErrorConstructor(KnownError, "EMAIL_ALREADY_VERIFIED", () => [409, "The e-mail is already verified."], () => []);
+  var EmailNotAssociatedWithUser = createKnownErrorConstructor(KnownError, "EMAIL_NOT_ASSOCIATED_WITH_USER", () => [400, "The e-mail is not associated with a user that could log in with that e-mail."], () => []);
+  var EmailIsNotPrimaryEmail = createKnownErrorConstructor(KnownError, "EMAIL_IS_NOT_PRIMARY_EMAIL", (email, primaryEmail) => [
+    400,
+    `The given e-mail (${email}) must equal the user's primary e-mail (${primaryEmail}).`,
+    {
+      email,
+      primary_email: primaryEmail
+    }
+  ], (json) => [json.email, json.primary_email]);
+  var PasskeyRegistrationFailed = createKnownErrorConstructor(KnownError, "PASSKEY_REGISTRATION_FAILED", (message) => [400, message], (json) => [json.message]);
+  var PasskeyWebAuthnError = createKnownErrorConstructor(KnownError, "PASSKEY_WEBAUTHN_ERROR", (message, code) => [
+    400,
+    message,
+    {
+      message,
+      code
+    }
+  ], (json) => [json.message, json.code]);
+  var PasskeyAuthenticationFailed = createKnownErrorConstructor(KnownError, "PASSKEY_AUTHENTICATION_FAILED", (message) => [400, message], (json) => [json.message]);
+  var PermissionNotFound = createKnownErrorConstructor(KnownError, "PERMISSION_NOT_FOUND", (permissionId) => [
+    404,
+    `Permission "${permissionId}" not found. Make sure you created it on the dashboard.`,
+    { permission_id: permissionId }
+  ], (json) => [json.permission_id]);
+  var PermissionScopeMismatch = createKnownErrorConstructor(KnownError, "WRONG_PERMISSION_SCOPE", (permissionId, expectedScope, actualScope) => [
+    404,
+    `Permission ${JSON.stringify(permissionId)} not found. (It was found for a different scope ${JSON.stringify(actualScope)}, but scope ${JSON.stringify(expectedScope)} was expected.)`,
+    {
+      permission_id: permissionId,
+      expected_scope: expectedScope,
+      actual_scope: actualScope
+    }
+  ], (json) => [
+    json.permission_id,
+    json.expected_scope,
+    json.actual_scope
+  ]);
+  var ContainedPermissionNotFound = createKnownErrorConstructor(KnownError, "CONTAINED_PERMISSION_NOT_FOUND", (permissionId) => [
+    400,
+    `Contained permission with ID "${permissionId}" not found. Make sure you created it on the dashboard.`,
+    { permission_id: permissionId }
+  ], (json) => [json.permission_id]);
+  var TeamNotFound = createKnownErrorConstructor(KnownError, "TEAM_NOT_FOUND", (teamId) => [
+    404,
+    `Team ${teamId} not found.`,
+    { team_id: teamId }
+  ], (json) => [json.team_id]);
+  createKnownErrorConstructor(KnownError, "TEAM_ALREADY_EXISTS", (teamId) => [
+    409,
+    `Team ${teamId} already exists.`,
+    { team_id: teamId }
+  ], (json) => [json.team_id]);
+  var TeamMembershipNotFound = createKnownErrorConstructor(KnownError, "TEAM_MEMBERSHIP_NOT_FOUND", (teamId, userId) => [
+    404,
+    `User ${userId} is not found in team ${teamId}.`,
+    {
+      team_id: teamId,
+      user_id: userId
+    }
+  ], (json) => [json.team_id, json.user_id]);
+  var TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(KnownError, "TEAM_INVITATION_RESTRICTED_USER_NOT_ALLOWED", (restrictedReason) => [
+    403,
+    `Restricted users cannot accept team invitations. Reason: ${restrictedReason.type}. Please complete the onboarding process before accepting team invitations.`,
+    { restricted_reason: restrictedReason }
+  ], (json) => [json.restricted_reason ?? { type: "anonymous" }]);
+  var EmailTemplateAlreadyExists = createKnownErrorConstructor(KnownError, "EMAIL_TEMPLATE_ALREADY_EXISTS", () => [409, "Email template already exists."], () => []);
+  var OAuthConnectionNotConnectedToUser = createKnownErrorConstructor(KnownError, "OAUTH_CONNECTION_NOT_CONNECTED_TO_USER", () => [400, "The OAuth connection is not connected to any user."], () => []);
+  var OAuthConnectionAlreadyConnectedToAnotherUser = createKnownErrorConstructor(KnownError, "OAUTH_CONNECTION_ALREADY_CONNECTED_TO_ANOTHER_USER", () => [409, "The OAuth connection is already connected to another user."], () => []);
+  var OAuthConnectionDoesNotHaveRequiredScope = createKnownErrorConstructor(KnownError, "OAUTH_CONNECTION_DOES_NOT_HAVE_REQUIRED_SCOPE", () => [400, "The OAuth connection does not have the required scope."], () => []);
+  var OAuthAccessTokenNotAvailable = createKnownErrorConstructor(KnownError, "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE", (provider, details) => [
+    400,
+    `Failed to retrieve an OAuth access token for the connected account (provider: ${provider}). ${details}`,
+    {
+      provider,
+      details
+    }
+  ], (json) => [json.provider, json.details]);
+  var OAuthExtraScopeNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(KnownError, "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS", () => [400, "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes."], () => []);
+  var OAuthAccessTokenNotAvailableWithSharedOAuthKeys = createKnownErrorConstructor(KnownError, "OAUTH_ACCESS_TOKEN_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS", () => [400, "Access tokens are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use access tokens."], () => []);
+  var InvalidOAuthClientIdOrSecret = createKnownErrorConstructor(KnownError, "INVALID_OAUTH_CLIENT_ID_OR_SECRET", (clientId) => [
+    400,
+    "The OAuth client ID or secret is invalid. The client ID must be equal to the project ID (potentially with a hash and a branch ID), and the client secret must be a publishable client key.",
+    { client_id: clientId ?? null }
+  ], (json) => [json.client_id ?? void 0]);
+  var InvalidScope = createKnownErrorConstructor(KnownError, "INVALID_SCOPE", (scope) => [400, `The scope "${scope}" is not a valid OAuth scope for Stack.`], (json) => [json.scope]);
+  var UserAlreadyConnectedToAnotherOAuthConnection = createKnownErrorConstructor(KnownError, "USER_ALREADY_CONNECTED_TO_ANOTHER_OAUTH_CONNECTION", () => [409, "The user is already connected to another OAuth account. Did you maybe selected the wrong account?"], () => []);
+  var OuterOAuthTimeout = createKnownErrorConstructor(KnownError, "OUTER_OAUTH_TIMEOUT", () => [408, "The OAuth flow has timed out. Please sign in again."], () => []);
+  var OAuthProviderNotFoundOrNotEnabled = createKnownErrorConstructor(KnownError, "OAUTH_PROVIDER_NOT_FOUND_OR_NOT_ENABLED", () => [400, "The OAuth provider is not found or not enabled."], () => []);
+  var AppleBundleIdNotConfigured = createKnownErrorConstructor(KnownError, "APPLE_BUNDLE_ID_NOT_CONFIGURED", () => [400, "Apple Sign In is enabled, but no Bundle IDs are configured. Please add your app's Bundle ID in the Stack Auth dashboard under OAuth Providers > Apple > Apple Bundle IDs."], () => []);
+  var OAuthProviderAccountIdAlreadyUsedForSignIn = createKnownErrorConstructor(KnownError, "OAUTH_PROVIDER_ACCOUNT_ID_ALREADY_USED_FOR_SIGN_IN", () => [400, `A provider with the same account ID is already used for signing in.`], () => []);
+  var MultiFactorAuthenticationRequired = createKnownErrorConstructor(KnownError, "MULTI_FACTOR_AUTHENTICATION_REQUIRED", (attemptCode) => [
+    400,
+    `Multi-factor authentication is required for this user.`,
+    { attempt_code: attemptCode }
+  ], (json) => [json.attempt_code]);
+  var InvalidTotpCode = createKnownErrorConstructor(KnownError, "INVALID_TOTP_CODE", () => [400, "The TOTP code is invalid. Please try again."], () => []);
+  var UserAuthenticationRequired = createKnownErrorConstructor(KnownError, "USER_AUTHENTICATION_REQUIRED", () => [401, "User authentication required for this endpoint."], () => []);
+  var TeamMembershipAlreadyExists = createKnownErrorConstructor(KnownError, "TEAM_MEMBERSHIP_ALREADY_EXISTS", () => [409, "Team membership already exists."], () => []);
+  var ProjectPermissionRequired = createKnownErrorConstructor(KnownError, "PROJECT_PERMISSION_REQUIRED", (userId, permissionId) => [
+    401,
+    `User ${userId} does not have permission ${permissionId}.`,
+    {
+      user_id: userId,
+      permission_id: permissionId
+    }
+  ], (json) => [json.user_id, json.permission_id]);
+  var TeamPermissionRequired = createKnownErrorConstructor(KnownError, "TEAM_PERMISSION_REQUIRED", (teamId, userId, permissionId) => [
+    401,
+    `User ${userId} does not have permission ${permissionId} in team ${teamId}.`,
+    {
+      team_id: teamId,
+      user_id: userId,
+      permission_id: permissionId
+    }
+  ], (json) => [
+    json.team_id,
+    json.user_id,
+    json.permission_id
+  ]);
+  var TeamPermissionNotFound = createKnownErrorConstructor(KnownError, "TEAM_PERMISSION_NOT_FOUND", (teamId, userId, permissionId) => [
+    401,
+    `User ${userId} does not have permission ${permissionId} in team ${teamId}.`,
+    {
+      team_id: teamId,
+      user_id: userId,
+      permission_id: permissionId
+    }
+  ], (json) => [
+    json.team_id,
+    json.user_id,
+    json.permission_id
+  ]);
+  var InvalidSharedOAuthProviderId = createKnownErrorConstructor(KnownError, "INVALID_SHARED_OAUTH_PROVIDER_ID", (providerId) => [
+    400,
+    `The shared OAuth provider with ID ${providerId} is not valid.`,
+    { provider_id: providerId }
+  ], (json) => [json.provider_id]);
+  var InvalidStandardOAuthProviderId = createKnownErrorConstructor(KnownError, "INVALID_STANDARD_OAUTH_PROVIDER_ID", (providerId) => [
+    400,
+    `The standard OAuth provider with ID ${providerId} is not valid.`,
+    { provider_id: providerId }
+  ], (json) => [json.provider_id]);
+  var InvalidAuthorizationCode = createKnownErrorConstructor(KnownError, "INVALID_AUTHORIZATION_CODE", () => [400, "The given authorization code is invalid."], () => []);
+  var InvalidAppleCredentials = createKnownErrorConstructor(KnownError, "INVALID_APPLE_CREDENTIALS", () => [400, "The Apple Sign In credentials could not be verified. Please try signing in again."], () => []);
+  var OAuthProviderAccessDenied = createKnownErrorConstructor(KnownError, "OAUTH_PROVIDER_ACCESS_DENIED", () => [400, "The OAuth provider denied access to the user."], () => []);
+  var ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(KnownError, "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE", (type, contactChannelValue, wouldWorkIfEmailWasVerified = false) => [
+    409,
+    `This ${type} ${contactChannelValue ? `"(${contactChannelValue})"` : ""} is already used for authentication by another account${wouldWorkIfEmailWasVerified ? " but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method." : "."}`,
+    {
+      type,
+      contact_channel_value: contactChannelValue ?? null,
+      would_work_if_email_was_verified: wouldWorkIfEmailWasVerified
+    }
+  ], (json) => [
+    json.type,
+    json.contact_channel_value,
+    json.would_work_if_email_was_verified ?? false
+  ]);
+  var InvalidPollingCodeError = createKnownErrorConstructor(KnownError, "INVALID_POLLING_CODE", (details) => [
+    400,
+    "The polling code is invalid or does not exist.",
+    details
+  ], (json) => [json]);
+  var CliAuthError = createKnownErrorConstructor(KnownError, "CLI_AUTH_ERROR", (message) => [400, message], (json) => [json.message]);
+  var CliAuthExpiredError = createKnownErrorConstructor(KnownError, "CLI_AUTH_EXPIRED_ERROR", (message = "CLI authentication request expired. Please try again.") => [400, message], (json) => [json.message]);
+  var CliAuthUsedError = createKnownErrorConstructor(KnownError, "CLI_AUTH_USED_ERROR", (message = "This authentication token has already been used.") => [400, message], (json) => [json.message]);
+  var ApiKeyNotValid = createKnownErrorConstructor(KnownError, "API_KEY_NOT_VALID", "inherit", "inherit");
+  var ApiKeyExpired = createKnownErrorConstructor(ApiKeyNotValid, "API_KEY_EXPIRED", () => [401, "API key has expired."], () => []);
+  var ApiKeyRevoked = createKnownErrorConstructor(ApiKeyNotValid, "API_KEY_REVOKED", () => [401, "API key has been revoked."], () => []);
+  var WrongApiKeyType = createKnownErrorConstructor(ApiKeyNotValid, "WRONG_API_KEY_TYPE", (expectedType, actualType) => [
+    400,
+    `This endpoint is for ${expectedType} API keys, but a ${actualType} API key was provided.`,
+    {
+      expected_type: expectedType,
+      actual_type: actualType
+    }
+  ], (json) => [json.expected_type, json.actual_type]);
+  var ApiKeyNotFound = createKnownErrorConstructor(ApiKeyNotValid, "API_KEY_NOT_FOUND", () => [404, "API key not found."], () => []);
+  var PublicApiKeyCannotBeRevoked = createKnownErrorConstructor(ApiKeyNotValid, "PUBLIC_API_KEY_CANNOT_BE_REVOKED", () => [400, "Public API keys cannot be revoked by the secretscanner endpoint."], () => []);
+  var PermissionIdAlreadyExists = createKnownErrorConstructor(KnownError, "PERMISSION_ID_ALREADY_EXISTS", (permissionId) => [
+    400,
+    `Permission with ID "${permissionId}" already exists. Choose a different ID.`,
+    { permission_id: permissionId }
+  ], (json) => [json.permission_id]);
+  var EmailRenderingError = createKnownErrorConstructor(KnownError, "EMAIL_RENDERING_ERROR", (error) => [
+    400,
+    `Failed to render email with theme: ${error}`,
+    { error }
+  ], (json) => [json.error]);
+  var RequiresCustomEmailServer = createKnownErrorConstructor(KnownError, "REQUIRES_CUSTOM_EMAIL_SERVER", () => [400, `This action requires a custom SMTP server. Please edit your email server configuration and try again.`], () => []);
+  var EmailNotEditable = createKnownErrorConstructor(KnownError, "EMAIL_NOT_EDITABLE", (emailId, status) => [
+    400,
+    `Email with ID "${emailId}" cannot be edited because it is in status "${status}". Only emails in PAUSED, PREPARING, RENDERING, RENDER_ERROR, SCHEDULED, QUEUED, or SERVER_ERROR status can be edited.`,
+    {
+      email_id: emailId,
+      status
+    }
+  ], (json) => [json.email_id, json.status]);
+  var ItemNotFound = createKnownErrorConstructor(KnownError, "ITEM_NOT_FOUND", (itemId) => [
+    404,
+    `Item with ID "${itemId}" not found.`,
+    { item_id: itemId }
+  ], (json) => [json.item_id]);
+  var ItemCustomerTypeDoesNotMatch = createKnownErrorConstructor(KnownError, "ITEM_CUSTOMER_TYPE_DOES_NOT_MATCH", (itemId, customerId, itemCustomerType, actualCustomerType) => [
+    400,
+    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the item with ID ${JSON.stringify(itemId)}. ${itemCustomerType ? `The item is configured to only be available for ${itemCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The item is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
+    {
+      item_id: itemId,
+      customer_id: customerId,
+      item_customer_type: itemCustomerType ?? null,
+      actual_customer_type: actualCustomerType
+    }
+  ], (json) => [
+    json.item_id,
+    json.customer_id,
+    json.item_customer_type ?? void 0,
+    json.actual_customer_type
+  ]);
+  var CustomerDoesNotExist = createKnownErrorConstructor(KnownError, "CUSTOMER_DOES_NOT_EXIST", (customerId) => [
+    400,
+    `Customer with ID ${JSON.stringify(customerId)} does not exist.`,
+    { customer_id: customerId }
+  ], (json) => [json.customer_id]);
+  var SubscriptionInvoiceNotFound = createKnownErrorConstructor(KnownError, "SUBSCRIPTION_INVOICE_NOT_FOUND", (subscriptionInvoiceId) => [
+    404,
+    `Subscription invoice with ID ${JSON.stringify(subscriptionInvoiceId)} does not exist.`,
+    { subscription_invoice_id: subscriptionInvoiceId }
+  ], (json) => [json.subscription_invoice_id]);
+  var OneTimePurchaseNotFound = createKnownErrorConstructor(KnownError, "ONE_TIME_PURCHASE_NOT_FOUND", (purchaseId) => [
+    404,
+    `One-time purchase with ID ${JSON.stringify(purchaseId)} does not exist.`,
+    { one_time_purchase_id: purchaseId }
+  ], (json) => [json.one_time_purchase_id]);
+  var SubscriptionAlreadyRefunded = createKnownErrorConstructor(KnownError, "SUBSCRIPTION_ALREADY_REFUNDED", (subscriptionId) => [
+    400,
+    `Subscription with ID ${JSON.stringify(subscriptionId)} was already refunded.`,
+    { subscription_id: subscriptionId }
+  ], (json) => [json.subscription_id]);
+  var OneTimePurchaseAlreadyRefunded = createKnownErrorConstructor(KnownError, "ONE_TIME_PURCHASE_ALREADY_REFUNDED", (purchaseId) => [
+    400,
+    `One-time purchase with ID ${JSON.stringify(purchaseId)} was already refunded.`,
+    { one_time_purchase_id: purchaseId }
+  ], (json) => [json.one_time_purchase_id]);
+  var TestModePurchaseNonRefundable = createKnownErrorConstructor(KnownError, "TEST_MODE_PURCHASE_NON_REFUNDABLE", () => [400, "Test mode purchases are not refundable."], () => []);
+  var ProductDoesNotExist = createKnownErrorConstructor(KnownError, "PRODUCT_DOES_NOT_EXIST", (productId, context) => [
+    400,
+    `Product with ID ${JSON.stringify(productId)} ${context === "server_only" ? "is marked as server-only and cannot be accessed client side." : context === "item_exists" ? "does not exist, but an item with this ID exists." : "does not exist."}`,
+    {
+      product_id: productId,
+      context
+    }
+  ], (json) => [json.product_id, json.context]);
+  var ProductCustomerTypeDoesNotMatch = createKnownErrorConstructor(KnownError, "PRODUCT_CUSTOMER_TYPE_DOES_NOT_MATCH", (productId, customerId, productCustomerType, actualCustomerType) => [
+    400,
+    `The ${actualCustomerType} with ID ${JSON.stringify(customerId)} is not a valid customer for the inline product that has been passed in. ${productCustomerType ? `The product is configured to only be available for ${productCustomerType} customers, but the customer is a ${actualCustomerType}.` : `The product is missing a customer type field. Please make sure it is set up correctly in your project configuration.`}`,
+    {
+      product_id: productId ?? null,
+      customer_id: customerId,
+      product_customer_type: productCustomerType ?? null,
+      actual_customer_type: actualCustomerType
+    }
+  ], (json) => [
+    json.product_id ?? void 0,
+    json.customer_id,
+    json.product_customer_type ?? void 0,
+    json.actual_customer_type
+  ]);
+  var ProductAlreadyGranted = createKnownErrorConstructor(KnownError, "PRODUCT_ALREADY_GRANTED", (productId, customerId) => [
+    400,
+    `Customer with ID ${JSON.stringify(customerId)} already owns product ${JSON.stringify(productId)}.`,
+    {
+      product_id: productId,
+      customer_id: customerId
+    }
+  ], (json) => [json.product_id, json.customer_id]);
+  var ItemQuantityInsufficientAmount = createKnownErrorConstructor(KnownError, "ITEM_QUANTITY_INSUFFICIENT_AMOUNT", (itemId, customerId, quantity) => [
+    400,
+    `The item with ID ${JSON.stringify(itemId)} has an insufficient quantity for the customer with ID ${JSON.stringify(customerId)}. An attempt was made to charge ${quantity} credits.`,
+    {
+      item_id: itemId,
+      customer_id: customerId,
+      quantity
+    }
+  ], (json) => [
+    json.item_id,
+    json.customer_id,
+    json.quantity
+  ]);
+  var StripeAccountInfoNotFound = createKnownErrorConstructor(KnownError, "STRIPE_ACCOUNT_INFO_NOT_FOUND", () => [404, "Stripe account information not found. Please make sure the user has onboarded with Stripe."], () => []);
+  var AnalyticsQueryTimeout = createKnownErrorConstructor(KnownError, "ANALYTICS_QUERY_TIMEOUT", (timeoutMs) => [
+    400,
+    `The query timed out. Please try again with a shorter query or increase the timeout. Timeout was ${timeoutMs}ms.`,
+    { timeout_ms: timeoutMs }
+  ], (json) => [json.timeout_ms]);
+  var AnalyticsQueryError = createKnownErrorConstructor(KnownError, "ANALYTICS_QUERY_ERROR", (error) => [
+    400,
+    `${error}`,
+    { error }
+  ], (json) => [json.error]);
+  var AnalyticsNotEnabled = createKnownErrorConstructor(KnownError, "ANALYTICS_NOT_ENABLED", () => [400, "Analytics is not enabled for this project."], () => []);
+  var DefaultPaymentMethodRequired = createKnownErrorConstructor(KnownError, "DEFAULT_PAYMENT_METHOD_REQUIRED", (customerType, customerId) => [
+    400,
+    "No default payment method is set for this customer.",
+    {
+      customer_type: customerType,
+      customer_id: customerId
+    }
+  ], (json) => [json.customer_type, json.customer_id]);
+  var NewPurchasesBlocked = createKnownErrorConstructor(KnownError, "NEW_PURCHASES_BLOCKED", () => [403, "New purchases are currently blocked for this project. Please contact support for more information."], () => []);
+  var KnownErrors = {
+    CannotDeleteCurrentSession,
+    UnsupportedError,
+    BodyParsingError,
+    SchemaError,
+    AllOverloadsFailed,
+    ProjectAuthenticationError,
+    PermissionIdAlreadyExists,
+    CliAuthError,
+    CliAuthExpiredError,
+    CliAuthUsedError,
+    InvalidProjectAuthentication,
+    ProjectKeyWithoutAccessType,
+    InvalidAccessType,
+    AccessTypeWithoutProjectId,
+    AccessTypeRequired,
+    CannotGetOwnUserWithoutUser,
+    InsufficientAccessType,
+    InvalidPublishableClientKey,
+    InvalidSecretServerKey,
+    InvalidSuperSecretAdminKey,
+    InvalidAdminAccessToken,
+    UnparsableAdminAccessToken,
+    AdminAccessTokenExpired,
+    InvalidProjectForAdminAccessToken,
+    AdminAccessTokenIsNotAdmin,
+    ProjectAuthenticationRequired,
+    ClientAuthenticationRequired,
+    PublishableClientKeyRequiredForProject,
+    ServerAuthenticationRequired,
+    ClientOrServerAuthenticationRequired,
+    ClientOrAdminAuthenticationRequired,
+    ClientOrServerOrAdminAuthenticationRequired,
+    AdminAuthenticationRequired,
+    ExpectedInternalProject,
+    SessionAuthenticationError,
+    InvalidSessionAuthentication,
+    InvalidAccessToken,
+    UnparsableAccessToken,
+    AccessTokenExpired,
+    InvalidProjectForAccessToken,
+    RefreshTokenError,
+    ProviderRejected,
+    RefreshTokenNotFoundOrExpired,
+    UserWithEmailAlreadyExists,
+    EmailNotVerified,
+    UserIdDoesNotExist,
+    UserNotFound,
+    RestrictedUserNotAllowed,
+    ApiKeyNotFound,
+    PublicApiKeyCannotBeRevoked,
+    ProjectNotFound,
+    CurrentProjectNotFound,
+    BranchDoesNotExist,
+    SignUpNotEnabled,
+    SignUpRejected,
+    PasswordAuthenticationNotEnabled,
+    PasskeyAuthenticationNotEnabled,
+    AnonymousAccountsNotEnabled,
+    AnonymousAuthenticationNotAllowed,
+    EmailPasswordMismatch,
+    RedirectUrlNotWhitelisted,
+    PasswordRequirementsNotMet,
+    PasswordTooShort,
+    PasswordTooLong,
+    UserDoesNotHavePassword,
+    VerificationCodeError,
+    VerificationCodeNotFound,
+    VerificationCodeExpired,
+    VerificationCodeAlreadyUsed,
+    VerificationCodeMaxAttemptsReached,
+    PasswordConfirmationMismatch,
+    EmailAlreadyVerified,
+    EmailNotAssociatedWithUser,
+    EmailIsNotPrimaryEmail,
+    PasskeyRegistrationFailed,
+    PasskeyWebAuthnError,
+    PasskeyAuthenticationFailed,
+    PermissionNotFound,
+    PermissionScopeMismatch,
+    ContainedPermissionNotFound,
+    TeamNotFound,
+    TeamMembershipNotFound,
+    TeamInvitationRestrictedUserNotAllowed,
+    EmailTemplateAlreadyExists,
+    OAuthConnectionNotConnectedToUser,
+    OAuthConnectionAlreadyConnectedToAnotherUser,
+    OAuthConnectionDoesNotHaveRequiredScope,
+    OAuthAccessTokenNotAvailable,
+    OAuthExtraScopeNotAvailableWithSharedOAuthKeys,
+    OAuthAccessTokenNotAvailableWithSharedOAuthKeys,
+    InvalidOAuthClientIdOrSecret,
+    InvalidScope,
+    UserAlreadyConnectedToAnotherOAuthConnection,
+    OuterOAuthTimeout,
+    OAuthProviderNotFoundOrNotEnabled,
+    AppleBundleIdNotConfigured,
+    OAuthProviderAccountIdAlreadyUsedForSignIn,
+    MultiFactorAuthenticationRequired,
+    InvalidTotpCode,
+    UserAuthenticationRequired,
+    TeamMembershipAlreadyExists,
+    ProjectPermissionRequired,
+    TeamPermissionRequired,
+    InvalidSharedOAuthProviderId,
+    InvalidStandardOAuthProviderId,
+    InvalidAuthorizationCode,
+    InvalidAppleCredentials,
+    TeamPermissionNotFound,
+    OAuthProviderAccessDenied,
+    ContactChannelAlreadyUsedForAuthBySomeoneElse,
+    InvalidPollingCodeError,
+    ApiKeyNotValid,
+    ApiKeyExpired,
+    ApiKeyRevoked,
+    WrongApiKeyType,
+    EmailRenderingError,
+    RequiresCustomEmailServer,
+    EmailNotEditable,
+    ItemNotFound,
+    ItemCustomerTypeDoesNotMatch,
+    CustomerDoesNotExist,
+    ProductDoesNotExist,
+    ProductCustomerTypeDoesNotMatch,
+    ProductAlreadyGranted,
+    SubscriptionInvoiceNotFound,
+    OneTimePurchaseNotFound,
+    SubscriptionAlreadyRefunded,
+    OneTimePurchaseAlreadyRefunded,
+    TestModePurchaseNonRefundable,
+    ItemQuantityInsufficientAmount,
+    StripeAccountInfoNotFound,
+    DefaultPaymentMethodRequired,
+    NewPurchasesBlocked,
+    DataVaultStoreDoesNotExist,
+    DataVaultStoreHashedKeyDoesNotExist,
+    AnalyticsQueryTimeout,
+    AnalyticsQueryError,
+    AnalyticsNotEnabled
+  };
+  var knownErrorCodes = /* @__PURE__ */ new Set();
+  for (const [_, KnownError2] of Object.entries(KnownErrors)) {
+    if (knownErrorCodes.has(KnownError2.errorCode)) throw new Error(`Duplicate known error code: ${KnownError2.errorCode}`);
+    knownErrorCodes.add(KnownError2.errorCode);
+  }
+
+  // ../stack-shared/dist/esm/utils/bytes.js
+  function decodeBase64(input) {
+    return new Uint8Array(atob(input).split("").map((char) => char.charCodeAt(0)));
+  }
+  function isBase64(input) {
+    return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input);
+  }
+
+  // ../stack-shared/dist/esm/utils/crypto.js
+  function generateRandomValues(array2) {
+    if (!globalVar.crypto) throw new StackAssertionError("Crypto API is not available in this environment. Are you using an old browser?");
+    if (!globalVar.crypto.getRandomValues) throw new StackAssertionError("crypto.getRandomValues is not available in this environment. Are you using an old browser?");
+    return globalVar.crypto.getRandomValues(array2);
+  }
+
+  // ../stack-shared/dist/esm/utils/urls.js
+  function createUrlIfValid(...args) {
+    try {
+      return new URL(...args);
+    } catch (e16) {
+      return null;
+    }
+  }
+  function isValidUrl(url) {
+    return !!createUrlIfValid(url);
+  }
+  function isValidHostname(hostname) {
+    if (!hostname || hostname.startsWith(".") || hostname.endsWith(".") || hostname.includes("..")) return false;
+    const url = createUrlIfValid(`https://${hostname}`);
+    if (!url) return false;
+    return url.hostname === hostname;
+  }
+  function isValidHostnameWithWildcards(hostname) {
+    if (!hostname) return false;
+    if (!hostname.includes("*")) return isValidHostname(hostname);
+    if (hostname.startsWith(".") || hostname.endsWith(".")) return false;
+    if (hostname.includes("..")) return false;
+    const testHostname = hostname.replace(/\*+/g, "wildcard");
+    if (!/^[a-zA-Z0-9.-]+$/.test(testHostname)) return false;
+    const segments = hostname.split(/\*+/);
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      if (segment === "") continue;
+      if (i === 0 && segment.startsWith(".")) return false;
+      if (i === segments.length - 1 && segment.endsWith(".")) return false;
+      if (segment.includes("..")) return false;
+    }
+    return true;
+  }
+
+  // ../../node_modules/.pnpm/yup@1.7.1/node_modules/yup/index.esm.js
+  var import_property_expr = __toESM(require_property_expr());
+  var import_tiny_case = __toESM(require_tiny_case());
+  var import_toposort = __toESM(require_toposort());
+  var toString = Object.prototype.toString;
+  var errorToString = Error.prototype.toString;
+  var regExpToString = RegExp.prototype.toString;
+  var symbolToString = typeof Symbol !== "undefined" ? Symbol.prototype.toString : () => "";
+  var SYMBOL_REGEXP = /^Symbol\((.*)\)(.*)$/;
+  function printNumber(val) {
+    if (val != +val) return "NaN";
+    const isNegativeZero = val === 0 && 1 / val < 0;
+    return isNegativeZero ? "-0" : "" + val;
+  }
+  function printSimpleValue(val, quoteStrings = false) {
+    if (val == null || val === true || val === false) return "" + val;
+    const typeOf = typeof val;
+    if (typeOf === "number") return printNumber(val);
+    if (typeOf === "string") return quoteStrings ? `"${val}"` : val;
+    if (typeOf === "function") return "[Function " + (val.name || "anonymous") + "]";
+    if (typeOf === "symbol") return symbolToString.call(val).replace(SYMBOL_REGEXP, "Symbol($1)");
+    const tag = toString.call(val).slice(8, -1);
+    if (tag === "Date") return isNaN(val.getTime()) ? "" + val : val.toISOString(val);
+    if (tag === "Error" || val instanceof Error) return "[" + errorToString.call(val) + "]";
+    if (tag === "RegExp") return regExpToString.call(val);
+    return null;
+  }
+  function printValue(value, quoteStrings) {
+    let result = printSimpleValue(value, quoteStrings);
+    if (result !== null) return result;
+    return JSON.stringify(value, function(key, value2) {
+      let result2 = printSimpleValue(this[key], quoteStrings);
+      if (result2 !== null) return result2;
+      return value2;
+    }, 2);
+  }
+  function toArray(value) {
+    return value == null ? [] : [].concat(value);
+  }
+  var _Symbol$toStringTag;
+  var _Symbol$hasInstance;
+  var _Symbol$toStringTag2;
+  var strReg = /\$\{\s*(\w+)\s*\}/g;
+  _Symbol$toStringTag = Symbol.toStringTag;
+  var ValidationErrorNoStack = class {
+    constructor(errorOrErrors, value, field, type) {
+      this.name = void 0;
+      this.message = void 0;
+      this.value = void 0;
+      this.path = void 0;
+      this.type = void 0;
+      this.params = void 0;
+      this.errors = void 0;
+      this.inner = void 0;
+      this[_Symbol$toStringTag] = "Error";
+      this.name = "ValidationError";
+      this.value = value;
+      this.path = field;
+      this.type = type;
+      this.errors = [];
+      this.inner = [];
+      toArray(errorOrErrors).forEach((err) => {
+        if (ValidationError.isError(err)) {
+          this.errors.push(...err.errors);
+          const innerErrors = err.inner.length ? err.inner : [err];
+          this.inner.push(...innerErrors);
+        } else {
+          this.errors.push(err);
+        }
+      });
+      this.message = this.errors.length > 1 ? `${this.errors.length} errors occurred` : this.errors[0];
+    }
+  };
+  _Symbol$hasInstance = Symbol.hasInstance;
+  _Symbol$toStringTag2 = Symbol.toStringTag;
+  var ValidationError = class _ValidationError extends Error {
+    static formatError(message, params) {
+      const path = params.label || params.path || "this";
+      params = Object.assign({}, params, {
+        path,
+        originalPath: params.path
+      });
+      if (typeof message === "string") return message.replace(strReg, (_, key) => printValue(params[key]));
+      if (typeof message === "function") return message(params);
+      return message;
+    }
+    static isError(err) {
+      return err && err.name === "ValidationError";
+    }
+    constructor(errorOrErrors, value, field, type, disableStack) {
+      const errorNoStack = new ValidationErrorNoStack(errorOrErrors, value, field, type);
+      if (disableStack) {
+        return errorNoStack;
+      }
+      super();
+      this.value = void 0;
+      this.path = void 0;
+      this.type = void 0;
+      this.params = void 0;
+      this.errors = [];
+      this.inner = [];
+      this[_Symbol$toStringTag2] = "Error";
+      this.name = errorNoStack.name;
+      this.message = errorNoStack.message;
+      this.type = errorNoStack.type;
+      this.value = errorNoStack.value;
+      this.path = errorNoStack.path;
+      this.errors = errorNoStack.errors;
+      this.inner = errorNoStack.inner;
+      if (Error.captureStackTrace) {
+        Error.captureStackTrace(this, _ValidationError);
+      }
+    }
+    static [_Symbol$hasInstance](inst) {
+      return ValidationErrorNoStack[Symbol.hasInstance](inst) || super[Symbol.hasInstance](inst);
+    }
+  };
+  var mixed = {
+    default: "${path} is invalid",
+    required: "${path} is a required field",
+    defined: "${path} must be defined",
+    notNull: "${path} cannot be null",
+    oneOf: "${path} must be one of the following values: ${values}",
+    notOneOf: "${path} must not be one of the following values: ${values}",
+    notType: ({
+      path,
+      type,
+      value,
+      originalValue
+    }) => {
+      const castMsg = originalValue != null && originalValue !== value ? ` (cast from the value \`${printValue(originalValue, true)}\`).` : ".";
+      return type !== "mixed" ? `${path} must be a \`${type}\` type, but the final value was: \`${printValue(value, true)}\`` + castMsg : `${path} must match the configured type. The validated value was: \`${printValue(value, true)}\`` + castMsg;
+    }
+  };
+  var string = {
+    length: "${path} must be exactly ${length} characters",
+    min: "${path} must be at least ${min} characters",
+    max: "${path} must be at most ${max} characters",
+    matches: '${path} must match the following: "${regex}"',
+    email: "${path} must be a valid email",
+    url: "${path} must be a valid URL",
+    uuid: "${path} must be a valid UUID",
+    datetime: "${path} must be a valid ISO date-time",
+    datetime_precision: "${path} must be a valid ISO date-time with a sub-second precision of exactly ${precision} digits",
+    datetime_offset: '${path} must be a valid ISO date-time with UTC "Z" timezone',
+    trim: "${path} must be a trimmed string",
+    lowercase: "${path} must be a lowercase string",
+    uppercase: "${path} must be a upper case string"
+  };
+  var number = {
+    min: "${path} must be greater than or equal to ${min}",
+    max: "${path} must be less than or equal to ${max}",
+    lessThan: "${path} must be less than ${less}",
+    moreThan: "${path} must be greater than ${more}",
+    positive: "${path} must be a positive number",
+    negative: "${path} must be a negative number",
+    integer: "${path} must be an integer"
+  };
+  var date = {
+    min: "${path} field must be later than ${min}",
+    max: "${path} field must be at earlier than ${max}"
+  };
+  var boolean = {
+    isValue: "${path} field must be ${value}"
+  };
+  var object = {
+    noUnknown: "${path} field has unspecified keys: ${unknown}",
+    exact: "${path} object contains unknown properties: ${properties}"
+  };
+  var array = {
+    min: "${path} field must have at least ${min} items",
+    max: "${path} field must have less than or equal to ${max} items",
+    length: "${path} must have ${length} items"
+  };
+  var tuple = {
+    notType: (params) => {
+      const {
+        path,
+        value,
+        spec
+      } = params;
+      const typeLen = spec.types.length;
+      if (Array.isArray(value)) {
+        if (value.length < typeLen) return `${path} tuple value has too few items, expected a length of ${typeLen} but got ${value.length} for value: \`${printValue(value, true)}\``;
+        if (value.length > typeLen) return `${path} tuple value has too many items, expected a length of ${typeLen} but got ${value.length} for value: \`${printValue(value, true)}\``;
+      }
+      return ValidationError.formatError(mixed.notType, params);
+    }
+  };
+  var locale = Object.assign(/* @__PURE__ */ Object.create(null), {
+    mixed,
+    string,
+    number,
+    date,
+    object,
+    array,
+    boolean,
+    tuple
+  });
+  var isSchema = (obj) => obj && obj.__isYupSchema__;
+  var Condition = class _Condition {
+    static fromOptions(refs, config) {
+      if (!config.then && !config.otherwise) throw new TypeError("either `then:` or `otherwise:` is required for `when()` conditions");
+      let {
+        is,
+        then,
+        otherwise
+      } = config;
+      let check = typeof is === "function" ? is : (...values) => values.every((value) => value === is);
+      return new _Condition(refs, (values, schema) => {
+        var _branch;
+        let branch = check(...values) ? then : otherwise;
+        return (_branch = branch == null ? void 0 : branch(schema)) != null ? _branch : schema;
+      });
+    }
+    constructor(refs, builder) {
+      this.fn = void 0;
+      this.refs = refs;
+      this.refs = refs;
+      this.fn = builder;
+    }
+    resolve(base, options) {
+      let values = this.refs.map((ref) => (
+        // TODO: ? operator here?
+        ref.getValue(options == null ? void 0 : options.value, options == null ? void 0 : options.parent, options == null ? void 0 : options.context)
+      ));
+      let schema = this.fn(values, base, options);
+      if (schema === void 0 || // @ts-ignore this can be base
+      schema === base) {
+        return base;
+      }
+      if (!isSchema(schema)) throw new TypeError("conditions must return a schema object");
+      return schema.resolve(options);
+    }
+  };
+  var prefixes = {
+    context: "$",
+    value: "."
+  };
+  var Reference = class {
+    constructor(key, options = {}) {
+      this.key = void 0;
+      this.isContext = void 0;
+      this.isValue = void 0;
+      this.isSibling = void 0;
+      this.path = void 0;
+      this.getter = void 0;
+      this.map = void 0;
+      if (typeof key !== "string") throw new TypeError("ref must be a string, got: " + key);
+      this.key = key.trim();
+      if (key === "") throw new TypeError("ref must be a non-empty string");
+      this.isContext = this.key[0] === prefixes.context;
+      this.isValue = this.key[0] === prefixes.value;
+      this.isSibling = !this.isContext && !this.isValue;
+      let prefix = this.isContext ? prefixes.context : this.isValue ? prefixes.value : "";
+      this.path = this.key.slice(prefix.length);
+      this.getter = this.path && (0, import_property_expr.getter)(this.path, true);
+      this.map = options.map;
+    }
+    getValue(value, parent, context) {
+      let result = this.isContext ? context : this.isValue ? value : parent;
+      if (this.getter) result = this.getter(result || {});
+      if (this.map) result = this.map(result);
+      return result;
+    }
+    /**
+     *
+     * @param {*} value
+     * @param {Object} options
+     * @param {Object=} options.context
+     * @param {Object=} options.parent
+     */
+    cast(value, options) {
+      return this.getValue(value, options == null ? void 0 : options.parent, options == null ? void 0 : options.context);
+    }
+    resolve() {
+      return this;
+    }
+    describe() {
+      return {
+        type: "ref",
+        key: this.key
+      };
+    }
+    toString() {
+      return `Ref(${this.key})`;
+    }
+    static isRef(value) {
+      return value && value.__isYupRef;
+    }
+  };
+  Reference.prototype.__isYupRef = true;
+  var isAbsent = (value) => value == null;
+  function createValidation(config) {
+    function validate({
+      value,
+      path = "",
+      options,
+      originalValue,
+      schema
+    }, panic, next) {
+      const {
+        name,
+        test,
+        params,
+        message,
+        skipAbsent
+      } = config;
+      let {
+        parent,
+        context,
+        abortEarly = schema.spec.abortEarly,
+        disableStackTrace = schema.spec.disableStackTrace
+      } = options;
+      const resolveOptions = {
+        value,
+        parent,
+        context
+      };
+      function createError(overrides = {}) {
+        const nextParams = resolveParams(Object.assign({
+          value,
+          originalValue,
+          label: schema.spec.label,
+          path: overrides.path || path,
+          spec: schema.spec,
+          disableStackTrace: overrides.disableStackTrace || disableStackTrace
+        }, params, overrides.params), resolveOptions);
+        const error = new ValidationError(ValidationError.formatError(overrides.message || message, nextParams), value, nextParams.path, overrides.type || name, nextParams.disableStackTrace);
+        error.params = nextParams;
+        return error;
+      }
+      const invalid = abortEarly ? panic : next;
+      let ctx = {
+        path,
+        parent,
+        type: name,
+        from: options.from,
+        createError,
+        resolve(item) {
+          return resolveMaybeRef(item, resolveOptions);
+        },
+        options,
+        originalValue,
+        schema
+      };
+      const handleResult = (validOrError) => {
+        if (ValidationError.isError(validOrError)) invalid(validOrError);
+        else if (!validOrError) invalid(createError());
+        else next(null);
+      };
+      const handleError = (err) => {
+        if (ValidationError.isError(err)) invalid(err);
+        else panic(err);
+      };
+      const shouldSkip = skipAbsent && isAbsent(value);
+      if (shouldSkip) {
+        return handleResult(true);
+      }
+      let result;
+      try {
+        var _result;
+        result = test.call(ctx, value, ctx);
+        if (typeof ((_result = result) == null ? void 0 : _result.then) === "function") {
+          if (options.sync) {
+            throw new Error(`Validation test of type: "${ctx.type}" returned a Promise during a synchronous validate. This test will finish after the validate call has returned`);
+          }
+          return Promise.resolve(result).then(handleResult, handleError);
+        }
+      } catch (err) {
+        handleError(err);
+        return;
+      }
+      handleResult(result);
+    }
+    validate.OPTIONS = config;
+    return validate;
+  }
+  function resolveParams(params, options) {
+    if (!params) return params;
+    for (const key of Object.keys(params)) {
+      params[key] = resolveMaybeRef(params[key], options);
+    }
+    return params;
+  }
+  function resolveMaybeRef(item, options) {
+    return Reference.isRef(item) ? item.getValue(options.value, options.parent, options.context) : item;
+  }
+  function getIn(schema, path, value, context = value) {
+    let parent, lastPart, lastPartDebug;
+    if (!path) return {
+      parent,
+      parentPath: path,
+      schema
+    };
+    (0, import_property_expr.forEach)(path, (_part, isBracket, isArray) => {
+      let part = isBracket ? _part.slice(1, _part.length - 1) : _part;
+      schema = schema.resolve({
+        context,
+        parent,
+        value
+      });
+      let isTuple = schema.type === "tuple";
+      let idx = isArray ? parseInt(part, 10) : 0;
+      if (schema.innerType || isTuple) {
+        if (isTuple && !isArray) throw new Error(`Yup.reach cannot implicitly index into a tuple type. the path part "${lastPartDebug}" must contain an index to the tuple element, e.g. "${lastPartDebug}[0]"`);
+        if (value && idx >= value.length) {
+          throw new Error(`Yup.reach cannot resolve an array item at index: ${_part}, in the path: ${path}. because there is no value at that index. `);
+        }
+        parent = value;
+        value = value && value[idx];
+        schema = isTuple ? schema.spec.types[idx] : schema.innerType;
+      }
+      if (!isArray) {
+        if (!schema.fields || !schema.fields[part]) throw new Error(`The schema does not contain the path: ${path}. (failed at: ${lastPartDebug} which is a type: "${schema.type}")`);
+        parent = value;
+        value = value && value[part];
+        schema = schema.fields[part];
+      }
+      lastPart = part;
+      lastPartDebug = isBracket ? "[" + _part + "]" : "." + _part;
+    });
+    return {
+      schema,
+      parent,
+      parentPath: lastPart
+    };
+  }
+  function reach(obj, path, value, context) {
+    return getIn(obj, path, value, context).schema;
+  }
+  var ReferenceSet = class _ReferenceSet extends Set {
+    describe() {
+      const description = [];
+      for (const item of this.values()) {
+        description.push(Reference.isRef(item) ? item.describe() : item);
+      }
+      return description;
+    }
+    resolveAll(resolve) {
+      let result = [];
+      for (const item of this.values()) {
+        result.push(resolve(item));
+      }
+      return result;
+    }
+    clone() {
+      return new _ReferenceSet(this.values());
+    }
+    merge(newItems, removeItems) {
+      const next = this.clone();
+      newItems.forEach((value) => next.add(value));
+      removeItems.forEach((value) => next.delete(value));
+      return next;
+    }
+  };
+  function clone(src, seen = /* @__PURE__ */ new Map()) {
+    if (isSchema(src) || !src || typeof src !== "object") return src;
+    if (seen.has(src)) return seen.get(src);
+    let copy;
+    if (src instanceof Date) {
+      copy = new Date(src.getTime());
+      seen.set(src, copy);
+    } else if (src instanceof RegExp) {
+      copy = new RegExp(src);
+      seen.set(src, copy);
+    } else if (Array.isArray(src)) {
+      copy = new Array(src.length);
+      seen.set(src, copy);
+      for (let i = 0; i < src.length; i++) copy[i] = clone(src[i], seen);
+    } else if (src instanceof Map) {
+      copy = /* @__PURE__ */ new Map();
+      seen.set(src, copy);
+      for (const [k, v] of src.entries()) copy.set(k, clone(v, seen));
+    } else if (src instanceof Set) {
+      copy = /* @__PURE__ */ new Set();
+      seen.set(src, copy);
+      for (const v of src) copy.add(clone(v, seen));
+    } else if (src instanceof Object) {
+      copy = {};
+      seen.set(src, copy);
+      for (const [k, v] of Object.entries(src)) copy[k] = clone(v, seen);
+    } else {
+      throw Error(`Unable to clone ${src}`);
+    }
+    return copy;
+  }
+  function createStandardPath(path) {
+    if (!(path != null && path.length)) {
+      return void 0;
+    }
+    const segments = [];
+    let currentSegment = "";
+    let inBrackets = false;
+    let inQuotes = false;
+    for (let i = 0; i < path.length; i++) {
+      const char = path[i];
+      if (char === "[" && !inQuotes) {
+        if (currentSegment) {
+          segments.push(...currentSegment.split(".").filter(Boolean));
+          currentSegment = "";
+        }
+        inBrackets = true;
+        continue;
+      }
+      if (char === "]" && !inQuotes) {
+        if (currentSegment) {
+          if (/^\d+$/.test(currentSegment)) {
+            segments.push(currentSegment);
+          } else {
+            segments.push(currentSegment.replace(/^"|"$/g, ""));
+          }
+          currentSegment = "";
+        }
+        inBrackets = false;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === "." && !inBrackets && !inQuotes) {
+        if (currentSegment) {
+          segments.push(currentSegment);
+          currentSegment = "";
+        }
+        continue;
+      }
+      currentSegment += char;
+    }
+    if (currentSegment) {
+      segments.push(...currentSegment.split(".").filter(Boolean));
+    }
+    return segments;
+  }
+  function createStandardIssues(error, parentPath) {
+    const path = parentPath ? `${parentPath}.${error.path}` : error.path;
+    return error.errors.map((err) => ({
+      message: err,
+      path: createStandardPath(path)
+    }));
+  }
+  function issuesFromValidationError(error, parentPath) {
+    var _error$inner;
+    if (!((_error$inner = error.inner) != null && _error$inner.length) && error.errors.length) {
+      return createStandardIssues(error, parentPath);
+    }
+    const path = parentPath ? `${parentPath}.${error.path}` : error.path;
+    return error.inner.flatMap((err) => issuesFromValidationError(err, path));
+  }
+  var Schema = class {
+    constructor(options) {
+      this.type = void 0;
+      this.deps = [];
+      this.tests = void 0;
+      this.transforms = void 0;
+      this.conditions = [];
+      this._mutate = void 0;
+      this.internalTests = {};
+      this._whitelist = new ReferenceSet();
+      this._blacklist = new ReferenceSet();
+      this.exclusiveTests = /* @__PURE__ */ Object.create(null);
+      this._typeCheck = void 0;
+      this.spec = void 0;
+      this.tests = [];
+      this.transforms = [];
+      this.withMutation(() => {
+        this.typeError(mixed.notType);
+      });
+      this.type = options.type;
+      this._typeCheck = options.check;
+      this.spec = Object.assign({
+        strip: false,
+        strict: false,
+        abortEarly: true,
+        recursive: true,
+        disableStackTrace: false,
+        nullable: false,
+        optional: true,
+        coerce: true
+      }, options == null ? void 0 : options.spec);
+      this.withMutation((s4) => {
+        s4.nonNullable();
+      });
+    }
+    // TODO: remove
+    get _type() {
+      return this.type;
+    }
+    clone(spec) {
+      if (this._mutate) {
+        if (spec) Object.assign(this.spec, spec);
+        return this;
+      }
+      const next = Object.create(Object.getPrototypeOf(this));
+      next.type = this.type;
+      next._typeCheck = this._typeCheck;
+      next._whitelist = this._whitelist.clone();
+      next._blacklist = this._blacklist.clone();
+      next.internalTests = Object.assign({}, this.internalTests);
+      next.exclusiveTests = Object.assign({}, this.exclusiveTests);
+      next.deps = [...this.deps];
+      next.conditions = [...this.conditions];
+      next.tests = [...this.tests];
+      next.transforms = [...this.transforms];
+      next.spec = clone(Object.assign({}, this.spec, spec));
+      return next;
+    }
+    label(label) {
+      let next = this.clone();
+      next.spec.label = label;
+      return next;
+    }
+    meta(...args) {
+      if (args.length === 0) return this.spec.meta;
+      let next = this.clone();
+      next.spec.meta = Object.assign(next.spec.meta || {}, args[0]);
+      return next;
+    }
+    withMutation(fn) {
+      let before = this._mutate;
+      this._mutate = true;
+      let result = fn(this);
+      this._mutate = before;
+      return result;
+    }
+    concat(schema) {
+      if (!schema || schema === this) return this;
+      if (schema.type !== this.type && this.type !== "mixed") throw new TypeError(`You cannot \`concat()\` schema's of different types: ${this.type} and ${schema.type}`);
+      let base = this;
+      let combined = schema.clone();
+      const mergedSpec = Object.assign({}, base.spec, combined.spec);
+      combined.spec = mergedSpec;
+      combined.internalTests = Object.assign({}, base.internalTests, combined.internalTests);
+      combined._whitelist = base._whitelist.merge(schema._whitelist, schema._blacklist);
+      combined._blacklist = base._blacklist.merge(schema._blacklist, schema._whitelist);
+      combined.tests = base.tests;
+      combined.exclusiveTests = base.exclusiveTests;
+      combined.withMutation((next) => {
+        schema.tests.forEach((fn) => {
+          next.test(fn.OPTIONS);
+        });
+      });
+      combined.transforms = [...base.transforms, ...combined.transforms];
+      return combined;
+    }
+    isType(v) {
+      if (v == null) {
+        if (this.spec.nullable && v === null) return true;
+        if (this.spec.optional && v === void 0) return true;
+        return false;
+      }
+      return this._typeCheck(v);
+    }
+    resolve(options) {
+      let schema = this;
+      if (schema.conditions.length) {
+        let conditions = schema.conditions;
+        schema = schema.clone();
+        schema.conditions = [];
+        schema = conditions.reduce((prevSchema, condition) => condition.resolve(prevSchema, options), schema);
+        schema = schema.resolve(options);
+      }
+      return schema;
+    }
+    resolveOptions(options) {
+      var _options$strict, _options$abortEarly, _options$recursive, _options$disableStack;
+      return Object.assign({}, options, {
+        from: options.from || [],
+        strict: (_options$strict = options.strict) != null ? _options$strict : this.spec.strict,
+        abortEarly: (_options$abortEarly = options.abortEarly) != null ? _options$abortEarly : this.spec.abortEarly,
+        recursive: (_options$recursive = options.recursive) != null ? _options$recursive : this.spec.recursive,
+        disableStackTrace: (_options$disableStack = options.disableStackTrace) != null ? _options$disableStack : this.spec.disableStackTrace
+      });
+    }
+    /**
+     * Run the configured transform pipeline over an input value.
+     */
+    cast(value, options = {}) {
+      let resolvedSchema = this.resolve(Object.assign({}, options, {
+        value
+        // parent: options.parent,
+        // context: options.context,
+      }));
+      let allowOptionality = options.assert === "ignore-optionality";
+      let result = resolvedSchema._cast(value, options);
+      if (options.assert !== false && !resolvedSchema.isType(result)) {
+        if (allowOptionality && isAbsent(result)) {
+          return result;
+        }
+        let formattedValue = printValue(value);
+        let formattedResult = printValue(result);
+        throw new TypeError(`The value of ${options.path || "field"} could not be cast to a value that satisfies the schema type: "${resolvedSchema.type}". 
+
+attempted value: ${formattedValue} 
+` + (formattedResult !== formattedValue ? `result of cast: ${formattedResult}` : ""));
+      }
+      return result;
+    }
+    _cast(rawValue, options) {
+      let value = rawValue === void 0 ? rawValue : this.transforms.reduce((prevValue, fn) => fn.call(this, prevValue, rawValue, this, options), rawValue);
+      if (value === void 0) {
+        value = this.getDefault(options);
+      }
+      return value;
+    }
+    _validate(_value, options = {}, panic, next) {
+      let {
+        path,
+        originalValue = _value,
+        strict = this.spec.strict
+      } = options;
+      let value = _value;
+      if (!strict) {
+        value = this._cast(value, Object.assign({
+          assert: false
+        }, options));
+      }
+      let initialTests = [];
+      for (let test of Object.values(this.internalTests)) {
+        if (test) initialTests.push(test);
+      }
+      this.runTests({
+        path,
+        value,
+        originalValue,
+        options,
+        tests: initialTests
+      }, panic, (initialErrors) => {
+        if (initialErrors.length) {
+          return next(initialErrors, value);
+        }
+        this.runTests({
+          path,
+          value,
+          originalValue,
+          options,
+          tests: this.tests
+        }, panic, next);
+      });
+    }
+    /**
+     * Executes a set of validations, either schema, produced Tests or a nested
+     * schema validate result.
+     */
+    runTests(runOptions, panic, next) {
+      let fired = false;
+      let {
+        tests,
+        value,
+        originalValue,
+        path,
+        options
+      } = runOptions;
+      let panicOnce = (arg) => {
+        if (fired) return;
+        fired = true;
+        panic(arg, value);
+      };
+      let nextOnce = (arg) => {
+        if (fired) return;
+        fired = true;
+        next(arg, value);
+      };
+      let count4 = tests.length;
+      let nestedErrors = [];
+      if (!count4) return nextOnce([]);
+      let args = {
+        value,
+        originalValue,
+        path,
+        options,
+        schema: this
+      };
+      for (let i = 0; i < tests.length; i++) {
+        const test = tests[i];
+        test(args, panicOnce, function finishTestRun(err) {
+          if (err) {
+            Array.isArray(err) ? nestedErrors.push(...err) : nestedErrors.push(err);
+          }
+          if (--count4 <= 0) {
+            nextOnce(nestedErrors);
+          }
+        });
+      }
+    }
+    asNestedTest({
+      key,
+      index: index3,
+      parent,
+      parentPath,
+      originalParent,
+      options
+    }) {
+      const k = key != null ? key : index3;
+      if (k == null) {
+        throw TypeError("Must include `key` or `index` for nested validations");
+      }
+      const isIndex = typeof k === "number";
+      let value = parent[k];
+      const testOptions = Object.assign({}, options, {
+        // Nested validations fields are always strict:
+        //    1. parent isn't strict so the casting will also have cast inner values
+        //    2. parent is strict in which case the nested values weren't cast either
+        strict: true,
+        parent,
+        value,
+        originalValue: originalParent[k],
+        // FIXME: tests depend on `index` being passed around deeply,
+        //   we should not let the options.key/index bleed through
+        key: void 0,
+        // index: undefined,
+        [isIndex ? "index" : "key"]: k,
+        path: isIndex || k.includes(".") ? `${parentPath || ""}[${isIndex ? k : `"${k}"`}]` : (parentPath ? `${parentPath}.` : "") + key
+      });
+      return (_, panic, next) => this.resolve(testOptions)._validate(value, testOptions, panic, next);
+    }
+    validate(value, options) {
+      var _options$disableStack2;
+      let schema = this.resolve(Object.assign({}, options, {
+        value
+      }));
+      let disableStackTrace = (_options$disableStack2 = options == null ? void 0 : options.disableStackTrace) != null ? _options$disableStack2 : schema.spec.disableStackTrace;
+      return new Promise((resolve, reject) => schema._validate(value, options, (error, parsed) => {
+        if (ValidationError.isError(error)) error.value = parsed;
+        reject(error);
+      }, (errors, validated) => {
+        if (errors.length) reject(new ValidationError(errors, validated, void 0, void 0, disableStackTrace));
+        else resolve(validated);
+      }));
+    }
+    validateSync(value, options) {
+      var _options$disableStack3;
+      let schema = this.resolve(Object.assign({}, options, {
+        value
+      }));
+      let result;
+      let disableStackTrace = (_options$disableStack3 = options == null ? void 0 : options.disableStackTrace) != null ? _options$disableStack3 : schema.spec.disableStackTrace;
+      schema._validate(value, Object.assign({}, options, {
+        sync: true
+      }), (error, parsed) => {
+        if (ValidationError.isError(error)) error.value = parsed;
+        throw error;
+      }, (errors, validated) => {
+        if (errors.length) throw new ValidationError(errors, value, void 0, void 0, disableStackTrace);
+        result = validated;
+      });
+      return result;
+    }
+    isValid(value, options) {
+      return this.validate(value, options).then(() => true, (err) => {
+        if (ValidationError.isError(err)) return false;
+        throw err;
+      });
+    }
+    isValidSync(value, options) {
+      try {
+        this.validateSync(value, options);
+        return true;
+      } catch (err) {
+        if (ValidationError.isError(err)) return false;
+        throw err;
+      }
+    }
+    _getDefault(options) {
+      let defaultValue2 = this.spec.default;
+      if (defaultValue2 == null) {
+        return defaultValue2;
+      }
+      return typeof defaultValue2 === "function" ? defaultValue2.call(this, options) : clone(defaultValue2);
+    }
+    getDefault(options) {
+      let schema = this.resolve(options || {});
+      return schema._getDefault(options);
+    }
+    default(def) {
+      if (arguments.length === 0) {
+        return this._getDefault();
+      }
+      let next = this.clone({
+        default: def
+      });
+      return next;
+    }
+    strict(isStrict = true) {
+      return this.clone({
+        strict: isStrict
+      });
+    }
+    nullability(nullable, message) {
+      const next = this.clone({
+        nullable
+      });
+      next.internalTests.nullable = createValidation({
+        message,
+        name: "nullable",
+        test(value) {
+          return value === null ? this.schema.spec.nullable : true;
+        }
+      });
+      return next;
+    }
+    optionality(optional, message) {
+      const next = this.clone({
+        optional
+      });
+      next.internalTests.optionality = createValidation({
+        message,
+        name: "optionality",
+        test(value) {
+          return value === void 0 ? this.schema.spec.optional : true;
+        }
+      });
+      return next;
+    }
+    optional() {
+      return this.optionality(true);
+    }
+    defined(message = mixed.defined) {
+      return this.optionality(false, message);
+    }
+    nullable() {
+      return this.nullability(true);
+    }
+    nonNullable(message = mixed.notNull) {
+      return this.nullability(false, message);
+    }
+    required(message = mixed.required) {
+      return this.clone().withMutation((next) => next.nonNullable(message).defined(message));
+    }
+    notRequired() {
+      return this.clone().withMutation((next) => next.nullable().optional());
+    }
+    transform(fn) {
+      let next = this.clone();
+      next.transforms.push(fn);
+      return next;
+    }
+    /**
+     * Adds a test function to the schema's queue of tests.
+     * tests can be exclusive or non-exclusive.
+     *
+     * - exclusive tests, will replace any existing tests of the same name.
+     * - non-exclusive: can be stacked
+     *
+     * If a non-exclusive test is added to a schema with an exclusive test of the same name
+     * the exclusive test is removed and further tests of the same name will be stacked.
+     *
+     * If an exclusive test is added to a schema with non-exclusive tests of the same name
+     * the previous tests are removed and further tests of the same name will replace each other.
+     */
+    test(...args) {
+      let opts;
+      if (args.length === 1) {
+        if (typeof args[0] === "function") {
+          opts = {
+            test: args[0]
+          };
+        } else {
+          opts = args[0];
+        }
+      } else if (args.length === 2) {
+        opts = {
+          name: args[0],
+          test: args[1]
+        };
+      } else {
+        opts = {
+          name: args[0],
+          message: args[1],
+          test: args[2]
+        };
+      }
+      if (opts.message === void 0) opts.message = mixed.default;
+      if (typeof opts.test !== "function") throw new TypeError("`test` is a required parameters");
+      let next = this.clone();
+      let validate = createValidation(opts);
+      let isExclusive = opts.exclusive || opts.name && next.exclusiveTests[opts.name] === true;
+      if (opts.exclusive) {
+        if (!opts.name) throw new TypeError("Exclusive tests must provide a unique `name` identifying the test");
+      }
+      if (opts.name) next.exclusiveTests[opts.name] = !!opts.exclusive;
+      next.tests = next.tests.filter((fn) => {
+        if (fn.OPTIONS.name === opts.name) {
+          if (isExclusive) return false;
+          if (fn.OPTIONS.test === validate.OPTIONS.test) return false;
+        }
+        return true;
+      });
+      next.tests.push(validate);
+      return next;
+    }
+    when(keys, options) {
+      if (!Array.isArray(keys) && typeof keys !== "string") {
+        options = keys;
+        keys = ".";
+      }
+      let next = this.clone();
+      let deps = toArray(keys).map((key) => new Reference(key));
+      deps.forEach((dep) => {
+        if (dep.isSibling) next.deps.push(dep.key);
+      });
+      next.conditions.push(typeof options === "function" ? new Condition(deps, options) : Condition.fromOptions(deps, options));
+      return next;
+    }
+    typeError(message) {
+      let next = this.clone();
+      next.internalTests.typeError = createValidation({
+        message,
+        name: "typeError",
+        skipAbsent: true,
+        test(value) {
+          if (!this.schema._typeCheck(value)) return this.createError({
+            params: {
+              type: this.schema.type
+            }
+          });
+          return true;
+        }
+      });
+      return next;
+    }
+    oneOf(enums, message = mixed.oneOf) {
+      let next = this.clone();
+      enums.forEach((val) => {
+        next._whitelist.add(val);
+        next._blacklist.delete(val);
+      });
+      next.internalTests.whiteList = createValidation({
+        message,
+        name: "oneOf",
+        skipAbsent: true,
+        test(value) {
+          let valids = this.schema._whitelist;
+          let resolved2 = valids.resolveAll(this.resolve);
+          return resolved2.includes(value) ? true : this.createError({
+            params: {
+              values: Array.from(valids).join(", "),
+              resolved: resolved2
+            }
+          });
+        }
+      });
+      return next;
+    }
+    notOneOf(enums, message = mixed.notOneOf) {
+      let next = this.clone();
+      enums.forEach((val) => {
+        next._blacklist.add(val);
+        next._whitelist.delete(val);
+      });
+      next.internalTests.blacklist = createValidation({
+        message,
+        name: "notOneOf",
+        test(value) {
+          let invalids = this.schema._blacklist;
+          let resolved2 = invalids.resolveAll(this.resolve);
+          if (resolved2.includes(value)) return this.createError({
+            params: {
+              values: Array.from(invalids).join(", "),
+              resolved: resolved2
+            }
+          });
+          return true;
+        }
+      });
+      return next;
+    }
+    strip(strip = true) {
+      let next = this.clone();
+      next.spec.strip = strip;
+      return next;
+    }
+    /**
+     * Return a serialized description of the schema including validations, flags, types etc.
+     *
+     * @param options Provide any needed context for resolving runtime schema alterations (lazy, when conditions, etc).
+     */
+    describe(options) {
+      const next = (options ? this.resolve(options) : this).clone();
+      const {
+        label,
+        meta,
+        optional,
+        nullable
+      } = next.spec;
+      const description = {
+        meta,
+        label,
+        optional,
+        nullable,
+        default: next.getDefault(options),
+        type: next.type,
+        oneOf: next._whitelist.describe(),
+        notOneOf: next._blacklist.describe(),
+        tests: next.tests.filter((n3, idx, list) => list.findIndex((c3) => c3.OPTIONS.name === n3.OPTIONS.name) === idx).map((fn) => {
+          const params = fn.OPTIONS.params && options ? resolveParams(Object.assign({}, fn.OPTIONS.params), options) : fn.OPTIONS.params;
+          return {
+            name: fn.OPTIONS.name,
+            params
+          };
+        })
+      };
+      return description;
+    }
+    get ["~standard"]() {
+      const schema = this;
+      const standard = {
+        version: 1,
+        vendor: "yup",
+        async validate(value) {
+          try {
+            const result = await schema.validate(value, {
+              abortEarly: false
+            });
+            return {
+              value: result
+            };
+          } catch (err) {
+            if (err instanceof ValidationError) {
+              return {
+                issues: issuesFromValidationError(err)
+              };
+            }
+            throw err;
+          }
+        }
+      };
+      return standard;
+    }
+  };
+  Schema.prototype.__isYupSchema__ = true;
+  for (const method of ["validate", "validateSync"]) Schema.prototype[`${method}At`] = function(path, value, options = {}) {
+    const {
+      parent,
+      parentPath,
+      schema
+    } = getIn(this, path, value, options.context);
+    return schema[method](parent && parent[parentPath], Object.assign({}, options, {
+      parent,
+      path
+    }));
+  };
+  for (const alias of ["equals", "is"]) Schema.prototype[alias] = Schema.prototype.oneOf;
+  for (const alias of ["not", "nope"]) Schema.prototype[alias] = Schema.prototype.notOneOf;
+  var returnsTrue = () => true;
+  function create$8(spec) {
+    return new MixedSchema(spec);
+  }
+  var MixedSchema = class extends Schema {
+    constructor(spec) {
+      super(typeof spec === "function" ? {
+        type: "mixed",
+        check: spec
+      } : Object.assign({
+        type: "mixed",
+        check: returnsTrue
+      }, spec));
+    }
+  };
+  create$8.prototype = MixedSchema.prototype;
+  function create$7() {
+    return new BooleanSchema();
+  }
+  var BooleanSchema = class extends Schema {
+    constructor() {
+      super({
+        type: "boolean",
+        check(v) {
+          if (v instanceof Boolean) v = v.valueOf();
+          return typeof v === "boolean";
+        }
+      });
+      this.withMutation(() => {
+        this.transform((value, _raw) => {
+          if (this.spec.coerce && !this.isType(value)) {
+            if (/^(true|1)$/i.test(String(value))) return true;
+            if (/^(false|0)$/i.test(String(value))) return false;
+          }
+          return value;
+        });
+      });
+    }
+    isTrue(message = boolean.isValue) {
+      return this.test({
+        message,
+        name: "is-value",
+        exclusive: true,
+        params: {
+          value: "true"
+        },
+        test(value) {
+          return isAbsent(value) || value === true;
+        }
+      });
+    }
+    isFalse(message = boolean.isValue) {
+      return this.test({
+        message,
+        name: "is-value",
+        exclusive: true,
+        params: {
+          value: "false"
+        },
+        test(value) {
+          return isAbsent(value) || value === false;
+        }
+      });
+    }
+    default(def) {
+      return super.default(def);
+    }
+    defined(msg) {
+      return super.defined(msg);
+    }
+    optional() {
+      return super.optional();
+    }
+    required(msg) {
+      return super.required(msg);
+    }
+    notRequired() {
+      return super.notRequired();
+    }
+    nullable() {
+      return super.nullable();
+    }
+    nonNullable(msg) {
+      return super.nonNullable(msg);
+    }
+    strip(v) {
+      return super.strip(v);
+    }
+  };
+  create$7.prototype = BooleanSchema.prototype;
+  var isoReg = /^(\d{4}|[+-]\d{6})(?:-?(\d{2})(?:-?(\d{2}))?)?(?:[ T]?(\d{2}):?(\d{2})(?::?(\d{2})(?:[,.](\d{1,}))?)?(?:(Z)|([+-])(\d{2})(?::?(\d{2}))?)?)?$/;
+  function parseIsoDate(date2) {
+    const struct = parseDateStruct(date2);
+    if (!struct) return Date.parse ? Date.parse(date2) : Number.NaN;
+    if (struct.z === void 0 && struct.plusMinus === void 0) {
+      return new Date(struct.year, struct.month, struct.day, struct.hour, struct.minute, struct.second, struct.millisecond).valueOf();
+    }
+    let totalMinutesOffset = 0;
+    if (struct.z !== "Z" && struct.plusMinus !== void 0) {
+      totalMinutesOffset = struct.hourOffset * 60 + struct.minuteOffset;
+      if (struct.plusMinus === "+") totalMinutesOffset = 0 - totalMinutesOffset;
+    }
+    return Date.UTC(struct.year, struct.month, struct.day, struct.hour, struct.minute + totalMinutesOffset, struct.second, struct.millisecond);
+  }
+  function parseDateStruct(date2) {
+    var _regexResult$7$length, _regexResult$;
+    const regexResult = isoReg.exec(date2);
+    if (!regexResult) return null;
+    return {
+      year: toNumber(regexResult[1]),
+      month: toNumber(regexResult[2], 1) - 1,
+      day: toNumber(regexResult[3], 1),
+      hour: toNumber(regexResult[4]),
+      minute: toNumber(regexResult[5]),
+      second: toNumber(regexResult[6]),
+      millisecond: regexResult[7] ? (
+        // allow arbitrary sub-second precision beyond milliseconds
+        toNumber(regexResult[7].substring(0, 3))
+      ) : 0,
+      precision: (_regexResult$7$length = (_regexResult$ = regexResult[7]) == null ? void 0 : _regexResult$.length) != null ? _regexResult$7$length : void 0,
+      z: regexResult[8] || void 0,
+      plusMinus: regexResult[9] || void 0,
+      hourOffset: toNumber(regexResult[10]),
+      minuteOffset: toNumber(regexResult[11])
+    };
+  }
+  function toNumber(str, defaultValue2 = 0) {
+    return Number(str) || defaultValue2;
+  }
+  var rEmail = (
+    // eslint-disable-next-line
+    /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+  );
+  var rUrl = (
+    // eslint-disable-next-line
+    /^((https?|ftp):)?\/\/(((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:)*@)?(((\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.(\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.(\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.(\d|[1-9]\d|1\d\d|2[0-4]\d|25[0-5]))|((([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|\d|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.)+(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])*([a-z]|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])))\.?)(:\d*)?)(\/((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)+(\/(([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)*)*)?)?(\?((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)|[\uE000-\uF8FF]|\/|\?)*)?(\#((([a-z]|\d|-|\.|_|~|[\u00A0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF])|(%[\da-f]{2})|[!\$&'\(\)\*\+,;=]|:|@)|\/|\?)*)?$/i
+  );
+  var rUUID = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)$/i;
+  var yearMonthDay = "^\\d{4}-\\d{2}-\\d{2}";
+  var hourMinuteSecond = "\\d{2}:\\d{2}:\\d{2}";
+  var zOrOffset = "(([+-]\\d{2}(:?\\d{2})?)|Z)";
+  var rIsoDateTime = new RegExp(`${yearMonthDay}T${hourMinuteSecond}(\\.\\d+)?${zOrOffset}$`);
+  var isTrimmed = (value) => isAbsent(value) || value === value.trim();
+  var objStringTag = {}.toString();
+  function create$6() {
+    return new StringSchema();
+  }
+  var StringSchema = class extends Schema {
+    constructor() {
+      super({
+        type: "string",
+        check(value) {
+          if (value instanceof String) value = value.valueOf();
+          return typeof value === "string";
+        }
+      });
+      this.withMutation(() => {
+        this.transform((value, _raw) => {
+          if (!this.spec.coerce || this.isType(value)) return value;
+          if (Array.isArray(value)) return value;
+          const strValue = value != null && value.toString ? value.toString() : value;
+          if (strValue === objStringTag) return value;
+          return strValue;
+        });
+      });
+    }
+    required(message) {
+      return super.required(message).withMutation((schema) => schema.test({
+        message: message || mixed.required,
+        name: "required",
+        skipAbsent: true,
+        test: (value) => !!value.length
+      }));
+    }
+    notRequired() {
+      return super.notRequired().withMutation((schema) => {
+        schema.tests = schema.tests.filter((t) => t.OPTIONS.name !== "required");
+        return schema;
+      });
+    }
+    length(length, message = string.length) {
+      return this.test({
+        message,
+        name: "length",
+        exclusive: true,
+        params: {
+          length
+        },
+        skipAbsent: true,
+        test(value) {
+          return value.length === this.resolve(length);
+        }
+      });
+    }
+    min(min2, message = string.min) {
+      return this.test({
+        message,
+        name: "min",
+        exclusive: true,
+        params: {
+          min: min2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value.length >= this.resolve(min2);
+        }
+      });
+    }
+    max(max2, message = string.max) {
+      return this.test({
+        name: "max",
+        exclusive: true,
+        message,
+        params: {
+          max: max2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value.length <= this.resolve(max2);
+        }
+      });
+    }
+    matches(regex, options) {
+      let excludeEmptyString = false;
+      let message;
+      let name;
+      if (options) {
+        if (typeof options === "object") {
+          ({
+            excludeEmptyString = false,
+            message,
+            name
+          } = options);
+        } else {
+          message = options;
+        }
+      }
+      return this.test({
+        name: name || "matches",
+        message: message || string.matches,
+        params: {
+          regex
+        },
+        skipAbsent: true,
+        test: (value) => value === "" && excludeEmptyString || value.search(regex) !== -1
+      });
+    }
+    email(message = string.email) {
+      return this.matches(rEmail, {
+        name: "email",
+        message,
+        excludeEmptyString: true
+      });
+    }
+    url(message = string.url) {
+      return this.matches(rUrl, {
+        name: "url",
+        message,
+        excludeEmptyString: true
+      });
+    }
+    uuid(message = string.uuid) {
+      return this.matches(rUUID, {
+        name: "uuid",
+        message,
+        excludeEmptyString: false
+      });
+    }
+    datetime(options) {
+      let message = "";
+      let allowOffset;
+      let precision;
+      if (options) {
+        if (typeof options === "object") {
+          ({
+            message = "",
+            allowOffset = false,
+            precision = void 0
+          } = options);
+        } else {
+          message = options;
+        }
+      }
+      return this.matches(rIsoDateTime, {
+        name: "datetime",
+        message: message || string.datetime,
+        excludeEmptyString: true
+      }).test({
+        name: "datetime_offset",
+        message: message || string.datetime_offset,
+        params: {
+          allowOffset
+        },
+        skipAbsent: true,
+        test: (value) => {
+          if (!value || allowOffset) return true;
+          const struct = parseDateStruct(value);
+          if (!struct) return false;
+          return !!struct.z;
+        }
+      }).test({
+        name: "datetime_precision",
+        message: message || string.datetime_precision,
+        params: {
+          precision
+        },
+        skipAbsent: true,
+        test: (value) => {
+          if (!value || precision == void 0) return true;
+          const struct = parseDateStruct(value);
+          if (!struct) return false;
+          return struct.precision === precision;
+        }
+      });
+    }
+    //-- transforms --
+    ensure() {
+      return this.default("").transform((val) => val === null ? "" : val);
+    }
+    trim(message = string.trim) {
+      return this.transform((val) => val != null ? val.trim() : val).test({
+        message,
+        name: "trim",
+        test: isTrimmed
+      });
+    }
+    lowercase(message = string.lowercase) {
+      return this.transform((value) => !isAbsent(value) ? value.toLowerCase() : value).test({
+        message,
+        name: "string_case",
+        exclusive: true,
+        skipAbsent: true,
+        test: (value) => isAbsent(value) || value === value.toLowerCase()
+      });
+    }
+    uppercase(message = string.uppercase) {
+      return this.transform((value) => !isAbsent(value) ? value.toUpperCase() : value).test({
+        message,
+        name: "string_case",
+        exclusive: true,
+        skipAbsent: true,
+        test: (value) => isAbsent(value) || value === value.toUpperCase()
+      });
+    }
+  };
+  create$6.prototype = StringSchema.prototype;
+  var isNaN$1 = (value) => value != +value;
+  function create$5() {
+    return new NumberSchema();
+  }
+  var NumberSchema = class extends Schema {
+    constructor() {
+      super({
+        type: "number",
+        check(value) {
+          if (value instanceof Number) value = value.valueOf();
+          return typeof value === "number" && !isNaN$1(value);
+        }
+      });
+      this.withMutation(() => {
+        this.transform((value, _raw) => {
+          if (!this.spec.coerce) return value;
+          let parsed = value;
+          if (typeof parsed === "string") {
+            parsed = parsed.replace(/\s/g, "");
+            if (parsed === "") return NaN;
+            parsed = +parsed;
+          }
+          if (this.isType(parsed) || parsed === null) return parsed;
+          return parseFloat(parsed);
+        });
+      });
+    }
+    min(min2, message = number.min) {
+      return this.test({
+        message,
+        name: "min",
+        exclusive: true,
+        params: {
+          min: min2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value >= this.resolve(min2);
+        }
+      });
+    }
+    max(max2, message = number.max) {
+      return this.test({
+        message,
+        name: "max",
+        exclusive: true,
+        params: {
+          max: max2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value <= this.resolve(max2);
+        }
+      });
+    }
+    lessThan(less, message = number.lessThan) {
+      return this.test({
+        message,
+        name: "max",
+        exclusive: true,
+        params: {
+          less
+        },
+        skipAbsent: true,
+        test(value) {
+          return value < this.resolve(less);
+        }
+      });
+    }
+    moreThan(more, message = number.moreThan) {
+      return this.test({
+        message,
+        name: "min",
+        exclusive: true,
+        params: {
+          more
+        },
+        skipAbsent: true,
+        test(value) {
+          return value > this.resolve(more);
+        }
+      });
+    }
+    positive(msg = number.positive) {
+      return this.moreThan(0, msg);
+    }
+    negative(msg = number.negative) {
+      return this.lessThan(0, msg);
+    }
+    integer(message = number.integer) {
+      return this.test({
+        name: "integer",
+        message,
+        skipAbsent: true,
+        test: (val) => Number.isInteger(val)
+      });
+    }
+    truncate() {
+      return this.transform((value) => !isAbsent(value) ? value | 0 : value);
+    }
+    round(method) {
+      var _method;
+      let avail = ["ceil", "floor", "round", "trunc"];
+      method = ((_method = method) == null ? void 0 : _method.toLowerCase()) || "round";
+      if (method === "trunc") return this.truncate();
+      if (avail.indexOf(method.toLowerCase()) === -1) throw new TypeError("Only valid options for round() are: " + avail.join(", "));
+      return this.transform((value) => !isAbsent(value) ? Math[method](value) : value);
+    }
+  };
+  create$5.prototype = NumberSchema.prototype;
+  var invalidDate = /* @__PURE__ */ new Date("");
+  var isDate = (obj) => Object.prototype.toString.call(obj) === "[object Date]";
+  function create$4() {
+    return new DateSchema();
+  }
+  var DateSchema = class _DateSchema extends Schema {
+    constructor() {
+      super({
+        type: "date",
+        check(v) {
+          return isDate(v) && !isNaN(v.getTime());
+        }
+      });
+      this.withMutation(() => {
+        this.transform((value, _raw) => {
+          if (!this.spec.coerce || this.isType(value) || value === null) return value;
+          value = parseIsoDate(value);
+          return !isNaN(value) ? new Date(value) : _DateSchema.INVALID_DATE;
+        });
+      });
+    }
+    prepareParam(ref, name) {
+      let param;
+      if (!Reference.isRef(ref)) {
+        let cast = this.cast(ref);
+        if (!this._typeCheck(cast)) throw new TypeError(`\`${name}\` must be a Date or a value that can be \`cast()\` to a Date`);
+        param = cast;
+      } else {
+        param = ref;
+      }
+      return param;
+    }
+    min(min2, message = date.min) {
+      let limit = this.prepareParam(min2, "min");
+      return this.test({
+        message,
+        name: "min",
+        exclusive: true,
+        params: {
+          min: min2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value >= this.resolve(limit);
+        }
+      });
+    }
+    max(max2, message = date.max) {
+      let limit = this.prepareParam(max2, "max");
+      return this.test({
+        message,
+        name: "max",
+        exclusive: true,
+        params: {
+          max: max2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value <= this.resolve(limit);
+        }
+      });
+    }
+  };
+  DateSchema.INVALID_DATE = invalidDate;
+  create$4.prototype = DateSchema.prototype;
+  create$4.INVALID_DATE = invalidDate;
+  function sortFields(fields, excludedEdges = []) {
+    let edges = [];
+    let nodes = /* @__PURE__ */ new Set();
+    let excludes = new Set(excludedEdges.map(([a10, b]) => `${a10}-${b}`));
+    function addNode(depPath, key) {
+      let node = (0, import_property_expr.split)(depPath)[0];
+      nodes.add(node);
+      if (!excludes.has(`${key}-${node}`)) edges.push([key, node]);
+    }
+    for (const key of Object.keys(fields)) {
+      let value = fields[key];
+      nodes.add(key);
+      if (Reference.isRef(value) && value.isSibling) addNode(value.path, key);
+      else if (isSchema(value) && "deps" in value) value.deps.forEach((path) => addNode(path, key));
+    }
+    return import_toposort.default.array(Array.from(nodes), edges).reverse();
+  }
+  function findIndex(arr, err) {
+    let idx = Infinity;
+    arr.some((key, ii) => {
+      var _err$path;
+      if ((_err$path = err.path) != null && _err$path.includes(key)) {
+        idx = ii;
+        return true;
+      }
+    });
+    return idx;
+  }
+  function sortByKeyOrder(keys) {
+    return (a10, b) => {
+      return findIndex(keys, a10) - findIndex(keys, b);
+    };
+  }
+  var parseJson = (value, _, schema) => {
+    if (typeof value !== "string") {
+      return value;
+    }
+    let parsed = value;
+    try {
+      parsed = JSON.parse(value);
+    } catch (err) {
+    }
+    return schema.isType(parsed) ? parsed : value;
+  };
+  function deepPartial(schema) {
+    if ("fields" in schema) {
+      const partial = {};
+      for (const [key, fieldSchema] of Object.entries(schema.fields)) {
+        partial[key] = deepPartial(fieldSchema);
+      }
+      return schema.setFields(partial);
+    }
+    if (schema.type === "array") {
+      const nextArray = schema.optional();
+      if (nextArray.innerType) nextArray.innerType = deepPartial(nextArray.innerType);
+      return nextArray;
+    }
+    if (schema.type === "tuple") {
+      return schema.optional().clone({
+        types: schema.spec.types.map(deepPartial)
+      });
+    }
+    if ("optional" in schema) {
+      return schema.optional();
+    }
+    return schema;
+  }
+  var deepHas = (obj, p2) => {
+    const path = [...(0, import_property_expr.normalizePath)(p2)];
+    if (path.length === 1) return path[0] in obj;
+    let last = path.pop();
+    let parent = (0, import_property_expr.getter)((0, import_property_expr.join)(path), true)(obj);
+    return !!(parent && last in parent);
+  };
+  var isObject = (obj) => Object.prototype.toString.call(obj) === "[object Object]";
+  function unknown(ctx, value) {
+    let known = Object.keys(ctx.fields);
+    return Object.keys(value).filter((key) => known.indexOf(key) === -1);
+  }
+  var defaultSort = sortByKeyOrder([]);
+  function create$3(spec) {
+    return new ObjectSchema(spec);
+  }
+  var ObjectSchema = class extends Schema {
+    constructor(spec) {
+      super({
+        type: "object",
+        check(value) {
+          return isObject(value) || typeof value === "function";
+        }
+      });
+      this.fields = /* @__PURE__ */ Object.create(null);
+      this._sortErrors = defaultSort;
+      this._nodes = [];
+      this._excludedEdges = [];
+      this.withMutation(() => {
+        if (spec) {
+          this.shape(spec);
+        }
+      });
+    }
+    _cast(_value, options = {}) {
+      var _options$stripUnknown;
+      let value = super._cast(_value, options);
+      if (value === void 0) return this.getDefault(options);
+      if (!this._typeCheck(value)) return value;
+      let fields = this.fields;
+      let strip = (_options$stripUnknown = options.stripUnknown) != null ? _options$stripUnknown : this.spec.noUnknown;
+      let props = [].concat(this._nodes, Object.keys(value).filter((v) => !this._nodes.includes(v)));
+      let intermediateValue = {};
+      let innerOptions = Object.assign({}, options, {
+        parent: intermediateValue,
+        __validating: options.__validating || false
+      });
+      let isChanged = false;
+      for (const prop of props) {
+        let field = fields[prop];
+        let exists = prop in value;
+        let inputValue = value[prop];
+        if (field) {
+          let fieldValue;
+          innerOptions.path = (options.path ? `${options.path}.` : "") + prop;
+          field = field.resolve({
+            value: inputValue,
+            context: options.context,
+            parent: intermediateValue
+          });
+          let fieldSpec = field instanceof Schema ? field.spec : void 0;
+          let strict = fieldSpec == null ? void 0 : fieldSpec.strict;
+          if (fieldSpec != null && fieldSpec.strip) {
+            isChanged = isChanged || prop in value;
+            continue;
+          }
+          fieldValue = !options.__validating || !strict ? field.cast(inputValue, innerOptions) : inputValue;
+          if (fieldValue !== void 0) {
+            intermediateValue[prop] = fieldValue;
+          }
+        } else if (exists && !strip) {
+          intermediateValue[prop] = inputValue;
+        }
+        if (exists !== prop in intermediateValue || intermediateValue[prop] !== inputValue) {
+          isChanged = true;
+        }
+      }
+      return isChanged ? intermediateValue : value;
+    }
+    _validate(_value, options = {}, panic, next) {
+      let {
+        from = [],
+        originalValue = _value,
+        recursive = this.spec.recursive
+      } = options;
+      options.from = [{
+        schema: this,
+        value: originalValue
+      }, ...from];
+      options.__validating = true;
+      options.originalValue = originalValue;
+      super._validate(_value, options, panic, (objectErrors, value) => {
+        if (!recursive || !isObject(value)) {
+          next(objectErrors, value);
+          return;
+        }
+        originalValue = originalValue || value;
+        let tests = [];
+        for (let key of this._nodes) {
+          let field = this.fields[key];
+          if (!field || Reference.isRef(field)) {
+            continue;
+          }
+          tests.push(field.asNestedTest({
+            options,
+            key,
+            parent: value,
+            parentPath: options.path,
+            originalParent: originalValue
+          }));
+        }
+        this.runTests({
+          tests,
+          value,
+          originalValue,
+          options
+        }, panic, (fieldErrors) => {
+          next(fieldErrors.sort(this._sortErrors).concat(objectErrors), value);
+        });
+      });
+    }
+    clone(spec) {
+      const next = super.clone(spec);
+      next.fields = Object.assign({}, this.fields);
+      next._nodes = this._nodes;
+      next._excludedEdges = this._excludedEdges;
+      next._sortErrors = this._sortErrors;
+      return next;
+    }
+    concat(schema) {
+      let next = super.concat(schema);
+      let nextFields = next.fields;
+      for (let [field, schemaOrRef] of Object.entries(this.fields)) {
+        const target = nextFields[field];
+        nextFields[field] = target === void 0 ? schemaOrRef : target;
+      }
+      return next.withMutation((s4) => (
+        // XXX: excludes here is wrong
+        s4.setFields(nextFields, [...this._excludedEdges, ...schema._excludedEdges])
+      ));
+    }
+    _getDefault(options) {
+      if ("default" in this.spec) {
+        return super._getDefault(options);
+      }
+      if (!this._nodes.length) {
+        return void 0;
+      }
+      let dft = {};
+      this._nodes.forEach((key) => {
+        var _innerOptions;
+        const field = this.fields[key];
+        let innerOptions = options;
+        if ((_innerOptions = innerOptions) != null && _innerOptions.value) {
+          innerOptions = Object.assign({}, innerOptions, {
+            parent: innerOptions.value,
+            value: innerOptions.value[key]
+          });
+        }
+        dft[key] = field && "getDefault" in field ? field.getDefault(innerOptions) : void 0;
+      });
+      return dft;
+    }
+    setFields(shape, excludedEdges) {
+      let next = this.clone();
+      next.fields = shape;
+      next._nodes = sortFields(shape, excludedEdges);
+      next._sortErrors = sortByKeyOrder(Object.keys(shape));
+      if (excludedEdges) next._excludedEdges = excludedEdges;
+      return next;
+    }
+    shape(additions, excludes = []) {
+      return this.clone().withMutation((next) => {
+        let edges = next._excludedEdges;
+        if (excludes.length) {
+          if (!Array.isArray(excludes[0])) excludes = [excludes];
+          edges = [...next._excludedEdges, ...excludes];
+        }
+        return next.setFields(Object.assign(next.fields, additions), edges);
+      });
+    }
+    partial() {
+      const partial = {};
+      for (const [key, schema] of Object.entries(this.fields)) {
+        partial[key] = "optional" in schema && schema.optional instanceof Function ? schema.optional() : schema;
+      }
+      return this.setFields(partial);
+    }
+    deepPartial() {
+      const next = deepPartial(this);
+      return next;
+    }
+    pick(keys) {
+      const picked = {};
+      for (const key of keys) {
+        if (this.fields[key]) picked[key] = this.fields[key];
+      }
+      return this.setFields(picked, this._excludedEdges.filter(([a10, b]) => keys.includes(a10) && keys.includes(b)));
+    }
+    omit(keys) {
+      const remaining = [];
+      for (const key of Object.keys(this.fields)) {
+        if (keys.includes(key)) continue;
+        remaining.push(key);
+      }
+      return this.pick(remaining);
+    }
+    from(from, to, alias) {
+      let fromGetter = (0, import_property_expr.getter)(from, true);
+      return this.transform((obj) => {
+        if (!obj) return obj;
+        let newObj = obj;
+        if (deepHas(obj, from)) {
+          newObj = Object.assign({}, obj);
+          if (!alias) delete newObj[from];
+          newObj[to] = fromGetter(obj);
+        }
+        return newObj;
+      });
+    }
+    /** Parse an input JSON string to an object */
+    json() {
+      return this.transform(parseJson);
+    }
+    /**
+     * Similar to `noUnknown` but only validates that an object is the right shape without stripping the unknown keys
+     */
+    exact(message) {
+      return this.test({
+        name: "exact",
+        exclusive: true,
+        message: message || object.exact,
+        test(value) {
+          if (value == null) return true;
+          const unknownKeys = unknown(this.schema, value);
+          return unknownKeys.length === 0 || this.createError({
+            params: {
+              properties: unknownKeys.join(", ")
+            }
+          });
+        }
+      });
+    }
+    stripUnknown() {
+      return this.clone({
+        noUnknown: true
+      });
+    }
+    noUnknown(noAllow = true, message = object.noUnknown) {
+      if (typeof noAllow !== "boolean") {
+        message = noAllow;
+        noAllow = true;
+      }
+      let next = this.test({
+        name: "noUnknown",
+        exclusive: true,
+        message,
+        test(value) {
+          if (value == null) return true;
+          const unknownKeys = unknown(this.schema, value);
+          return !noAllow || unknownKeys.length === 0 || this.createError({
+            params: {
+              unknown: unknownKeys.join(", ")
+            }
+          });
+        }
+      });
+      next.spec.noUnknown = noAllow;
+      return next;
+    }
+    unknown(allow = true, message = object.noUnknown) {
+      return this.noUnknown(!allow, message);
+    }
+    transformKeys(fn) {
+      return this.transform((obj) => {
+        if (!obj) return obj;
+        const result = {};
+        for (const key of Object.keys(obj)) result[fn(key)] = obj[key];
+        return result;
+      });
+    }
+    camelCase() {
+      return this.transformKeys(import_tiny_case.camelCase);
+    }
+    snakeCase() {
+      return this.transformKeys(import_tiny_case.snakeCase);
+    }
+    constantCase() {
+      return this.transformKeys((key) => (0, import_tiny_case.snakeCase)(key).toUpperCase());
+    }
+    describe(options) {
+      const next = (options ? this.resolve(options) : this).clone();
+      const base = super.describe(options);
+      base.fields = {};
+      for (const [key, value] of Object.entries(next.fields)) {
+        var _innerOptions2;
+        let innerOptions = options;
+        if ((_innerOptions2 = innerOptions) != null && _innerOptions2.value) {
+          innerOptions = Object.assign({}, innerOptions, {
+            parent: innerOptions.value,
+            value: innerOptions.value[key]
+          });
+        }
+        base.fields[key] = value.describe(innerOptions);
+      }
+      return base;
+    }
+  };
+  create$3.prototype = ObjectSchema.prototype;
+  function create$2(type) {
+    return new ArraySchema(type);
+  }
+  var ArraySchema = class extends Schema {
+    constructor(type) {
+      super({
+        type: "array",
+        spec: {
+          types: type
+        },
+        check(v) {
+          return Array.isArray(v);
+        }
+      });
+      this.innerType = void 0;
+      this.innerType = type;
+    }
+    _cast(_value, _opts) {
+      const value = super._cast(_value, _opts);
+      if (!this._typeCheck(value) || !this.innerType) {
+        return value;
+      }
+      let isChanged = false;
+      const castArray = value.map((v, idx) => {
+        const castElement = this.innerType.cast(v, Object.assign({}, _opts, {
+          path: `${_opts.path || ""}[${idx}]`,
+          parent: value,
+          originalValue: v,
+          value: v,
+          index: idx
+        }));
+        if (castElement !== v) {
+          isChanged = true;
+        }
+        return castElement;
+      });
+      return isChanged ? castArray : value;
+    }
+    _validate(_value, options = {}, panic, next) {
+      var _options$recursive;
+      let innerType = this.innerType;
+      let recursive = (_options$recursive = options.recursive) != null ? _options$recursive : this.spec.recursive;
+      options.originalValue != null ? options.originalValue : _value;
+      super._validate(_value, options, panic, (arrayErrors, value) => {
+        var _options$originalValu2;
+        if (!recursive || !innerType || !this._typeCheck(value)) {
+          next(arrayErrors, value);
+          return;
+        }
+        let tests = new Array(value.length);
+        for (let index3 = 0; index3 < value.length; index3++) {
+          var _options$originalValu;
+          tests[index3] = innerType.asNestedTest({
+            options,
+            index: index3,
+            parent: value,
+            parentPath: options.path,
+            originalParent: (_options$originalValu = options.originalValue) != null ? _options$originalValu : _value
+          });
+        }
+        this.runTests({
+          value,
+          tests,
+          originalValue: (_options$originalValu2 = options.originalValue) != null ? _options$originalValu2 : _value,
+          options
+        }, panic, (innerTypeErrors) => next(innerTypeErrors.concat(arrayErrors), value));
+      });
+    }
+    clone(spec) {
+      const next = super.clone(spec);
+      next.innerType = this.innerType;
+      return next;
+    }
+    /** Parse an input JSON string to an object */
+    json() {
+      return this.transform(parseJson);
+    }
+    concat(schema) {
+      let next = super.concat(schema);
+      next.innerType = this.innerType;
+      if (schema.innerType)
+        next.innerType = next.innerType ? (
+          // @ts-expect-error Lazy doesn't have concat and will break
+          next.innerType.concat(schema.innerType)
+        ) : schema.innerType;
+      return next;
+    }
+    of(schema) {
+      let next = this.clone();
+      if (!isSchema(schema)) throw new TypeError("`array.of()` sub-schema must be a valid yup schema not: " + printValue(schema));
+      next.innerType = schema;
+      next.spec = Object.assign({}, next.spec, {
+        types: schema
+      });
+      return next;
+    }
+    length(length, message = array.length) {
+      return this.test({
+        message,
+        name: "length",
+        exclusive: true,
+        params: {
+          length
+        },
+        skipAbsent: true,
+        test(value) {
+          return value.length === this.resolve(length);
+        }
+      });
+    }
+    min(min2, message) {
+      message = message || array.min;
+      return this.test({
+        message,
+        name: "min",
+        exclusive: true,
+        params: {
+          min: min2
+        },
+        skipAbsent: true,
+        // FIXME(ts): Array<typeof T>
+        test(value) {
+          return value.length >= this.resolve(min2);
+        }
+      });
+    }
+    max(max2, message) {
+      message = message || array.max;
+      return this.test({
+        message,
+        name: "max",
+        exclusive: true,
+        params: {
+          max: max2
+        },
+        skipAbsent: true,
+        test(value) {
+          return value.length <= this.resolve(max2);
+        }
+      });
+    }
+    ensure() {
+      return this.default(() => []).transform((val, original) => {
+        if (this._typeCheck(val)) return val;
+        return original == null ? [] : [].concat(original);
+      });
+    }
+    compact(rejector) {
+      let reject = !rejector ? (v) => !!v : (v, i, a10) => !rejector(v, i, a10);
+      return this.transform((values) => values != null ? values.filter(reject) : values);
+    }
+    describe(options) {
+      const next = (options ? this.resolve(options) : this).clone();
+      const base = super.describe(options);
+      if (next.innerType) {
+        var _innerOptions;
+        let innerOptions = options;
+        if ((_innerOptions = innerOptions) != null && _innerOptions.value) {
+          innerOptions = Object.assign({}, innerOptions, {
+            parent: innerOptions.value,
+            value: innerOptions.value[0]
+          });
+        }
+        base.innerType = next.innerType.describe(innerOptions);
+      }
+      return base;
+    }
+  };
+  create$2.prototype = ArraySchema.prototype;
+  function create$1(schemas) {
+    return new TupleSchema(schemas);
+  }
+  var TupleSchema = class extends Schema {
+    constructor(schemas) {
+      super({
+        type: "tuple",
+        spec: {
+          types: schemas
+        },
+        check(v) {
+          const types = this.spec.types;
+          return Array.isArray(v) && v.length === types.length;
+        }
+      });
+      this.withMutation(() => {
+        this.typeError(tuple.notType);
+      });
+    }
+    _cast(inputValue, options) {
+      const {
+        types
+      } = this.spec;
+      const value = super._cast(inputValue, options);
+      if (!this._typeCheck(value)) {
+        return value;
+      }
+      let isChanged = false;
+      const castArray = types.map((type, idx) => {
+        const castElement = type.cast(value[idx], Object.assign({}, options, {
+          path: `${options.path || ""}[${idx}]`,
+          parent: value,
+          originalValue: value[idx],
+          value: value[idx],
+          index: idx
+        }));
+        if (castElement !== value[idx]) isChanged = true;
+        return castElement;
+      });
+      return isChanged ? castArray : value;
+    }
+    _validate(_value, options = {}, panic, next) {
+      let itemTypes = this.spec.types;
+      super._validate(_value, options, panic, (tupleErrors, value) => {
+        var _options$originalValu2;
+        if (!this._typeCheck(value)) {
+          next(tupleErrors, value);
+          return;
+        }
+        let tests = [];
+        for (let [index3, itemSchema] of itemTypes.entries()) {
+          var _options$originalValu;
+          tests[index3] = itemSchema.asNestedTest({
+            options,
+            index: index3,
+            parent: value,
+            parentPath: options.path,
+            originalParent: (_options$originalValu = options.originalValue) != null ? _options$originalValu : _value
+          });
+        }
+        this.runTests({
+          value,
+          tests,
+          originalValue: (_options$originalValu2 = options.originalValue) != null ? _options$originalValu2 : _value,
+          options
+        }, panic, (innerTypeErrors) => next(innerTypeErrors.concat(tupleErrors), value));
+      });
+    }
+    describe(options) {
+      const next = (options ? this.resolve(options) : this).clone();
+      const base = super.describe(options);
+      base.innerType = next.spec.types.map((schema, index3) => {
+        var _innerOptions;
+        let innerOptions = options;
+        if ((_innerOptions = innerOptions) != null && _innerOptions.value) {
+          innerOptions = Object.assign({}, innerOptions, {
+            parent: innerOptions.value,
+            value: innerOptions.value[index3]
+          });
+        }
+        return schema.describe(innerOptions);
+      });
+      return base;
+    }
+  };
+  create$1.prototype = TupleSchema.prototype;
+  function addMethod(schemaType, name, fn) {
+    if (!schemaType || !isSchema(schemaType.prototype)) throw new TypeError("You must provide a yup schema constructor function");
+    if (typeof name !== "string") throw new TypeError("A Method name must be provided");
+    if (typeof fn !== "function") throw new TypeError("Method function must be provided");
+    schemaType.prototype[name] = fn;
+  }
+
+  // ../stack-shared/dist/esm/utils/currency-constants.js
+  var SUPPORTED_CURRENCIES = [
+    {
+      code: "USD",
+      decimals: 2,
+      stripeDecimals: 2
+    },
+    {
+      code: "EUR",
+      decimals: 2,
+      stripeDecimals: 2
+    },
+    {
+      code: "GBP",
+      decimals: 2,
+      stripeDecimals: 2
+    },
+    {
+      code: "JPY",
+      decimals: 0,
+      stripeDecimals: 0
+    },
+    {
+      code: "INR",
+      decimals: 2,
+      stripeDecimals: 2
+    },
+    {
+      code: "AUD",
+      decimals: 2,
+      stripeDecimals: 2
+    },
+    {
+      code: "CAD",
+      decimals: 2,
+      stripeDecimals: 2
+    }
+  ];
+
+  // ../stack-shared/dist/esm/utils/http.js
+  function decodeBasicAuthorizationHeader(value) {
+    const [type, encoded, ...rest] = value.split(" ");
+    if (rest.length > 0) return null;
+    if (!encoded) return null;
+    if (type !== "Basic") return null;
+    if (!isBase64(encoded)) return null;
+    const split2 = new TextDecoder().decode(decodeBase64(encoded)).split(":");
+    return [split2[0], split2.slice(1).join(":")];
+  }
+
+  // ../stack-shared/dist/esm/utils/oauth.js
+  var standardProviders = [
+    "google",
+    "github",
+    "microsoft",
+    "spotify",
+    "facebook",
+    "discord",
+    "gitlab",
+    "bitbucket",
+    "linkedin",
+    "apple",
+    "x",
+    "twitch"
+  ];
+  var allProviders = standardProviders;
+
+  // ../stack-shared/dist/esm/utils/uuids.js
+  function generateUuid() {
+    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c3) => (+c3 ^ generateRandomValues(new Uint8Array(1))[0] & 15 >> +c3 / 4).toString(16));
+  }
+  function isUuid(str) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(str);
+  }
+
+  // ../stack-shared/dist/esm/schema-fields.js
+  var MAX_IMAGE_SIZE_BASE64_BYTES = 1e6;
+  addMethod(create$6, "nonEmpty", function(message) {
+    return this.test("non-empty", message ?? (({ path }) => `${path} must not be empty`), (value) => {
+      return value !== "";
+    });
+  });
+  addMethod(Schema, "hasNested", function(path) {
+    if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.hasNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
+    const schemaInfo = this.meta()?.stackSchemaInfo;
+    if (schemaInfo?.type === "record") return schemaInfo.keySchema.isValidSync(path);
+    else if (schemaInfo?.type === "union") return schemaInfo.items.some((s4) => s4.hasNested(path));
+    else try {
+      reach(this, path);
+      return true;
+    } catch (e16) {
+      if (e16 instanceof Error && e16.message.includes("The schema does not contain the path")) return false;
+      throw e16;
+    }
+  });
+  addMethod(Schema, "getNested", function(path) {
+    if (!path.match(/^[a-zA-Z0-9_$:-]*$/)) throw new StackAssertionError(`yupSchema.getNested can currently only be used with alphanumeric keys, underscores, dollar signs, colons, and hyphens. Fix this in the future. Provided key: ${JSON.stringify(path)}`);
+    if (!this.hasNested(path)) throw new StackAssertionError(`Tried to call yupSchema.getNested, but key is not present in the schema. Provided key: ${path}`, {
+      path,
+      schema: this
+    });
+    const schemaInfo = this.meta()?.stackSchemaInfo;
+    if (schemaInfo?.type === "record") return schemaInfo.valueSchema;
+    else if (schemaInfo?.type === "union") return yupUnion(...schemaInfo.items.filter((s4) => s4.hasNested(path)).map((s4) => s4.getNested(path)));
+    else return reach(this, path);
+  });
+  async function yupValidate(schema, obj, options) {
+    try {
+      return await schema.validate(obj, {
+        ...omit(options ?? {}, ["currentUserId"]),
+        context: {
+          ...options?.context,
+          stackAllowUserIdMe: options?.currentUserId !== void 0
+        }
+      });
+    } catch (error) {
+      if (error instanceof ReplaceFieldWithOwnUserId) {
+        const currentUserId = options?.currentUserId;
+        if (!currentUserId) throw new KnownErrors.CannotGetOwnUserWithoutUser();
+        let pathRemaining = error.path;
+        const fieldPath = [];
+        while (pathRemaining.length > 0) if (pathRemaining.startsWith("[")) {
+          const index3 = pathRemaining.indexOf("]");
+          if (index3 < 0) throw new StackAssertionError("Invalid path");
+          fieldPath.push(JSON.parse(pathRemaining.slice(1, index3)));
+          pathRemaining = pathRemaining.slice(index3 + 1);
+        } else {
+          let dotIndex = pathRemaining.indexOf(".");
+          if (dotIndex === -1) dotIndex = pathRemaining.length;
+          fieldPath.push(pathRemaining.slice(0, dotIndex));
+          pathRemaining = pathRemaining.slice(dotIndex + 1);
+        }
+        const newObj = deepPlainClone(obj);
+        let it = newObj;
+        for (const field of fieldPath.slice(0, -1)) {
+          if (!Object.prototype.hasOwnProperty.call(it, field)) throw new StackAssertionError(`Segment ${field} of path ${error.path} not found in object`);
+          it = it[field];
+        }
+        it[fieldPath[fieldPath.length - 1]] = currentUserId;
+        return await yupValidate(schema, newObj, options);
+      }
+      throw error;
+    }
+  }
+  var _idDescription = (identify) => `The unique identifier of the ${identify}`;
+  var _displayNameDescription = (identify) => `Human-readable ${identify} display name. This is not a unique identifier.`;
+  var _clientMetaDataDescription = (identify) => `Client metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client.`;
+  var _clientReadOnlyMetaDataDescription = (identify) => `Client read-only, server-writable metadata. Used as a data store, accessible from the client side. Do not store information that should not be exposed to the client. The client can read this data, but cannot modify it. This is useful for things like subscription status.`;
+  var _profileImageUrlDescription = (identify) => `URL of the profile image for ${identify}. Can be a Base64 encoded image. Must be smaller than 100KB. Please compress and crop to a square before passing in.`;
+  var _serverMetaDataDescription = (identify) => `Server metadata. Used as a data store, only accessible from the server side. You can store secret information related to the ${identify} here.`;
+  var _atMillisDescription = (identify) => `(the number of milliseconds since epoch, January 1, 1970, UTC)`;
+  var _createdAtMillisDescription = (identify) => `The time the ${identify} was created ${_atMillisDescription(identify)}`;
+  var _signedUpAtMillisDescription = `The time the user signed up ${_atMillisDescription}`;
+  var _lastActiveAtMillisDescription = `The time the user was last active ${_atMillisDescription}`;
+  function yupString(...args) {
+    return create$6(...args).meta({ stackSchemaInfo: { type: "string" } });
+  }
+  function yupNumber(...args) {
+    return create$5(...args).meta({ stackSchemaInfo: { type: "number" } });
+  }
+  function yupBoolean(...args) {
+    return create$7(...args).meta({ stackSchemaInfo: { type: "boolean" } });
+  }
+  function _yupMixedInternal(...args) {
+    return create$8(...args);
+  }
+  function yupMixed(...args) {
+    return _yupMixedInternal(...args).meta({ stackSchemaInfo: { type: "mixed" } });
+  }
+  function yupArray(...args) {
+    return create$2(...args).meta({ stackSchemaInfo: { type: "array" } });
+  }
+  function yupTuple(schemas) {
+    if (schemas.length === 0) throw new Error("yupTuple must have at least one schema");
+    return create$1(schemas).meta({ stackSchemaInfo: {
+      type: "tuple",
+      items: schemas
+    } });
+  }
+  function yupObjectWithAutoDefault(...args) {
+    return create$3(...args).test("no-unknown-object-properties", ({ path }) => `${path} contains unknown properties`, (value, context) => {
+      if (context.options.context?.noUnknownPathPrefixes?.some((prefix) => context.path.startsWith(prefix))) {
+        if (context.schema.spec.noUnknown !== false) {
+          const availableKeys = new Set(Object.keys(context.schema.fields));
+          const unknownKeys = Object.keys(value ?? {}).filter((key) => !availableKeys.has(key));
+          if (unknownKeys.length > 0) return context.createError({
+            message: `${context.path || "Object"} contains unknown properties: ${unknownKeys.join(", ")}`,
+            path: context.path,
+            params: {
+              unknownKeys,
+              availableKeys
+            }
+          });
+        }
+      }
+      return true;
+    }).meta({ stackSchemaInfo: { type: "object" } });
+  }
+  function yupObject(...args) {
+    return yupObjectWithAutoDefault(...args).default(void 0);
+  }
+  function yupUnion(...args) {
+    if (args.length === 0) throw new Error("yupUnion must have at least one schema");
+    return _yupMixedInternal().meta({ stackSchemaInfo: {
+      type: "union",
+      items: args
+    } }).test("is-one-of", "Invalid value", async (value, context) => {
+      if (value == null) return true;
+      const errors = [];
+      for (const schema of args) try {
+        await yupValidate(schema, value, context.options);
+        return true;
+      } catch (e16) {
+        errors.push(e16);
+      }
+      return context.createError({
+        message: deindent`
+        ${context.path} is not matched by any of the provided schemas:
+          ${errors.map((e16, i) => deindent`
+            Schema ${i}:
+              ${e16.errors.join("\n")}
+          `).join("\n")}`,
+        path: context.path
+      });
+    });
+  }
+  function yupRecord(keySchema, valueSchema) {
+    return yupObject().meta({ stackSchemaInfo: {
+      type: "record",
+      keySchema,
+      valueSchema
+    } }).unknown(true).test("record", "${path} must be a record of valid values", async function(value, context) {
+      if (value == null) return true;
+      const { path, createError } = this;
+      if (typeof value !== "object") return createError({ message: `${path} must be an object` });
+      for (const key of Object.keys(value)) {
+        await yupValidate(keySchema, key, context.options);
+        try {
+          await yupValidate(valueSchema, value[key], {
+            ...context.options,
+            context: {
+              ...context.options.context,
+              path: path ? `${path}.${key}` : key
+            }
+          });
+        } catch (e16) {
+          return createError({
+            path: path ? `${path}.${key}` : key,
+            message: e16.message
+          });
+        }
+      }
+      return true;
+    });
+  }
+  var adaptSchema = yupMixed();
+  var urlSchema = yupString().test({
+    name: "no-spaces",
+    message: (params) => `${params.path} contains spaces`,
+    test: (value) => value == null || !value.includes(" ")
+  }).test({
+    name: "url",
+    message: (params) => `${params.path} is not a valid URL`,
+    test: (value) => value == null || isValidUrl(value)
+  });
+  var wildcardUrlSchema = yupString().test({
+    name: "no-spaces",
+    message: (params) => `${params.path} contains spaces`,
+    test: (value) => value == null || !value.includes(" ")
+  }).test({
+    name: "wildcard-url",
+    message: (params) => `${params.path} is not a valid URL or wildcard URL pattern`,
+    test: (value) => {
+      if (value == null) return true;
+      if (!value.includes("*")) return isValidUrl(value);
+      try {
+        const PLACEHOLDER = "wildcard-placeholder";
+        const normalizedUrl = value.replace(/\*/g, PLACEHOLDER);
+        const url = new URL(normalizedUrl);
+        if (url.username.includes(PLACEHOLDER) || url.password.includes(PLACEHOLDER) || url.pathname.includes(PLACEHOLDER) || url.search.includes(PLACEHOLDER) || url.hash.includes(PLACEHOLDER)) return false;
+        if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+        return isValidHostnameWithWildcards(url.hostname.split(PLACEHOLDER).join("*"));
+      } catch (e16) {
+        return false;
+      }
+    }
+  });
+  var wildcardProtocolAndDomainSchema = wildcardUrlSchema.test({
+    name: "is-protocol-and-domain",
+    message: (params) => `${params.path} must be a protocol and domain (with optional port) without any path, query parameters, or hash`,
+    test: (value) => {
+      if (value == null) return true;
+      try {
+        const normalized = value.replace(/\*/g, "wildcard-placeholder");
+        const url = new URL(normalized);
+        return url.protocol !== "" && url.hostname !== "" && url.pathname === "/" && url.search === "" && url.hash === "";
+      } catch (e16) {
+        return false;
+      }
+    }
+  });
+  var jsonSchema = yupMixed().nullable().defined().transform((value) => JSON.parse(JSON.stringify(value)));
+  var jsonStringSchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
+    if (value == null) return true;
+    try {
+      JSON.parse(value);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  });
+  var jsonStringOrEmptySchema = yupString().test("json", (params) => `${params.path} is not valid JSON`, (value) => {
+    if (!value) return true;
+    try {
+      JSON.parse(value);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  });
+  var base64Schema = yupString().test("is-base64", (params) => `${params.path} is not valid base64`, (value) => {
+    if (value == null) return true;
+    return isBase64(value);
+  });
+  var passwordSchema = yupString().max(70);
+  var intervalSchema = yupTuple([yupNumber().min(0).integer().defined(), yupString().oneOf([
+    "millisecond",
+    "second",
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "month",
+    "year"
+  ]).defined()]);
+  var dayIntervalSchema = yupTuple([yupNumber().min(0).integer().defined(), yupString().oneOf([
+    "day",
+    "week",
+    "month",
+    "year"
+  ]).defined()]);
+  var intervalOrNeverSchema = yupUnion(intervalSchema.defined(), yupString().oneOf(["never"]).defined());
+  var dayIntervalOrNeverSchema = yupUnion(dayIntervalSchema.defined(), yupString().oneOf(["never"]).defined());
+  var USER_SPECIFIED_ID_PATTERN = /^[a-zA-Z0-9_][a-zA-Z0-9_-]*$/;
+  var USER_SPECIFIED_ID_MAX_LENGTH = 63;
+  function getUserSpecifiedIdErrorMessage(idName) {
+    return `${idName} must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen`;
+  }
+  var userSpecifiedIdSchema = (idName) => yupString().max(USER_SPECIFIED_ID_MAX_LENGTH).matches(USER_SPECIFIED_ID_PATTERN, getUserSpecifiedIdErrorMessage(idName));
+  var moneyAmountSchema = (currency) => yupString().test("money-amount", "Invalid money amount", (value, context) => {
+    if (value == null) return true;
+    const match = value.match(/^([0-9]+)(\.([0-9]+))?$/);
+    if (!match) return context.createError({ message: "Money amount must be in the format of <number> or <number>.<number>" });
+    const whole = match[1];
+    const decimals = match[3];
+    if (decimals && decimals.length > currency.decimals) return context.createError({ message: `Too many decimals; ${currency.code} only has ${currency.decimals} decimals` });
+    if (whole !== "0" && whole.startsWith("0")) return context.createError({ message: "Money amount must not have leading zeros" });
+    return true;
+  });
+  var strictEmailSchema = (message) => yupString().email(message).max(256).matches(/^[^.]+(\.[^.]+)*@.*\.[^.][^.]+$/, message);
+  var emailSchema = yupString().email();
+  var clientOrHigherAuthTypeSchema = yupString().oneOf([
+    "client",
+    "server",
+    "admin"
+  ]).defined();
+  var serverOrHigherAuthTypeSchema = yupString().oneOf(["server", "admin"]).defined();
+  var adminAuthTypeSchema = yupString().oneOf(["admin"]).defined();
+  var projectIdSchema = yupString().test((v) => v === void 0 || v === "internal" || isUuid(v)).meta({ openapiField: {
+    description: _idDescription("project"),
+    exampleValue: "e0b52f4d-dece-408c-af49-d23061bb0f8d"
+  } });
+  var projectBranchIdSchema = yupString().nonEmpty().max(255).meta({ openapiField: {
+    description: _idDescription("project branch"),
+    exampleValue: "main"
+  } });
+  var projectDisplayNameSchema = yupString().meta({ openapiField: {
+    description: _displayNameDescription("project"),
+    exampleValue: "MyMusic"
+  } });
+  var projectLogoUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: {
+    description: "URL of the logo for the project. This is usually a close to 1:1 image of the company logo.",
+    exampleValue: "https://example.com/logo.png"
+  } });
+  var projectLogoFullUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: {
+    description: "URL of the full logo for the project. This is usually a vertical image with the logo and the company name.",
+    exampleValue: "https://example.com/full-logo.png"
+  } });
+  var projectLogoDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: {
+    description: "URL of the dark mode logo for the project. This is usually a close to 1:1 image of the company logo optimized for dark backgrounds.",
+    exampleValue: "https://example.com/logo-dark.png"
+  } });
+  var projectLogoFullDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: {
+    description: "URL of the dark mode full logo for the project. This is usually a vertical image with the logo and the company name optimized for dark backgrounds.",
+    exampleValue: "https://example.com/full-logo-dark.png"
+  } });
+  var projectDescriptionSchema = yupString().nullable().meta({ openapiField: {
+    description: "A human readable description of the project",
+    exampleValue: "A music streaming service"
+  } });
+  var projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: {
+    description: _createdAtMillisDescription("project"),
+    exampleValue: 163e10
+  } });
+  var projectIsProductionModeSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the project is in production mode",
+    exampleValue: true
+  } });
+  var projectConfigIdSchema = yupString().meta({ openapiField: {
+    description: _idDescription("project config"),
+    exampleValue: "d09201f0-54f5-40bd-89ff-6d1815ddad24"
+  } });
+  var projectAllowLocalhostSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether localhost is allowed as a domain for this project. Should only be allowed in development mode",
+    exampleValue: true
+  } });
+  var projectCreateTeamOnSignUpSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether a team should be created for each user that signs up",
+    exampleValue: true
+  } });
+  var projectMagicLinkEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether magic link authentication is enabled for this project",
+    exampleValue: true
+  } });
+  var projectPasskeyEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether passkey authentication is enabled for this project",
+    exampleValue: true
+  } });
+  var projectClientTeamCreationEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether client users can create teams",
+    exampleValue: true
+  } });
+  var projectClientUserDeletionEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether client users can delete their own account from the client",
+    exampleValue: true
+  } });
+  var projectSignUpEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether users can sign up new accounts, or whether they are only allowed to sign in to existing accounts. Regardless of this option, the server API can always create new users with the `POST /users` endpoint.",
+    exampleValue: true
+  } });
+  var projectCredentialEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether email password authentication is enabled for this project",
+    exampleValue: true
+  } });
+  var oauthIdSchema = yupString().oneOf(allProviders).meta({ openapiField: {
+    description: `OAuth provider ID, one of ${allProviders.map((x) => `\`${x}\``).join(", ")}`,
+    exampleValue: "google"
+  } });
+  var oauthEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the OAuth provider is enabled. If an provider is first enabled, then disabled, it will be shown in the list but with enabled=false",
+    exampleValue: true
+  } });
+  var oauthTypeSchema = yupString().oneOf(["shared", "standard"]).meta({ openapiField: {
+    description: 'OAuth provider type, one of shared, standard. "shared" uses Stack shared OAuth keys and it is only meant for development. "standard" uses your own OAuth keys and will show your logo and company name when signing in with the provider.',
+    exampleValue: "standard"
+  } });
+  var oauthClientIdSchema = yupString().meta({ openapiField: {
+    description: 'OAuth client ID. Needs to be specified when using type="standard"',
+    exampleValue: "google-oauth-client-id"
+  } });
+  var oauthClientSecretSchema = yupString().meta({ openapiField: {
+    description: 'OAuth client secret. Needs to be specified when using type="standard"',
+    exampleValue: "google-oauth-client-secret"
+  } });
+  var oauthFacebookConfigIdSchema = yupString().meta({ openapiField: { description: "The configuration id for Facebook business login (for things like ads and marketing). This is only required if you are using the standard OAuth with Facebook and you are using Facebook business login." } });
+  var oauthMicrosoftTenantIdSchema = yupString().meta({ openapiField: { description: "The Microsoft tenant id for Microsoft directory. This is only required if you are using the standard OAuth with Microsoft and you have an Azure AD tenant." } });
+  var oauthAppleBundleIdsSchema = yupArray(yupString().defined()).meta({ openapiField: {
+    description: "Apple Bundle IDs for native iOS/macOS apps. Required for native Sign In with Apple (in addition to web Apple OAuth which uses the Client ID/Services ID).",
+    exampleValue: ["com.example.ios", "com.example.macos"]
+  } });
+  var oauthAppleBundleIdSchema = yupString().defined().meta({ openapiField: {
+    description: "Apple Bundle ID for native iOS/macOS apps.",
+    exampleValue: "com.example.ios"
+  } });
+  var oauthAccountMergeStrategySchema = yupString().oneOf([
+    "link_method",
+    "raise_error",
+    "allow_duplicates"
+  ]).meta({ openapiField: {
+    description: "Determines how to handle OAuth logins that match an existing user by email. `link_method` adds the OAuth method to the existing user. `raise_error` rejects the login with an error. `allow_duplicates` creates a new user.",
+    exampleValue: "link_method"
+  } });
+  var emailTypeSchema = yupString().oneOf(["shared", "standard"]).meta({ openapiField: {
+    description: 'Email provider type, one of shared, standard. "shared" uses Stack shared email provider and it is only meant for development. "standard" uses your own email server and will have your email address as the sender.',
+    exampleValue: "standard"
+  } });
+  var emailSenderNameSchema = yupString().meta({ openapiField: {
+    description: 'Email sender name. Needs to be specified when using type="standard"',
+    exampleValue: "Stack"
+  } });
+  var emailHostSchema = yupString().meta({ openapiField: {
+    description: 'Email host. Needs to be specified when using type="standard"',
+    exampleValue: "smtp.your-domain.com"
+  } });
+  var emailPortSchema = yupNumber().min(0).max(65535).meta({ openapiField: {
+    description: 'Email port. Needs to be specified when using type="standard"',
+    exampleValue: 587
+  } });
+  var emailUsernameSchema = yupString().meta({ openapiField: {
+    description: 'Email username. Needs to be specified when using type="standard"',
+    exampleValue: "smtp-email"
+  } });
+  var emailSenderEmailSchema = emailSchema.meta({ openapiField: {
+    description: 'Email sender email. Needs to be specified when using type="standard"',
+    exampleValue: "example@your-domain.com"
+  } });
+  var emailPasswordSchema = passwordSchema.meta({ openapiField: {
+    description: 'Email password. Needs to be specified when using type="standard"',
+    exampleValue: "your-email-password"
+  } });
+  var handlerPathSchema = yupString().test("is-handler-path", "Handler path must start with /", (value) => value?.startsWith("/")).meta({ openapiField: {
+    description: 'Handler path. If you did not setup a custom handler path, it should be "/handler" by default. It needs to start with /',
+    exampleValue: "/handler"
+  } });
+  var emailThemeSchema = yupString().meta({ openapiField: { description: "Email theme id for the project. Determines the visual style of emails sent by the project." } });
+  var emailThemeListSchema = yupRecord(yupString().uuid(), yupObject({
+    displayName: yupString().meta({ openapiField: {
+      description: "Email theme name",
+      exampleValue: "Default Light"
+    } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: "Email theme source code tsx component" } }).defined()
+  })).meta({ openapiField: { description: "Record of email theme IDs to their display name and source code" } });
+  var templateThemeIdSchema = yupMixed().test((v) => v === void 0 || v === false || v === null || typeof v === "string" && isUuid(v)).meta({ openapiField: { description: "Email theme id for the template" } }).optional();
+  var emailTemplateListSchema = yupRecord(yupString().uuid(), yupObject({
+    displayName: yupString().meta({ openapiField: {
+      description: "Email template name",
+      exampleValue: "Email Verification"
+    } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: "Email template source code tsx component" } }).defined(),
+    themeId: templateThemeIdSchema
+  })).meta({ openapiField: { description: "Record of email template IDs to their display name and source code" } });
+  var customDashboardsSchema = yupRecord(yupString().uuid(), yupObject({
+    displayName: yupString().meta({ openapiField: {
+      description: "Custom dashboard name",
+      exampleValue: "User Growth Dashboard"
+    } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: "Custom dashboard source code tsx component" } }).defined()
+  })).meta({ openapiField: { description: "Record of custom dashboard IDs to their display name and source code" } });
+  var customerTypeSchema = yupString().oneOf([
+    "user",
+    "team",
+    "custom"
+  ]);
+  var validateHasAtLeastOneSupportedCurrency = (value, context) => {
+    if (!value) return true;
+    if (Object.keys(value).filter((key) => SUPPORTED_CURRENCIES.some((c3) => c3.code === key)).length === 0) return context.createError({ message: "At least one currency is required" });
+    return true;
+  };
+  var productPriceSchema = yupObject({
+    ...typedFromEntries(SUPPORTED_CURRENCIES.map((currency) => [currency.code, moneyAmountSchema(currency).optional()])),
+    interval: dayIntervalSchema.optional(),
+    serverOnly: yupBoolean(),
+    freeTrial: dayIntervalSchema.optional()
+  }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
+  var priceOrIncludeByDefaultSchema = yupUnion(yupString().oneOf(["include-by-default"]).meta({ openapiField: {
+    description: "Makes this item free and includes it by default for all customers.",
+    exampleValue: "include-by-default"
+  } }), yupRecord(userSpecifiedIdSchema("priceId"), productPriceSchema));
+  var productSchema = yupObject({
+    displayName: yupString(),
+    productLineId: userSpecifiedIdSchema("productLineId").optional().meta({ openapiField: {
+      description: "The ID of the product line this product belongs to. Within a product line, all products are mutually exclusive unless they are an add-on to another product in the product line.",
+      exampleValue: "product-line-id"
+    } }),
+    isAddOnTo: yupUnion(yupBoolean().isFalse(), yupRecord(userSpecifiedIdSchema("productId"), yupBoolean().isTrue().defined())).optional().meta({ openapiField: {
+      description: "The products that this product is an add-on to. If this is set, the customer must already have one of the products in the record to be able to purchase this product.",
+      exampleValue: { "product-id": true }
+    } }),
+    customerType: customerTypeSchema.defined(),
+    freeTrial: dayIntervalSchema.optional(),
+    serverOnly: yupBoolean(),
+    stackable: yupBoolean(),
+    prices: priceOrIncludeByDefaultSchema.defined(),
+    includedItems: yupRecord(userSpecifiedIdSchema("itemId"), yupObject({
+      quantity: yupNumber().defined(),
+      repeat: dayIntervalOrNeverSchema.optional(),
+      expires: yupString().oneOf([
+        "never",
+        "when-purchase-expires",
+        "when-repeated"
+      ]).optional()
+    }))
+  });
+  var productMetadataExample = {
+    featureFlag: true,
+    source: "marketing-campaign"
+  };
+  var productClientMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _clientMetaDataDescription("product"),
+    exampleValue: productMetadataExample
+  } });
+  var productClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _clientReadOnlyMetaDataDescription("product"),
+    exampleValue: productMetadataExample
+  } });
+  var productServerMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _serverMetaDataDescription("product"),
+    exampleValue: productMetadataExample
+  } });
+  var productSchemaWithMetadata = productSchema.concat(yupObject({
+    clientMetadata: productClientMetadataSchema.optional(),
+    clientReadOnlyMetadata: productClientReadOnlyMetadataSchema.optional(),
+    serverMetadata: productServerMetadataSchema.optional()
+  }));
+  var inlineProductSchema = yupObject({
+    display_name: yupString().defined(),
+    customer_type: customerTypeSchema.defined(),
+    free_trial: dayIntervalSchema.optional(),
+    server_only: yupBoolean().default(true),
+    stackable: yupBoolean().default(false),
+    prices: yupRecord(userSpecifiedIdSchema("priceId"), yupObject({
+      ...typedFromEntries(SUPPORTED_CURRENCIES.map((currency) => [currency.code, moneyAmountSchema(currency).optional()])),
+      interval: dayIntervalSchema.optional(),
+      free_trial: dayIntervalSchema.optional()
+    }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context))),
+    included_items: yupRecord(userSpecifiedIdSchema("itemId"), yupObject({
+      quantity: yupNumber(),
+      repeat: dayIntervalOrNeverSchema.optional(),
+      expires: yupString().oneOf([
+        "never",
+        "when-purchase-expires",
+        "when-repeated"
+      ]).optional()
+    })),
+    client_metadata: productClientMetadataSchema.optional(),
+    client_read_only_metadata: productClientReadOnlyMetadataSchema.optional(),
+    server_metadata: productServerMetadataSchema.optional()
+  });
+  var ReplaceFieldWithOwnUserId = class extends Error {
+    constructor(path) {
+      super(`This error should be caught by whoever validated the schema, and the field in the path '${path}' should be replaced with the current user's id. This is a workaround to yup not providing access to the context inside the transform function.`);
+      this.path = path;
+    }
+  };
+  var userIdMeSentinelUuid = "cad564fd-f81b-43f4-b390-98abf3fcc17e";
+  var userIdOrMeSchema = yupString().uuid().transform((v) => {
+    if (v === "me") return userIdMeSentinelUuid;
+    else return v;
+  }).test((v, context) => {
+    if (!("stackAllowUserIdMe" in (context.options.context ?? {}))) throw new StackAssertionError("userIdOrMeSchema is not allowed in this context. Make sure you're using yupValidate from schema-fields.ts to validate, instead of schema.validate(...).");
+    if (!context.options.context?.stackAllowUserIdMe) throw new StackAssertionError("userIdOrMeSchema is not allowed in this context. Make sure you're passing in the currentUserId option in yupValidate.");
+    if (v === userIdMeSentinelUuid) throw new ReplaceFieldWithOwnUserId(context.path);
+    return true;
+  }).meta({ openapiField: {
+    description: "The ID of the user, or the special value `me` for the currently authenticated user",
+    exampleValue: "3241a285-8329-4d69-8f3d-316e08cf140c"
+  } });
+  var userIdSchema = yupString().uuid().meta({ openapiField: {
+    description: _idDescription("user"),
+    exampleValue: "3241a285-8329-4d69-8f3d-316e08cf140c"
+  } });
+  var primaryEmailSchema = emailSchema.meta({ openapiField: {
+    description: "Primary email",
+    exampleValue: "johndoe@example.com"
+  } });
+  var primaryEmailAuthEnabledSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the primary email is used for authentication. If this is set to `false`, the user will not be able to sign in with the primary email with password or OTP",
+    exampleValue: true
+  } });
+  var primaryEmailVerifiedSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the primary email has been verified to belong to this user",
+    exampleValue: true
+  } });
+  var userDisplayNameSchema = yupString().nullable().max(256).meta({ openapiField: {
+    description: _displayNameDescription("user"),
+    exampleValue: "John Doe"
+  } });
+  var selectedTeamIdSchema = yupString().uuid().meta({ openapiField: {
+    description: "ID of the team currently selected by the user",
+    exampleValue: "team-id"
+  } });
+  var profileImageUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BASE64_BYTES).meta({ openapiField: {
+    description: _profileImageUrlDescription("user"),
+    exampleValue: "https://example.com/image.jpg"
+  } });
+  var signedUpAtMillisSchema = yupNumber().meta({ openapiField: {
+    description: _signedUpAtMillisDescription,
+    exampleValue: 163e10
+  } });
+  var userClientMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _clientMetaDataDescription("user"),
+    exampleValue: { key: "value" }
+  } });
+  var userClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _clientReadOnlyMetaDataDescription("user"),
+    exampleValue: { key: "value" }
+  } });
+  var userServerMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _serverMetaDataDescription("user"),
+    exampleValue: { key: "value" }
+  } });
+  var userOAuthProviderSchema = yupObject({
+    id: yupString().defined(),
+    type: yupString().oneOf(allProviders).defined(),
+    provider_user_id: yupString().defined()
+  });
+  var userLastActiveAtMillisSchema = yupNumber().nullable().meta({ openapiField: {
+    description: _lastActiveAtMillisDescription,
+    exampleValue: 163e10
+  } });
+  var userPasskeyAuthEnabledSchema = yupBoolean().meta({ openapiField: {
+    hidden: true,
+    description: "Whether the user has passkeys enabled",
+    exampleValue: false
+  } });
+  var userOtpAuthEnabledSchema = yupBoolean().meta({ openapiField: {
+    hidden: true,
+    description: "Whether the user has OTP/magic link enabled. ",
+    exampleValue: true
+  } });
+  var userOtpAuthEnabledMutationSchema = yupBoolean().meta({ openapiField: {
+    hidden: true,
+    description: "Whether the user has OTP/magic link enabled. Note that only accounts with verified emails can sign-in with OTP.",
+    exampleValue: true
+  } });
+  var userHasPasswordSchema = yupBoolean().meta({ openapiField: {
+    hidden: true,
+    description: "Whether the user has a password set. If the user does not have a password set, they will not be able to sign in with email/password.",
+    exampleValue: true
+  } });
+  var userPasswordMutationSchema = passwordSchema.nullable().meta({ openapiField: {
+    description: "Sets the user's password. Doing so revokes all current sessions.",
+    exampleValue: "my-new-password"
+  } }).max(70);
+  var userPasswordHashMutationSchema = yupString().nonEmpty().meta({ openapiField: { description: "If `password` is not given, sets the user's password hash to the given string in Modular Crypt Format (ex.: `$2a$10$VIhIOofSMqGdGlL4wzE//e.77dAQGqNtF/1dT7bqCrVtQuInWy2qi`). Doing so revokes all current sessions." } });
+  var userTotpSecretMutationSchema = base64Schema.nullable().meta({ openapiField: {
+    description: "Enables 2FA and sets a TOTP secret for the user. Set to null to disable 2FA.",
+    exampleValue: "dG90cC1zZWNyZXQ="
+  } });
+  var restrictedReasonTypes = [
+    "anonymous",
+    "email_not_verified",
+    "restricted_by_administrator"
+  ];
+  var restrictedReasonSchema = yupObject({ type: yupString().oneOf(restrictedReasonTypes).defined() });
+  var accessTokenPayloadSchema = yupObject({
+    sub: yupString().defined(),
+    exp: yupNumber().optional(),
+    iat: yupNumber().defined(),
+    iss: yupString().defined(),
+    aud: yupString().defined(),
+    project_id: yupString().defined(),
+    branch_id: yupString().defined(),
+    refresh_token_id: yupString().defined(),
+    role: yupString().oneOf(["authenticated"]).defined(),
+    name: yupString().defined().nullable(),
+    email: yupString().defined().nullable(),
+    email_verified: yupBoolean().defined(),
+    selected_team_id: yupString().defined().nullable(),
+    is_anonymous: yupBoolean().defined(),
+    is_restricted: yupBoolean().defined(),
+    restricted_reason: restrictedReasonSchema.defined().nullable(),
+    requires_totp_mfa: yupBoolean().defined()
+  });
+  var signInEmailSchema = strictEmailSchema(void 0).meta({ openapiField: {
+    description: "The email to sign in with.",
+    exampleValue: "johndoe@example.com"
+  } });
+  var emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: {
+    description: "The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.",
+    exampleValue: "https://example.com/handler/magic-link-callback"
+  } });
+  var emailVerificationCallbackUrlSchema = urlSchema.meta({ openapiField: {
+    description: "The base callback URL to construct a verification link for the verification e-mail. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/contact-channels/verify` endpoint.",
+    exampleValue: "https://example.com/handler/email-verification"
+  } });
+  var accessTokenResponseSchema = yupString().meta({ openapiField: {
+    description: "Short-lived access token that can be used to authenticate the user",
+    exampleValue: "eyJhmMiJB2TO...diI4QT"
+  } });
+  var refreshTokenResponseSchema = yupString().meta({ openapiField: {
+    description: "Long-lived refresh token that can be used to obtain a new access token",
+    exampleValue: "i8ns3aq2...14y"
+  } });
+  var signInResponseSchema = yupObject({
+    refresh_token: refreshTokenResponseSchema.defined(),
+    access_token: accessTokenResponseSchema.defined(),
+    is_new_user: yupBoolean().meta({ openapiField: {
+      description: "Whether the user is a new user",
+      exampleValue: true
+    } }).defined(),
+    user_id: userIdSchema.defined()
+  });
+  var teamSystemPermissions = [
+    "$update_team",
+    "$delete_team",
+    "$read_members",
+    "$remove_members",
+    "$invite_members",
+    "$manage_api_keys"
+  ];
+  var permissionDefinitionIdSchema = yupString().matches(/^\$?[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" and optional "$" at the beginning are allowed').test("is-system-permission", "System permissions must start with a dollar sign", (value, ctx) => {
+    if (!value) return true;
+    if (value.startsWith("$") && !teamSystemPermissions.includes(value)) return ctx.createError({ message: "Invalid system permission" });
+    return true;
+  }).meta({ openapiField: {
+    description: `The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, \`:\`, and \`_\` characters, or one of the system permissions: ${teamSystemPermissions.map((x) => `\`${x}\``).join(", ")}`,
+    exampleValue: "read_secret_info"
+  } });
+  var customPermissionDefinitionIdSchema = yupString().matches(/^[a-z0-9_:]+$/, 'Only lowercase letters, numbers, ":", "_" are allowed').meta({ openapiField: {
+    description: 'The permission ID used to uniquely identify a permission. Can only contain lowercase letters, numbers, ":", and "_" characters',
+    exampleValue: "read_secret_info"
+  } });
+  var teamPermissionDescriptionSchema = yupString().meta({ openapiField: {
+    description: "A human-readable description of the permission",
+    exampleValue: "Read secret information"
+  } });
+  var containedPermissionIdsSchema = yupArray(permissionDefinitionIdSchema.defined()).meta({ openapiField: {
+    description: "The IDs of the permissions that are contained in this permission",
+    exampleValue: ["read_public_info"]
+  } });
+  var teamIdSchema = yupString().uuid().meta({ openapiField: {
+    description: _idDescription("team"),
+    exampleValue: "ad962777-8244-496a-b6a2-e0c6a449c79e"
+  } });
+  var teamDisplayNameSchema = yupString().meta({ openapiField: {
+    description: _displayNameDescription("team"),
+    exampleValue: "My Team"
+  } });
+  var teamProfileImageUrlSchema = urlSchema.max(1e6).meta({ openapiField: {
+    description: _profileImageUrlDescription("team"),
+    exampleValue: "https://example.com/image.jpg"
+  } });
+  var teamClientMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _clientMetaDataDescription("team"),
+    exampleValue: { key: "value" }
+  } });
+  var teamClientReadOnlyMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _clientReadOnlyMetaDataDescription("team"),
+    exampleValue: { key: "value" }
+  } });
+  var teamServerMetadataSchema = jsonSchema.meta({ openapiField: {
+    description: _serverMetaDataDescription("team"),
+    exampleValue: { key: "value" }
+  } });
+  var teamCreatedAtMillisSchema = yupNumber().meta({ openapiField: {
+    description: _createdAtMillisDescription("team"),
+    exampleValue: 163e10
+  } });
+  var teamInvitationEmailSchema = emailSchema.meta({ openapiField: {
+    description: "The email of the user to invite.",
+    exampleValue: "johndoe@example.com"
+  } });
+  var teamInvitationCallbackUrlSchema = urlSchema.meta({ openapiField: {
+    description: "The base callback URL to construct an invite link with. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/team-invitations/accept` endpoint.",
+    exampleValue: "https://example.com/handler/team-invitation"
+  } });
+  var teamCreatorUserIdSchema = userIdOrMeSchema.meta({ openapiField: {
+    description: 'The ID of the creator of the team. If not specified, the user will not be added to the team. Can be either "me" or the ID of the user. Only used on the client side.',
+    exampleValue: "me"
+  } });
+  var teamMemberDisplayNameSchema = yupString().meta({ openapiField: {
+    description: _displayNameDescription("team member") + " Note that this is separate from the display_name of the user.",
+    exampleValue: "John Doe"
+  } });
+  var teamMemberProfileImageUrlSchema = urlSchema.max(1e6).meta({ openapiField: {
+    description: _profileImageUrlDescription("team member"),
+    exampleValue: "https://example.com/image.jpg"
+  } });
+  var contactChannelIdSchema = yupString().uuid().meta({ openapiField: {
+    description: _idDescription("contact channel"),
+    exampleValue: "b3d396b8-c574-4c80-97b3-50031675ceb2"
+  } });
+  var contactChannelTypeSchema = yupString().oneOf(["email"]).meta({ openapiField: {
+    description: `The type of the contact channel. Currently only "email" is supported.`,
+    exampleValue: "email"
+  } });
+  var contactChannelValueSchema = yupString().when("type", {
+    is: "email",
+    then: (schema) => schema.email()
+  }).meta({ openapiField: {
+    description: "The value of the contact channel. For email, this should be a valid email address.",
+    exampleValue: "johndoe@example.com"
+  } });
+  var contactChannelUsedForAuthSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the contact channel is used for authentication. If this is set to `true`, the user will be able to sign in with the contact channel with password or OTP.",
+    exampleValue: true
+  } });
+  var contactChannelIsVerifiedSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the contact channel has been verified. If this is set to `true`, the contact channel has been verified to belong to the user.",
+    exampleValue: true
+  } });
+  var contactChannelIsPrimarySchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the contact channel is the primary contact channel. If this is set to `true`, it will be used for authentication and notifications by default.",
+    exampleValue: true
+  } });
+  var oauthProviderIdSchema = yupString().uuid().meta({ openapiField: {
+    description: _idDescription("OAuth provider"),
+    exampleValue: "b3d396b8-c574-4c80-97b3-50031675ceb2"
+  } });
+  var oauthProviderEmailSchema = emailSchema.meta({ openapiField: {
+    description: "Email of the OAuth provider. This is used to display and identify the OAuth provider in the UI.",
+    exampleValue: "test@gmail.com"
+  } });
+  var oauthProviderTypeSchema = yupString().oneOf(allProviders).meta({ openapiField: {
+    description: `OAuth provider type, one of ${allProviders.map((x) => `\`${x}\``).join(", ")}`,
+    exampleValue: "google"
+  } });
+  var oauthProviderAllowSignInSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the user can use this OAuth provider to sign in. Only one OAuth provider per type can have this set to `true`.",
+    exampleValue: true
+  } });
+  var oauthProviderAllowConnectedAccountsSchema = yupBoolean().meta({ openapiField: {
+    description: "Whether the user can use this OAuth provider as connected account. Multiple OAuth providers per type can have this set to `true`.",
+    exampleValue: true
+  } });
+  var oauthProviderAccountIdSchema = yupString().meta({ openapiField: {
+    description: "Account ID of the OAuth provider. This uniquely identifies the account on the provider side.",
+    exampleValue: "google-account-id-12345"
+  } });
+  var oauthProviderProviderConfigIdSchema = yupString().meta({ openapiField: {
+    description: "Provider config ID of the OAuth provider. This uniquely identifies the provider config on config.json file",
+    exampleValue: "google"
+  } });
+  var basicAuthorizationHeaderSchema = yupString().test("is-basic-authorization-header", 'Authorization header must be in the format "Basic <base64>"', (value) => {
+    if (!value) return true;
+    return decodeBasicAuthorizationHeader(value) !== null;
+  });
+  var neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test("is-authorization-header", "Invalid client_id:client_secret values; did you use the correct values for the integration?", (value) => {
+    if (!value) return true;
+    const [clientId, clientSecret] = decodeBasicAuthorizationHeader(value) ?? throwErr(`Authz header invalid? This should've been validated by basicAuthorizationHeaderSchema: ${value}`);
+    for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || "[]")) if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
+    return false;
+  });
+  var branchConfigSourceSchema = yupUnion(yupObject({
+    type: yupString().oneOf(["pushed-from-github"]).defined(),
+    owner: yupString().defined(),
+    repo: yupString().defined(),
+    branch: yupString().defined(),
+    commit_hash: yupString().defined(),
+    config_file_path: yupString().defined()
+  }), yupObject({ type: yupString().oneOf(["pushed-from-unknown"]).defined() }), yupObject({ type: yupString().oneOf(["unlinked"]).defined() }));
+
+  // ../../node_modules/.pnpm/async-mutex@0.5.0/node_modules/async-mutex/index.mjs
+  var E_TIMEOUT = new Error("timeout while waiting for mutex to become available");
+  var E_ALREADY_LOCKED = new Error("mutex already locked");
+  var E_CANCELED = new Error("request for lock canceled");
+  var __awaiter$2 = function(thisArg, _arguments, P, generator) {
+    function adopt(value) {
+      return value instanceof P ? value : new P(function(resolve) {
+        resolve(value);
+      });
+    }
+    return new (P || (P = Promise))(function(resolve, reject) {
+      function fulfilled(value) {
+        try {
+          step(generator.next(value));
+        } catch (e16) {
+          reject(e16);
+        }
+      }
+      function rejected2(value) {
+        try {
+          step(generator["throw"](value));
+        } catch (e16) {
+          reject(e16);
+        }
+      }
+      function step(result) {
+        result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected2);
+      }
+      step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+  };
+  var Semaphore = class {
+    constructor(_value, _cancelError = E_CANCELED) {
+      this._value = _value;
+      this._cancelError = _cancelError;
+      this._queue = [];
+      this._weightedWaiters = [];
+    }
+    acquire(weight = 1, priority = 0) {
+      if (weight <= 0)
+        throw new Error(`invalid weight ${weight}: must be positive`);
+      return new Promise((resolve, reject) => {
+        const task = { resolve, reject, weight, priority };
+        const i = findIndexFromEnd(this._queue, (other) => priority <= other.priority);
+        if (i === -1 && weight <= this._value) {
+          this._dispatchItem(task);
+        } else {
+          this._queue.splice(i + 1, 0, task);
+        }
+      });
+    }
+    runExclusive(callback_1) {
+      return __awaiter$2(this, arguments, void 0, function* (callback, weight = 1, priority = 0) {
+        const [value, release] = yield this.acquire(weight, priority);
+        try {
+          return yield callback(value);
+        } finally {
+          release();
+        }
+      });
+    }
+    waitForUnlock(weight = 1, priority = 0) {
+      if (weight <= 0)
+        throw new Error(`invalid weight ${weight}: must be positive`);
+      if (this._couldLockImmediately(weight, priority)) {
+        return Promise.resolve();
+      } else {
+        return new Promise((resolve) => {
+          if (!this._weightedWaiters[weight - 1])
+            this._weightedWaiters[weight - 1] = [];
+          insertSorted(this._weightedWaiters[weight - 1], { resolve, priority });
+        });
+      }
+    }
+    isLocked() {
+      return this._value <= 0;
+    }
+    getValue() {
+      return this._value;
+    }
+    setValue(value) {
+      this._value = value;
+      this._dispatchQueue();
+    }
+    release(weight = 1) {
+      if (weight <= 0)
+        throw new Error(`invalid weight ${weight}: must be positive`);
+      this._value += weight;
+      this._dispatchQueue();
+    }
+    cancel() {
+      this._queue.forEach((entry) => entry.reject(this._cancelError));
+      this._queue = [];
+    }
+    _dispatchQueue() {
+      this._drainUnlockWaiters();
+      while (this._queue.length > 0 && this._queue[0].weight <= this._value) {
+        this._dispatchItem(this._queue.shift());
+        this._drainUnlockWaiters();
+      }
+    }
+    _dispatchItem(item) {
+      const previousValue = this._value;
+      this._value -= item.weight;
+      item.resolve([previousValue, this._newReleaser(item.weight)]);
+    }
+    _newReleaser(weight) {
+      let called = false;
+      return () => {
+        if (called)
+          return;
+        called = true;
+        this.release(weight);
+      };
+    }
+    _drainUnlockWaiters() {
+      if (this._queue.length === 0) {
+        for (let weight = this._value; weight > 0; weight--) {
+          const waiters = this._weightedWaiters[weight - 1];
+          if (!waiters)
+            continue;
+          waiters.forEach((waiter) => waiter.resolve());
+          this._weightedWaiters[weight - 1] = [];
+        }
+      } else {
+        const queuedPriority = this._queue[0].priority;
+        for (let weight = this._value; weight > 0; weight--) {
+          const waiters = this._weightedWaiters[weight - 1];
+          if (!waiters)
+            continue;
+          const i = waiters.findIndex((waiter) => waiter.priority <= queuedPriority);
+          (i === -1 ? waiters : waiters.splice(0, i)).forEach((waiter) => waiter.resolve());
+        }
+      }
+    }
+    _couldLockImmediately(weight, priority) {
+      return (this._queue.length === 0 || this._queue[0].priority < priority) && weight <= this._value;
+    }
+  };
+  function insertSorted(a10, v) {
+    const i = findIndexFromEnd(a10, (other) => v.priority <= other.priority);
+    a10.splice(i + 1, 0, v);
+  }
+  function findIndexFromEnd(a10, predicate) {
+    for (let i = a10.length - 1; i >= 0; i--) {
+      if (predicate(a10[i])) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  // ../stack-shared/dist/esm/utils/locks.js
+  var ReadWriteLock = class {
+    constructor() {
+      this.semaphore = new Semaphore(1);
+      this.readers = 0;
+      this.readersMutex = new Semaphore(1);
+    }
+    async withReadLock(callback) {
+      await this._acquireReadLock();
+      try {
+        return await callback();
+      } finally {
+        await this._releaseReadLock();
+      }
+    }
+    async withWriteLock(callback) {
+      await this._acquireWriteLock();
+      try {
+        return await callback();
+      } finally {
+        await this._releaseWriteLock();
+      }
+    }
+    async _acquireReadLock() {
+      await this.readersMutex.acquire();
+      try {
+        this.readers += 1;
+        if (this.readers === 1) await this.semaphore.acquire();
+      } finally {
+        this.readersMutex.release();
+      }
+    }
+    async _releaseReadLock() {
+      await this.readersMutex.acquire();
+      try {
+        this.readers -= 1;
+        if (this.readers === 0) this.semaphore.release();
+      } finally {
+        this.readersMutex.release();
+      }
+    }
+    async _acquireWriteLock() {
+      await this.semaphore.acquire();
+    }
+    async _releaseWriteLock() {
+      this.semaphore.release();
+    }
+  };
+
+  // ../stack-shared/dist/esm/utils/stores.js
+  var storeLock = new ReadWriteLock();
+
+  // ../stack-shared/dist/esm/interface/client-interface.js
+  var USER_AGENT;
+  if (typeof navigator === "undefined" || !navigator.userAgent?.startsWith?.("Mozilla/5.0 ")) USER_AGENT = `oauth4webapi/v3.8.3`;
+  var ERR_INVALID_ARG_VALUE = "ERR_INVALID_ARG_VALUE";
+  function CodedTypeError(message, code, cause) {
+    const err = new TypeError(message, { cause });
+    Object.assign(err, { code });
+    return err;
+  }
+  var allowInsecureRequests = Symbol();
+  var clockSkew = Symbol();
+  var clockTolerance = Symbol();
+  var customFetch = Symbol();
+  var jweDecrypt = Symbol();
+  var encoder = new TextEncoder();
+  var decoder = new TextDecoder();
+  var encodeBase64Url;
+  if (Uint8Array.prototype.toBase64) encodeBase64Url = (input) => {
+    if (input instanceof ArrayBuffer) input = new Uint8Array(input);
+    return input.toBase64({
+      alphabet: "base64url",
+      omitPadding: true
+    });
+  };
+  else {
+    const CHUNK_SIZE = 32768;
+    encodeBase64Url = (input) => {
+      if (input instanceof ArrayBuffer) input = new Uint8Array(input);
+      const arr = [];
+      for (let i = 0; i < input.byteLength; i += CHUNK_SIZE) arr.push(String.fromCharCode.apply(null, input.subarray(i, i + CHUNK_SIZE)));
+      return btoa(arr.join("")).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+    };
+  }
+  var decodeBase64Url;
+  if (Uint8Array.fromBase64) decodeBase64Url = (input) => {
+    try {
+      return Uint8Array.fromBase64(input, { alphabet: "base64url" });
+    } catch (cause) {
+      throw CodedTypeError("The input to be decoded is not correctly encoded.", ERR_INVALID_ARG_VALUE, cause);
+    }
+  };
+  else decodeBase64Url = (input) => {
+    try {
+      const binary = atob(input.replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, ""));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    } catch (cause) {
+      throw CodedTypeError("The input to be decoded is not correctly encoded.", ERR_INVALID_ARG_VALUE, cause);
+    }
+  };
+  var URLParse = URL.parse ? (url, base) => URL.parse(url, base) : (url, base) => {
+    try {
+      return new URL(url, base);
+    } catch {
+      return null;
+    }
+  };
+  var tokenMatch = "[a-zA-Z0-9!#$%&\\'\\*\\+\\-\\.\\^_`\\|~]+";
+  var token68Match = "[a-zA-Z0-9\\-\\._\\~\\+\\/]+={0,2}";
+  var quotedParamMatcher = "(" + tokenMatch + ')\\s*=\\s*"((?:[^"\\\\]|\\\\[\\s\\S])*)"';
+  var paramMatcher = "(" + tokenMatch + ")\\s*=\\s*([a-zA-Z0-9!#$%&\\'\\*\\+\\-\\.\\^_`\\|~]+)";
+  var schemeRE = new RegExp("^[,\\s]*(" + tokenMatch + ")");
+  var quotedParamRE = new RegExp("^[,\\s]*" + quotedParamMatcher + "[,\\s]*(.*)");
+  var unquotedParamRE = new RegExp("^[,\\s]*" + paramMatcher + "[,\\s]*(.*)");
+  var token68ParamRE = new RegExp("^(" + token68Match + ")(?:$|[,\\s])(.*)");
+  var nopkce = Symbol();
+  var expectNoNonce = Symbol();
+  var skipAuthTimeCheck = Symbol();
+  var skipStateCheck = Symbol();
+  var expectNoState = Symbol();
+  var _expectedIssuer = Symbol();
+
+  // ../stack-shared/dist/esm/utils/maps.js
+  var _Symbol$toStringTag3;
+  var _Symbol$toStringTag22;
+  var _Symbol$toStringTag32;
+  var WeakRefIfAvailable = class {
+    constructor(value) {
+      if (typeof WeakRef === "undefined") this._ref = { deref: () => value };
+      else this._ref = new WeakRef(value);
+    }
+    deref() {
+      return this._ref.deref();
+    }
+  };
+  var _a2;
+  var IterableWeakMap = (_a2 = class {
+    constructor(entries) {
+      this[_Symbol$toStringTag3] = "IterableWeakMap";
+      const mappedEntries = entries?.map((e16) => [e16[0], {
+        value: e16[1],
+        keyRef: new WeakRefIfAvailable(e16[0])
+      }]);
+      this._weakMap = new WeakMap(mappedEntries ?? []);
+      this._keyRefs = new Set(mappedEntries?.map((e16) => e16[1].keyRef) ?? []);
+    }
+    get(key) {
+      return this._weakMap.get(key)?.value;
+    }
+    set(key, value) {
+      const updated = {
+        value,
+        keyRef: this._weakMap.get(key)?.keyRef ?? new WeakRefIfAvailable(key)
+      };
+      this._weakMap.set(key, updated);
+      this._keyRefs.add(updated.keyRef);
+      return this;
+    }
+    delete(key) {
+      const res = this._weakMap.get(key);
+      if (res) {
+        this._weakMap.delete(key);
+        this._keyRefs.delete(res.keyRef);
+        return true;
+      }
+      return false;
+    }
+    has(key) {
+      return this._weakMap.has(key) && this._keyRefs.has(this._weakMap.get(key).keyRef);
+    }
+    *[Symbol.iterator]() {
+      for (const keyRef of this._keyRefs) {
+        const key = keyRef.deref();
+        const existing = key ? this._weakMap.get(key) : void 0;
+        if (!key) this._keyRefs.delete(keyRef);
+        else if (existing) yield [key, existing.value];
+      }
+    }
+  }, _Symbol$toStringTag3 = Symbol.toStringTag, _a2);
+  var _a3;
+  var MaybeWeakMap = (_a3 = class {
+    constructor(entries) {
+      this[_Symbol$toStringTag22] = "MaybeWeakMap";
+      const entriesArray = [...entries ?? []];
+      this._primitiveMap = new Map(entriesArray.filter((e16) => !this._isAllowedInWeakMap(e16[0])));
+      this._weakMap = new IterableWeakMap(entriesArray.filter((e16) => this._isAllowedInWeakMap(e16[0])));
+    }
+    _isAllowedInWeakMap(key) {
+      return typeof key === "object" && key !== null || typeof key === "symbol" && Symbol.keyFor(key) === void 0;
+    }
+    get(key) {
+      if (this._isAllowedInWeakMap(key)) return this._weakMap.get(key);
+      else return this._primitiveMap.get(key);
+    }
+    set(key, value) {
+      if (this._isAllowedInWeakMap(key)) this._weakMap.set(key, value);
+      else this._primitiveMap.set(key, value);
+      return this;
+    }
+    delete(key) {
+      if (this._isAllowedInWeakMap(key)) return this._weakMap.delete(key);
+      else return this._primitiveMap.delete(key);
+    }
+    has(key) {
+      if (this._isAllowedInWeakMap(key)) return this._weakMap.has(key);
+      else return this._primitiveMap.has(key);
+    }
+    *[Symbol.iterator]() {
+      yield* this._primitiveMap;
+      yield* this._weakMap;
+    }
+  }, _Symbol$toStringTag22 = Symbol.toStringTag, _a3);
+  var _a4;
+  var DependenciesMap = (_a4 = class {
+    constructor() {
+      this._inner = {
+        map: new MaybeWeakMap(),
+        hasValue: false,
+        value: void 0
+      };
+      this[_Symbol$toStringTag32] = "DependenciesMap";
+    }
+    _valueToResult(inner) {
+      if (inner.hasValue) return Result.ok(inner.value);
+      else return Result.error(void 0);
+    }
+    _unwrapFromInner(dependencies, inner) {
+      if (dependencies.length === 0) return this._valueToResult(inner);
+      else {
+        const [key, ...rest] = dependencies;
+        const newInner = inner.map.get(key);
+        if (!newInner) return Result.error(void 0);
+        return this._unwrapFromInner(rest, newInner);
+      }
+    }
+    _setInInner(dependencies, value, inner) {
+      if (dependencies.length === 0) {
+        const res = this._valueToResult(inner);
+        if (value.status === "ok") {
+          inner.hasValue = true;
+          inner.value = value.data;
+        } else {
+          inner.hasValue = false;
+          inner.value = void 0;
+        }
+        return res;
+      } else {
+        const [key, ...rest] = dependencies;
+        let newInner = inner.map.get(key);
+        if (!newInner) inner.map.set(key, newInner = {
+          map: new MaybeWeakMap(),
+          hasValue: false,
+          value: void 0
+        });
+        return this._setInInner(rest, value, newInner);
+      }
+    }
+    *_iterateInner(dependencies, inner) {
+      if (inner.hasValue) yield [dependencies, inner.value];
+      for (const [key, value] of inner.map) yield* this._iterateInner([...dependencies, key], value);
+    }
+    get(dependencies) {
+      return Result.or(this._unwrapFromInner(dependencies, this._inner), void 0);
+    }
+    set(dependencies, value) {
+      this._setInInner(dependencies, Result.ok(value), this._inner);
+      return this;
+    }
+    delete(dependencies) {
+      return this._setInInner(dependencies, Result.error(void 0), this._inner).status === "ok";
+    }
+    has(dependencies) {
+      return this._unwrapFromInner(dependencies, this._inner).status === "ok";
+    }
+    clear() {
+      this._inner = {
+        map: new MaybeWeakMap(),
+        hasValue: false,
+        value: void 0
+      };
+    }
+    *[Symbol.iterator]() {
+      yield* this._iterateInner([], this._inner);
+    }
+  }, _Symbol$toStringTag32 = Symbol.toStringTag, _a4);
+
+  // ../stack-shared/dist/esm/utils/promises.js
+  var neverResolvePromise = pending(new Promise(() => {
+  }));
+  function pending(promise, options = {}) {
+    const res = promise.then((value) => {
+      res.status = "fulfilled";
+      res.value = value;
+      return value;
+    }, (actualReason) => {
+      res.status = "rejected";
+      res.reason = actualReason;
+      throw actualReason;
+    });
+    res.status = "pending";
+    return res;
+  }
+  function concatStacktracesIfRejected(promise) {
+    const currentError = /* @__PURE__ */ new Error();
+    promise.catch((error) => {
+      if (error instanceof Error) concatStacktraces(error, currentError);
+    });
+  }
+  async function wait(ms) {
+    if (!Number.isFinite(ms) || ms < 0) throw new StackAssertionError(`wait() requires a non-negative integer number of milliseconds to wait. (found: ${ms}ms)`);
+    if (ms >= 2 ** 31) throw new StackAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
+    return await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  function runAsynchronouslyWithAlert(...args) {
+    return runAsynchronously(args[0], {
+      ...args[1],
+      onError: (error) => {
+        if (KnownError.isKnownError(error) && typeof process !== "undefined" && "production"?.includes("production")) alert(error.message);
+        else alert(`An unhandled error occurred. Please ${false ? `check the browser console for the full error.` : "report this to the developer."}
+
+${error}`);
+        args[1]?.onError?.(error);
+      }
+    }, ...args.slice(2));
+  }
+  function runAsynchronously(promiseOrFunc, options = {}) {
+    if (typeof promiseOrFunc === "function") promiseOrFunc = promiseOrFunc();
+    if (promiseOrFunc) {
+      concatStacktracesIfRejected(promiseOrFunc);
+      promiseOrFunc.catch((error) => {
+        options.onError?.(error);
+        const newError = new StackAssertionError("Uncaught error in asynchronous function: " + errorToNiceString(error), { cause: error });
+        if (!options.noErrorLogging) captureError("runAsynchronously", newError);
+      });
+    }
+  }
+
+  // ../stack-shared/dist/esm/utils/react.js
+  function forwardRefIfNeeded(render) {
+    const version = import_react3.default.version;
+    if (parseInt(version.split(".")[0]) < 19) return import_react3.default.forwardRef(render);
+    else return (props) => render(props, props.ref);
+  }
+  function useRefState(initialValue) {
+    const lazyInitRef = import_react3.default.useRef(null);
+    if (lazyInitRef.current === null) lazyInitRef.current = { v: typeof initialValue === "function" ? initialValue() : initialValue };
+    const resolvedInitialValue = lazyInitRef.current.v;
+    const [, setState] = import_react3.default.useState(() => resolvedInitialValue);
+    const ref = import_react3.default.useRef(resolvedInitialValue);
+    const setValue = import_react3.default.useCallback((updater) => {
+      const value = typeof updater === "function" ? updater(ref.current) : updater;
+      ref.current = value;
+      setState(value);
+    }, []);
+    return import_react3.default.useMemo(() => ({
+      get current() {
+        return ref.current;
+      },
+      set: setValue
+    }), [setValue]);
+  }
+  function mapRefState(refState, mapper, reverseMapper) {
+    let last = null;
+    return {
+      get current() {
+        const input = refState.current;
+        if (last === null || input !== last[0]) last = [input, mapper(input)];
+        return last[1];
+      },
+      set(updater) {
+        const value = typeof updater === "function" ? updater(this.current) : updater;
+        refState.set(reverseMapper(refState.current, value));
+      }
+    };
+  }
+
+  // ../../node_modules/.pnpm/@radix-ui+react-icons@1.3.1_react@19.2.1/node_modules/@radix-ui/react-icons/dist/react-icons.esm.js
+  var import_react4 = __toESM(require_react());
+  function _objectWithoutPropertiesLoose(source, excluded) {
+    if (source == null) return {};
+    var target = {};
+    var sourceKeys = Object.keys(source);
+    var key, i;
+    for (i = 0; i < sourceKeys.length; i++) {
+      key = sourceKeys[i];
+      if (excluded.indexOf(key) >= 0) continue;
+      target[key] = source[key];
+    }
+    return target;
+  }
+  var _excluded$1r = ["color"];
+  var Cross2Icon = /* @__PURE__ */ (0, import_react4.forwardRef)(function(_ref2, forwardedRef) {
+    var _ref$color = _ref2.color, color = _ref$color === void 0 ? "currentColor" : _ref$color, props = _objectWithoutPropertiesLoose(_ref2, _excluded$1r);
+    return (0, import_react4.createElement)("svg", Object.assign({
+      width: "15",
+      height: "15",
+      viewBox: "0 0 15 15",
+      fill: "none",
+      xmlns: "http://www.w3.org/2000/svg"
+    }, props, {
+      ref: forwardedRef
+    }), (0, import_react4.createElement)("path", {
+      d: "M11.7816 4.03157C12.0062 3.80702 12.0062 3.44295 11.7816 3.2184C11.5571 2.99385 11.193 2.99385 10.9685 3.2184L7.50005 6.68682L4.03164 3.2184C3.80708 2.99385 3.44301 2.99385 3.21846 3.2184C2.99391 3.44295 2.99391 3.80702 3.21846 4.03157L6.68688 7.49999L3.21846 10.9684C2.99391 11.193 2.99391 11.557 3.21846 11.7816C3.44301 12.0061 3.80708 12.0061 4.03164 11.7816L7.50005 8.31316L10.9685 11.7816C11.193 12.0061 11.5571 12.0061 11.7816 11.7816C12.0062 11.557 12.0062 11.193 11.7816 10.9684L8.31322 7.49999L11.7816 4.03157Z",
+      fill: color,
+      fillRule: "evenodd",
+      clipRule: "evenodd"
+    }));
+  });
+  var _excluded$3E = ["color"];
+  var ReloadIcon = /* @__PURE__ */ (0, import_react4.forwardRef)(function(_ref2, forwardedRef) {
+    var _ref$color = _ref2.color, color = _ref$color === void 0 ? "currentColor" : _ref$color, props = _objectWithoutPropertiesLoose(_ref2, _excluded$3E);
+    return (0, import_react4.createElement)("svg", Object.assign({
+      width: "15",
+      height: "15",
+      viewBox: "0 0 15 15",
+      fill: "none",
+      xmlns: "http://www.w3.org/2000/svg"
+    }, props, {
+      ref: forwardedRef
+    }), (0, import_react4.createElement)("path", {
+      d: "M1.84998 7.49998C1.84998 4.66458 4.05979 1.84998 7.49998 1.84998C10.2783 1.84998 11.6515 3.9064 12.2367 5H10.5C10.2239 5 10 5.22386 10 5.5C10 5.77614 10.2239 6 10.5 6H13.5C13.7761 6 14 5.77614 14 5.5V2.5C14 2.22386 13.7761 2 13.5 2C13.2239 2 13 2.22386 13 2.5V4.31318C12.2955 3.07126 10.6659 0.849976 7.49998 0.849976C3.43716 0.849976 0.849976 4.18537 0.849976 7.49998C0.849976 10.8146 3.43716 14.15 7.49998 14.15C9.44382 14.15 11.0622 13.3808 12.2145 12.2084C12.8315 11.5806 13.3133 10.839 13.6418 10.0407C13.7469 9.78536 13.6251 9.49315 13.3698 9.38806C13.1144 9.28296 12.8222 9.40478 12.7171 9.66014C12.4363 10.3425 12.0251 10.9745 11.5013 11.5074C10.5295 12.4963 9.16504 13.15 7.49998 13.15C4.05979 13.15 1.84998 10.3354 1.84998 7.49998Z",
+      fill: color,
+      fillRule: "evenodd",
+      clipRule: "evenodd"
+    }));
+  });
+
+  // ../../node_modules/.pnpm/@radix-ui+react-slot@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-slot/dist/index.mjs
+  var React4 = __toESM(require_react(), 1);
+
+  // ../../node_modules/.pnpm/@radix-ui+react-compose-refs@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-compose-refs/dist/index.mjs
+  var React3 = __toESM(require_react(), 1);
+  function setRef(ref, value) {
+    if (typeof ref === "function") {
+      ref(value);
+    } else if (ref !== null && ref !== void 0) {
+      ref.current = value;
+    }
+  }
+  function composeRefs(...refs) {
+    return (node) => refs.forEach((ref) => setRef(ref, node));
+  }
+  function useComposedRefs(...refs) {
+    return React3.useCallback(composeRefs(...refs), refs);
+  }
+
+  // ../../node_modules/.pnpm/@radix-ui+react-slot@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-slot/dist/index.mjs
+  var Slot = React4.forwardRef((props, forwardedRef) => {
+    const { children, ...slotProps } = props;
+    const childrenArray = React4.Children.toArray(children);
+    const slottable = childrenArray.find(isSlottable);
+    if (slottable) {
+      const newElement = slottable.props.children;
+      const newChildren = childrenArray.map((child) => {
+        if (child === slottable) {
+          if (React4.Children.count(newElement) > 1) return React4.Children.only(null);
+          return React4.isValidElement(newElement) ? newElement.props.children : null;
+        } else {
+          return child;
+        }
+      });
+      return /* @__PURE__ */ jsx(SlotClone, { ...slotProps, ref: forwardedRef, children: React4.isValidElement(newElement) ? React4.cloneElement(newElement, void 0, newChildren) : null });
+    }
+    return /* @__PURE__ */ jsx(SlotClone, { ...slotProps, ref: forwardedRef, children });
+  });
+  Slot.displayName = "Slot";
+  var SlotClone = React4.forwardRef((props, forwardedRef) => {
+    const { children, ...slotProps } = props;
+    if (React4.isValidElement(children)) {
+      const childrenRef = getElementRef(children);
+      return React4.cloneElement(children, {
+        ...mergeProps(slotProps, children.props),
+        // @ts-ignore
+        ref: forwardedRef ? composeRefs(forwardedRef, childrenRef) : childrenRef
+      });
+    }
+    return React4.Children.count(children) > 1 ? React4.Children.only(null) : null;
+  });
+  SlotClone.displayName = "SlotClone";
+  var Slottable = ({ children }) => {
+    return /* @__PURE__ */ jsx(Fragment9, { children });
+  };
+  function isSlottable(child) {
+    return React4.isValidElement(child) && child.type === Slottable;
+  }
+  function mergeProps(slotProps, childProps) {
+    const overrideProps = { ...childProps };
+    for (const propName in childProps) {
+      const slotPropValue = slotProps[propName];
+      const childPropValue = childProps[propName];
+      const isHandler = /^on[A-Z]/.test(propName);
+      if (isHandler) {
+        if (slotPropValue && childPropValue) {
+          overrideProps[propName] = (...args) => {
+            childPropValue(...args);
+            slotPropValue(...args);
+          };
+        } else if (slotPropValue) {
+          overrideProps[propName] = slotPropValue;
+        }
+      } else if (propName === "style") {
+        overrideProps[propName] = { ...slotPropValue, ...childPropValue };
+      } else if (propName === "className") {
+        overrideProps[propName] = [slotPropValue, childPropValue].filter(Boolean).join(" ");
+      }
+    }
+    return { ...slotProps, ...overrideProps };
+  }
+  function getElementRef(element) {
+    let getter2 = Object.getOwnPropertyDescriptor(element.props, "ref")?.get;
+    let mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
+    if (mayWarn) {
+      return element.ref;
+    }
+    getter2 = Object.getOwnPropertyDescriptor(element, "ref")?.get;
+    mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
+    if (mayWarn) {
+      return element.props.ref;
+    }
+    return element.props.ref || element.ref;
+  }
+
+  // ../stack-shared/dist/esm/hooks/use-async-callback.js
+  var import_react5 = __toESM(require_react());
+  function useAsyncCallback(callback, deps) {
+    const [error, setError] = import_react5.default.useState(void 0);
+    const [loadingCount, setLoadingCount] = import_react5.default.useState(0);
+    return [
+      import_react5.default.useCallback(async (...args) => {
+        setLoadingCount((c3) => c3 + 1);
+        try {
+          return await callback(...args);
+        } catch (e16) {
+          setError(e16);
+          throw e16;
+        } finally {
+          setLoadingCount((c3) => c3 - 1);
+        }
+      }, deps),
+      loadingCount > 0,
+      error
+    ];
+  }
+
   // ../stack-ui/dist/esm/components/ui/spinner.js
+  var import_react6 = __toESM(require_react());
   var Spinner = forwardRefIfNeeded(({ size: size5 = 15, ...props }, ref) => {
-    return /* @__PURE__ */ jsx("span", { ref, ...props, className: cn("stack-scope", props.className), children: /* @__PURE__ */ jsx(ReloadIcon, { className: "animate-spin", width: size5, height: size5 }) });
+    return /* @__PURE__ */ jsx("span", {
+      ref,
+      ...props,
+      className: cn("stack-scope", props.className),
+      children: /* @__PURE__ */ jsx(ReloadIcon, {
+        className: "animate-spin",
+        width: size5,
+        height: size5
+      })
+    });
   });
   Spinner.displayName = "Spinner";
 
@@ -9283,53 +8615,37 @@ ${error}`);
     };
   }
 
-  // ../../node_modules/.pnpm/@radix-ui+react-context@1.1.1_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-context/dist/index.mjs
-  var React6 = __toESM(require_react(), 1);
-  function createContext2(rootComponentName, defaultContext) {
-    const Context = React6.createContext(defaultContext);
-    const Provider2 = (props) => {
-      const { children, ...context } = props;
-      const value = React6.useMemo(() => context, Object.values(context));
-      return /* @__PURE__ */ jsx(Context.Provider, { value, children });
-    };
-    Provider2.displayName = rootComponentName + "Provider";
-    function useContext22(consumerName) {
-      const context = React6.useContext(Context);
-      if (context) return context;
-      if (defaultContext !== void 0) return defaultContext;
-      throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
-    }
-    return [Provider2, useContext22];
-  }
+  // ../../node_modules/.pnpm/@radix-ui+react-context@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-context/dist/index.mjs
+  var React7 = __toESM(require_react(), 1);
   function createContextScope(scopeName, createContextScopeDeps = []) {
     let defaultContexts = [];
     function createContext32(rootComponentName, defaultContext) {
-      const BaseContext = React6.createContext(defaultContext);
+      const BaseContext = React7.createContext(defaultContext);
       const index3 = defaultContexts.length;
       defaultContexts = [...defaultContexts, defaultContext];
-      const Provider2 = (props) => {
+      function Provider2(props) {
         const { scope, children, ...context } = props;
-        const Context = scope?.[scopeName]?.[index3] || BaseContext;
-        const value = React6.useMemo(() => context, Object.values(context));
+        const Context = scope?.[scopeName][index3] || BaseContext;
+        const value = React7.useMemo(() => context, Object.values(context));
         return /* @__PURE__ */ jsx(Context.Provider, { value, children });
-      };
-      Provider2.displayName = rootComponentName + "Provider";
+      }
       function useContext22(consumerName, scope) {
-        const Context = scope?.[scopeName]?.[index3] || BaseContext;
-        const context = React6.useContext(Context);
+        const Context = scope?.[scopeName][index3] || BaseContext;
+        const context = React7.useContext(Context);
         if (context) return context;
         if (defaultContext !== void 0) return defaultContext;
         throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
       }
+      Provider2.displayName = rootComponentName + "Provider";
       return [Provider2, useContext22];
     }
     const createScope = () => {
       const scopeContexts = defaultContexts.map((defaultContext) => {
-        return React6.createContext(defaultContext);
+        return React7.createContext(defaultContext);
       });
       return function useScope(scope) {
         const contexts = scope?.[scopeName] || scopeContexts;
-        return React6.useMemo(
+        return React7.useMemo(
           () => ({ [`__scope${scopeName}`]: { ...scope, [scopeName]: contexts } }),
           [scope, contexts]
         );
@@ -9352,67 +8668,91 @@ ${error}`);
           const currentScope = scopeProps[`__scope${scopeName}`];
           return { ...nextScopes2, ...currentScope };
         }, {});
-        return React6.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
+        return React7.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
       };
     };
     createScope.scopeName = baseScope.scopeName;
     return createScope;
   }
 
-  // ../../node_modules/.pnpm/@radix-ui+react-use-controllable-state@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs
+  // ../../node_modules/.pnpm/@radix-ui+react-context@1.1.1_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-context/dist/index.mjs
   var React8 = __toESM(require_react(), 1);
-
-  // ../../node_modules/.pnpm/@radix-ui+react-use-callback-ref@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-use-callback-ref/dist/index.mjs
-  var React7 = __toESM(require_react(), 1);
-  function useCallbackRef(callback) {
-    const callbackRef = React7.useRef(callback);
-    React7.useEffect(() => {
-      callbackRef.current = callback;
-    });
-    return React7.useMemo(() => (...args) => callbackRef.current?.(...args), []);
-  }
-
-  // ../../node_modules/.pnpm/@radix-ui+react-use-controllable-state@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs
-  function useControllableState({
-    prop,
-    defaultProp,
-    onChange = () => {
+  function createContext22(rootComponentName, defaultContext) {
+    const Context = React8.createContext(defaultContext);
+    const Provider2 = (props) => {
+      const { children, ...context } = props;
+      const value = React8.useMemo(() => context, Object.values(context));
+      return /* @__PURE__ */ jsx(Context.Provider, { value, children });
+    };
+    Provider2.displayName = rootComponentName + "Provider";
+    function useContext22(consumerName) {
+      const context = React8.useContext(Context);
+      if (context) return context;
+      if (defaultContext !== void 0) return defaultContext;
+      throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
     }
-  }) {
-    const [uncontrolledProp, setUncontrolledProp] = useUncontrolledState({ defaultProp, onChange });
-    const isControlled = prop !== void 0;
-    const value = isControlled ? prop : uncontrolledProp;
-    const handleChange = useCallbackRef(onChange);
-    const setValue = React8.useCallback(
-      (nextValue) => {
-        if (isControlled) {
-          const setter = nextValue;
-          const value2 = typeof nextValue === "function" ? setter(prop) : nextValue;
-          if (value2 !== prop) handleChange(value2);
-        } else {
-          setUncontrolledProp(nextValue);
-        }
-      },
-      [isControlled, prop, setUncontrolledProp, handleChange]
-    );
-    return [value, setValue];
+    return [Provider2, useContext22];
   }
-  function useUncontrolledState({
-    defaultProp,
-    onChange
-  }) {
-    const uncontrolledState = React8.useState(defaultProp);
-    const [value] = uncontrolledState;
-    const prevValueRef = React8.useRef(value);
-    const handleChange = useCallbackRef(onChange);
-    React8.useEffect(() => {
-      if (prevValueRef.current !== value) {
-        handleChange(value);
-        prevValueRef.current = value;
+  function createContextScope2(scopeName, createContextScopeDeps = []) {
+    let defaultContexts = [];
+    function createContext32(rootComponentName, defaultContext) {
+      const BaseContext = React8.createContext(defaultContext);
+      const index3 = defaultContexts.length;
+      defaultContexts = [...defaultContexts, defaultContext];
+      const Provider2 = (props) => {
+        const { scope, children, ...context } = props;
+        const Context = scope?.[scopeName]?.[index3] || BaseContext;
+        const value = React8.useMemo(() => context, Object.values(context));
+        return /* @__PURE__ */ jsx(Context.Provider, { value, children });
+      };
+      Provider2.displayName = rootComponentName + "Provider";
+      function useContext22(consumerName, scope) {
+        const Context = scope?.[scopeName]?.[index3] || BaseContext;
+        const context = React8.useContext(Context);
+        if (context) return context;
+        if (defaultContext !== void 0) return defaultContext;
+        throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
       }
-    }, [value, prevValueRef, handleChange]);
-    return uncontrolledState;
+      return [Provider2, useContext22];
+    }
+    const createScope = () => {
+      const scopeContexts = defaultContexts.map((defaultContext) => {
+        return React8.createContext(defaultContext);
+      });
+      return function useScope(scope) {
+        const contexts = scope?.[scopeName] || scopeContexts;
+        return React8.useMemo(
+          () => ({ [`__scope${scopeName}`]: { ...scope, [scopeName]: contexts } }),
+          [scope, contexts]
+        );
+      };
+    };
+    createScope.scopeName = scopeName;
+    return [createContext32, composeContextScopes2(createScope, ...createContextScopeDeps)];
   }
+  function composeContextScopes2(...scopes) {
+    const baseScope = scopes[0];
+    if (scopes.length === 1) return baseScope;
+    const createScope = () => {
+      const scopeHooks = scopes.map((createScope2) => ({
+        useScope: createScope2(),
+        scopeName: createScope2.scopeName
+      }));
+      return function useComposedScopes(overrideScopes) {
+        const nextScopes = scopeHooks.reduce((nextScopes2, { useScope, scopeName }) => {
+          const scopeProps = useScope(overrideScopes);
+          const currentScope = scopeProps[`__scope${scopeName}`];
+          return { ...nextScopes2, ...currentScope };
+        }, {});
+        return React8.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
+      };
+    };
+    createScope.scopeName = baseScope.scopeName;
+    return createScope;
+  }
+
+  // ../../node_modules/.pnpm/@radix-ui+react-dismissable-layer@1.1.1_@types+react-dom@18.3.1_@types+react@18.3.12_re_f005e7f95aa2eec7605cf7f5e28f987f/node_modules/@radix-ui/react-dismissable-layer/dist/index.mjs
+  var React12 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-primitive@2.0.0_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@radix-ui/react-primitive/dist/index.mjs
   var React9 = __toESM(require_react(), 1);
@@ -9451,68 +8791,15 @@ ${error}`);
     if (target) ReactDOM.flushSync(() => target.dispatchEvent(event));
   }
 
-  // ../../node_modules/.pnpm/@radix-ui+react-context@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-context/dist/index.mjs
+  // ../../node_modules/.pnpm/@radix-ui+react-use-callback-ref@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-use-callback-ref/dist/index.mjs
   var React10 = __toESM(require_react(), 1);
-  function createContextScope2(scopeName, createContextScopeDeps = []) {
-    let defaultContexts = [];
-    function createContext32(rootComponentName, defaultContext) {
-      const BaseContext = React10.createContext(defaultContext);
-      const index3 = defaultContexts.length;
-      defaultContexts = [...defaultContexts, defaultContext];
-      function Provider2(props) {
-        const { scope, children, ...context } = props;
-        const Context = scope?.[scopeName][index3] || BaseContext;
-        const value = React10.useMemo(() => context, Object.values(context));
-        return /* @__PURE__ */ jsx(Context.Provider, { value, children });
-      }
-      function useContext22(consumerName, scope) {
-        const Context = scope?.[scopeName][index3] || BaseContext;
-        const context = React10.useContext(Context);
-        if (context) return context;
-        if (defaultContext !== void 0) return defaultContext;
-        throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
-      }
-      Provider2.displayName = rootComponentName + "Provider";
-      return [Provider2, useContext22];
-    }
-    const createScope = () => {
-      const scopeContexts = defaultContexts.map((defaultContext) => {
-        return React10.createContext(defaultContext);
-      });
-      return function useScope(scope) {
-        const contexts = scope?.[scopeName] || scopeContexts;
-        return React10.useMemo(
-          () => ({ [`__scope${scopeName}`]: { ...scope, [scopeName]: contexts } }),
-          [scope, contexts]
-        );
-      };
-    };
-    createScope.scopeName = scopeName;
-    return [createContext32, composeContextScopes2(createScope, ...createContextScopeDeps)];
+  function useCallbackRef(callback) {
+    const callbackRef = React10.useRef(callback);
+    React10.useEffect(() => {
+      callbackRef.current = callback;
+    });
+    return React10.useMemo(() => (...args) => callbackRef.current?.(...args), []);
   }
-  function composeContextScopes2(...scopes) {
-    const baseScope = scopes[0];
-    if (scopes.length === 1) return baseScope;
-    const createScope = () => {
-      const scopeHooks = scopes.map((createScope2) => ({
-        useScope: createScope2(),
-        scopeName: createScope2.scopeName
-      }));
-      return function useComposedScopes(overrideScopes) {
-        const nextScopes = scopeHooks.reduce((nextScopes2, { useScope, scopeName }) => {
-          const scopeProps = useScope(overrideScopes);
-          const currentScope = scopeProps[`__scope${scopeName}`];
-          return { ...nextScopes2, ...currentScope };
-        }, {});
-        return React10.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
-      };
-    };
-    createScope.scopeName = baseScope.scopeName;
-    return createScope;
-  }
-
-  // ../../node_modules/.pnpm/@radix-ui+react-dismissable-layer@1.1.1_@types+react-dom@18.3.1_@types+react@18.3.12_re_f005e7f95aa2eec7605cf7f5e28f987f/node_modules/@radix-ui/react-dismissable-layer/dist/index.mjs
-  var React12 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-use-escape-keydown@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-use-escape-keydown/dist/index.mjs
   var React11 = __toESM(require_react(), 1);
@@ -11558,9 +10845,9 @@ ${error}`);
 
   // ../../node_modules/.pnpm/@floating-ui+react-dom@2.1.2_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs
   var React17 = __toESM(require_react(), 1);
-  var import_react7 = __toESM(require_react(), 1);
+  var import_react8 = __toESM(require_react(), 1);
   var ReactDOM2 = __toESM(require_react_dom(), 1);
-  var index = typeof document !== "undefined" ? import_react7.useLayoutEffect : import_react7.useEffect;
+  var index = typeof document !== "undefined" ? import_react8.useLayoutEffect : import_react8.useEffect;
   function deepEqual(a10, b) {
     if (a10 === b) {
       return true;
@@ -11897,7 +11184,7 @@ ${error}`);
 
   // ../../node_modules/.pnpm/@radix-ui+react-popper@1.2.0_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@radix-ui/react-popper/dist/index.mjs
   var POPPER_NAME = "Popper";
-  var [createPopperContext, createPopperScope] = createContextScope2(POPPER_NAME);
+  var [createPopperContext, createPopperScope] = createContextScope(POPPER_NAME);
   var [PopperProvider, usePopperContext] = createPopperContext(POPPER_NAME);
   var Popper = (props) => {
     const { __scopePopper, children } = props;
@@ -12174,131 +11461,79 @@ ${error}`);
   });
   Portal.displayName = PORTAL_NAME;
 
-  // ../../node_modules/.pnpm/@radix-ui+react-presence@1.1.1_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@radix-ui/react-presence/dist/index.mjs
+  // ../../node_modules/.pnpm/@radix-ui+react-use-controllable-state@1.1.0_@types+react@18.3.12_react@19.2.1/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs
   var React22 = __toESM(require_react(), 1);
-  var React23 = __toESM(require_react(), 1);
-  function useStateMachine(initialState, machine) {
-    return React23.useReducer((state, event) => {
-      const nextState = machine[state][event];
-      return nextState ?? state;
-    }, initialState);
-  }
-  var Presence = (props) => {
-    const { present, children } = props;
-    const presence = usePresence(present);
-    const child = typeof children === "function" ? children({ present: presence.isPresent }) : React22.Children.only(children);
-    const ref = useComposedRefs(presence.ref, getElementRef2(child));
-    const forceMount = typeof children === "function";
-    return forceMount || presence.isPresent ? React22.cloneElement(child, { ref }) : null;
-  };
-  Presence.displayName = "Presence";
-  function usePresence(present) {
-    const [node, setNode] = React22.useState();
-    const stylesRef = React22.useRef({});
-    const prevPresentRef = React22.useRef(present);
-    const prevAnimationNameRef = React22.useRef("none");
-    const initialState = present ? "mounted" : "unmounted";
-    const [state, send] = useStateMachine(initialState, {
-      mounted: {
-        UNMOUNT: "unmounted",
-        ANIMATION_OUT: "unmountSuspended"
-      },
-      unmountSuspended: {
-        MOUNT: "mounted",
-        ANIMATION_END: "unmounted"
-      },
-      unmounted: {
-        MOUNT: "mounted"
-      }
-    });
-    React22.useEffect(() => {
-      const currentAnimationName = getAnimationName(stylesRef.current);
-      prevAnimationNameRef.current = state === "mounted" ? currentAnimationName : "none";
-    }, [state]);
-    useLayoutEffect2(() => {
-      const styles = stylesRef.current;
-      const wasPresent = prevPresentRef.current;
-      const hasPresentChanged = wasPresent !== present;
-      if (hasPresentChanged) {
-        const prevAnimationName = prevAnimationNameRef.current;
-        const currentAnimationName = getAnimationName(styles);
-        if (present) {
-          send("MOUNT");
-        } else if (currentAnimationName === "none" || styles?.display === "none") {
-          send("UNMOUNT");
+  function useControllableState({
+    prop,
+    defaultProp,
+    onChange = () => {
+    }
+  }) {
+    const [uncontrolledProp, setUncontrolledProp] = useUncontrolledState({ defaultProp, onChange });
+    const isControlled = prop !== void 0;
+    const value = isControlled ? prop : uncontrolledProp;
+    const handleChange = useCallbackRef(onChange);
+    const setValue = React22.useCallback(
+      (nextValue) => {
+        if (isControlled) {
+          const setter = nextValue;
+          const value2 = typeof nextValue === "function" ? setter(prop) : nextValue;
+          if (value2 !== prop) handleChange(value2);
         } else {
-          const isAnimating = prevAnimationName !== currentAnimationName;
-          if (wasPresent && isAnimating) {
-            send("ANIMATION_OUT");
-          } else {
-            send("UNMOUNT");
+          setUncontrolledProp(nextValue);
+        }
+      },
+      [isControlled, prop, setUncontrolledProp, handleChange]
+    );
+    return [value, setValue];
+  }
+  function useUncontrolledState({
+    defaultProp,
+    onChange
+  }) {
+    const uncontrolledState = React22.useState(defaultProp);
+    const [value] = uncontrolledState;
+    const prevValueRef = React22.useRef(value);
+    const handleChange = useCallbackRef(onChange);
+    React22.useEffect(() => {
+      if (prevValueRef.current !== value) {
+        handleChange(value);
+        prevValueRef.current = value;
+      }
+    }, [value, prevValueRef, handleChange]);
+    return uncontrolledState;
+  }
+
+  // ../../node_modules/.pnpm/@radix-ui+react-visually-hidden@1.1.0_@types+react-dom@18.3.1_@types+react@18.3.12_reac_5bb0983b1979feb277f3f775d43a4c59/node_modules/@radix-ui/react-visually-hidden/dist/index.mjs
+  var React23 = __toESM(require_react(), 1);
+  var NAME2 = "VisuallyHidden";
+  var VisuallyHidden = React23.forwardRef(
+    (props, forwardedRef) => {
+      return /* @__PURE__ */ jsx(
+        Primitive.span,
+        {
+          ...props,
+          ref: forwardedRef,
+          style: {
+            // See: https://github.com/twbs/bootstrap/blob/master/scss/mixins/_screen-reader.scss
+            position: "absolute",
+            border: 0,
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clip: "rect(0, 0, 0, 0)",
+            whiteSpace: "nowrap",
+            wordWrap: "normal",
+            ...props.style
           }
         }
-        prevPresentRef.current = present;
-      }
-    }, [present, send]);
-    useLayoutEffect2(() => {
-      if (node) {
-        let timeoutId;
-        const ownerWindow = node.ownerDocument.defaultView ?? window;
-        const handleAnimationEnd = (event) => {
-          const currentAnimationName = getAnimationName(stylesRef.current);
-          const isCurrentAnimation = currentAnimationName.includes(event.animationName);
-          if (event.target === node && isCurrentAnimation) {
-            send("ANIMATION_END");
-            if (!prevPresentRef.current) {
-              const currentFillMode = node.style.animationFillMode;
-              node.style.animationFillMode = "forwards";
-              timeoutId = ownerWindow.setTimeout(() => {
-                if (node.style.animationFillMode === "forwards") {
-                  node.style.animationFillMode = currentFillMode;
-                }
-              });
-            }
-          }
-        };
-        const handleAnimationStart = (event) => {
-          if (event.target === node) {
-            prevAnimationNameRef.current = getAnimationName(stylesRef.current);
-          }
-        };
-        node.addEventListener("animationstart", handleAnimationStart);
-        node.addEventListener("animationcancel", handleAnimationEnd);
-        node.addEventListener("animationend", handleAnimationEnd);
-        return () => {
-          ownerWindow.clearTimeout(timeoutId);
-          node.removeEventListener("animationstart", handleAnimationStart);
-          node.removeEventListener("animationcancel", handleAnimationEnd);
-          node.removeEventListener("animationend", handleAnimationEnd);
-        };
-      } else {
-        send("ANIMATION_END");
-      }
-    }, [node, send]);
-    return {
-      isPresent: ["mounted", "unmountSuspended"].includes(state),
-      ref: React22.useCallback((node2) => {
-        if (node2) stylesRef.current = getComputedStyle(node2);
-        setNode(node2);
-      }, [])
-    };
-  }
-  function getAnimationName(styles) {
-    return styles?.animationName || "none";
-  }
-  function getElementRef2(element) {
-    let getter2 = Object.getOwnPropertyDescriptor(element.props, "ref")?.get;
-    let mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
-    if (mayWarn) {
-      return element.ref;
+      );
     }
-    getter2 = Object.getOwnPropertyDescriptor(element, "ref")?.get;
-    mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
-    if (mayWarn) {
-      return element.props.ref;
-    }
-    return element.props.ref || element.ref;
-  }
+  );
+  VisuallyHidden.displayName = NAME2;
+  var Root3 = VisuallyHidden;
 
   // ../../node_modules/.pnpm/aria-hidden@1.2.4/node_modules/aria-hidden/dist/es2015/index.js
   var getDefaultParent = function(originalTarget) {
@@ -12476,9 +11711,9 @@ ${error}`);
   }
 
   // ../../node_modules/.pnpm/use-callback-ref@1.3.3_@types+react@18.3.12_react@19.2.1/node_modules/use-callback-ref/dist/es2015/useRef.js
-  var import_react8 = __toESM(require_react());
+  var import_react9 = __toESM(require_react());
   function useCallbackRef2(initialValue, callback) {
-    var ref = (0, import_react8.useState)(function() {
+    var ref = (0, import_react9.useState)(function() {
       return {
         // value
         value: initialValue,
@@ -12623,8 +11858,8 @@ ${error}`);
 
   // ../../node_modules/.pnpm/use-sidecar@1.1.3_@types+react@18.3.12_react@19.2.1/node_modules/use-sidecar/dist/es2015/exports.js
   var React25 = __toESM(require_react());
-  var SideCar = function(_a4) {
-    var sideCar = _a4.sideCar, rest = __rest(_a4, ["sideCar"]);
+  var SideCar = function(_a5) {
+    var sideCar = _a5.sideCar, rest = __rest(_a5, ["sideCar"]);
     if (!sideCar) {
       throw new Error("Sidecar: please provide `sideCar` property to import the right car");
     }
@@ -12649,12 +11884,12 @@ ${error}`);
   };
   var RemoveScroll = React26.forwardRef(function(props, parentRef) {
     var ref = React26.useRef(null);
-    var _a4 = React26.useState({
+    var _a5 = React26.useState({
       onScrollCapture: nothing,
       onWheelCapture: nothing,
       onTouchMoveCapture: nothing
-    }), callbacks = _a4[0], setCallbacks = _a4[1];
-    var forwardProps = props.forwardProps, children = props.children, className = props.className, removeScrollBar = props.removeScrollBar, enabled = props.enabled, shards = props.shards, sideCar = props.sideCar, noIsolation = props.noIsolation, inert = props.inert, allowPinchZoom = props.allowPinchZoom, _b4 = props.as, Container = _b4 === void 0 ? "div" : _b4, gapMode = props.gapMode, rest = __rest(props, ["forwardProps", "children", "className", "removeScrollBar", "enabled", "shards", "sideCar", "noIsolation", "inert", "allowPinchZoom", "as", "gapMode"]);
+    }), callbacks = _a5[0], setCallbacks = _a5[1];
+    var forwardProps = props.forwardProps, children = props.children, className = props.className, removeScrollBar = props.removeScrollBar, enabled = props.enabled, shards = props.shards, sideCar = props.sideCar, noIsolation = props.noIsolation, inert = props.inert, allowPinchZoom = props.allowPinchZoom, _b = props.as, Container = _b === void 0 ? "div" : _b, gapMode = props.gapMode, rest = __rest(props, ["forwardProps", "children", "className", "removeScrollBar", "enabled", "shards", "sideCar", "noIsolation", "inert", "allowPinchZoom", "as", "gapMode"]);
     var SideCar2 = sideCar;
     var containerRef = useMergeRefs([ref, parentRef]);
     var containerProps = __assign(__assign({}, rest), callbacks);
@@ -12758,8 +11993,8 @@ ${error}`);
   // ../../node_modules/.pnpm/react-style-singleton@2.2.3_@types+react@18.3.12_react@19.2.1/node_modules/react-style-singleton/dist/es2015/component.js
   var styleSingleton = function() {
     var useStyle = styleHookSingleton();
-    var Sheet = function(_a4) {
-      var styles = _a4.styles, dynamic = _a4.dynamic;
+    var Sheet = function(_a5) {
+      var styles = _a5.styles, dynamic = _a5.dynamic;
       useStyle(styles, dynamic);
       return null;
     };
@@ -12804,8 +12039,8 @@ ${error}`);
   // ../../node_modules/.pnpm/react-remove-scroll-bar@2.3.8_@types+react@18.3.12_react@19.2.1/node_modules/react-remove-scroll-bar/dist/es2015/component.js
   var Style = styleSingleton();
   var lockAttribute = "data-scroll-locked";
-  var getStyles = function(_a4, allowRelative, gapMode, important) {
-    var left = _a4.left, top = _a4.top, right = _a4.right, gap = _a4.gap;
+  var getStyles = function(_a5, allowRelative, gapMode, important) {
+    var left = _a5.left, top = _a5.top, right = _a5.right, gap = _a5.gap;
     if (gapMode === void 0) {
       gapMode = "margin";
     }
@@ -12832,8 +12067,8 @@ ${error}`);
       };
     }, []);
   };
-  var RemoveScrollBar = function(_a4) {
-    var noRelative = _a4.noRelative, noImportant = _a4.noImportant, _b4 = _a4.gapMode, gapMode = _b4 === void 0 ? "margin" : _b4;
+  var RemoveScrollBar = function(_a5) {
+    var noRelative = _a5.noRelative, noImportant = _a5.noImportant, _b = _a5.gapMode, gapMode = _b === void 0 ? "margin" : _b;
     useLockAttribute();
     var gap = React28.useMemo(function() {
       return getGapWidth(gapMode);
@@ -12890,7 +12125,7 @@ ${error}`);
       }
       var isScrollable2 = elementCouldBeScrolled(axis, current);
       if (isScrollable2) {
-        var _a4 = getScrollVariables(axis, current), scrollHeight = _a4[1], clientHeight = _a4[2];
+        var _a5 = getScrollVariables(axis, current), scrollHeight = _a5[1], clientHeight = _a5[2];
         if (scrollHeight > clientHeight) {
           return true;
         }
@@ -12899,16 +12134,16 @@ ${error}`);
     } while (current && current !== ownerDocument.body);
     return false;
   };
-  var getVScrollVariables = function(_a4) {
-    var scrollTop = _a4.scrollTop, scrollHeight = _a4.scrollHeight, clientHeight = _a4.clientHeight;
+  var getVScrollVariables = function(_a5) {
+    var scrollTop = _a5.scrollTop, scrollHeight = _a5.scrollHeight, clientHeight = _a5.clientHeight;
     return [
       scrollTop,
       scrollHeight,
       clientHeight
     ];
   };
-  var getHScrollVariables = function(_a4) {
-    var scrollLeft = _a4.scrollLeft, scrollWidth = _a4.scrollWidth, clientWidth = _a4.clientWidth;
+  var getHScrollVariables = function(_a5) {
+    var scrollLeft = _a5.scrollLeft, scrollWidth = _a5.scrollWidth, clientWidth = _a5.clientWidth;
     return [
       scrollLeft,
       scrollWidth,
@@ -12934,7 +12169,7 @@ ${error}`);
     var availableScroll = 0;
     var availableScrollTop = 0;
     do {
-      var _a4 = getScrollVariables(axis, target), position = _a4[0], scroll_1 = _a4[1], capacity = _a4[2];
+      var _a5 = getScrollVariables(axis, target), position = _a5[0], scroll_1 = _a5[1], capacity = _a5[2];
       var elementScroll = scroll_1 - capacity - directionFactor * position;
       if (position || elementScroll) {
         if (elementCouldBeScrolled(axis, target)) {
@@ -13135,36 +12370,131 @@ ${error}`);
   ReactRemoveScroll.classNames = RemoveScroll.classNames;
   var Combination_default = ReactRemoveScroll;
 
-  // ../../node_modules/.pnpm/@radix-ui+react-visually-hidden@1.1.0_@types+react-dom@18.3.1_@types+react@18.3.12_reac_5bb0983b1979feb277f3f775d43a4c59/node_modules/@radix-ui/react-visually-hidden/dist/index.mjs
+  // ../../node_modules/.pnpm/@radix-ui+react-presence@1.1.1_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@radix-ui/react-presence/dist/index.mjs
+  var React210 = __toESM(require_react(), 1);
   var React31 = __toESM(require_react(), 1);
-  var NAME2 = "VisuallyHidden";
-  var VisuallyHidden = React31.forwardRef(
-    (props, forwardedRef) => {
-      return /* @__PURE__ */ jsx(
-        Primitive.span,
-        {
-          ...props,
-          ref: forwardedRef,
-          style: {
-            // See: https://github.com/twbs/bootstrap/blob/master/scss/mixins/_screen-reader.scss
-            position: "absolute",
-            border: 0,
-            width: 1,
-            height: 1,
-            padding: 0,
-            margin: -1,
-            overflow: "hidden",
-            clip: "rect(0, 0, 0, 0)",
-            whiteSpace: "nowrap",
-            wordWrap: "normal",
-            ...props.style
+  function useStateMachine(initialState, machine) {
+    return React31.useReducer((state, event) => {
+      const nextState = machine[state][event];
+      return nextState ?? state;
+    }, initialState);
+  }
+  var Presence = (props) => {
+    const { present, children } = props;
+    const presence = usePresence(present);
+    const child = typeof children === "function" ? children({ present: presence.isPresent }) : React210.Children.only(children);
+    const ref = useComposedRefs(presence.ref, getElementRef2(child));
+    const forceMount = typeof children === "function";
+    return forceMount || presence.isPresent ? React210.cloneElement(child, { ref }) : null;
+  };
+  Presence.displayName = "Presence";
+  function usePresence(present) {
+    const [node, setNode] = React210.useState();
+    const stylesRef = React210.useRef({});
+    const prevPresentRef = React210.useRef(present);
+    const prevAnimationNameRef = React210.useRef("none");
+    const initialState = present ? "mounted" : "unmounted";
+    const [state, send] = useStateMachine(initialState, {
+      mounted: {
+        UNMOUNT: "unmounted",
+        ANIMATION_OUT: "unmountSuspended"
+      },
+      unmountSuspended: {
+        MOUNT: "mounted",
+        ANIMATION_END: "unmounted"
+      },
+      unmounted: {
+        MOUNT: "mounted"
+      }
+    });
+    React210.useEffect(() => {
+      const currentAnimationName = getAnimationName(stylesRef.current);
+      prevAnimationNameRef.current = state === "mounted" ? currentAnimationName : "none";
+    }, [state]);
+    useLayoutEffect2(() => {
+      const styles = stylesRef.current;
+      const wasPresent = prevPresentRef.current;
+      const hasPresentChanged = wasPresent !== present;
+      if (hasPresentChanged) {
+        const prevAnimationName = prevAnimationNameRef.current;
+        const currentAnimationName = getAnimationName(styles);
+        if (present) {
+          send("MOUNT");
+        } else if (currentAnimationName === "none" || styles?.display === "none") {
+          send("UNMOUNT");
+        } else {
+          const isAnimating = prevAnimationName !== currentAnimationName;
+          if (wasPresent && isAnimating) {
+            send("ANIMATION_OUT");
+          } else {
+            send("UNMOUNT");
           }
         }
-      );
+        prevPresentRef.current = present;
+      }
+    }, [present, send]);
+    useLayoutEffect2(() => {
+      if (node) {
+        let timeoutId;
+        const ownerWindow = node.ownerDocument.defaultView ?? window;
+        const handleAnimationEnd = (event) => {
+          const currentAnimationName = getAnimationName(stylesRef.current);
+          const isCurrentAnimation = currentAnimationName.includes(event.animationName);
+          if (event.target === node && isCurrentAnimation) {
+            send("ANIMATION_END");
+            if (!prevPresentRef.current) {
+              const currentFillMode = node.style.animationFillMode;
+              node.style.animationFillMode = "forwards";
+              timeoutId = ownerWindow.setTimeout(() => {
+                if (node.style.animationFillMode === "forwards") {
+                  node.style.animationFillMode = currentFillMode;
+                }
+              });
+            }
+          }
+        };
+        const handleAnimationStart = (event) => {
+          if (event.target === node) {
+            prevAnimationNameRef.current = getAnimationName(stylesRef.current);
+          }
+        };
+        node.addEventListener("animationstart", handleAnimationStart);
+        node.addEventListener("animationcancel", handleAnimationEnd);
+        node.addEventListener("animationend", handleAnimationEnd);
+        return () => {
+          ownerWindow.clearTimeout(timeoutId);
+          node.removeEventListener("animationstart", handleAnimationStart);
+          node.removeEventListener("animationcancel", handleAnimationEnd);
+          node.removeEventListener("animationend", handleAnimationEnd);
+        };
+      } else {
+        send("ANIMATION_END");
+      }
+    }, [node, send]);
+    return {
+      isPresent: ["mounted", "unmountSuspended"].includes(state),
+      ref: React210.useCallback((node2) => {
+        if (node2) stylesRef.current = getComputedStyle(node2);
+        setNode(node2);
+      }, [])
+    };
+  }
+  function getAnimationName(styles) {
+    return styles?.animationName || "none";
+  }
+  function getElementRef2(element) {
+    let getter2 = Object.getOwnPropertyDescriptor(element.props, "ref")?.get;
+    let mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
+    if (mayWarn) {
+      return element.ref;
     }
-  );
-  VisuallyHidden.displayName = NAME2;
-  var Root3 = VisuallyHidden;
+    getter2 = Object.getOwnPropertyDescriptor(element, "ref")?.get;
+    mayWarn = getter2 && "isReactWarning" in getter2 && getter2.isReactWarning;
+    if (mayWarn) {
+      return element.props.ref;
+    }
+    return element.props.ref || element.ref;
+  }
 
   // ../../node_modules/.pnpm/@radix-ui+primitive@1.1.3/node_modules/@radix-ui/primitive/dist/index.mjs
   var canUseDOM = !!(typeof window !== "undefined" && window.document && window.document.createElement);
@@ -13177,10 +12507,13 @@ ${error}`);
     };
   }
 
+  // ../stack-ui/dist/esm/components/ui/dialog.js
+  var import_react10 = __toESM(require_react());
+
   // ../../node_modules/.pnpm/@radix-ui+react-dialog@1.1.2_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@radix-ui/react-dialog/dist/index.mjs
   var React32 = __toESM(require_react(), 1);
   var DIALOG_NAME = "Dialog";
-  var [createDialogContext, createDialogScope] = createContextScope(DIALOG_NAME);
+  var [createDialogContext, createDialogScope] = createContextScope2(DIALOG_NAME);
   var [DialogProvider, useDialogContext] = createDialogContext(DIALOG_NAME);
   var Dialog = (props) => {
     const {
@@ -13438,7 +12771,7 @@ ${error}`);
     return open ? "open" : "closed";
   }
   var TITLE_WARNING_NAME = "DialogTitleWarning";
-  var [WarningProvider, useWarningContext] = createContext2(TITLE_WARNING_NAME, {
+  var [WarningProvider, useWarningContext] = createContext22(TITLE_WARNING_NAME, {
     contentName: CONTENT_NAME2,
     titleName: TITLE_NAME,
     docsSlug: "dialog"
@@ -13482,97 +12815,55 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   // ../stack-ui/dist/esm/components/ui/dialog.js
   var Dialog2 = Root4;
   var DialogPortal2 = Portal2;
-  var DialogOverlay2 = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    Overlay,
-    {
-      ref,
-      className: cn(
-        "stack-scope fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
-        className
-      ),
-      ...props
-    }
-  ));
+  var DialogOverlay2 = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(Overlay, {
+    ref,
+    className: cn("stack-scope fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in", className),
+    ...props
+  }));
   DialogOverlay2.displayName = Overlay.displayName;
-  var DialogContent2 = forwardRefIfNeeded(({ className, children, overlayProps, noCloseButton, ...props }, ref) => /* @__PURE__ */ jsxs(DialogPortal2, { children: [
-    /* @__PURE__ */ jsx(DialogOverlay2, { ...overlayProps }),
-    /* @__PURE__ */ jsxs(
-      Content2,
-      {
-        ref,
-        className: cn(
-          "stack-scope fixed left-[50%] top-[50%] max-h-screen z-50 flex flex-col w-full max-w-lg translate-x-[-50%] translate-y-[-50%] border bg-background p-6 shadow-lg duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
-          className
-        ),
-        ...props,
-        children: [
-          children,
-          !noCloseButton && /* @__PURE__ */ jsxs(Close, { className: "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground", children: [
-            /* @__PURE__ */ jsx(Cross2Icon, { className: "h-4 w-4" }),
-            /* @__PURE__ */ jsx("span", { className: "sr-only", children: "Close" })
-          ] })
-        ]
-      }
-    )
-  ] }));
+  var DialogContent2 = forwardRefIfNeeded(({ className, children, overlayProps, noCloseButton, ...props }, ref) => /* @__PURE__ */ jsxs(DialogPortal2, { children: [/* @__PURE__ */ jsx(DialogOverlay2, { ...overlayProps }), /* @__PURE__ */ jsxs(Content2, {
+    ref,
+    className: cn("stack-scope fixed left-[50%] top-[50%] max-h-screen z-50 flex flex-col w-full max-w-lg translate-x-[-50%] translate-y-[-50%] border bg-background p-6 shadow-lg duration-100 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg", className),
+    ...props,
+    children: [children, !noCloseButton && /* @__PURE__ */ jsxs(Close, {
+      className: "absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground",
+      children: [/* @__PURE__ */ jsx(Cross2Icon, { className: "h-4 w-4" }), /* @__PURE__ */ jsx("span", {
+        className: "sr-only",
+        children: "Close"
+      })]
+    })]
+  })] }));
   DialogContent2.displayName = Content2.displayName;
-  var DialogBody = ({
-    className,
+  var DialogBody = ({ className, ...props }) => /* @__PURE__ */ jsx("div", {
+    className: cn("stack-scope overflow-y-auto flex flex-col gap-4 w-[calc(100%+3rem)] -mx-6 px-6 my-2 py-2", className),
     ...props
-  }) => /* @__PURE__ */ jsx("div", { className: cn("stack-scope overflow-y-auto flex flex-col gap-4 w-[calc(100%+3rem)] -mx-6 px-6 my-2 py-2", className), ...props });
-  var DialogHeader = ({
-    className,
+  });
+  var DialogHeader = ({ className, ...props }) => /* @__PURE__ */ jsx("div", {
+    className: cn("stack-scope flex flex-col space-y-1.5 text-center sm:text-left", className),
     ...props
-  }) => /* @__PURE__ */ jsx(
-    "div",
-    {
-      className: cn(
-        "stack-scope flex flex-col space-y-1.5 text-center sm:text-left",
-        className
-      ),
-      ...props
-    }
-  );
+  });
   DialogHeader.displayName = "DialogHeader";
-  var DialogFooter = ({
-    className,
+  var DialogFooter = ({ className, ...props }) => /* @__PURE__ */ jsx("div", {
+    className: cn("stack-scope flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className),
     ...props
-  }) => /* @__PURE__ */ jsx(
-    "div",
-    {
-      className: cn(
-        "stack-scope flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-        className
-      ),
-      ...props
-    }
-  );
+  });
   DialogFooter.displayName = "DialogFooter";
-  var DialogTitle2 = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    Title,
-    {
-      ref,
-      className: cn(
-        "stack-scope text-lg font-semibold leading-none tracking-tight",
-        className
-      ),
-      ...props
-    }
-  ));
+  var DialogTitle2 = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(Title, {
+    ref,
+    className: cn("stack-scope text-lg font-semibold leading-none tracking-tight", className),
+    ...props
+  }));
   DialogTitle2.displayName = Title.displayName;
-  var DialogDescription2 = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    Description,
-    {
-      ref,
-      className: cn("stack-scope text-sm text-muted-foreground", className),
-      ...props
-    }
-  ));
+  var DialogDescription2 = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(Description, {
+    ref,
+    className: cn("stack-scope text-sm text-muted-foreground", className),
+    ...props
+  }));
   DialogDescription2.displayName = Description.displayName;
 
   // ../../node_modules/.pnpm/@radix-ui+react-tooltip@1.1.3_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/@radix-ui/react-tooltip/dist/index.mjs
-  var React33 = __toESM(require_react(), 1);
-  var [createTooltipContext, createTooltipScope] = createContextScope("Tooltip", [
+  var React34 = __toESM(require_react(), 1);
+  var [createTooltipContext, createTooltipScope] = createContextScope2("Tooltip", [
     createPopperScope
   ]);
   var usePopperScope = createPopperScope();
@@ -13588,10 +12879,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       disableHoverableContent = false,
       children
     } = props;
-    const [isOpenDelayed, setIsOpenDelayed] = React33.useState(true);
-    const isPointerInTransitRef = React33.useRef(false);
-    const skipDelayTimerRef = React33.useRef(0);
-    React33.useEffect(() => {
+    const [isOpenDelayed, setIsOpenDelayed] = React34.useState(true);
+    const isPointerInTransitRef = React34.useRef(false);
+    const skipDelayTimerRef = React34.useRef(0);
+    React34.useEffect(() => {
       const skipDelayTimer = skipDelayTimerRef.current;
       return () => window.clearTimeout(skipDelayTimer);
     }, []);
@@ -13601,11 +12892,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         scope: __scopeTooltip,
         isOpenDelayed,
         delayDuration,
-        onOpen: React33.useCallback(() => {
+        onOpen: React34.useCallback(() => {
           window.clearTimeout(skipDelayTimerRef.current);
           setIsOpenDelayed(false);
         }, []),
-        onClose: React33.useCallback(() => {
+        onClose: React34.useCallback(() => {
           window.clearTimeout(skipDelayTimerRef.current);
           skipDelayTimerRef.current = window.setTimeout(
             () => setIsOpenDelayed(true),
@@ -13613,7 +12904,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           );
         }, [skipDelayDuration]),
         isPointerInTransitRef,
-        onPointerInTransitChange: React33.useCallback((inTransit) => {
+        onPointerInTransitChange: React34.useCallback((inTransit) => {
           isPointerInTransitRef.current = inTransit;
         }, []),
         disableHoverableContent,
@@ -13636,12 +12927,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     } = props;
     const providerContext = useTooltipProviderContext(TOOLTIP_NAME, props.__scopeTooltip);
     const popperScope = usePopperScope(__scopeTooltip);
-    const [trigger, setTrigger] = React33.useState(null);
+    const [trigger, setTrigger] = React34.useState(null);
     const contentId = useId();
-    const openTimerRef = React33.useRef(0);
+    const openTimerRef = React34.useRef(0);
     const disableHoverableContent = disableHoverableContentProp ?? providerContext.disableHoverableContent;
     const delayDuration = delayDurationProp ?? providerContext.delayDuration;
-    const wasOpenDelayedRef = React33.useRef(false);
+    const wasOpenDelayedRef = React34.useRef(false);
     const [open = false, setOpen] = useControllableState({
       prop: openProp,
       defaultProp: defaultOpen,
@@ -13655,26 +12946,26 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         onOpenChange?.(open2);
       }
     });
-    const stateAttribute = React33.useMemo(() => {
+    const stateAttribute = React34.useMemo(() => {
       return open ? wasOpenDelayedRef.current ? "delayed-open" : "instant-open" : "closed";
     }, [open]);
-    const handleOpen = React33.useCallback(() => {
+    const handleOpen = React34.useCallback(() => {
       window.clearTimeout(openTimerRef.current);
       wasOpenDelayedRef.current = false;
       setOpen(true);
     }, [setOpen]);
-    const handleClose = React33.useCallback(() => {
+    const handleClose = React34.useCallback(() => {
       window.clearTimeout(openTimerRef.current);
       setOpen(false);
     }, [setOpen]);
-    const handleDelayedOpen = React33.useCallback(() => {
+    const handleDelayedOpen = React34.useCallback(() => {
       window.clearTimeout(openTimerRef.current);
       openTimerRef.current = window.setTimeout(() => {
         wasOpenDelayedRef.current = true;
         setOpen(true);
       }, delayDuration);
     }, [delayDuration, setOpen]);
-    React33.useEffect(() => {
+    React34.useEffect(() => {
       return () => window.clearTimeout(openTimerRef.current);
     }, []);
     return /* @__PURE__ */ jsx(Root2, { ...popperScope, children: /* @__PURE__ */ jsx(
@@ -13686,11 +12977,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         stateAttribute,
         trigger,
         onTriggerChange: setTrigger,
-        onTriggerEnter: React33.useCallback(() => {
+        onTriggerEnter: React34.useCallback(() => {
           if (providerContext.isOpenDelayed) handleDelayedOpen();
           else handleOpen();
         }, [providerContext.isOpenDelayed, handleDelayedOpen, handleOpen]),
-        onTriggerLeave: React33.useCallback(() => {
+        onTriggerLeave: React34.useCallback(() => {
           if (disableHoverableContent) {
             handleClose();
           } else {
@@ -13706,18 +12997,18 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   };
   Tooltip.displayName = TOOLTIP_NAME;
   var TRIGGER_NAME2 = "TooltipTrigger";
-  var TooltipTrigger = React33.forwardRef(
+  var TooltipTrigger = React34.forwardRef(
     (props, forwardedRef) => {
       const { __scopeTooltip, ...triggerProps } = props;
       const context = useTooltipContext(TRIGGER_NAME2, __scopeTooltip);
       const providerContext = useTooltipProviderContext(TRIGGER_NAME2, __scopeTooltip);
       const popperScope = usePopperScope(__scopeTooltip);
-      const ref = React33.useRef(null);
+      const ref = React34.useRef(null);
       const composedRefs = useComposedRefs(forwardedRef, ref, context.onTriggerChange);
-      const isPointerDownRef = React33.useRef(false);
-      const hasPointerMoveOpenedRef = React33.useRef(false);
-      const handlePointerUp = React33.useCallback(() => isPointerDownRef.current = false, []);
-      React33.useEffect(() => {
+      const isPointerDownRef = React34.useRef(false);
+      const hasPointerMoveOpenedRef = React34.useRef(false);
+      const handlePointerUp = React34.useCallback(() => isPointerDownRef.current = false, []);
+      React34.useEffect(() => {
         return () => document.removeEventListener("pointerup", handlePointerUp);
       }, [handlePointerUp]);
       return /* @__PURE__ */ jsx(Anchor, { asChild: true, ...popperScope, children: /* @__PURE__ */ jsx(
@@ -13763,7 +13054,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   };
   TooltipPortal.displayName = PORTAL_NAME3;
   var CONTENT_NAME3 = "TooltipContent";
-  var TooltipContent = React33.forwardRef(
+  var TooltipContent = React34.forwardRef(
     (props, forwardedRef) => {
       const portalContext = usePortalContext2(CONTENT_NAME3, props.__scopeTooltip);
       const { forceMount = portalContext.forceMount, side = "top", ...contentProps } = props;
@@ -13771,20 +13062,20 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       return /* @__PURE__ */ jsx(Presence, { present: forceMount || context.open, children: context.disableHoverableContent ? /* @__PURE__ */ jsx(TooltipContentImpl, { side, ...contentProps, ref: forwardedRef }) : /* @__PURE__ */ jsx(TooltipContentHoverable, { side, ...contentProps, ref: forwardedRef }) });
     }
   );
-  var TooltipContentHoverable = React33.forwardRef((props, forwardedRef) => {
+  var TooltipContentHoverable = React34.forwardRef((props, forwardedRef) => {
     const context = useTooltipContext(CONTENT_NAME3, props.__scopeTooltip);
     const providerContext = useTooltipProviderContext(CONTENT_NAME3, props.__scopeTooltip);
-    const ref = React33.useRef(null);
+    const ref = React34.useRef(null);
     const composedRefs = useComposedRefs(forwardedRef, ref);
-    const [pointerGraceArea, setPointerGraceArea] = React33.useState(null);
+    const [pointerGraceArea, setPointerGraceArea] = React34.useState(null);
     const { trigger, onClose } = context;
     const content = ref.current;
     const { onPointerInTransitChange } = providerContext;
-    const handleRemoveGraceArea = React33.useCallback(() => {
+    const handleRemoveGraceArea = React34.useCallback(() => {
       setPointerGraceArea(null);
       onPointerInTransitChange(false);
     }, [onPointerInTransitChange]);
-    const handleCreateGraceArea = React33.useCallback(
+    const handleCreateGraceArea = React34.useCallback(
       (event, hoverTarget) => {
         const currentTarget = event.currentTarget;
         const exitPoint = { x: event.clientX, y: event.clientY };
@@ -13797,10 +13088,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       },
       [onPointerInTransitChange]
     );
-    React33.useEffect(() => {
+    React34.useEffect(() => {
       return () => handleRemoveGraceArea();
     }, [handleRemoveGraceArea]);
-    React33.useEffect(() => {
+    React34.useEffect(() => {
       if (trigger && content) {
         const handleTriggerLeave = (event) => handleCreateGraceArea(event, content);
         const handleContentLeave = (event) => handleCreateGraceArea(event, trigger);
@@ -13812,7 +13103,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         };
       }
     }, [trigger, content, handleCreateGraceArea, handleRemoveGraceArea]);
-    React33.useEffect(() => {
+    React34.useEffect(() => {
       if (pointerGraceArea) {
         const handleTrackPointerGrace = (event) => {
           const target = event.target;
@@ -13833,7 +13124,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     return /* @__PURE__ */ jsx(TooltipContentImpl, { ...props, ref: composedRefs });
   });
   var [VisuallyHiddenContentContextProvider, useVisuallyHiddenContentContext] = createTooltipContext(TOOLTIP_NAME, { isInside: false });
-  var TooltipContentImpl = React33.forwardRef(
+  var TooltipContentImpl = React34.forwardRef(
     (props, forwardedRef) => {
       const {
         __scopeTooltip,
@@ -13846,11 +13137,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const context = useTooltipContext(CONTENT_NAME3, __scopeTooltip);
       const popperScope = usePopperScope(__scopeTooltip);
       const { onClose } = context;
-      React33.useEffect(() => {
+      React34.useEffect(() => {
         document.addEventListener(TOOLTIP_OPEN, onClose);
         return () => document.removeEventListener(TOOLTIP_OPEN, onClose);
       }, [onClose]);
-      React33.useEffect(() => {
+      React34.useEffect(() => {
         if (context.trigger) {
           const handleScroll2 = (event) => {
             const target = event.target;
@@ -13899,7 +13190,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   );
   TooltipContent.displayName = CONTENT_NAME3;
   var ARROW_NAME2 = "TooltipArrow";
-  var TooltipArrow = React33.forwardRef(
+  var TooltipArrow = React34.forwardRef(
     (props, forwardedRef) => {
       const { __scopeTooltip, ...arrowProps } = props;
       const popperScope = usePopperScope(__scopeTooltip);
@@ -14030,88 +13321,63 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var Content22 = TooltipContent;
 
   // ../stack-ui/dist/esm/components/ui/card.js
-  var Card = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    "div",
-    {
-      ref,
-      className: cn(
-        "rounded-xl border bg-card text-card-foreground shadow-sm",
-        className
-      ),
-      ...props
-    }
-  ));
+  var Card = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", {
+    ref,
+    className: cn("rounded-xl border bg-card text-card-foreground shadow-sm", className),
+    ...props
+  }));
   Card.displayName = "Card";
-  var CardHeader = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    "div",
-    {
-      ref,
-      className: cn("flex flex-col space-y-1.5 p-6 pb-0", className),
-      ...props
-    }
-  ));
+  var CardHeader = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", {
+    ref,
+    className: cn("flex flex-col space-y-1.5 p-6 pb-0", className),
+    ...props
+  }));
   CardHeader.displayName = "CardHeader";
-  var CardTitle = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    "h3",
-    {
-      ref,
-      className: cn("font-semibold leading-none tracking-tight capitalize", className),
-      ...props
-    }
-  ));
+  var CardTitle = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("h3", {
+    ref,
+    className: cn("font-semibold leading-none tracking-tight capitalize", className),
+    ...props
+  }));
   CardTitle.displayName = "CardTitle";
-  var CardDescription = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    "p",
-    {
-      ref,
-      className: cn("text-sm text-muted-foreground", className),
-      ...props
-    }
-  ));
+  var CardDescription = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("p", {
+    ref,
+    className: cn("text-sm text-muted-foreground", className),
+    ...props
+  }));
   CardDescription.displayName = "CardDescription";
-  var CardContent = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", { ref, className: cn("p-6", className), ...props }));
+  var CardContent = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", {
+    ref,
+    className: cn("p-6", className),
+    ...props
+  }));
   CardContent.displayName = "CardContent";
-  var CardSubtitle = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    "h4",
-    {
-      ref,
-      className: cn("text-sm text-muted-foreground font-bold", className),
-      ...props
-    }
-  ));
-  var CardFooter = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx(
-    "div",
-    {
-      ref,
-      className: cn("flex items-center p-6 pt-0", className),
-      ...props
-    }
-  ));
+  var CardSubtitle = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("h4", {
+    ref,
+    className: cn("text-sm text-muted-foreground font-bold", className),
+    ...props
+  }));
+  var CardFooter = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", {
+    ref,
+    className: cn("flex items-center p-6 pt-0", className),
+    ...props
+  }));
   CardFooter.displayName = "CardFooter";
 
   // ../stack-ui/dist/esm/components/ui/tooltip.js
-  var TooltipProvider2 = forwardRefIfNeeded((props, ref) => /* @__PURE__ */ jsx(
-    Provider,
-    {
-      delayDuration: 0,
-      ...props
-    }
-  ));
+  var import_react13 = __toESM(require_react());
+  var TooltipProvider2 = forwardRefIfNeeded((props, ref) => /* @__PURE__ */ jsx(Provider, {
+    delayDuration: 0,
+    ...props
+  }));
   TooltipProvider2.displayName = Provider.displayName;
   var Tooltip2 = Root32;
   var TooltipTrigger2 = Trigger2;
-  var TooltipContent2 = forwardRefIfNeeded(({ className, sideOffset = 4, ...props }, ref) => /* @__PURE__ */ jsx(
-    Content22,
-    {
-      ref,
-      sideOffset,
-      className: cn(
-        "stack-scope z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        className
-      ),
-      ...props
-    }
-  ));
+  var TooltipContent2 = forwardRefIfNeeded(({ className, sideOffset = 4, ...props }, ref) => /* @__PURE__ */ jsx(Content22, {
+    ref,
+    sideOffset,
+    className: cn("stack-scope z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2", className),
+    ...props
+  }));
   TooltipContent2.displayName = Content22.displayName;
 
   // src/components/alert.tsx
@@ -14275,10 +13541,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-slot@1.2.4_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-slot/dist/index.mjs
-  var React35 = __toESM(require_react(), 1);
+  var React37 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-compose-refs@1.1.2_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-compose-refs/dist/index.mjs
-  var React34 = __toESM(require_react(), 1);
+  var React36 = __toESM(require_react(), 1);
   function setRef2(ref, value) {
     if (typeof ref === "function") {
       return ref(value);
@@ -14311,12 +13577,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     };
   }
   function useComposedRefs2(...refs) {
-    return React34.useCallback(composeRefs2(...refs), refs);
+    return React36.useCallback(composeRefs2(...refs), refs);
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-slot@1.2.4_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-slot/dist/index.mjs
   var REACT_LAZY_TYPE = Symbol.for("react.lazy");
-  var use = React35[" use ".trim().toString()];
+  var use = React37[" use ".trim().toString()];
   function isPromiseLike(value) {
     return typeof value === "object" && value !== null && "then" in value;
   }
@@ -14326,24 +13592,24 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   // @__NO_SIDE_EFFECTS__
   function createSlot(ownerName) {
     const SlotClone2 = /* @__PURE__ */ createSlotClone(ownerName);
-    const Slot22 = React35.forwardRef((props, forwardedRef) => {
+    const Slot22 = React37.forwardRef((props, forwardedRef) => {
       let { children, ...slotProps } = props;
       if (isLazyComponent(children) && typeof use === "function") {
         children = use(children._payload);
       }
-      const childrenArray = React35.Children.toArray(children);
+      const childrenArray = React37.Children.toArray(children);
       const slottable = childrenArray.find(isSlottable2);
       if (slottable) {
         const newElement = slottable.props.children;
         const newChildren = childrenArray.map((child) => {
           if (child === slottable) {
-            if (React35.Children.count(newElement) > 1) return React35.Children.only(null);
-            return React35.isValidElement(newElement) ? newElement.props.children : null;
+            if (React37.Children.count(newElement) > 1) return React37.Children.only(null);
+            return React37.isValidElement(newElement) ? newElement.props.children : null;
           } else {
             return child;
           }
         });
-        return /* @__PURE__ */ jsx(SlotClone2, { ...slotProps, ref: forwardedRef, children: React35.isValidElement(newElement) ? React35.cloneElement(newElement, void 0, newChildren) : null });
+        return /* @__PURE__ */ jsx(SlotClone2, { ...slotProps, ref: forwardedRef, children: React37.isValidElement(newElement) ? React37.cloneElement(newElement, void 0, newChildren) : null });
       }
       return /* @__PURE__ */ jsx(SlotClone2, { ...slotProps, ref: forwardedRef, children });
     });
@@ -14353,20 +13619,20 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var Slot2 = /* @__PURE__ */ createSlot("Slot");
   // @__NO_SIDE_EFFECTS__
   function createSlotClone(ownerName) {
-    const SlotClone2 = React35.forwardRef((props, forwardedRef) => {
+    const SlotClone2 = React37.forwardRef((props, forwardedRef) => {
       let { children, ...slotProps } = props;
       if (isLazyComponent(children) && typeof use === "function") {
         children = use(children._payload);
       }
-      if (React35.isValidElement(children)) {
+      if (React37.isValidElement(children)) {
         const childrenRef = getElementRef3(children);
         const props2 = mergeProps2(slotProps, children.props);
-        if (children.type !== React35.Fragment) {
+        if (children.type !== React37.Fragment) {
           props2.ref = forwardedRef ? composeRefs2(forwardedRef, childrenRef) : childrenRef;
         }
-        return React35.cloneElement(children, props2);
+        return React37.cloneElement(children, props2);
       }
-      return React35.Children.count(children) > 1 ? React35.Children.only(null) : null;
+      return React37.Children.count(children) > 1 ? React37.Children.only(null) : null;
     });
     SlotClone2.displayName = `${ownerName}.SlotClone`;
     return SlotClone2;
@@ -14383,7 +13649,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
   var Slottable2 = /* @__PURE__ */ createSlottable("Slottable");
   function isSlottable2(child) {
-    return React35.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER;
+    return React37.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER;
   }
   function mergeProps2(slotProps, childProps) {
     const overrideProps = { ...childProps };
@@ -14532,10 +13798,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   DesignButton.displayName = "DesignButton";
 
   // src/components/card.tsx
-  var import_react14 = __toESM(require_react());
-  var DesignCardNestingContext = import_react14.default.createContext(false);
+  var import_react17 = __toESM(require_react());
+  var DesignCardNestingContext = import_react17.default.createContext(false);
   function useInsideDesignCard() {
-    return import_react14.default.useContext(DesignCardNestingContext);
+    return import_react17.default.useContext(DesignCardNestingContext);
   }
   function useGlassmorphicDefault(explicit) {
     const insideCard = useInsideDesignCard();
@@ -14572,7 +13838,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }) {
     const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
     const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
-    const hasContent = import_react14.default.Children.count(children) > 0;
+    const hasContent = import_react17.default.Children.count(children) > 0;
     const variant = title != null ? subtitle != null ? "header" : "compact" : "bodyOnly";
     return /* @__PURE__ */ jsx(DesignCardNestingContext.Provider, { value: true, children: /* @__PURE__ */ jsxs(
       Card,
@@ -14670,7 +13936,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // src/components/cursor-blast-effect.tsx
-  var import_react15 = __toESM(require_react());
+  var import_react18 = __toESM(require_react());
   var import_react_dom3 = __toESM(require_react_dom());
   var DEFAULT_BLAST_LIFETIME_MS = 720;
   var DEFAULT_MAX_ACTIVE_BLASTS = 18;
@@ -14685,12 +13951,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     rageClickRadiusPx = DEFAULT_RAGE_CLICK_RADIUS_PX,
     containerRef
   } = {}) {
-    const [blasts, setBlasts] = (0, import_react15.useState)([]);
-    const [mounted, setMounted] = (0, import_react15.useState)(false);
-    const idCounterRef = (0, import_react15.useRef)(0);
-    const timeoutIdsRef = (0, import_react15.useRef)(/* @__PURE__ */ new Map());
-    const recentClicksRef = (0, import_react15.useRef)([]);
-    const configRef = (0, import_react15.useRef)({
+    const [blasts, setBlasts] = (0, import_react18.useState)([]);
+    const [mounted, setMounted] = (0, import_react18.useState)(false);
+    const idCounterRef = (0, import_react18.useRef)(0);
+    const timeoutIdsRef = (0, import_react18.useRef)(/* @__PURE__ */ new Map());
+    const recentClicksRef = (0, import_react18.useRef)([]);
+    const configRef = (0, import_react18.useRef)({
       blastLifetimeMs,
       maxActiveBlasts,
       rageClickThreshold,
@@ -14704,10 +13970,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       rageClickWindowMs,
       rageClickRadiusPx
     };
-    (0, import_react15.useEffect)(() => {
+    (0, import_react18.useEffect)(() => {
       setMounted(true);
     }, []);
-    (0, import_react15.useEffect)(() => {
+    (0, import_react18.useEffect)(() => {
       const removeBlast = (id) => {
         setBlasts((prev) => prev.filter((blast) => blast.id !== id));
         const timeoutId = timeoutIdsRef.current.get(id);
@@ -14938,13 +14204,13 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // src/components/edit-mode.tsx
-  var import_react16 = __toESM(require_react());
-  var DesignEditModeContext = (0, import_react16.createContext)(false);
+  var import_react19 = __toESM(require_react());
+  var DesignEditModeContext = (0, import_react19.createContext)(false);
   function DesignEditMode({ children }) {
     return /* @__PURE__ */ jsx(DesignEditModeContext.Provider, { value: true, children });
   }
   function useDesignEditMode() {
-    return (0, import_react16.useContext)(DesignEditModeContext);
+    return (0, import_react19.useContext)(DesignEditModeContext);
   }
 
   // src/components/input.tsx
@@ -15012,29 +14278,29 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   DesignInput.displayName = "DesignInput";
 
   // src/components/pill-toggle.tsx
-  var import_react19 = __toESM(require_react());
+  var import_react22 = __toESM(require_react());
 
   // ../../node_modules/.pnpm/@radix-ui+react-tooltip@1.2.8_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@radix-ui/react-tooltip/dist/index.mjs
-  var React53 = __toESM(require_react(), 1);
+  var React55 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-context@1.1.2_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-context/dist/index.mjs
-  var React37 = __toESM(require_react(), 1);
+  var React39 = __toESM(require_react(), 1);
   function createContextScope3(scopeName, createContextScopeDeps = []) {
     let defaultContexts = [];
     function createContext32(rootComponentName, defaultContext) {
-      const BaseContext = React37.createContext(defaultContext);
+      const BaseContext = React39.createContext(defaultContext);
       const index3 = defaultContexts.length;
       defaultContexts = [...defaultContexts, defaultContext];
       const Provider2 = (props) => {
         const { scope, children, ...context } = props;
         const Context = scope?.[scopeName]?.[index3] || BaseContext;
-        const value = React37.useMemo(() => context, Object.values(context));
+        const value = React39.useMemo(() => context, Object.values(context));
         return /* @__PURE__ */ jsx(Context.Provider, { value, children });
       };
       Provider2.displayName = rootComponentName + "Provider";
       function useContext22(consumerName, scope) {
         const Context = scope?.[scopeName]?.[index3] || BaseContext;
-        const context = React37.useContext(Context);
+        const context = React39.useContext(Context);
         if (context) return context;
         if (defaultContext !== void 0) return defaultContext;
         throw new Error(`\`${consumerName}\` must be used within \`${rootComponentName}\``);
@@ -15043,11 +14309,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     }
     const createScope = () => {
       const scopeContexts = defaultContexts.map((defaultContext) => {
-        return React37.createContext(defaultContext);
+        return React39.createContext(defaultContext);
       });
       return function useScope(scope) {
         const contexts = scope?.[scopeName] || scopeContexts;
-        return React37.useMemo(
+        return React39.useMemo(
           () => ({ [`__scope${scopeName}`]: { ...scope, [scopeName]: contexts } }),
           [scope, contexts]
         );
@@ -15070,7 +14336,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           const currentScope = scopeProps[`__scope${scopeName}`];
           return { ...nextScopes2, ...currentScope };
         }, {});
-        return React37.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
+        return React39.useMemo(() => ({ [`__scope${baseScope.scopeName}`]: nextScopes }), [nextScopes]);
       };
     };
     createScope.scopeName = baseScope.scopeName;
@@ -15078,32 +14344,32 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-dismissable-layer@1.1.11_@types+react-dom@18.3.1_@types+react@18.3.12_r_e4093f5981aea34e35803c4408f783d9/node_modules/@radix-ui/react-dismissable-layer/dist/index.mjs
-  var React42 = __toESM(require_react(), 1);
+  var React44 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-primitive@2.1.3_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@radix-ui/react-primitive/dist/index.mjs
-  var React39 = __toESM(require_react(), 1);
+  var React41 = __toESM(require_react(), 1);
   var ReactDOM4 = __toESM(require_react_dom(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-slot@1.2.3_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-slot/dist/index.mjs
-  var React38 = __toESM(require_react(), 1);
+  var React40 = __toESM(require_react(), 1);
   // @__NO_SIDE_EFFECTS__
   function createSlot2(ownerName) {
     const SlotClone2 = /* @__PURE__ */ createSlotClone2(ownerName);
-    const Slot22 = React38.forwardRef((props, forwardedRef) => {
+    const Slot22 = React40.forwardRef((props, forwardedRef) => {
       const { children, ...slotProps } = props;
-      const childrenArray = React38.Children.toArray(children);
+      const childrenArray = React40.Children.toArray(children);
       const slottable = childrenArray.find(isSlottable3);
       if (slottable) {
         const newElement = slottable.props.children;
         const newChildren = childrenArray.map((child) => {
           if (child === slottable) {
-            if (React38.Children.count(newElement) > 1) return React38.Children.only(null);
-            return React38.isValidElement(newElement) ? newElement.props.children : null;
+            if (React40.Children.count(newElement) > 1) return React40.Children.only(null);
+            return React40.isValidElement(newElement) ? newElement.props.children : null;
           } else {
             return child;
           }
         });
-        return /* @__PURE__ */ jsx(SlotClone2, { ...slotProps, ref: forwardedRef, children: React38.isValidElement(newElement) ? React38.cloneElement(newElement, void 0, newChildren) : null });
+        return /* @__PURE__ */ jsx(SlotClone2, { ...slotProps, ref: forwardedRef, children: React40.isValidElement(newElement) ? React40.cloneElement(newElement, void 0, newChildren) : null });
       }
       return /* @__PURE__ */ jsx(SlotClone2, { ...slotProps, ref: forwardedRef, children });
     });
@@ -15112,17 +14378,17 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
   // @__NO_SIDE_EFFECTS__
   function createSlotClone2(ownerName) {
-    const SlotClone2 = React38.forwardRef((props, forwardedRef) => {
+    const SlotClone2 = React40.forwardRef((props, forwardedRef) => {
       const { children, ...slotProps } = props;
-      if (React38.isValidElement(children)) {
+      if (React40.isValidElement(children)) {
         const childrenRef = getElementRef4(children);
         const props2 = mergeProps3(slotProps, children.props);
-        if (children.type !== React38.Fragment) {
+        if (children.type !== React40.Fragment) {
           props2.ref = forwardedRef ? composeRefs2(forwardedRef, childrenRef) : childrenRef;
         }
-        return React38.cloneElement(children, props2);
+        return React40.cloneElement(children, props2);
       }
-      return React38.Children.count(children) > 1 ? React38.Children.only(null) : null;
+      return React40.Children.count(children) > 1 ? React40.Children.only(null) : null;
     });
     SlotClone2.displayName = `${ownerName}.SlotClone`;
     return SlotClone2;
@@ -15138,7 +14404,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     return Slottable22;
   }
   function isSlottable3(child) {
-    return React38.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER2;
+    return React40.isValidElement(child) && typeof child.type === "function" && "__radixId" in child.type && child.type.__radixId === SLOTTABLE_IDENTIFIER2;
   }
   function mergeProps3(slotProps, childProps) {
     const overrideProps = { ...childProps };
@@ -15200,7 +14466,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   ];
   var Primitive2 = NODES2.reduce((primitive, node) => {
     const Slot3 = createSlot2(`Primitive.${node}`);
-    const Node2 = React39.forwardRef((props, forwardedRef) => {
+    const Node2 = React41.forwardRef((props, forwardedRef) => {
       const { asChild, ...primitiveProps } = props;
       const Comp = asChild ? Slot3 : node;
       if (typeof window !== "undefined") {
@@ -15216,20 +14482,20 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-use-callback-ref@1.1.1_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-use-callback-ref/dist/index.mjs
-  var React40 = __toESM(require_react(), 1);
+  var React42 = __toESM(require_react(), 1);
   function useCallbackRef3(callback) {
-    const callbackRef = React40.useRef(callback);
-    React40.useEffect(() => {
+    const callbackRef = React42.useRef(callback);
+    React42.useEffect(() => {
       callbackRef.current = callback;
     });
-    return React40.useMemo(() => (...args) => callbackRef.current?.(...args), []);
+    return React42.useMemo(() => (...args) => callbackRef.current?.(...args), []);
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-use-escape-keydown@1.1.1_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-use-escape-keydown/dist/index.mjs
-  var React41 = __toESM(require_react(), 1);
+  var React43 = __toESM(require_react(), 1);
   function useEscapeKeydown2(onEscapeKeyDownProp, ownerDocument = globalThis?.document) {
     const onEscapeKeyDown = useCallbackRef3(onEscapeKeyDownProp);
-    React41.useEffect(() => {
+    React43.useEffect(() => {
       const handleKeyDown = (event) => {
         if (event.key === "Escape") {
           onEscapeKeyDown(event);
@@ -15246,12 +14512,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var POINTER_DOWN_OUTSIDE2 = "dismissableLayer.pointerDownOutside";
   var FOCUS_OUTSIDE2 = "dismissableLayer.focusOutside";
   var originalBodyPointerEvents2;
-  var DismissableLayerContext2 = React42.createContext({
+  var DismissableLayerContext2 = React44.createContext({
     layers: /* @__PURE__ */ new Set(),
     layersWithOutsidePointerEventsDisabled: /* @__PURE__ */ new Set(),
     branches: /* @__PURE__ */ new Set()
   });
-  var DismissableLayer2 = React42.forwardRef(
+  var DismissableLayer2 = React44.forwardRef(
     (props, forwardedRef) => {
       const {
         disableOutsidePointerEvents = false,
@@ -15262,10 +14528,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         onDismiss,
         ...layerProps
       } = props;
-      const context = React42.useContext(DismissableLayerContext2);
-      const [node, setNode] = React42.useState(null);
+      const context = React44.useContext(DismissableLayerContext2);
+      const [node, setNode] = React44.useState(null);
       const ownerDocument = node?.ownerDocument ?? globalThis?.document;
-      const [, force] = React42.useState({});
+      const [, force] = React44.useState({});
       const composedRefs = useComposedRefs2(forwardedRef, (node2) => setNode(node2));
       const layers = Array.from(context.layers);
       const [highestLayerWithOutsidePointerEventsDisabled] = [...context.layersWithOutsidePointerEventsDisabled].slice(-1);
@@ -15298,7 +14564,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           onDismiss();
         }
       }, ownerDocument);
-      React42.useEffect(() => {
+      React44.useEffect(() => {
         if (!node) return;
         if (disableOutsidePointerEvents) {
           if (context.layersWithOutsidePointerEventsDisabled.size === 0) {
@@ -15315,7 +14581,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           }
         };
       }, [node, ownerDocument, disableOutsidePointerEvents, context]);
-      React42.useEffect(() => {
+      React44.useEffect(() => {
         return () => {
           if (!node) return;
           context.layers.delete(node);
@@ -15323,7 +14589,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           dispatchUpdate2();
         };
       }, [node, context]);
-      React42.useEffect(() => {
+      React44.useEffect(() => {
         const handleUpdate = () => force({});
         document.addEventListener(CONTEXT_UPDATE2, handleUpdate);
         return () => document.removeEventListener(CONTEXT_UPDATE2, handleUpdate);
@@ -15349,11 +14615,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   );
   DismissableLayer2.displayName = DISMISSABLE_LAYER_NAME2;
   var BRANCH_NAME2 = "DismissableLayerBranch";
-  var DismissableLayerBranch2 = React42.forwardRef((props, forwardedRef) => {
-    const context = React42.useContext(DismissableLayerContext2);
-    const ref = React42.useRef(null);
+  var DismissableLayerBranch2 = React44.forwardRef((props, forwardedRef) => {
+    const context = React44.useContext(DismissableLayerContext2);
+    const ref = React44.useRef(null);
     const composedRefs = useComposedRefs2(forwardedRef, ref);
-    React42.useEffect(() => {
+    React44.useEffect(() => {
       const node = ref.current;
       if (node) {
         context.branches.add(node);
@@ -15367,10 +14633,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   DismissableLayerBranch2.displayName = BRANCH_NAME2;
   function usePointerDownOutside2(onPointerDownOutside, ownerDocument = globalThis?.document) {
     const handlePointerDownOutside = useCallbackRef3(onPointerDownOutside);
-    const isPointerInsideReactTreeRef = React42.useRef(false);
-    const handleClickRef = React42.useRef(() => {
+    const isPointerInsideReactTreeRef = React44.useRef(false);
+    const handleClickRef = React44.useRef(() => {
     });
-    React42.useEffect(() => {
+    React44.useEffect(() => {
       const handlePointerDown = (event) => {
         if (event.target && !isPointerInsideReactTreeRef.current) {
           let handleAndDispatchPointerDownOutsideEvent2 = function() {
@@ -15411,8 +14677,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
   function useFocusOutside2(onFocusOutside, ownerDocument = globalThis?.document) {
     const handleFocusOutside = useCallbackRef3(onFocusOutside);
-    const isFocusInsideReactTreeRef = React42.useRef(false);
-    React42.useEffect(() => {
+    const isFocusInsideReactTreeRef = React44.useRef(false);
+    React44.useEffect(() => {
       const handleFocus = (event) => {
         if (event.target && !isFocusInsideReactTreeRef.current) {
           const eventDetail = { originalEvent: event };
@@ -15445,18 +14711,18 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-id@1.1.1_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-id/dist/index.mjs
-  var React44 = __toESM(require_react(), 1);
+  var React46 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@radix-ui+react-use-layout-effect@1.1.1_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-use-layout-effect/dist/index.mjs
-  var React43 = __toESM(require_react(), 1);
-  var useLayoutEffect22 = globalThis?.document ? React43.useLayoutEffect : () => {
+  var React45 = __toESM(require_react(), 1);
+  var useLayoutEffect22 = globalThis?.document ? React45.useLayoutEffect : () => {
   };
 
   // ../../node_modules/.pnpm/@radix-ui+react-id@1.1.1_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-id/dist/index.mjs
-  var useReactId2 = React44[" useId ".trim().toString()] || (() => void 0);
+  var useReactId2 = React46[" useId ".trim().toString()] || (() => void 0);
   var count3 = 0;
   function useId2(deterministicId) {
-    const [id, setId] = React44.useState(useReactId2());
+    const [id, setId] = React46.useState(useReactId2());
     useLayoutEffect22(() => {
       if (!deterministicId) setId((reactId) => reactId ?? String(count3++));
     }, [deterministicId]);
@@ -15464,13 +14730,13 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-popper@1.2.8_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@radix-ui/react-popper/dist/index.mjs
-  var React48 = __toESM(require_react(), 1);
+  var React50 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@floating-ui+react-dom@2.1.2_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@floating-ui/react-dom/dist/floating-ui.react-dom.mjs
-  var React45 = __toESM(require_react(), 1);
-  var import_react18 = __toESM(require_react(), 1);
+  var React47 = __toESM(require_react(), 1);
+  var import_react21 = __toESM(require_react(), 1);
   var ReactDOM5 = __toESM(require_react_dom(), 1);
-  var index2 = typeof document !== "undefined" ? import_react18.useLayoutEffect : import_react18.useEffect;
+  var index2 = typeof document !== "undefined" ? import_react21.useLayoutEffect : import_react21.useEffect;
   function deepEqual2(a10, b) {
     if (a10 === b) {
       return true;
@@ -15530,7 +14796,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     return Math.round(value * dpr) / dpr;
   }
   function useLatestRef2(value) {
-    const ref = React45.useRef(value);
+    const ref = React47.useRef(value);
     index2(() => {
       ref.current = value;
     });
@@ -15553,7 +14819,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       whileElementsMounted,
       open
     } = options;
-    const [data, setData] = React45.useState({
+    const [data, setData] = React47.useState({
       x: 0,
       y: 0,
       strategy,
@@ -15561,19 +14827,19 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       middlewareData: {},
       isPositioned: false
     });
-    const [latestMiddleware, setLatestMiddleware] = React45.useState(middleware);
+    const [latestMiddleware, setLatestMiddleware] = React47.useState(middleware);
     if (!deepEqual2(latestMiddleware, middleware)) {
       setLatestMiddleware(middleware);
     }
-    const [_reference, _setReference] = React45.useState(null);
-    const [_floating, _setFloating] = React45.useState(null);
-    const setReference = React45.useCallback((node) => {
+    const [_reference, _setReference] = React47.useState(null);
+    const [_floating, _setFloating] = React47.useState(null);
+    const setReference = React47.useCallback((node) => {
       if (node !== referenceRef.current) {
         referenceRef.current = node;
         _setReference(node);
       }
     }, []);
-    const setFloating = React45.useCallback((node) => {
+    const setFloating = React47.useCallback((node) => {
       if (node !== floatingRef.current) {
         floatingRef.current = node;
         _setFloating(node);
@@ -15581,14 +14847,14 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     }, []);
     const referenceEl = externalReference || _reference;
     const floatingEl = externalFloating || _floating;
-    const referenceRef = React45.useRef(null);
-    const floatingRef = React45.useRef(null);
-    const dataRef = React45.useRef(data);
+    const referenceRef = React47.useRef(null);
+    const floatingRef = React47.useRef(null);
+    const dataRef = React47.useRef(data);
     const hasWhileElementsMounted = whileElementsMounted != null;
     const whileElementsMountedRef = useLatestRef2(whileElementsMounted);
     const platformRef = useLatestRef2(platform2);
     const openRef = useLatestRef2(open);
-    const update = React45.useCallback(() => {
+    const update = React47.useCallback(() => {
       if (!referenceRef.current || !floatingRef.current) {
         return;
       }
@@ -15626,7 +14892,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         }));
       }
     }, [open]);
-    const isMountedRef = React45.useRef(false);
+    const isMountedRef = React47.useRef(false);
     index2(() => {
       isMountedRef.current = true;
       return () => {
@@ -15643,17 +14909,17 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         update();
       }
     }, [referenceEl, floatingEl, update, whileElementsMountedRef, hasWhileElementsMounted]);
-    const refs = React45.useMemo(() => ({
+    const refs = React47.useMemo(() => ({
       reference: referenceRef,
       floating: floatingRef,
       setReference,
       setFloating
     }), [setReference, setFloating]);
-    const elements = React45.useMemo(() => ({
+    const elements = React47.useMemo(() => ({
       reference: referenceEl,
       floating: floatingEl
     }), [referenceEl, floatingEl]);
-    const floatingStyles = React45.useMemo(() => {
+    const floatingStyles = React47.useMemo(() => {
       const initialStyles = {
         position: strategy,
         left: 0,
@@ -15679,7 +14945,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         top: y
       };
     }, [strategy, transform, elements.floating, data.x, data.y]);
-    return React45.useMemo(() => ({
+    return React47.useMemo(() => ({
       ...data,
       update,
       refs,
@@ -15748,9 +15014,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   });
 
   // ../../node_modules/.pnpm/@radix-ui+react-arrow@1.1.7_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@radix-ui/react-arrow/dist/index.mjs
-  var React46 = __toESM(require_react(), 1);
+  var React48 = __toESM(require_react(), 1);
   var NAME3 = "Arrow";
-  var Arrow3 = React46.forwardRef((props, forwardedRef) => {
+  var Arrow3 = React48.forwardRef((props, forwardedRef) => {
     const { children, width = 10, height = 5, ...arrowProps } = props;
     return /* @__PURE__ */ jsx(
       Primitive2.svg,
@@ -15769,9 +15035,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var Root5 = Arrow3;
 
   // ../../node_modules/.pnpm/@radix-ui+react-use-size@1.1.1_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-use-size/dist/index.mjs
-  var React47 = __toESM(require_react(), 1);
+  var React49 = __toESM(require_react(), 1);
   function useSize2(element) {
-    const [size5, setSize] = React47.useState(void 0);
+    const [size5, setSize] = React49.useState(void 0);
     useLayoutEffect22(() => {
       if (element) {
         setSize({ width: element.offsetWidth, height: element.offsetHeight });
@@ -15811,19 +15077,19 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var [PopperProvider2, usePopperContext2] = createPopperContext2(POPPER_NAME2);
   var Popper2 = (props) => {
     const { __scopePopper, children } = props;
-    const [anchor, setAnchor] = React48.useState(null);
+    const [anchor, setAnchor] = React50.useState(null);
     return /* @__PURE__ */ jsx(PopperProvider2, { scope: __scopePopper, anchor, onAnchorChange: setAnchor, children });
   };
   Popper2.displayName = POPPER_NAME2;
   var ANCHOR_NAME2 = "PopperAnchor";
-  var PopperAnchor2 = React48.forwardRef(
+  var PopperAnchor2 = React50.forwardRef(
     (props, forwardedRef) => {
       const { __scopePopper, virtualRef, ...anchorProps } = props;
       const context = usePopperContext2(ANCHOR_NAME2, __scopePopper);
-      const ref = React48.useRef(null);
+      const ref = React50.useRef(null);
       const composedRefs = useComposedRefs2(forwardedRef, ref);
-      const anchorRef = React48.useRef(null);
-      React48.useEffect(() => {
+      const anchorRef = React50.useRef(null);
+      React50.useEffect(() => {
         const previousAnchor = anchorRef.current;
         anchorRef.current = virtualRef?.current || ref.current;
         if (previousAnchor !== anchorRef.current) {
@@ -15836,7 +15102,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   PopperAnchor2.displayName = ANCHOR_NAME2;
   var CONTENT_NAME4 = "PopperContent";
   var [PopperContentProvider2, useContentContext2] = createPopperContext2(CONTENT_NAME4);
-  var PopperContent2 = React48.forwardRef(
+  var PopperContent2 = React50.forwardRef(
     (props, forwardedRef) => {
       const {
         __scopePopper,
@@ -15855,9 +15121,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         ...contentProps
       } = props;
       const context = usePopperContext2(CONTENT_NAME4, __scopePopper);
-      const [content, setContent] = React48.useState(null);
+      const [content, setContent] = React50.useState(null);
       const composedRefs = useComposedRefs2(forwardedRef, (node) => setContent(node));
-      const [arrow5, setArrow] = React48.useState(null);
+      const [arrow5, setArrow] = React50.useState(null);
       const arrowSize = useSize2(arrow5);
       const arrowWidth = arrowSize?.width ?? 0;
       const arrowHeight = arrowSize?.height ?? 0;
@@ -15919,7 +15185,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const arrowX = middlewareData.arrow?.x;
       const arrowY = middlewareData.arrow?.y;
       const cannotCenterArrow = middlewareData.arrow?.centerOffset !== 0;
-      const [contentZIndex, setContentZIndex] = React48.useState();
+      const [contentZIndex, setContentZIndex] = React50.useState();
       useLayoutEffect22(() => {
         if (content) setContentZIndex(window.getComputedStyle(content).zIndex);
       }, [content]);
@@ -15985,7 +15251,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     bottom: "top",
     left: "right"
   };
-  var PopperArrow3 = React48.forwardRef(function PopperArrow22(props, forwardedRef) {
+  var PopperArrow3 = React50.forwardRef(function PopperArrow22(props, forwardedRef) {
     const { __scopePopper, ...arrowProps } = props;
     const contentContext = useContentContext2(ARROW_NAME3, __scopePopper);
     const baseSide = OPPOSITE_SIDE2[contentContext.placedSide];
@@ -16077,12 +15343,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var Arrow4 = PopperArrow3;
 
   // ../../node_modules/.pnpm/@radix-ui+react-portal@1.1.9_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@radix-ui/react-portal/dist/index.mjs
-  var React49 = __toESM(require_react(), 1);
+  var React51 = __toESM(require_react(), 1);
   var import_react_dom5 = __toESM(require_react_dom(), 1);
   var PORTAL_NAME4 = "Portal";
-  var Portal3 = React49.forwardRef((props, forwardedRef) => {
+  var Portal3 = React51.forwardRef((props, forwardedRef) => {
     const { container: containerProp, ...portalProps } = props;
-    const [mounted, setMounted] = React49.useState(false);
+    const [mounted, setMounted] = React51.useState(false);
     useLayoutEffect22(() => setMounted(true), []);
     const container = containerProp || mounted && globalThis?.document?.body;
     return container ? import_react_dom5.default.createPortal(/* @__PURE__ */ jsx(Primitive2.div, { ...portalProps, ref: forwardedRef }), container) : null;
@@ -16090,10 +15356,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   Portal3.displayName = PORTAL_NAME4;
 
   // ../../node_modules/.pnpm/@radix-ui+react-presence@1.1.5_@types+react-dom@18.3.1_@types+react@18.3.12_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@radix-ui/react-presence/dist/index.mjs
-  var React210 = __toESM(require_react(), 1);
-  var React50 = __toESM(require_react(), 1);
+  var React211 = __toESM(require_react(), 1);
+  var React52 = __toESM(require_react(), 1);
   function useStateMachine2(initialState, machine) {
-    return React50.useReducer((state, event) => {
+    return React52.useReducer((state, event) => {
       const nextState = machine[state][event];
       return nextState ?? state;
     }, initialState);
@@ -16101,17 +15367,17 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var Presence2 = (props) => {
     const { present, children } = props;
     const presence = usePresence2(present);
-    const child = typeof children === "function" ? children({ present: presence.isPresent }) : React210.Children.only(children);
+    const child = typeof children === "function" ? children({ present: presence.isPresent }) : React211.Children.only(children);
     const ref = useComposedRefs2(presence.ref, getElementRef5(child));
     const forceMount = typeof children === "function";
-    return forceMount || presence.isPresent ? React210.cloneElement(child, { ref }) : null;
+    return forceMount || presence.isPresent ? React211.cloneElement(child, { ref }) : null;
   };
   Presence2.displayName = "Presence";
   function usePresence2(present) {
-    const [node, setNode] = React210.useState();
-    const stylesRef = React210.useRef(null);
-    const prevPresentRef = React210.useRef(present);
-    const prevAnimationNameRef = React210.useRef("none");
+    const [node, setNode] = React211.useState();
+    const stylesRef = React211.useRef(null);
+    const prevPresentRef = React211.useRef(present);
+    const prevAnimationNameRef = React211.useRef("none");
     const initialState = present ? "mounted" : "unmounted";
     const [state, send] = useStateMachine2(initialState, {
       mounted: {
@@ -16126,7 +15392,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         MOUNT: "mounted"
       }
     });
-    React210.useEffect(() => {
+    React211.useEffect(() => {
       const currentAnimationName = getAnimationName2(stylesRef.current);
       prevAnimationNameRef.current = state === "mounted" ? currentAnimationName : "none";
     }, [state]);
@@ -16192,7 +15458,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     }, [node, send]);
     return {
       isPresent: ["mounted", "unmountSuspended"].includes(state),
-      ref: React210.useCallback((node2) => {
+      ref: React211.useCallback((node2) => {
         stylesRef.current = node2 ? getComputedStyle(node2) : null;
         setNode(node2);
       }, [])
@@ -16216,9 +15482,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // ../../node_modules/.pnpm/@radix-ui+react-use-controllable-state@1.2.2_@types+react@18.3.12_react@19.2.3/node_modules/@radix-ui/react-use-controllable-state/dist/index.mjs
-  var React51 = __toESM(require_react(), 1);
-  var React211 = __toESM(require_react(), 1);
-  var useInsertionEffect = React51[" useInsertionEffect ".trim().toString()] || useLayoutEffect22;
+  var React53 = __toESM(require_react(), 1);
+  var React212 = __toESM(require_react(), 1);
+  var useInsertionEffect = React53[" useInsertionEffect ".trim().toString()] || useLayoutEffect22;
   function useControllableState2({
     prop,
     defaultProp,
@@ -16233,8 +15499,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     const isControlled = prop !== void 0;
     const value = isControlled ? prop : uncontrolledProp;
     if (true) {
-      const isControlledRef = React51.useRef(prop !== void 0);
-      React51.useEffect(() => {
+      const isControlledRef = React53.useRef(prop !== void 0);
+      React53.useEffect(() => {
         const wasControlled = isControlledRef.current;
         if (wasControlled !== isControlled) {
           const from = wasControlled ? "controlled" : "uncontrolled";
@@ -16246,7 +15512,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         isControlledRef.current = isControlled;
       }, [isControlled, caller]);
     }
-    const setValue = React51.useCallback(
+    const setValue = React53.useCallback(
       (nextValue) => {
         if (isControlled) {
           const value2 = isFunction(nextValue) ? nextValue(prop) : nextValue;
@@ -16265,13 +15531,13 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     defaultProp,
     onChange
   }) {
-    const [value, setValue] = React51.useState(defaultProp);
-    const prevValueRef = React51.useRef(value);
-    const onChangeRef = React51.useRef(onChange);
+    const [value, setValue] = React53.useState(defaultProp);
+    const prevValueRef = React53.useRef(value);
+    const onChangeRef = React53.useRef(onChange);
     useInsertionEffect(() => {
       onChangeRef.current = onChange;
     }, [onChange]);
-    React51.useEffect(() => {
+    React53.useEffect(() => {
       if (prevValueRef.current !== value) {
         onChangeRef.current?.(value);
         prevValueRef.current = value;
@@ -16285,7 +15551,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var SYNC_STATE = Symbol("RADIX:SYNC_STATE");
 
   // ../../node_modules/.pnpm/@radix-ui+react-visually-hidden@1.2.3_@types+react-dom@18.3.1_@types+react@18.3.12_reac_3795bdad014cb2641d7688daa1175481/node_modules/@radix-ui/react-visually-hidden/dist/index.mjs
-  var React52 = __toESM(require_react(), 1);
+  var React54 = __toESM(require_react(), 1);
   var VISUALLY_HIDDEN_STYLES = Object.freeze({
     // See: https://github.com/twbs/bootstrap/blob/main/scss/mixins/_visually-hidden.scss
     position: "absolute",
@@ -16300,7 +15566,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     wordWrap: "normal"
   });
   var NAME4 = "VisuallyHidden";
-  var VisuallyHidden2 = React52.forwardRef(
+  var VisuallyHidden2 = React54.forwardRef(
     (props, forwardedRef) => {
       return /* @__PURE__ */ jsx(
         Primitive2.span,
@@ -16332,10 +15598,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       disableHoverableContent = false,
       children
     } = props;
-    const isOpenDelayedRef = React53.useRef(true);
-    const isPointerInTransitRef = React53.useRef(false);
-    const skipDelayTimerRef = React53.useRef(0);
-    React53.useEffect(() => {
+    const isOpenDelayedRef = React55.useRef(true);
+    const isPointerInTransitRef = React55.useRef(false);
+    const skipDelayTimerRef = React55.useRef(0);
+    React55.useEffect(() => {
       const skipDelayTimer = skipDelayTimerRef.current;
       return () => window.clearTimeout(skipDelayTimer);
     }, []);
@@ -16345,11 +15611,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         scope: __scopeTooltip,
         isOpenDelayedRef,
         delayDuration,
-        onOpen: React53.useCallback(() => {
+        onOpen: React55.useCallback(() => {
           window.clearTimeout(skipDelayTimerRef.current);
           isOpenDelayedRef.current = false;
         }, []),
-        onClose: React53.useCallback(() => {
+        onClose: React55.useCallback(() => {
           window.clearTimeout(skipDelayTimerRef.current);
           skipDelayTimerRef.current = window.setTimeout(
             () => isOpenDelayedRef.current = true,
@@ -16357,7 +15623,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           );
         }, [skipDelayDuration]),
         isPointerInTransitRef,
-        onPointerInTransitChange: React53.useCallback((inTransit) => {
+        onPointerInTransitChange: React55.useCallback((inTransit) => {
           isPointerInTransitRef.current = inTransit;
         }, []),
         disableHoverableContent,
@@ -16380,12 +15646,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     } = props;
     const providerContext = useTooltipProviderContext2(TOOLTIP_NAME2, props.__scopeTooltip);
     const popperScope = usePopperScope2(__scopeTooltip);
-    const [trigger, setTrigger] = React53.useState(null);
+    const [trigger, setTrigger] = React55.useState(null);
     const contentId = useId2();
-    const openTimerRef = React53.useRef(0);
+    const openTimerRef = React55.useRef(0);
     const disableHoverableContent = disableHoverableContentProp ?? providerContext.disableHoverableContent;
     const delayDuration = delayDurationProp ?? providerContext.delayDuration;
-    const wasOpenDelayedRef = React53.useRef(false);
+    const wasOpenDelayedRef = React55.useRef(false);
     const [open, setOpen] = useControllableState2({
       prop: openProp,
       defaultProp: defaultOpen ?? false,
@@ -16400,21 +15666,21 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       },
       caller: TOOLTIP_NAME2
     });
-    const stateAttribute = React53.useMemo(() => {
+    const stateAttribute = React55.useMemo(() => {
       return open ? wasOpenDelayedRef.current ? "delayed-open" : "instant-open" : "closed";
     }, [open]);
-    const handleOpen = React53.useCallback(() => {
+    const handleOpen = React55.useCallback(() => {
       window.clearTimeout(openTimerRef.current);
       openTimerRef.current = 0;
       wasOpenDelayedRef.current = false;
       setOpen(true);
     }, [setOpen]);
-    const handleClose = React53.useCallback(() => {
+    const handleClose = React55.useCallback(() => {
       window.clearTimeout(openTimerRef.current);
       openTimerRef.current = 0;
       setOpen(false);
     }, [setOpen]);
-    const handleDelayedOpen = React53.useCallback(() => {
+    const handleDelayedOpen = React55.useCallback(() => {
       window.clearTimeout(openTimerRef.current);
       openTimerRef.current = window.setTimeout(() => {
         wasOpenDelayedRef.current = true;
@@ -16422,7 +15688,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         openTimerRef.current = 0;
       }, delayDuration);
     }, [delayDuration, setOpen]);
-    React53.useEffect(() => {
+    React55.useEffect(() => {
       return () => {
         if (openTimerRef.current) {
           window.clearTimeout(openTimerRef.current);
@@ -16439,11 +15705,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         stateAttribute,
         trigger,
         onTriggerChange: setTrigger,
-        onTriggerEnter: React53.useCallback(() => {
+        onTriggerEnter: React55.useCallback(() => {
           if (providerContext.isOpenDelayedRef.current) handleDelayedOpen();
           else handleOpen();
         }, [providerContext.isOpenDelayedRef, handleDelayedOpen, handleOpen]),
-        onTriggerLeave: React53.useCallback(() => {
+        onTriggerLeave: React55.useCallback(() => {
           if (disableHoverableContent) {
             handleClose();
           } else {
@@ -16460,18 +15726,18 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   };
   Tooltip3.displayName = TOOLTIP_NAME2;
   var TRIGGER_NAME3 = "TooltipTrigger";
-  var TooltipTrigger3 = React53.forwardRef(
+  var TooltipTrigger3 = React55.forwardRef(
     (props, forwardedRef) => {
       const { __scopeTooltip, ...triggerProps } = props;
       const context = useTooltipContext2(TRIGGER_NAME3, __scopeTooltip);
       const providerContext = useTooltipProviderContext2(TRIGGER_NAME3, __scopeTooltip);
       const popperScope = usePopperScope2(__scopeTooltip);
-      const ref = React53.useRef(null);
+      const ref = React55.useRef(null);
       const composedRefs = useComposedRefs2(forwardedRef, ref, context.onTriggerChange);
-      const isPointerDownRef = React53.useRef(false);
-      const hasPointerMoveOpenedRef = React53.useRef(false);
-      const handlePointerUp = React53.useCallback(() => isPointerDownRef.current = false, []);
-      React53.useEffect(() => {
+      const isPointerDownRef = React55.useRef(false);
+      const hasPointerMoveOpenedRef = React55.useRef(false);
+      const handlePointerUp = React55.useCallback(() => isPointerDownRef.current = false, []);
+      React55.useEffect(() => {
         return () => document.removeEventListener("pointerup", handlePointerUp);
       }, [handlePointerUp]);
       return /* @__PURE__ */ jsx(Anchor2, { asChild: true, ...popperScope, children: /* @__PURE__ */ jsx(
@@ -16520,7 +15786,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   };
   TooltipPortal2.displayName = PORTAL_NAME5;
   var CONTENT_NAME5 = "TooltipContent";
-  var TooltipContent3 = React53.forwardRef(
+  var TooltipContent3 = React55.forwardRef(
     (props, forwardedRef) => {
       const portalContext = usePortalContext3(CONTENT_NAME5, props.__scopeTooltip);
       const { forceMount = portalContext.forceMount, side = "top", ...contentProps } = props;
@@ -16528,20 +15794,20 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       return /* @__PURE__ */ jsx(Presence2, { present: forceMount || context.open, children: context.disableHoverableContent ? /* @__PURE__ */ jsx(TooltipContentImpl2, { side, ...contentProps, ref: forwardedRef }) : /* @__PURE__ */ jsx(TooltipContentHoverable2, { side, ...contentProps, ref: forwardedRef }) });
     }
   );
-  var TooltipContentHoverable2 = React53.forwardRef((props, forwardedRef) => {
+  var TooltipContentHoverable2 = React55.forwardRef((props, forwardedRef) => {
     const context = useTooltipContext2(CONTENT_NAME5, props.__scopeTooltip);
     const providerContext = useTooltipProviderContext2(CONTENT_NAME5, props.__scopeTooltip);
-    const ref = React53.useRef(null);
+    const ref = React55.useRef(null);
     const composedRefs = useComposedRefs2(forwardedRef, ref);
-    const [pointerGraceArea, setPointerGraceArea] = React53.useState(null);
+    const [pointerGraceArea, setPointerGraceArea] = React55.useState(null);
     const { trigger, onClose } = context;
     const content = ref.current;
     const { onPointerInTransitChange } = providerContext;
-    const handleRemoveGraceArea = React53.useCallback(() => {
+    const handleRemoveGraceArea = React55.useCallback(() => {
       setPointerGraceArea(null);
       onPointerInTransitChange(false);
     }, [onPointerInTransitChange]);
-    const handleCreateGraceArea = React53.useCallback(
+    const handleCreateGraceArea = React55.useCallback(
       (event, hoverTarget) => {
         const currentTarget = event.currentTarget;
         const exitPoint = { x: event.clientX, y: event.clientY };
@@ -16554,10 +15820,10 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       },
       [onPointerInTransitChange]
     );
-    React53.useEffect(() => {
+    React55.useEffect(() => {
       return () => handleRemoveGraceArea();
     }, [handleRemoveGraceArea]);
-    React53.useEffect(() => {
+    React55.useEffect(() => {
       if (trigger && content) {
         const handleTriggerLeave = (event) => handleCreateGraceArea(event, content);
         const handleContentLeave = (event) => handleCreateGraceArea(event, trigger);
@@ -16569,7 +15835,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         };
       }
     }, [trigger, content, handleCreateGraceArea, handleRemoveGraceArea]);
-    React53.useEffect(() => {
+    React55.useEffect(() => {
       if (pointerGraceArea) {
         const handleTrackPointerGrace = (event) => {
           const target = event.target;
@@ -16591,7 +15857,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   });
   var [VisuallyHiddenContentContextProvider2, useVisuallyHiddenContentContext2] = createTooltipContext2(TOOLTIP_NAME2, { isInside: false });
   var Slottable3 = createSlottable2("TooltipContent");
-  var TooltipContentImpl2 = React53.forwardRef(
+  var TooltipContentImpl2 = React55.forwardRef(
     (props, forwardedRef) => {
       const {
         __scopeTooltip,
@@ -16604,11 +15870,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const context = useTooltipContext2(CONTENT_NAME5, __scopeTooltip);
       const popperScope = usePopperScope2(__scopeTooltip);
       const { onClose } = context;
-      React53.useEffect(() => {
+      React55.useEffect(() => {
         document.addEventListener(TOOLTIP_OPEN2, onClose);
         return () => document.removeEventListener(TOOLTIP_OPEN2, onClose);
       }, [onClose]);
-      React53.useEffect(() => {
+      React55.useEffect(() => {
         if (context.trigger) {
           const handleScroll2 = (event) => {
             const target = event.target;
@@ -16657,7 +15923,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   );
   TooltipContent3.displayName = CONTENT_NAME5;
   var ARROW_NAME4 = "TooltipArrow";
-  var TooltipArrow2 = React53.forwardRef(
+  var TooltipArrow2 = React55.forwardRef(
     (props, forwardedRef) => {
       const { __scopeTooltip, ...arrowProps } = props;
       const popperScope = usePopperScope2(__scopeTooltip);
@@ -16819,7 +16085,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
     const sizeClass = getMapValueOrThrow3(sizeClasses, size5, "sizeClasses");
     const activeRingClass = getMapValueOrThrow3(gradientClasses, gradient, "gradientClasses");
-    const [loadingOptionId, setLoadingOptionId] = (0, import_react19.useState)(null);
+    const [loadingOptionId, setLoadingOptionId] = (0, import_react22.useState)(null);
     const handleClick = (optionId) => {
       const result = onSelect(optionId);
       if (result && typeof result.then === "function") {
@@ -16987,7 +16253,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   DesignTableCell.displayName = "DesignTableCell";
 
   // src/components/tabs.tsx
-  var import_react21 = __toESM(require_react());
+  var import_react24 = __toESM(require_react());
   var tabSizeClasses = /* @__PURE__ */ new Map([
     ["sm", { button: "px-3 py-2 text-xs", badge: "text-[10px] px-1.5 py-0.5" }],
     ["md", { button: "px-4 py-3 text-sm", badge: "text-xs px-1.5 py-0.5" }]
@@ -17063,7 +16329,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
     const sizeClass = getMapValueOrThrow4(tabSizeClasses, size5, "tabSizeClasses");
     const gradientClass = getMapValueOrThrow4(gradientClasses2, gradient, "gradientClasses");
-    const [loadingCategoryId, setLoadingCategoryId] = (0, import_react21.useState)(null);
+    const [loadingCategoryId, setLoadingCategoryId] = (0, import_react24.useState)(null);
     const handleSelect = (categoryId) => {
       const result = onSelect(categoryId);
       if (result && typeof result.then === "function") {
@@ -17170,12 +16436,12 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   };
 
   // src/components/chart-container.tsx
-  var React54 = __toESM(require_react());
+  var React56 = __toESM(require_react());
   var RechartsPrimitive = __toESM(require_recharts());
   var THEMES = { light: "", dark: ".dark" };
-  var ChartContext = React54.createContext(null);
+  var ChartContext = React56.createContext(null);
   function useDesignChart() {
-    const context = React54.useContext(ChartContext);
+    const context = React56.useContext(ChartContext);
     if (!context) {
       throw new Error("useDesignChart must be used within a <DesignChartContainer />");
     }
@@ -17206,8 +16472,8 @@ ${colorConfig.map(([key, itemConfig]) => {
       }
     );
   }
-  var DesignChartContainer = React54.forwardRef(({ id, className, children, config, maxHeight, ...props }, ref) => {
-    const uniqueId = React54.useId();
+  var DesignChartContainer = React56.forwardRef(({ id, className, children, config, maxHeight, ...props }, ref) => {
+    const uniqueId = React56.useId();
     const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
     return /* @__PURE__ */ jsx(ChartContext.Provider, { value: { config }, children: /* @__PURE__ */ jsxs(
       "div",
@@ -17258,10 +16524,10 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
 
   // src/components/chart-tooltip.tsx
-  var React55 = __toESM(require_react());
+  var React57 = __toESM(require_react());
   var RechartsPrimitive2 = __toESM(require_recharts());
   var DesignChartTooltip = RechartsPrimitive2.Tooltip;
-  var DesignChartTooltipContent = React55.forwardRef(
+  var DesignChartTooltipContent = React57.forwardRef(
     ({
       active,
       payload,
@@ -17278,7 +16544,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       labelKey
     }, ref) => {
       const { config } = useDesignChart();
-      const tooltipLabel = React55.useMemo(() => {
+      const tooltipLabel = React57.useMemo(() => {
         if (hideLabel || !payload?.length) {
           return null;
         }
@@ -17378,10 +16644,10 @@ ${colorConfig.map(([key, itemConfig]) => {
   DesignChartTooltipContent.displayName = "DesignChartTooltipContent";
 
   // src/components/chart-legend.tsx
-  var React56 = __toESM(require_react());
+  var React58 = __toESM(require_react());
   var RechartsPrimitive3 = __toESM(require_recharts());
   var DesignChartLegend = RechartsPrimitive3.Legend;
-  var DesignChartLegendContent = React56.forwardRef(
+  var DesignChartLegendContent = React58.forwardRef(
     ({ className, hideIcon = false, payload, verticalAlign = "bottom", nameKey }, ref) => {
       const { config } = useDesignChart();
       if (!payload?.length) {
@@ -17703,19 +16969,16 @@ ${colorConfig.map(([key, itemConfig]) => {
   // ../stack-shared/dist/esm/utils/json.js
   function isJsonSerializable(value) {
     switch (typeof value) {
-      case "object": {
+      case "object":
         if (value === null) return true;
         if (Array.isArray(value)) return value.every(isJsonSerializable);
         return Object.keys(value).every((k) => typeof k === "string") && Object.values(value).every(isJsonSerializable);
-      }
       case "string":
       case "number":
-      case "boolean": {
+      case "boolean":
         return true;
-      }
-      default: {
+      default:
         return false;
-      }
     }
   }
 
@@ -18378,14 +17641,14 @@ ${colorConfig.map(([key, itemConfig]) => {
   var WidgetInstanceGrid = _WidgetInstanceGrid;
 
   // src/components/grid-layout/resize-handle.tsx
-  var import_react23 = __toESM(require_react());
+  var import_react26 = __toESM(require_react());
   function ResizeHandle({ widgetInstance, x, y, ...props }) {
     const dragBaseCoordinates = useRefState(null);
     if (![-1, 0, 1].includes(x) || ![-1, 0, 1].includes(y)) {
       throw new StackAssertionError(`Invalid resize handle coordinates, must be -1, 0, or 1: ${x}, ${y}`);
     }
     const isCorner = x !== 0 && y !== 0;
-    (0, import_react23.useEffect)(() => {
+    (0, import_react26.useEffect)(() => {
       const onMouseMove = (event) => {
         if (!dragBaseCoordinates.current) return;
         const pixelDelta = [event.clientX - dragBaseCoordinates.current[0], event.clientY - dragBaseCoordinates.current[1]];
@@ -18409,9 +17672,9 @@ ${colorConfig.map(([key, itemConfig]) => {
         window.removeEventListener("mousemove", onMouseMove);
       };
     }, [x, y, props.onResize, props.calculateUnitSize, dragBaseCoordinates]);
-    const onResizeRef = (0, import_react23.useRef)(props.onResize);
+    const onResizeRef = (0, import_react26.useRef)(props.onResize);
     onResizeRef.current = props.onResize;
-    const calculateUnitSizeRef = (0, import_react23.useRef)(props.calculateUnitSize);
+    const calculateUnitSizeRef = (0, import_react26.useRef)(props.calculateUnitSize);
     calculateUnitSizeRef.current = props.calculateUnitSize;
     return /* @__PURE__ */ jsx(
       "div",
@@ -18453,11 +17716,11 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
 
   // ../../node_modules/.pnpm/@dnd-kit+core@6.3.1_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@dnd-kit/core/dist/core.esm.js
-  var import_react26 = __toESM(require_react());
+  var import_react29 = __toESM(require_react());
   var import_react_dom6 = __toESM(require_react_dom());
 
   // ../../node_modules/.pnpm/@dnd-kit+utilities@3.2.2_react@19.2.3/node_modules/@dnd-kit/utilities/dist/utilities.esm.js
-  var import_react24 = __toESM(require_react());
+  var import_react27 = __toESM(require_react());
   var canUseDOM2 = typeof window !== "undefined" && typeof window.document !== "undefined" && typeof window.document.createElement !== "undefined";
   function isWindow(element) {
     const elementString = Object.prototype.toString.call(element);
@@ -18513,13 +17776,13 @@ ${colorConfig.map(([key, itemConfig]) => {
     }
     return document;
   }
-  var useIsomorphicLayoutEffect2 = canUseDOM2 ? import_react24.useLayoutEffect : import_react24.useEffect;
+  var useIsomorphicLayoutEffect2 = canUseDOM2 ? import_react27.useLayoutEffect : import_react27.useEffect;
   function useEvent(handler) {
-    const handlerRef = (0, import_react24.useRef)(handler);
+    const handlerRef = (0, import_react27.useRef)(handler);
     useIsomorphicLayoutEffect2(() => {
       handlerRef.current = handler;
     });
-    return (0, import_react24.useCallback)(function() {
+    return (0, import_react27.useCallback)(function() {
       for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
         args[_key] = arguments[_key];
       }
@@ -18527,11 +17790,11 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, []);
   }
   function useInterval() {
-    const intervalRef = (0, import_react24.useRef)(null);
-    const set = (0, import_react24.useCallback)((listener, duration) => {
+    const intervalRef = (0, import_react27.useRef)(null);
+    const set = (0, import_react27.useCallback)((listener, duration) => {
       intervalRef.current = setInterval(listener, duration);
     }, []);
-    const clear = (0, import_react24.useCallback)(() => {
+    const clear = (0, import_react27.useCallback)(() => {
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -18543,7 +17806,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     if (dependencies === void 0) {
       dependencies = [value];
     }
-    const valueRef = (0, import_react24.useRef)(value);
+    const valueRef = (0, import_react27.useRef)(value);
     useIsomorphicLayoutEffect2(() => {
       if (valueRef.current !== value) {
         valueRef.current = value;
@@ -18552,8 +17815,8 @@ ${colorConfig.map(([key, itemConfig]) => {
     return valueRef;
   }
   function useLazyMemo(callback, dependencies) {
-    const valueRef = (0, import_react24.useRef)();
-    return (0, import_react24.useMemo)(
+    const valueRef = (0, import_react27.useRef)();
+    return (0, import_react27.useMemo)(
       () => {
         const newValue = callback(valueRef.current);
         valueRef.current = newValue;
@@ -18565,8 +17828,8 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
   function useNodeRef(onChange) {
     const onChangeHandler = useEvent(onChange);
-    const node = (0, import_react24.useRef)(null);
-    const setNodeRef = (0, import_react24.useCallback)(
+    const node = (0, import_react27.useRef)(null);
+    const setNodeRef = (0, import_react27.useCallback)(
       (element) => {
         if (element !== node.current) {
           onChangeHandler == null ? void 0 : onChangeHandler(element, node.current);
@@ -18579,15 +17842,15 @@ ${colorConfig.map(([key, itemConfig]) => {
     return [node, setNodeRef];
   }
   function usePrevious(value) {
-    const ref = (0, import_react24.useRef)();
-    (0, import_react24.useEffect)(() => {
+    const ref = (0, import_react27.useRef)();
+    (0, import_react27.useEffect)(() => {
       ref.current = value;
     }, [value]);
     return ref.current;
   }
   var ids = {};
   function useUniqueId(prefix, value) {
-    return (0, import_react24.useMemo)(() => {
+    return (0, import_react27.useMemo)(() => {
       if (value) {
         return value;
       }
@@ -18677,7 +17940,7 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
 
   // ../../node_modules/.pnpm/@dnd-kit+accessibility@3.1.1_react@19.2.3/node_modules/@dnd-kit/accessibility/dist/accessibility.esm.js
-  var import_react25 = __toESM(require_react());
+  var import_react28 = __toESM(require_react());
   var hiddenStyles = {
     display: "none"
   };
@@ -18686,7 +17949,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       id,
       value
     } = _ref2;
-    return import_react25.default.createElement("div", {
+    return import_react28.default.createElement("div", {
       id,
       style: hiddenStyles
     }, value);
@@ -18711,7 +17974,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       clipPath: "inset(100%)",
       whiteSpace: "nowrap"
     };
-    return import_react25.default.createElement("div", {
+    return import_react28.default.createElement("div", {
       id,
       style: visuallyHidden,
       role: "status",
@@ -18720,8 +17983,8 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, announcement);
   }
   function useAnnouncement() {
-    const [announcement, setAnnouncement] = (0, import_react25.useState)("");
-    const announce = (0, import_react25.useCallback)((value) => {
+    const [announcement, setAnnouncement] = (0, import_react28.useState)("");
+    const announce = (0, import_react28.useCallback)((value) => {
       if (value != null) {
         setAnnouncement(value);
       }
@@ -18733,10 +17996,10 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
 
   // ../../node_modules/.pnpm/@dnd-kit+core@6.3.1_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@dnd-kit/core/dist/core.esm.js
-  var DndMonitorContext = /* @__PURE__ */ (0, import_react26.createContext)(null);
+  var DndMonitorContext = /* @__PURE__ */ (0, import_react29.createContext)(null);
   function useDndMonitor(listener) {
-    const registerListener = (0, import_react26.useContext)(DndMonitorContext);
-    (0, import_react26.useEffect)(() => {
+    const registerListener = (0, import_react29.useContext)(DndMonitorContext);
+    (0, import_react29.useEffect)(() => {
       if (!registerListener) {
         throw new Error("useDndMonitor must be used within a children of <DndContext>");
       }
@@ -18745,12 +18008,12 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, [listener, registerListener]);
   }
   function useDndMonitorProvider() {
-    const [listeners] = (0, import_react26.useState)(() => /* @__PURE__ */ new Set());
-    const registerListener = (0, import_react26.useCallback)((listener) => {
+    const [listeners] = (0, import_react29.useState)(() => /* @__PURE__ */ new Set());
+    const registerListener = (0, import_react29.useCallback)((listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     }, [listeners]);
-    const dispatch = (0, import_react26.useCallback)((_ref2) => {
+    const dispatch = (0, import_react29.useCallback)((_ref2) => {
       let {
         type,
         event
@@ -18811,11 +18074,11 @@ ${colorConfig.map(([key, itemConfig]) => {
       announcement
     } = useAnnouncement();
     const liveRegionId = useUniqueId("DndLiveRegion");
-    const [mounted, setMounted] = (0, import_react26.useState)(false);
-    (0, import_react26.useEffect)(() => {
+    const [mounted, setMounted] = (0, import_react29.useState)(false);
+    (0, import_react29.useEffect)(() => {
       setMounted(true);
     }, []);
-    useDndMonitor((0, import_react26.useMemo)(() => ({
+    useDndMonitor((0, import_react29.useMemo)(() => ({
       onDragStart(_ref22) {
         let {
           active
@@ -18870,10 +18133,10 @@ ${colorConfig.map(([key, itemConfig]) => {
     if (!mounted) {
       return null;
     }
-    const markup = import_react26.default.createElement(import_react26.default.Fragment, null, import_react26.default.createElement(HiddenText, {
+    const markup = import_react29.default.createElement(import_react29.default.Fragment, null, import_react29.default.createElement(HiddenText, {
       id: hiddenTextDescribedById,
       value: screenReaderInstructions.draggable
-    }), import_react26.default.createElement(LiveRegion, {
+    }), import_react29.default.createElement(LiveRegion, {
       id: liveRegionId,
       announcement
     }));
@@ -18893,7 +18156,7 @@ ${colorConfig.map(([key, itemConfig]) => {
   function noop() {
   }
   function useSensor(sensor, options) {
-    return (0, import_react26.useMemo)(
+    return (0, import_react29.useMemo)(
       () => ({
         sensor,
         options: options != null ? options : {}
@@ -18906,7 +18169,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     for (var _len = arguments.length, sensors = new Array(_len), _key = 0; _key < _len; _key++) {
       sensors[_key] = arguments[_key];
     }
-    return (0, import_react26.useMemo)(
+    return (0, import_react29.useMemo)(
       () => [...sensors].filter((sensor) => sensor != null),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [...sensors]
@@ -20159,15 +19422,15 @@ ${colorConfig.map(([key, itemConfig]) => {
       disabled: !enabled
     });
     const [setAutoScrollInterval, clearAutoScrollInterval] = useInterval();
-    const scrollSpeed = (0, import_react26.useRef)({
+    const scrollSpeed = (0, import_react29.useRef)({
       x: 0,
       y: 0
     });
-    const scrollDirection = (0, import_react26.useRef)({
+    const scrollDirection = (0, import_react29.useRef)({
       x: 0,
       y: 0
     });
-    const rect = (0, import_react26.useMemo)(() => {
+    const rect = (0, import_react29.useMemo)(() => {
       switch (activator) {
         case AutoScrollActivator.Pointer:
           return pointerCoordinates ? {
@@ -20180,8 +19443,8 @@ ${colorConfig.map(([key, itemConfig]) => {
           return draggingRect;
       }
     }, [activator, draggingRect, pointerCoordinates]);
-    const scrollContainerRef = (0, import_react26.useRef)(null);
-    const autoScroll = (0, import_react26.useCallback)(() => {
+    const scrollContainerRef = (0, import_react29.useRef)(null);
+    const autoScroll = (0, import_react29.useCallback)(() => {
       const scrollContainer = scrollContainerRef.current;
       if (!scrollContainer) {
         return;
@@ -20190,8 +19453,8 @@ ${colorConfig.map(([key, itemConfig]) => {
       const scrollTop = scrollSpeed.current.y * scrollDirection.current.y;
       scrollContainer.scrollBy(scrollLeft, scrollTop);
     }, []);
-    const sortedScrollableAncestors = (0, import_react26.useMemo)(() => order === TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
-    (0, import_react26.useEffect)(
+    const sortedScrollableAncestors = (0, import_react29.useMemo)(() => order === TraversalOrder.TreeOrder ? [...scrollableAncestors].reverse() : scrollableAncestors, [order, scrollableAncestors]);
+    (0, import_react29.useEffect)(
       () => {
         if (!enabled || !scrollableAncestors.length || !rect) {
           clearAutoScrollInterval();
@@ -20304,7 +19567,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, [node, id]);
   }
   function useCombineActivators(sensors, getSyntheticHandler) {
-    return (0, import_react26.useMemo)(() => sensors.reduce((accumulator, sensor) => {
+    return (0, import_react29.useMemo)(() => sensors.reduce((accumulator, sensor) => {
       const {
         sensor: Sensor
       } = sensor;
@@ -20332,16 +19595,16 @@ ${colorConfig.map(([key, itemConfig]) => {
       dependencies,
       config
     } = _ref2;
-    const [queue, setQueue] = (0, import_react26.useState)(null);
+    const [queue, setQueue] = (0, import_react29.useState)(null);
     const {
       frequency,
       measure,
       strategy
     } = config;
-    const containersRef = (0, import_react26.useRef)(containers);
+    const containersRef = (0, import_react29.useRef)(containers);
     const disabled = isDisabled();
     const disabledRef = useLatestValue(disabled);
-    const measureDroppableContainers = (0, import_react26.useCallback)(function(ids2) {
+    const measureDroppableContainers = (0, import_react29.useCallback)(function(ids2) {
       if (ids2 === void 0) {
         ids2 = [];
       }
@@ -20355,7 +19618,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         return value.concat(ids2.filter((id) => !value.includes(id)));
       });
     }, [disabledRef]);
-    const timeoutId = (0, import_react26.useRef)(null);
+    const timeoutId = (0, import_react29.useRef)(null);
     const droppableRects = useLazyMemo((previousValue) => {
       if (disabled && !dragging) {
         return defaultValue;
@@ -20381,10 +19644,10 @@ ${colorConfig.map(([key, itemConfig]) => {
       }
       return previousValue;
     }, [containers, queue, dragging, disabled, measure]);
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       containersRef.current = containers;
     }, [containers]);
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         if (disabled) {
           return;
@@ -20394,7 +19657,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [dragging, disabled]
     );
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         if (queue && queue.length > 0) {
           setQueue(null);
@@ -20403,7 +19666,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       //eslint-disable-next-line react-hooks/exhaustive-deps
       [JSON.stringify(queue)]
     );
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         if (disabled || typeof frequency !== "number" || timeoutId.current !== null) {
           return;
@@ -20452,7 +19715,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       disabled
     } = _ref2;
     const handleMutations = useEvent(callback);
-    const mutationObserver = (0, import_react26.useMemo)(() => {
+    const mutationObserver = (0, import_react29.useMemo)(() => {
       if (disabled || typeof window === "undefined" || typeof window.MutationObserver === "undefined") {
         return void 0;
       }
@@ -20461,7 +19724,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       } = window;
       return new MutationObserver2(handleMutations);
     }, [handleMutations, disabled]);
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       return () => mutationObserver == null ? void 0 : mutationObserver.disconnect();
     }, [mutationObserver]);
     return mutationObserver;
@@ -20472,7 +19735,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       disabled
     } = _ref2;
     const handleResize = useEvent(callback);
-    const resizeObserver = (0, import_react26.useMemo)(
+    const resizeObserver = (0, import_react29.useMemo)(
       () => {
         if (disabled || typeof window === "undefined" || typeof window.ResizeObserver === "undefined") {
           return void 0;
@@ -20485,7 +19748,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [disabled]
     );
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       return () => resizeObserver == null ? void 0 : resizeObserver.disconnect();
     }, [resizeObserver]);
     return resizeObserver;
@@ -20497,7 +19760,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     if (measure === void 0) {
       measure = defaultMeasure;
     }
-    const [rect, setRect] = (0, import_react26.useState)(null);
+    const [rect, setRect] = (0, import_react29.useState)(null);
     function measureRect() {
       setRect((currentRect) => {
         if (!element) {
@@ -20555,7 +19818,7 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
   var defaultValue$1 = [];
   function useScrollableAncestors(node) {
-    const previousNode = (0, import_react26.useRef)(node);
+    const previousNode = (0, import_react29.useRef)(node);
     const ancestors = useLazyMemo((previousValue) => {
       if (!node) {
         return defaultValue$1;
@@ -20565,15 +19828,15 @@ ${colorConfig.map(([key, itemConfig]) => {
       }
       return getScrollableAncestors(node);
     }, [node]);
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       previousNode.current = node;
     }, [node]);
     return ancestors;
   }
   function useScrollOffsets(elements) {
-    const [scrollCoordinates, setScrollCoordinates] = (0, import_react26.useState)(null);
-    const prevElements = (0, import_react26.useRef)(elements);
-    const handleScroll2 = (0, import_react26.useCallback)((event) => {
+    const [scrollCoordinates, setScrollCoordinates] = (0, import_react29.useState)(null);
+    const prevElements = (0, import_react29.useRef)(elements);
+    const handleScroll2 = (0, import_react29.useCallback)((event) => {
       const scrollingElement = getScrollableElement(event.target);
       if (!scrollingElement) {
         return;
@@ -20586,7 +19849,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         return new Map(scrollCoordinates2);
       });
     }, []);
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       const previousElements = prevElements.current;
       if (elements !== previousElements) {
         cleanup(previousElements);
@@ -20614,7 +19877,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         });
       }
     }, [handleScroll2, elements]);
-    return (0, import_react26.useMemo)(() => {
+    return (0, import_react29.useMemo)(() => {
       if (elements.length) {
         return scrollCoordinates ? Array.from(scrollCoordinates.values()).reduce((acc, coordinates) => add(acc, coordinates), defaultCoordinates) : getScrollOffsets(elements);
       }
@@ -20625,15 +19888,15 @@ ${colorConfig.map(([key, itemConfig]) => {
     if (dependencies === void 0) {
       dependencies = [];
     }
-    const initialScrollOffsets = (0, import_react26.useRef)(null);
-    (0, import_react26.useEffect)(
+    const initialScrollOffsets = (0, import_react29.useRef)(null);
+    (0, import_react29.useEffect)(
       () => {
         initialScrollOffsets.current = null;
       },
       // eslint-disable-next-line react-hooks/exhaustive-deps
       dependencies
     );
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       const hasScrollOffsets = scrollOffsets !== defaultCoordinates;
       if (hasScrollOffsets && !initialScrollOffsets.current) {
         initialScrollOffsets.current = scrollOffsets;
@@ -20645,7 +19908,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     return initialScrollOffsets.current ? subtract(scrollOffsets, initialScrollOffsets.current) : defaultCoordinates;
   }
   function useSensorSetup(sensors) {
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         if (!canUseDOM2) {
           return;
@@ -20673,7 +19936,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     );
   }
   function useSyntheticListeners(listeners, id) {
-    return (0, import_react26.useMemo)(() => {
+    return (0, import_react29.useMemo)(() => {
       return listeners.reduce((acc, _ref2) => {
         let {
           eventName,
@@ -20687,7 +19950,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, [listeners, id]);
   }
   function useWindowRect(element) {
-    return (0, import_react26.useMemo)(() => element ? getWindowClientRect(element) : null, [element]);
+    return (0, import_react29.useMemo)(() => element ? getWindowClientRect(element) : null, [element]);
   }
   var defaultValue$2 = [];
   function useRects(elements, measure) {
@@ -20696,7 +19959,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     }
     const [firstElement] = elements;
     const windowRect = useWindowRect(firstElement ? getWindow2(firstElement) : null);
-    const [rects, setRects] = (0, import_react26.useState)(defaultValue$2);
+    const [rects, setRects] = (0, import_react29.useState)(defaultValue$2);
     function measureRects() {
       setRects(() => {
         if (!elements.length) {
@@ -20729,8 +19992,8 @@ ${colorConfig.map(([key, itemConfig]) => {
     let {
       measure
     } = _ref2;
-    const [rect, setRect] = (0, import_react26.useState)(null);
-    const handleResize = (0, import_react26.useCallback)((entries) => {
+    const [rect, setRect] = (0, import_react29.useState)(null);
+    const handleResize = (0, import_react29.useCallback)((entries) => {
       for (const {
         target
       } of entries) {
@@ -20750,7 +20013,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     const resizeObserver = useResizeObserver({
       callback: handleResize
     });
-    const handleNodeChange = (0, import_react26.useCallback)((element) => {
+    const handleNodeChange = (0, import_react29.useCallback)((element) => {
       const node = getMeasurableNode(element);
       resizeObserver == null ? void 0 : resizeObserver.disconnect();
       if (node) {
@@ -20759,7 +20022,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       setRect(node ? measure(node) : null);
     }, [measure, resizeObserver]);
     const [nodeRef, setRef3] = useNodeRef(handleNodeChange);
-    return (0, import_react26.useMemo)(() => ({
+    return (0, import_react29.useMemo)(() => ({
       nodeRef,
       rect,
       setRef: setRef3
@@ -20847,8 +20110,8 @@ ${colorConfig.map(([key, itemConfig]) => {
     over: null,
     measureDroppableContainers: noop
   };
-  var InternalContext = /* @__PURE__ */ (0, import_react26.createContext)(defaultInternalContext);
-  var PublicContext = /* @__PURE__ */ (0, import_react26.createContext)(defaultPublicContext);
+  var InternalContext = /* @__PURE__ */ (0, import_react29.createContext)(defaultInternalContext);
+  var PublicContext = /* @__PURE__ */ (0, import_react29.createContext)(defaultPublicContext);
   function getInitialState() {
     return {
       draggable: {
@@ -20982,10 +20245,10 @@ ${colorConfig.map(([key, itemConfig]) => {
       active,
       activatorEvent,
       draggableNodes
-    } = (0, import_react26.useContext)(InternalContext);
+    } = (0, import_react29.useContext)(InternalContext);
     const previousActivatorEvent = usePrevious(activatorEvent);
     const previousActiveId = usePrevious(active == null ? void 0 : active.id);
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       if (disabled) {
         return;
       }
@@ -21036,7 +20299,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, transform) : transform;
   }
   function useMeasuringConfiguration(config) {
-    return (0, import_react26.useMemo)(
+    return (0, import_react29.useMemo)(
       () => ({
         draggable: {
           ...defaultMeasuringConfiguration.draggable,
@@ -21062,7 +20325,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       initialRect,
       config = true
     } = _ref2;
-    const initialized = (0, import_react26.useRef)(false);
+    const initialized = (0, import_react29.useRef)(false);
     const {
       x,
       y
@@ -21103,7 +20366,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       }
     }, [activeNode, x, y, initialRect, measure]);
   }
-  var ActiveDraggableContext = /* @__PURE__ */ (0, import_react26.createContext)({
+  var ActiveDraggableContext = /* @__PURE__ */ (0, import_react29.createContext)({
     ...defaultCoordinates,
     scaleX: 1,
     scaleY: 1
@@ -21114,7 +20377,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     Status2[Status2["Initializing"] = 1] = "Initializing";
     Status2[Status2["Initialized"] = 2] = "Initialized";
   })(Status || (Status = {}));
-  var DndContext = /* @__PURE__ */ (0, import_react26.memo)(function DndContext2(_ref2) {
+  var DndContext = /* @__PURE__ */ (0, import_react29.memo)(function DndContext2(_ref2) {
     var _sensorContext$curren, _dragOverlay$nodeRef$, _dragOverlay$rect, _over$rect;
     let {
       id,
@@ -21127,10 +20390,10 @@ ${colorConfig.map(([key, itemConfig]) => {
       modifiers,
       ...props
     } = _ref2;
-    const store = (0, import_react26.useReducer)(reducer, void 0, getInitialState);
+    const store = (0, import_react29.useReducer)(reducer, void 0, getInitialState);
     const [state, dispatch] = store;
     const [dispatchMonitorEvent, registerMonitorListener] = useDndMonitorProvider();
-    const [status, setStatus] = (0, import_react26.useState)(Status.Uninitialized);
+    const [status, setStatus] = (0, import_react29.useState)(Status.Uninitialized);
     const isInitialized = status === Status.Initialized;
     const {
       draggable: {
@@ -21143,11 +20406,11 @@ ${colorConfig.map(([key, itemConfig]) => {
       }
     } = state;
     const node = activeId != null ? draggableNodes.get(activeId) : null;
-    const activeRects = (0, import_react26.useRef)({
+    const activeRects = (0, import_react29.useRef)({
       initial: null,
       translated: null
     });
-    const active = (0, import_react26.useMemo)(() => {
+    const active = (0, import_react29.useMemo)(() => {
       var _node$data;
       return activeId != null ? {
         id: activeId,
@@ -21156,12 +20419,12 @@ ${colorConfig.map(([key, itemConfig]) => {
         rect: activeRects
       } : null;
     }, [activeId, node]);
-    const activeRef = (0, import_react26.useRef)(null);
-    const [activeSensor, setActiveSensor] = (0, import_react26.useState)(null);
-    const [activatorEvent, setActivatorEvent] = (0, import_react26.useState)(null);
+    const activeRef = (0, import_react29.useRef)(null);
+    const [activeSensor, setActiveSensor] = (0, import_react29.useState)(null);
+    const [activatorEvent, setActivatorEvent] = (0, import_react29.useState)(null);
     const latestProps = useLatestValue(props, Object.values(props));
     const draggableDescribedById = useUniqueId("DndDescribedBy", id);
-    const enabledDroppableContainers = (0, import_react26.useMemo)(() => droppableContainers.getEnabled(), [droppableContainers]);
+    const enabledDroppableContainers = (0, import_react29.useMemo)(() => droppableContainers.getEnabled(), [droppableContainers]);
     const measuringConfiguration = useMeasuringConfiguration(measuring);
     const {
       droppableRects,
@@ -21173,7 +20436,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       config: measuringConfiguration.droppable
     });
     const activeNode = useCachedNode(draggableNodes, activeId);
-    const activationCoordinates = (0, import_react26.useMemo)(() => activatorEvent ? getEventCoordinates(activatorEvent) : null, [activatorEvent]);
+    const activationCoordinates = (0, import_react29.useMemo)(() => activatorEvent ? getEventCoordinates(activatorEvent) : null, [activatorEvent]);
     const autoScrollOptions = getAutoScrollerOptions();
     const initialActiveNodeRect = useInitialRect(activeNode, measuringConfiguration.draggable.measure);
     useLayoutShiftScrollCompensation({
@@ -21184,7 +20447,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     });
     const activeNodeRect = useRect(activeNode, measuringConfiguration.draggable.measure, initialActiveNodeRect);
     const containerNodeRect = useRect(activeNode ? activeNode.parentElement : null);
-    const sensorContext = (0, import_react26.useRef)({
+    const sensorContext = (0, import_react29.useRef)({
       activatorEvent: null,
       active: null,
       activeNode,
@@ -21242,11 +20505,11 @@ ${colorConfig.map(([key, itemConfig]) => {
       pointerCoordinates
     }) : null;
     const overId = getFirstCollision(collisions, "id");
-    const [over, setOver] = (0, import_react26.useState)(null);
+    const [over, setOver] = (0, import_react29.useState)(null);
     const appliedTranslate = usesDragOverlay ? modifiedTranslate : add(modifiedTranslate, activeNodeScrollDelta);
     const transform = adjustScale(appliedTranslate, (_over$rect = over == null ? void 0 : over.rect) != null ? _over$rect : null, activeNodeRect);
-    const activeSensorRef = (0, import_react26.useRef)(null);
-    const instantiateSensor = (0, import_react26.useCallback)(
+    const activeSensorRef = (0, import_react29.useRef)(null);
+    const instantiateSensor = (0, import_react29.useCallback)(
       (event, _ref22) => {
         let {
           sensor: Sensor,
@@ -21404,7 +20667,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [draggableNodes]
     );
-    const bindActivatorToSensorInstantiator = (0, import_react26.useCallback)((handler, sensor) => {
+    const bindActivatorToSensorInstantiator = (0, import_react29.useCallback)((handler, sensor) => {
       return (event, active2) => {
         const nativeEvent = event.nativeEvent;
         const activeDraggableNode = draggableNodes.get(active2);
@@ -21436,7 +20699,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         setStatus(Status.Initialized);
       }
     }, [activeNodeRect, status]);
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         const {
           onDragMove
@@ -21471,7 +20734,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [scrollAdjustedTranslate.x, scrollAdjustedTranslate.y]
     );
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         const {
           active: active2,
@@ -21544,7 +20807,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       scrollableAncestors,
       scrollableAncestorRects
     });
-    const publicContext = (0, import_react26.useMemo)(() => {
+    const publicContext = (0, import_react29.useMemo)(() => {
       const context = {
         active,
         activeNode,
@@ -21566,7 +20829,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       };
       return context;
     }, [active, activeNode, activeNodeRect, activatorEvent, collisions, containerNodeRect, dragOverlay, draggableNodes, droppableContainers, droppableRects, over, measureDroppableContainers, scrollableAncestors, scrollableAncestorRects, measuringConfiguration, measuringScheduled, windowRect]);
-    const internalContext = (0, import_react26.useMemo)(() => {
+    const internalContext = (0, import_react29.useMemo)(() => {
       const context = {
         activatorEvent,
         activators,
@@ -21582,17 +20845,17 @@ ${colorConfig.map(([key, itemConfig]) => {
       };
       return context;
     }, [activatorEvent, activators, active, activeNodeRect, dispatch, draggableDescribedById, draggableNodes, over, measureDroppableContainers]);
-    return import_react26.default.createElement(DndMonitorContext.Provider, {
+    return import_react29.default.createElement(DndMonitorContext.Provider, {
       value: registerMonitorListener
-    }, import_react26.default.createElement(InternalContext.Provider, {
+    }, import_react29.default.createElement(InternalContext.Provider, {
       value: internalContext
-    }, import_react26.default.createElement(PublicContext.Provider, {
+    }, import_react29.default.createElement(PublicContext.Provider, {
       value: publicContext
-    }, import_react26.default.createElement(ActiveDraggableContext.Provider, {
+    }, import_react29.default.createElement(ActiveDraggableContext.Provider, {
       value: transform
-    }, children)), import_react26.default.createElement(RestoreFocus, {
+    }, children)), import_react29.default.createElement(RestoreFocus, {
       disabled: (accessibility == null ? void 0 : accessibility.restoreFocus) === false
-    })), import_react26.default.createElement(Accessibility, {
+    })), import_react29.default.createElement(Accessibility, {
       ...accessibility,
       hiddenTextDescribedById: draggableDescribedById
     }));
@@ -21611,7 +20874,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       };
     }
   });
-  var NullContext = /* @__PURE__ */ (0, import_react26.createContext)(null);
+  var NullContext = /* @__PURE__ */ (0, import_react29.createContext)(null);
   var defaultRole = "button";
   var ID_PREFIX = "Draggable";
   function useDraggable(_ref2) {
@@ -21630,14 +20893,14 @@ ${colorConfig.map(([key, itemConfig]) => {
       ariaDescribedById,
       draggableNodes,
       over
-    } = (0, import_react26.useContext)(InternalContext);
+    } = (0, import_react29.useContext)(InternalContext);
     const {
       role = defaultRole,
       roleDescription = "draggable",
       tabIndex = 0
     } = attributes != null ? attributes : {};
     const isDragging = (active == null ? void 0 : active.id) === id;
-    const transform = (0, import_react26.useContext)(isDragging ? ActiveDraggableContext : NullContext);
+    const transform = (0, import_react29.useContext)(isDragging ? ActiveDraggableContext : NullContext);
     const [node, setNodeRef] = useNodeRef();
     const [activatorNode, setActivatorNodeRef] = useNodeRef();
     const listeners = useSyntheticListeners(activators, id);
@@ -21661,7 +20924,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [draggableNodes, id]
     );
-    const memoizedAttributes = (0, import_react26.useMemo)(() => ({
+    const memoizedAttributes = (0, import_react29.useMemo)(() => ({
       role,
       tabIndex,
       "aria-disabled": disabled,
@@ -21700,13 +20963,13 @@ ${colorConfig.map(([key, itemConfig]) => {
       dispatch,
       over,
       measureDroppableContainers
-    } = (0, import_react26.useContext)(InternalContext);
-    const previous = (0, import_react26.useRef)({
+    } = (0, import_react29.useContext)(InternalContext);
+    const previous = (0, import_react29.useRef)({
       disabled
     });
-    const resizeObserverConnected = (0, import_react26.useRef)(false);
-    const rect = (0, import_react26.useRef)(null);
-    const callbackId = (0, import_react26.useRef)(null);
+    const resizeObserverConnected = (0, import_react29.useRef)(false);
+    const rect = (0, import_react29.useRef)(null);
+    const callbackId = (0, import_react29.useRef)(null);
     const {
       disabled: resizeObserverDisabled,
       updateMeasurementsFor,
@@ -21716,7 +20979,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       ...resizeObserverConfig
     };
     const ids2 = useLatestValue(updateMeasurementsFor != null ? updateMeasurementsFor : id);
-    const handleResize = (0, import_react26.useCallback)(
+    const handleResize = (0, import_react29.useCallback)(
       () => {
         if (!resizeObserverConnected.current) {
           resizeObserverConnected.current = true;
@@ -21737,7 +21000,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       callback: handleResize,
       disabled: resizeObserverDisabled || !active
     });
-    const handleNodeChange = (0, import_react26.useCallback)((newElement, previousElement) => {
+    const handleNodeChange = (0, import_react29.useCallback)((newElement, previousElement) => {
       if (!resizeObserver) {
         return;
       }
@@ -21751,7 +21014,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     }, [resizeObserver]);
     const [nodeRef, setNodeRef] = useNodeRef(handleNodeChange);
     const dataRef = useLatestValue(data);
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       if (!resizeObserver || !nodeRef.current) {
         return;
       }
@@ -21759,7 +21022,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       resizeObserverConnected.current = false;
       resizeObserver.observe(nodeRef.current);
     }, [nodeRef, resizeObserver]);
-    (0, import_react26.useEffect)(
+    (0, import_react29.useEffect)(
       () => {
         dispatch({
           type: Action.RegisterDroppable,
@@ -21781,7 +21044,7 @@ ${colorConfig.map(([key, itemConfig]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [id]
     );
-    (0, import_react26.useEffect)(() => {
+    (0, import_react29.useEffect)(() => {
       if (disabled !== previous.current.disabled) {
         dispatch({
           type: Action.SetDroppableDisabled,
@@ -21803,18 +21066,18 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
 
   // src/components/grid-layout/draggable.tsx
-  var import_react31 = __toESM(require_react());
+  var import_react34 = __toESM(require_react());
 
   // ../../node_modules/.pnpm/@react-hook+passive-layout-effect@1.2.1_react@19.2.3/node_modules/@react-hook/passive-layout-effect/dist/module/index.js
-  var import_react27 = __toESM(require_react());
-  var usePassiveLayoutEffect = import_react27.default[typeof document !== "undefined" && document.createElement !== void 0 ? "useLayoutEffect" : "useEffect"];
+  var import_react30 = __toESM(require_react());
+  var usePassiveLayoutEffect = import_react30.default[typeof document !== "undefined" && document.createElement !== void 0 ? "useLayoutEffect" : "useEffect"];
   var module_default = usePassiveLayoutEffect;
 
   // ../../node_modules/.pnpm/@react-hook+latest@1.0.3_react@19.2.3/node_modules/@react-hook/latest/dist/module/index.js
-  var React61 = __toESM(require_react());
+  var React63 = __toESM(require_react());
   var useLatest = (current) => {
-    const storedValue = React61.useRef(current);
-    React61.useEffect(() => {
+    const storedValue = React63.useRef(current);
+    React63.useEffect(() => {
       storedValue.current = current;
     });
     return storedValue;
@@ -21893,8 +21156,8 @@ ${colorConfig.map(([key, itemConfig]) => {
   var module_default3 = useResizeObserver2;
 
   // src/components/grid-layout/grid.tsx
-  var import_react29 = __toESM(require_react());
-  var SwappableWidgetInstanceGridContext = import_react29.default.createContext({
+  var import_react32 = __toESM(require_react());
+  var SwappableWidgetInstanceGridContext = import_react32.default.createContext({
     isEditing: false
   });
   function BigIconButton({ icon, children, ...props }) {
@@ -21915,24 +21178,24 @@ ${colorConfig.map(([key, itemConfig]) => {
     const effectiveUnitHeight = props.unitHeight ?? gridUnitHeight;
     const effectiveGapPixels = props.gapPixels ?? gridGapPixels;
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-    const [resizedElements, setResizedElements] = (0, import_react29.useState)(/* @__PURE__ */ new Set());
-    const [draggingType, setDraggingType] = (0, import_react29.useState)(null);
-    const [overElementPosition, setOverElementPosition] = (0, import_react29.useState)(null);
-    const [overVarHeightSlot, setOverVarHeightSlot] = (0, import_react29.useState)(null);
-    const [activeWidgetId, setActiveInstanceId] = (0, import_react29.useState)(null);
-    const [hoverElementSwap, setHoverElementSwap] = (0, import_react29.useState)(null);
-    const [activeElementInitialRect, setActiveElementInitialRect] = (0, import_react29.useState)(null);
-    const gridContainerRef = (0, import_react29.useRef)(null);
-    const context = import_react29.default.useContext(SwappableWidgetInstanceGridContext);
-    const [windowLayoutEditing, setWindowLayoutEditing] = (0, import_react29.useState)(false);
-    import_react29.default.useEffect(() => {
+    const [resizedElements, setResizedElements] = (0, import_react32.useState)(/* @__PURE__ */ new Set());
+    const [draggingType, setDraggingType] = (0, import_react32.useState)(null);
+    const [overElementPosition, setOverElementPosition] = (0, import_react32.useState)(null);
+    const [overVarHeightSlot, setOverVarHeightSlot] = (0, import_react32.useState)(null);
+    const [activeWidgetId, setActiveInstanceId] = (0, import_react32.useState)(null);
+    const [hoverElementSwap, setHoverElementSwap] = (0, import_react32.useState)(null);
+    const [activeElementInitialRect, setActiveElementInitialRect] = (0, import_react32.useState)(null);
+    const gridContainerRef = (0, import_react32.useRef)(null);
+    const context = import_react32.default.useContext(SwappableWidgetInstanceGridContext);
+    const [windowLayoutEditing, setWindowLayoutEditing] = (0, import_react32.useState)(false);
+    import_react32.default.useEffect(() => {
       const handler = () => setWindowLayoutEditing(!!window.__layoutEditing);
       window.addEventListener("layout-edit-change", handler);
       handler();
       return () => window.removeEventListener("layout-edit-change", handler);
     }, []);
     const effectiveIsEditing = context.isEditing || windowLayoutEditing;
-    const [isSingleColumnModeIfAuto, setMobileModeIfAuto] = (0, import_react29.useState)(false);
+    const [isSingleColumnModeIfAuto, setMobileModeIfAuto] = (0, import_react32.useState)(false);
     module_default3(gridContainerRef, (entry) => {
       const shouldBeMobileMode = entry.contentRect.width < mobileModeCutoffWidth;
       if (isSingleColumnModeIfAuto !== shouldBeMobileMode) {
@@ -22016,7 +21279,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                   }
                   const location = instance ? ["before", instance.id] : ["end-of", y];
                   const isOverVarHeightSlot = deepPlainEquals(overVarHeightSlot, location);
-                  return /* @__PURE__ */ jsxs(import_react29.default.Fragment, { children: [
+                  return /* @__PURE__ */ jsxs(import_react32.default.Fragment, { children: [
                     props.gridRef.current.canAddVarHeight(y) && /* @__PURE__ */ jsx("div", { className: "relative", children: /* @__PURE__ */ jsx(VarHeightSlot, { isOver: isOverVarHeightSlot, location }) }),
                     instance !== null && /* @__PURE__ */ jsx(
                       "div",
@@ -22323,16 +21586,16 @@ ${colorConfig.map(([key, itemConfig]) => {
     const { setNodeRef } = useDroppable({
       id: JSON.stringify([props.x, props.y])
     });
-    const divRef = (0, import_react29.useRef)(null);
-    const prevRectRef = (0, import_react29.useRef)(null);
-    const flipAnimRef = (0, import_react29.useRef)(null);
-    const isActiveRef = (0, import_react29.useRef)(props.isActive);
+    const divRef = (0, import_react32.useRef)(null);
+    const prevRectRef = (0, import_react32.useRef)(null);
+    const flipAnimRef = (0, import_react32.useRef)(null);
+    const isActiveRef = (0, import_react32.useRef)(props.isActive);
     isActiveRef.current = props.isActive;
-    const mergedRef = (0, import_react29.useCallback)((el) => {
+    const mergedRef = (0, import_react32.useCallback)((el) => {
       divRef.current = el;
       setNodeRef(el);
     }, [setNodeRef]);
-    (0, import_react29.useLayoutEffect)(() => {
+    (0, import_react32.useLayoutEffect)(() => {
       if (!divRef.current) return;
       const el = divRef.current;
       if (flipAnimRef.current) {
@@ -22411,7 +21674,7 @@ ${colorConfig.map(([key, itemConfig]) => {
   }
 
   // src/components/grid-layout/draggable.tsx
-  var GridErrorBoundary = class extends import_react31.default.Component {
+  var GridErrorBoundary = class extends import_react34.default.Component {
     constructor(props) {
       super(props);
       this.state = { error: null, hasError: false };
@@ -22445,14 +21708,14 @@ ${colorConfig.map(([key, itemConfig]) => {
     );
   }
   function Draggable(props) {
-    const [isSettingsOpen, setIsSettingsOpenRaw] = (0, import_react31.useState)(false);
-    const [unsavedSettings, setUnsavedSettings] = (0, import_react31.useState)(props.settings);
-    const [settingsClosingAnimationCounter, setSettingsClosingAnimationCounter] = (0, import_react31.useState)(0);
-    const [isDeleting, setIsDeleting] = (0, import_react31.useState)(false);
-    const [isEditingSubGrid, setIsEditingSubGrid] = (0, import_react31.useState)(false);
+    const [isSettingsOpen, setIsSettingsOpenRaw] = (0, import_react34.useState)(false);
+    const [unsavedSettings, setUnsavedSettings] = (0, import_react34.useState)(props.settings);
+    const [settingsClosingAnimationCounter, setSettingsClosingAnimationCounter] = (0, import_react34.useState)(0);
+    const [isDeleting, setIsDeleting] = (0, import_react34.useState)(false);
+    const [isEditingSubGrid, setIsEditingSubGrid] = (0, import_react34.useState)(false);
     const isEditing = props.isEditing && !isEditingSubGrid;
-    const [settingsOpenAnimationDetails, setSettingsOpenAnimationDetails] = (0, import_react31.useState)(null);
-    const setIsSettingsOpen = (0, import_react31.useCallback)((value) => {
+    const [settingsOpenAnimationDetails, setSettingsOpenAnimationDetails] = (0, import_react34.useState)(null);
+    const setIsSettingsOpen = (0, import_react34.useCallback)((value) => {
       if (value) {
         setSettingsOpenAnimationDetails(null);
         setUnsavedSettings(props.settings);
@@ -22469,15 +21732,15 @@ ${colorConfig.map(([key, itemConfig]) => {
       id: props.widgetInstance.id,
       disabled: dragDisabled
     });
-    const dialogRef = (0, import_react31.useRef)(null);
-    (0, import_react31.useEffect)(() => {
+    const dialogRef = (0, import_react34.useRef)(null);
+    (0, import_react34.useEffect)(() => {
       if (!props.isEditing) {
         setIsEditingSubGrid(false);
       }
     }, [props.isEditing]);
     const isFixedHeight = !props.fitContent && !props.isSingleColumnMode && props.type === "element";
     const isCompact = props.height <= 3;
-    (0, import_react31.useEffect)(() => {
+    (0, import_react34.useEffect)(() => {
       let cancelled = false;
       if (isSettingsOpen) {
         if (!settingsOpenAnimationDetails) {
@@ -22521,7 +21784,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         cancelled = true;
       };
     }, [isSettingsOpen, settingsOpenAnimationDetails, draggableContainerRef]);
-    (0, import_react31.useEffect)(() => {
+    (0, import_react34.useEffect)(() => {
       let cancelled = false;
       if (settingsOpenAnimationDetails && !settingsOpenAnimationDetails.shouldStart) {
         requestAnimationFrame(() => {

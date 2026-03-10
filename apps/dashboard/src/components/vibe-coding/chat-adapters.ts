@@ -1,4 +1,5 @@
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
+import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import {
   type ChatModelAdapter,
   type ChatModelRunOptions,
@@ -7,7 +8,6 @@ import {
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
@@ -104,8 +104,10 @@ export function createChatAdapter(
             systemPrompt,
             tools: [...tools],
             messages: [...contextMessages, ...formattedMessages],
-            quality: "smartest",
-            speed: "fast",
+            // quality: "smartest",
+            // speed: "fast",
+            quality: "smart",
+            speed: "slow",
           }),
         });
 
@@ -174,8 +176,10 @@ export function createDashboardChatAdapter(
             systemPrompt: "create-dashboard",
             tools: ["update-dashboard"],
             messages: [...contextMessages, ...formattedMessages],
-            quality: "smartest",
-            speed: "fast",
+            // quality: "smartest",
+            // speed: "fast",
+            quality: "smart",
+            speed: "slow",
           }),
         });
 

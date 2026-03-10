@@ -26,8 +26,10 @@ const MODEL_SELECTION_MATRIX: Record<
   },
   smart: {
     slow: {
-      authenticated: { modelId: "x-ai/grok-4.1-fast" },
-      unauthenticated: { modelId: "x-ai/grok-4.1-fast" },
+      // authenticated: { modelId: "x-ai/grok-4.1-fast" },
+      // unauthenticated: { modelId: "x-ai/grok-4.1-fast" },
+      authenticated: { modelId: "anthropic/claude-haiku-4-5" },
+      unauthenticated: { modelId: "anthropic/claude-haiku-4-5" },
     },
     fast: {
       authenticated: { modelId: "x-ai/grok-4.1-fast" },
