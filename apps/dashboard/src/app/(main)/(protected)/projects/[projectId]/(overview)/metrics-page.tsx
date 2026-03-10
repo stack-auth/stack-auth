@@ -493,7 +493,7 @@ function MetricsContent({
         ref={gridContainerRef}
         className={cn(
           "grid gap-4 sm:gap-5 min-h-[400px]",
-          gridHeightFromGlobe ? "" : "h-[calc(100vh-180px)]",
+          gridHeightFromGlobe ? "" : "min-h-[calc(100vh-180px)]",
           showGlobe ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
         )}
         style={gridHeightFromGlobe ? { height: gridHeightFromGlobe } : undefined}
@@ -527,7 +527,7 @@ function MetricsContent({
         {/* Right Column: Stats Grid */}
         <div
           className={cn(
-            "flex flex-col gap-12 h-full min-h-0",
+            "flex flex-col gap-12 h-full",
             showGlobe && shouldShowGlobeSection ? "lg:col-span-7" : showGlobe ? "lg:col-span-12" : ""
           )}
         >
@@ -550,14 +550,14 @@ function MetricsContent({
             <div
               ref={chartsGridRef}
               className={cn(
-                "flex-1 min-h-0 grid gap-4",
+                "flex-1 grid gap-4",
                 chartWidgets.length === 1
                   ? "grid-cols-1"
                   : shouldUseTwoColumns ? "grid-cols-2" : "grid-cols-1"
               )}
             >
               {chartWidgets.map(widgetId => (
-                <div key={widgetId} className="min-h-0">
+                <div key={widgetId} className="min-h-[200px]">
                   {renderWidget(widgetId)}
                 </div>
               ))}
