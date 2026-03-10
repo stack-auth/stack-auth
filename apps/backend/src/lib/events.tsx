@@ -279,11 +279,11 @@ export async function logEvent<T extends EventType[]>(
       }
     }
 
-    // Check analytics event limit before writing anything (Postgres + ClickHouse treated as atomic)
     if (billingTeamId != null) {
       const app = getStackServerApp();
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      if (eventsItem.quantity <= 0) {
+      const isDebited = await eventsItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
         captureError("logEvent", new StackAssertionError(
           `Analytics event limit exceeded, dropping event. Project: ${projectId}, owner team: ${billingTeamId}, remaining quantity: ${eventsItem.quantity}`,
           { projectId, ownerTeamId: billingTeamId },
@@ -403,13 +403,6 @@ export async function logEvent<T extends EventType[]>(
           async_insert: 1,
         },
       });
-    }
-
-    // Debit analytics event quota after successful writes
-    if (billingTeamId != null) {
-      const app = getStackServerApp();
-      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      await eventsItem.decreaseQuantity(1);
     }
 
     // log event in PostHog

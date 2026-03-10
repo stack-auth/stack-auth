@@ -69,7 +69,8 @@ export const POST = createSmartRouteHandler({
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (billingTeamId != null) {
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      if (eventsItem.quantity <= 0) {
+      const isDebited = await eventsItem.tryDecreaseQuantity(body.events.length);
+      if (!isDebited) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, eventsItem.quantity);
       }
     }
@@ -101,11 +102,6 @@ export const POST = createSmartRouteHandler({
         async_insert: 1,
       },
     });
-
-    if (billingTeamId != null) {
-      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
-      await eventsItem.decreaseQuantity(body.events.length);
-    }
 
     return {
       statusCode: 200,

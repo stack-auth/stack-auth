@@ -529,24 +529,33 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
   expect(afterQuantity).toBe(quantityBeforeBatch - eventCount);
 });
 
-it("rejects batch when remaining quota is less than batch size", async ({ expect }) => {
+// We don't support metered pricing or partial batches for now, so the entire
+// batch is rejected when remaining quota is less than the batch size, and
+// the quota must remain unchanged (no partial debit).
+it("rejects batch when remaining quota is less than batch size and does not debit", async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
-  await setEventItemQuantity(ownerTeamId, 0);
+  // Wait for async logEvent debits (sign-in triggers events asynchronously)
+  await wait(6000);
+  await setEventItemQuantity(ownerTeamId, 2);
 
   const res = await uploadEventBatch({
     sessionReplaySegmentId: randomUUID(),
     batchId: randomUUID(),
     sentAtMs: Date.now(),
-    events: [
-      { event_type: "$page-view", event_at_ms: Date.now(), data: {} },
-      { event_type: "$click", event_at_ms: Date.now(), data: {} },
-    ],
+    events: Array.from({ length: 5 }, (_, i) => ({
+      event_type: "$page-view" as const,
+      event_at_ms: Date.now() - i,
+      data: {},
+    })),
   });
 
   expect(res.status).toBe(400);
   expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
+
+  const quantityAfter = await getEventItemQuantity(ownerTeamId);
+  expect(quantityAfter).toBe(2);
 });
 
 it("free plan starts with correct analytics event allocation", async ({ expect }) => {

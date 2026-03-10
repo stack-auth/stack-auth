@@ -115,7 +115,8 @@ export const POST = createSmartRouteHandler({
     const billingTeamId = getBillingTeamId(auth.tenancy.project);
     if (isNewSession && billingTeamId != null) {
       const replaysItem = await app.getItem({ itemId: ITEM_IDS.sessionReplays, teamId: billingTeamId });
-      if (replaysItem.quantity <= 0) {
+      const isDebited = await replaysItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, replaysItem.quantity);
       }
     }
@@ -209,11 +210,6 @@ export const POST = createSmartRouteHandler({
         };
       }
       throw e;
-    }
-
-    if (isNewSession && billingTeamId != null) {
-      const replaysItem = await app.getItem({ itemId: ITEM_IDS.sessionReplays, teamId: billingTeamId });
-      await replaysItem.decreaseQuantity(1);
     }
 
     return {

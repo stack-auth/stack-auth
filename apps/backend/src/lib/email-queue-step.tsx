@@ -703,10 +703,11 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     }
 
-    if (context.billingTeamId != null) {
+    if (context.billingTeamId != null && row.sendRetries === 0) {
       const app = getStackServerApp();
       const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
-      if (emailItem.quantity <= 0) {
+      const isDebited = await emailItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
         const errorMessage = "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month.";
         const errorEntry: SendAttemptError = {
           attemptNumber: row.sendRetries + 1,
@@ -851,11 +852,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         },
       });
 
-      if (context.billingTeamId != null) {
-        const app = getStackServerApp();
-        const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: context.billingTeamId });
-        await emailItem.decreaseQuantity(1);
-      }
     }
   } catch (error) {
     captureError("email-queue-step-sending-single-error", error);
