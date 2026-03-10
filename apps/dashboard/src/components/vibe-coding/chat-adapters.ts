@@ -1,5 +1,6 @@
 import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import type { AppId } from "@/lib/apps-frontend";
 import {
   type ChatModelAdapter,
   type ChatModelRunOptions,
@@ -59,6 +60,90 @@ function stripCodeFences(code: string): string {
   return lines.join("\n");
 }
 
+/**
+ * Sends a request to the AI query endpoint and returns the parsed content.
+ */
+async function sendAiRequest(
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
+  body: {
+    quality: string,
+    speed: string,
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+  },
+  abortSignal?: AbortSignal,
+): Promise<ChatContent> {
+  const authHeaders = await buildStackAuthHeaders(currentUser);
+
+  const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders },
+    ...(abortSignal ? { signal: abortSignal } : {}),
+    body: JSON.stringify(body),
+  });
+
+  const json = await response.json() as { content?: ChatContent };
+  return Array.isArray(json.content) ? json.content : [];
+}
+
+/**
+ * Sanitizes tool call content in AI response and returns the sanitized content.
+ */
+function sanitizeAiContent(content: ChatContent): ChatContent {
+  return content.map((item) => {
+    if (item.type === "tool-call" && typeof item.args?.content === "string") {
+      return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
+    }
+    return item;
+  });
+}
+
+/**
+ * One-shot dashboard generation: builds context, calls AI, returns the tool call content.
+ * Used by both the cmd+K preview and the dashboard chat adapter.
+ */
+export async function generateDashboardCode(
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
+  messages: Array<{ role: string, content: unknown }>,
+  options?: {
+    currentTsxSource?: string,
+    editingWidgetId?: string,
+    addingWidgetPosition?: { x: number, y: number, width: number, height: number },
+    abortSignal?: AbortSignal,
+    enabledAppIds?: AppId[],
+  },
+): Promise<{ content: ChatContent, toolCall: ToolCallContent | undefined }> {
+  const contextMessages = await buildDashboardMessages(
+    backendBaseUrl,
+    currentUser,
+    messages,
+    options?.currentTsxSource,
+    options?.editingWidgetId,
+    options?.addingWidgetPosition,
+    options?.enabledAppIds,
+  );
+
+  const rawContent = await sendAiRequest(
+    backendBaseUrl,
+    currentUser,
+    {
+      quality: "smartest",
+      speed: "fast",
+      systemPrompt: "create-dashboard",
+      tools: ["update-dashboard"],
+      messages: [...contextMessages, ...messages],
+    },
+    options?.abortSignal,
+  );
+
+  const toolCall = rawContent.find(isToolCall);
+
+  return { content: rawContent, toolCall };
+}
+
 const CONTEXT_MAP = {
   "email-theme": { systemPrompt: "email-assistant-theme", tools: ["create-email-theme"] },
   "email-template": { systemPrompt: "email-assistant-template", tools: ["create-email-template"] },
@@ -94,32 +179,20 @@ export function createChatAdapter(
           }
         }
 
-        const authHeaders = await buildStackAuthHeaders(currentUser);
-
-        const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
-          method: "POST",
-          headers: { "content-type": "application/json", ...authHeaders },
-          signal: abortSignal,
-          body: JSON.stringify({
+        const rawContent = await sendAiRequest(
+          backendBaseUrl,
+          currentUser,
+          {
+            quality: "smartest",
+            speed: "fast",
             systemPrompt,
             tools: [...tools],
             messages: [...contextMessages, ...formattedMessages],
-            // quality: "smartest",
-            // speed: "fast",
-            quality: "smart",
-            speed: "slow",
-          }),
-        });
+          },
+          abortSignal,
+        );
 
-        const json = await response.json() as { content?: ChatContent };
-        const content: ChatContent = Array.isArray(json.content) ? json.content : [];
-
-        const sanitizedContent: ChatContent = content.map((item) => {
-          if (item.type === "tool-call" && typeof item.args?.content === "string") {
-            return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
-          }
-          return item;
-        });
+        const sanitizedContent = sanitizeAiContent(rawContent);
 
         const toolCall = sanitizedContent.find(isToolCall);
         if (toolCall) {
@@ -139,12 +212,12 @@ export function createChatAdapter(
 
 export function createDashboardChatAdapter(
   backendBaseUrl: string,
-  adminApp: StackAdminApp,
   currentTsxSource: string,
   onToolCall: (toolCall: ToolCallContent) => void,
   currentUser?: CurrentUser,
   editingWidgetId?: string | null,
   addingWidgetPosition?: { x: number, y: number, width: number, height: number } | null,
+  enabledAppIds?: AppId[],
 ): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }: ChatModelRunOptions) {
@@ -157,48 +230,24 @@ export function createDashboardChatAdapter(
           }
         }
 
-        const contextMessages = await buildDashboardMessages(
+        const { content, toolCall } = await generateDashboardCode(
           backendBaseUrl,
           currentUser,
           formattedMessages,
-          currentTsxSource,
-          editingWidgetId ?? undefined,
-          addingWidgetPosition ?? undefined,
+          {
+            currentTsxSource,
+            editingWidgetId: editingWidgetId ?? undefined,
+            addingWidgetPosition: addingWidgetPosition ?? undefined,
+            abortSignal,
+            enabledAppIds,
+          },
         );
 
-        const authHeaders = await buildStackAuthHeaders(currentUser);
-
-        const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
-          method: "POST",
-          headers: { "content-type": "application/json", ...authHeaders },
-          signal: abortSignal,
-          body: JSON.stringify({
-            systemPrompt: "create-dashboard",
-            tools: ["update-dashboard"],
-            messages: [...contextMessages, ...formattedMessages],
-            // quality: "smartest",
-            // speed: "fast",
-            quality: "smart",
-            speed: "slow",
-          }),
-        });
-
-        const json = await response.json() as { content?: ChatContent };
-        const content: ChatContent = Array.isArray(json.content) ? json.content : [];
-
-        const sanitizedContent: ChatContent = content.map((item) => {
-          if (item.type === "tool-call" && typeof item.args?.content === "string") {
-            return { ...item, args: { ...item.args, content: sanitizeGeneratedCode(item.args.content) } };
-          }
-          return item;
-        });
-
-        const toolCall = sanitizedContent.find(isToolCall);
         if (toolCall) {
           onToolCall(toolCall);
         }
 
-        return { content: sanitizedContent };
+        return { content };
       } catch (error) {
         if (abortSignal.aborted) {
           return {};

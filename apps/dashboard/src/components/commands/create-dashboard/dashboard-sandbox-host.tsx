@@ -5,7 +5,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { useUser } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/lib/theme";
 import { memo, useEffect, useMemo, useRef } from "react";
 import packageJson from "../../../../package.json";
 
@@ -78,7 +78,7 @@ function getDependencyScripts(esmVersion: string, dashboardUrl: string): string 
     </script>`;
 }
 
-function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
+function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean, savedGridState?: unknown): string {
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = packageJson.version;
@@ -230,6 +230,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
       window.__showControls = ${showControls};
       window.__chatOpen = ${initialChatOpen};
       window.__layoutEditing = false;
+      window.__savedGridState = ${savedGridState != null ? JSON.stringify(savedGridState) : 'null'};
 
       // Theme syncing, chat state, and layout edit from parent window
       window.addEventListener('message', (event) => {
@@ -253,7 +254,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
 
       // Forward widget edit requests from DashboardUI components to parent
       window.addEventListener('widget-edit-request', function(e) {
-        window.parent.postMessage({ type: 'dashboard-edit-widget', widgetId: e.detail.widgetId }, '*');
+        window.parent.postMessage({ type: 'dashboard-edit-widget', widgetId: e.detail.widgetId, widgetLabel: e.detail.widgetLabel }, '*');
       });
 
       // Forward widget add requests from DashboardUI components to parent
@@ -265,6 +266,21 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           width: e.detail.width,
           height: e.detail.height
         }, '*');
+      });
+
+      // Forward grid state changes from DashboardUI grid to parent
+      window.addEventListener('grid-state-change', function(e) {
+        window.parent.postMessage({
+          type: 'dashboard-grid-state-change',
+          serializedGrid: e.detail.serializedGrid
+        }, '*');
+      });
+
+      // Listen for saved grid state from parent (sent before AI code runs)
+      window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'dashboard-saved-grid-state') {
+          window.__savedGridState = e.data.serializedGrid;
+        }
       });
 
       const STACK_CONFIG = {
@@ -381,6 +397,53 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
           throw new Error("Recharts failed to load in sandbox.");
         }
         
+        // Monkey-patch to restore saved grid state.
+        // Handles both AI code patterns:
+        //   1. fromWidgetInstances([...widgets], opts) — patched directly
+        //   2. fromWidgetInstances([], opts) + .withAddedElementInstance() chain — patched via withAddedElementInstance
+        const _origFromWidgetInstances = DashboardUI.WidgetInstanceGrid.fromWidgetInstances;
+        DashboardUI.WidgetInstanceGrid.fromWidgetInstances = function(instances, options) {
+          if (window.__savedGridState && instances.length > 0) {
+            const saved = window.__savedGridState;
+            window.__savedGridState = null;
+            try {
+              const widgets = instances.map(function(i) { return i.widget; });
+              return DashboardUI.WidgetInstanceGrid.fromSerialized(widgets, saved);
+            } catch (e) {
+              console.warn('[Dashboard] Failed to restore saved grid state, using defaults', e);
+            }
+          }
+          return _origFromWidgetInstances.call(this, instances, options);
+        };
+
+        // For the withAddedElementInstance chain pattern: after the last call,
+        // the grid has all widgets. We try restoring on each call — fromSerialized
+        // will only succeed when all saved widgetIds are present.
+        const _origWithAddedElementInstance = DashboardUI.WidgetInstanceGrid.prototype.withAddedElementInstance;
+        DashboardUI.WidgetInstanceGrid.prototype.withAddedElementInstance = function() {
+          var newGrid = _origWithAddedElementInstance.apply(this, arguments);
+          if (window.__savedGridState) {
+            try {
+              var elements = newGrid.elements();
+              var widgets = elements
+                .filter(function(el) { return el.instance != null; })
+                .map(function(el) { return el.instance.widget; });
+              var saved = JSON.parse(JSON.stringify(window.__savedGridState));
+              var widgetIds = new Set(widgets.map(function(w) { return w.id; }));
+              var allFound = saved.nonEmptyElements.every(function(el) {
+                return !el.instance || widgetIds.has(el.instance.widgetId);
+              });
+              if (allFound && widgets.length > 0) {
+                window.__savedGridState = null;
+                return DashboardUI.WidgetInstanceGrid.fromSerialized(widgets, saved);
+              }
+            } catch (e) {
+              // Not all widgets added yet — keep waiting
+            }
+          }
+          return newGrid;
+        };
+
         // Execute AI-generated code with DashboardUI and Recharts in scope
         const Dashboard = (() => {
           ${sourceCode}
@@ -432,6 +495,8 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onNavigate,
   onWidgetEditRequest,
   onWidgetAddRequest,
+  onGridStateChange,
+  savedGridState,
   isChatOpen,
   layoutEditing,
 }: {
@@ -442,8 +507,10 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onAltKeyDown?: () => void,
   onAltKeyUp?: () => void,
   onNavigate?: (path: string) => void,
-  onWidgetEditRequest?: (widgetId: string) => void,
+  onWidgetEditRequest?: (widgetId: string, widgetLabel: string) => void,
   onWidgetAddRequest?: (x: number, y: number, width: number, height: number) => void,
+  onGridStateChange?: (serializedGrid: unknown) => void,
+  savedGridState?: unknown,
   isChatOpen?: boolean,
   layoutEditing?: boolean,
 }) {
@@ -464,6 +531,10 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onWidgetEditRequestRef.current = onWidgetEditRequest;
   const onWidgetAddRequestRef = useRef(onWidgetAddRequest);
   onWidgetAddRequestRef.current = onWidgetAddRequest;
+  const onGridStateChangeRef = useRef(onGridStateChange);
+  onGridStateChangeRef.current = onGridStateChange;
+  const savedGridStateRef = useRef(savedGridState);
+  savedGridStateRef.current = savedGridState;
   const user = useUser({ or: "redirect" });
   const { resolvedTheme } = useTheme();
 
@@ -479,11 +550,11 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
   const initialChatOpenRef = useRef(!!isChatOpen);
   const showControls = onBack != null || onEditToggle != null;
-  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, dashboardUrl, initialThemeRef.current, showControls, initialChatOpenRef.current), [artifact, baseUrl, dashboardUrl, showControls]);
+  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, dashboardUrl, initialThemeRef.current, showControls, initialChatOpenRef.current, savedGridStateRef.current), [artifact, baseUrl, dashboardUrl, showControls]);
 
   // Send theme changes to iframe dynamically (without full reload)
   useEffect(() => {
-    if (iframeRef.current?.contentWindow && resolvedTheme) {
+    if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage({
         type: 'stack-theme-change',
         theme: resolvedTheme,
@@ -510,15 +581,23 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   }, [layoutEditing]);
 
   useEffect(() => {
+    if (iframeRef.current?.contentWindow && savedGridState) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'dashboard-saved-grid-state',
+        serializedGrid: savedGridState,
+      }, '*');
+    }
+  }, [savedGridState]);
+
+  useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (typeof event.data !== "object" || event.data === null) {
         return;
       }
-      if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) {
-        console.warn("Unknown iframe source; rejecting message", event);
+      if (event.origin !== "null") {
         return;
       }
-      if (event.origin !== "null") {
+      if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) {
         return;
       }
       const type = event.data.type;
@@ -579,12 +658,17 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       }
 
       if (type === "dashboard-edit-widget") {
-        onWidgetEditRequestRef.current?.(event.data.widgetId);
+        onWidgetEditRequestRef.current?.(event.data.widgetId, event.data.widgetLabel ?? event.data.widgetId);
         return;
       }
 
       if (type === "dashboard-add-widget") {
         onWidgetAddRequestRef.current?.(event.data.x, event.data.y, event.data.width, event.data.height);
+        return;
+      }
+
+      if (type === "dashboard-grid-state-change") {
+        onGridStateChangeRef.current?.(event.data.serializedGrid);
         return;
       }
 

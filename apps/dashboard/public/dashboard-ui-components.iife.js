@@ -21175,6 +21175,9 @@ ${colorConfig.map(([key, itemConfig]) => {
     );
   }
   function SwappableWidgetInstanceGrid(props) {
+    const dispatchGridStateChange = (0, import_react32.useCallback)((grid) => {
+      window.dispatchEvent(new CustomEvent("grid-state-change", { detail: { serializedGrid: grid.serialize() } }));
+    }, []);
     const effectiveUnitHeight = props.unitHeight ?? gridUnitHeight;
     const effectiveGapPixels = props.gapPixels ?? gridGapPixels;
     const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -21373,7 +21376,9 @@ ${colorConfig.map(([key, itemConfig]) => {
                     const overCoordinates = JSON.parse(`${event.over.id}`);
                     const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]];
                     if (props.gridRef.current.canSwap(...swapArgs)) {
-                      props.gridRef.set(props.gridRef.current.withSwappedElements(...swapArgs));
+                      const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
+                      props.gridRef.set(newGrid);
+                      dispatchGridStateChange(newGrid);
                     } else {
                       alert("Cannot swap elements; make sure the new locations are big enough for the widgets");
                     }
@@ -21504,6 +21509,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                               }
                               const { grid: newGrid, achievedDelta } = currentGrid.withResizedElementAndPush(x, y, edges);
                               props.gridRef.set(newGrid);
+                              dispatchGridStateChange(newGrid);
                               return achievedDelta;
                             },
                             x,
@@ -21981,8 +21987,10 @@ ${colorConfig.map(([key, itemConfig]) => {
                               if (props.widgetInstance.widget.SettingsComponent) {
                                 setIsSettingsOpen(true);
                               } else {
+                                const settings = getSettings(props.widgetInstance);
+                                const widgetLabel = settings && typeof settings === "object" && "text" in settings && typeof settings.text === "string" ? settings.text : props.widgetInstance.widget.id;
                                 window.dispatchEvent(new CustomEvent("widget-edit-request", {
-                                  detail: { widgetId: props.widgetInstance.widget.id }
+                                  detail: { widgetId: props.widgetInstance.widget.id, widgetLabel }
                                 }));
                               }
                             } }),

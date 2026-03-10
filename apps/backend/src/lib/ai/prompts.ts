@@ -405,9 +405,15 @@ Required pattern (copy this exactly):
       return () => window.removeEventListener('layout-edit-change', handler);
     }, []);
 
-    const gridRef = DashboardUI.useRefState(
+    // Define each widget separately
+    const myWidget = React.useMemo(() => ({
+      id: "my-widget", MainComponent: () => <div className="h-full">...</div>, defaultSettings: {}, defaultState: {},
+    }), []);
+
+    // Build grid from widget instances
+    const gridRef = DashboardUI.useRefState(() =>
       DashboardUI.WidgetInstanceGrid.fromWidgetInstances(
-        widgets.map(w => DashboardUI.createWidgetInstance(w)),
+        [DashboardUI.createWidgetInstance(myWidget)],
         { width: 24, height: "auto", defaultElementWidth: 6, defaultElementHeight: 7 }
       )
     );
@@ -431,6 +437,7 @@ Rules:
 - SwappableWidgetInstanceGridContext.Provider value={{ isEditing }} — REQUIRED. This shows edit handles.
 - handler() on mount — REQUIRED. Syncs state if edit mode was already active before the component mounted.
 - Cards inside widgets MUST use className="h-full" to fill their cell.
+- The parent window automatically persists grid positions when users drag/resize — your code does NOT need to handle position persistence.
 
 ────────────────────────────────────────
 RUNTIME CONTRACT (HARD RULES)
@@ -452,6 +459,7 @@ EDITING BEHAVIOR (when existing code is provided)
 - If the user asks to add something, add it without removing existing content.
 - If the user asks to change styling, colors, or layout, make those changes while preserving functionality.
 - Always call the updateDashboard tool with the COMPLETE updated source code — no partial code or diffs.
+- IMPORTANT: If the source code contains a // __GRID_STATE__: comment line, you MUST preserve it exactly as-is. The parent window manages this line for grid position persistence. NEVER modify or remove it.
 
 ────────────────────────────────────────
 CORE DATA FETCHING RULES (STACK)
@@ -671,57 +679,53 @@ Example — a dashboard with free-form layout + draggable sections:
     React.useEffect(() => {
       const handler = () => setIsEditing(!!window.__layoutEditing);
       window.addEventListener('layout-edit-change', handler);
+      handler();
       return () => window.removeEventListener('layout-edit-change', handler);
     }, []);
 
-    // --- Metric card widgets (4-column grid) ---
-    const metricWidgets = React.useMemo(() => [
-      {
-        id: "total-users",
-        MainComponent: () => (
-          <DashboardUI.DesignMetricCard className="h-full" label="Total Users" value={users.length} />
-        ),
-        defaultSettings: {}, defaultState: {},
-        minWidth: 5,
-      },
-      {
-        id: "verified",
-        MainComponent: () => (
-          <DashboardUI.DesignMetricCard className="h-full" label="Verified" value={users.filter(u => u.primaryEmailVerified).length} />
-        ),
-        defaultSettings: {}, defaultState: {},
-        minWidth: 5,
-      },
-      // ... more metric widgets
-    ], [users]);
+    // --- Define each widget separately ---
+    const totalUsersWidget = React.useMemo(() => ({
+      id: "total-users",
+      MainComponent: () => (
+        <DashboardUI.DesignMetricCard className="h-full" label="Total Users" value={users.length} />
+      ),
+      defaultSettings: {}, defaultState: {}, minWidth: 5,
+    }), [users]);
 
-    const metricGridRef = DashboardUI.useRefState(
+    const verifiedWidget = React.useMemo(() => ({
+      id: "verified",
+      MainComponent: () => (
+        <DashboardUI.DesignMetricCard className="h-full" label="Verified" value={users.filter(u => u.primaryEmailVerified).length} />
+      ),
+      defaultSettings: {}, defaultState: {}, minWidth: 5,
+    }), [users]);
+
+    // Build metric grid using fromWidgetInstances
+    const metricGridRef = DashboardUI.useRefState(() =>
       DashboardUI.WidgetInstanceGrid.fromWidgetInstances(
-        metricWidgets.map(w => DashboardUI.createWidgetInstance(w)),
+        [DashboardUI.createWidgetInstance(totalUsersWidget), DashboardUI.createWidgetInstance(verifiedWidget)],
         { width: 24, height: "auto", defaultElementWidth: 6, defaultElementHeight: 7 }
       )
     );
 
-    // --- Chart widgets (2-column grid) ---
-    const chartWidgets = React.useMemo(() => [
-      {
-        id: "signups-chart",
-        MainComponent: () => (
-          <DashboardUI.DesignChartCard className="h-full" title="Signups Over Time">
-            <DashboardUI.DesignChartContainer config={{}} maxHeight={300}>
-              {/* Recharts chart */}
-            </DashboardUI.DesignChartContainer>
-          </DashboardUI.DesignChartCard>
-        ),
-        defaultSettings: {}, defaultState: {},
-        minWidth: 8,
-      },
-    ], [users]);
+    // --- Chart widget ---
+    const signupsChartWidget = React.useMemo(() => ({
+      id: "signups-chart",
+      MainComponent: () => (
+        <DashboardUI.DesignChartCard className="h-full" title="Signups Over Time">
+          <DashboardUI.DesignChartContainer config={{}} maxHeight={300}>
+            {/* Recharts chart */}
+          </DashboardUI.DesignChartContainer>
+        </DashboardUI.DesignChartCard>
+      ),
+      defaultSettings: {}, defaultState: {}, minWidth: 8,
+    }), [users]);
 
-    const chartGridRef = DashboardUI.useRefState(
+    // Build chart grid
+    const chartGridRef = DashboardUI.useRefState(() =>
       DashboardUI.WidgetInstanceGrid.fromWidgetInstances(
-        chartWidgets.map(w => DashboardUI.createWidgetInstance(w)),
-        { width: 24, height: "auto", defaultElementWidth: 12, defaultElementHeight: 15 }
+        [DashboardUI.createWidgetInstance(signupsChartWidget)],
+        { width: 24, height: "auto", defaultElementWidth: 24, defaultElementHeight: 15 }
       )
     );
 
@@ -744,7 +748,7 @@ Example — a dashboard with free-form layout + draggable sections:
           <p className="text-muted-foreground mt-1">Overview of your user base and growth trends</p>
         </div>
 
-        {/* Draggable metric cards — 4-column grid */}
+        {/* Draggable metric cards */}
         <section>
           <DashboardUI.SwappableWidgetInstanceGridContext.Provider value={{ isEditing }}>
             <DashboardUI.SwappableWidgetInstanceGrid
@@ -758,7 +762,7 @@ Example — a dashboard with free-form layout + draggable sections:
           </DashboardUI.SwappableWidgetInstanceGridContext.Provider>
         </section>
 
-        {/* Draggable charts — 2-column grid */}
+        {/* Draggable charts */}
         <section>
           <h2 className="text-lg font-semibold mb-3">Charts</h2>
           <DashboardUI.SwappableWidgetInstanceGridContext.Provider value={{ isEditing }}>
@@ -785,6 +789,7 @@ IMPORTANT layout rules:
 - Cards inside grid widgets MUST use className="h-full" so they fill the grid cell completely
 - Multiple grids per page are encouraged — each section gets its own grid with its own dimensions
 - Non-grid sections (headers, text, tables, lists) are just normal JSX — no grid needed
+- Widget positions are persisted automatically by the parent window — do NOT handle position persistence in your code
 - Always use the two-component pattern: Dashboard (fetches data) → DashboardContent (renders after data is ready)
 - Do NOT render your own "Edit Layout" button — edit mode is entered by the parent window via messages
 - The "Edit ✎" control button MUST change to "Done" when isEditing is true, and call window.dashboardDoneEditing?.() instead of window.dashboardEdit() — this lets the user exit layout editing by clicking the same button
@@ -850,7 +855,8 @@ NAVIGATION API (postMessage-based)
 ────────────────────────────────────────
 These global functions are pre-defined in the iframe runtime. Call them directly:
 - window.dashboardNavigate(path) — navigate the parent dashboard to a relative path
-  Example paths: "/users", "/teams", "/dashboards", "/settings"
+  IMPORTANT: Only use paths from the AVAILABLE DASHBOARD ROUTES list provided in the context.
+  The user's project may not have all apps installed, so only link to routes that are listed.
 - window.dashboardBack() — go back to the dashboards list
 - window.dashboardEdit() — toggle the edit chat panel
 
@@ -858,7 +864,8 @@ These global functions are pre-defined in the iframe runtime. Call them directly
 CLICKABLE CARDS & NAVIGATION
 ────────────────────────────────────────
 - When a card represents a navigable entity (users, teams, etc.), make it clickable
-  and call window.dashboardNavigate('/users') (or the appropriate path) on click.
+  and call window.dashboardNavigate(path) on click, using ONLY paths from the
+  AVAILABLE DASHBOARD ROUTES list provided in the context. Do NOT invent paths.
 - Use cursor-pointer class and a hover tint on clickable cards:
   className="cursor-pointer hover:bg-foreground/[0.02] transition-colors hover:transition-none"
 

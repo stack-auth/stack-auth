@@ -44,6 +44,10 @@ export function SwappableWidgetInstanceGrid(props: {
   gapPixels?: number,
   fitContent?: boolean,
 }) {
+  const dispatchGridStateChange = useCallback((grid: WidgetInstanceGrid) => {
+    window.dispatchEvent(new CustomEvent('grid-state-change', { detail: { serializedGrid: grid.serialize() } }));
+  }, []);
+
   const effectiveUnitHeight = props.unitHeight ?? gridUnitHeight;
   const effectiveGapPixels = props.gapPixels ?? gridGapPixels;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -262,7 +266,9 @@ export function SwappableWidgetInstanceGrid(props: {
               const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
               const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
               if (props.gridRef.current.canSwap(...swapArgs)) {
-                props.gridRef.set(props.gridRef.current.withSwappedElements(...swapArgs));
+                const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
+                props.gridRef.set(newGrid);
+                dispatchGridStateChange(newGrid);
               } else {
                 alert("Cannot swap elements; make sure the new locations are big enough for the widgets");
               }
@@ -402,6 +408,7 @@ export function SwappableWidgetInstanceGrid(props: {
                         }
                         const { grid: newGrid, achievedDelta } = currentGrid.withResizedElementAndPush(x, y, edges);
                         props.gridRef.set(newGrid);
+                        dispatchGridStateChange(newGrid);
                         return achievedDelta;
                       }}
                       x={x}

@@ -3,19 +3,20 @@
 import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { useRouter } from "@/components/router";
 import { Button } from "@/components/ui";
+import { generateDashboardCode } from "@/components/vibe-coding/chat-adapters";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
-import { buildDashboardMessages } from "@/lib/ai-dashboard/shared-prompt";
-import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { FloppyDiskIcon } from "@phosphor-icons/react";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useUser } from "@stackframe/stack";
-import { memo, useCallback, useState } from "react";
+import type { AppId } from "@/lib/apps-frontend";
+import { memo, useCallback, useMemo, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
 
@@ -41,11 +42,20 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 }: CmdKPreviewProps) {
   const projectId = useProjectId();
   const adminApp = useAdminApp(projectId);
+  const project = adminApp.useProject();
+  const config = project.useConfig();
   const currentUser = useUser({ or: "redirect" });
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? "";
   const updateConfig = useUpdateConfig();
   const router = useRouter();
   const prompt = query.trim();
+
+  const enabledAppIds = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
 
   const [state, setState] = useState<GenerationState>("idle");
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -62,25 +72,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
     try {
       const userMessages: Array<{ role: string, content: string }> = [{ role: "user", content: prompt }];
-      const contextMessages = await buildDashboardMessages(backendBaseUrl, currentUser, userMessages);
-
-      const authHeaders = await buildStackAuthHeaders(currentUser);
-      const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/generate`, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...authHeaders },
-        body: JSON.stringify({
-          systemPrompt: "create-dashboard",
-          tools: ["update-dashboard"],
-          messages: [...contextMessages, ...userMessages],
-        }),
-      });
-      const result = await response.json() as { content?: ChatContent };
-
-      const contentArr = Array.isArray(result.content) ? result.content : [];
-      const toolCall = contentArr.find(
-        (block): block is Extract<typeof block, { type: "tool-call" }> =>
-          block.type === "tool-call" && ("toolName" in block && block.toolName === "updateDashboard")
-      );
+      const { toolCall } = await generateDashboardCode(backendBaseUrl, currentUser, userMessages, { enabledAppIds });
 
       if (!toolCall?.args?.content) {
         setState("error");
@@ -103,7 +95,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
       setState("error");
       setErrorText("Failed to generate dashboard. Please try again.");
     }
-  }, [projectId, prompt, currentUser, backendBaseUrl]);
+  }, [projectId, prompt, currentUser, backendBaseUrl, enabledAppIds]);
 
   const handleSave = useCallback(async () => {
     if (!artifact) return;

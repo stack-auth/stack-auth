@@ -348,8 +348,12 @@ export function Draggable(props: {
                   if (props.widgetInstance.widget.SettingsComponent) {
                     setIsSettingsOpen(true);
                   } else {
+                    const settings = getSettings(props.widgetInstance);
+                    const widgetLabel = (settings && typeof settings === 'object' && 'text' in settings && typeof settings.text === 'string')
+                      ? settings.text
+                      : props.widgetInstance.widget.id;
                     window.dispatchEvent(new CustomEvent('widget-edit-request', {
-                      detail: { widgetId: props.widgetInstance.widget.id },
+                      detail: { widgetId: props.widgetInstance.widget.id, widgetLabel },
                     }));
                   }
                 }} />

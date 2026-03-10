@@ -21,7 +21,10 @@ import {
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
+import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import type { AppId } from "@/lib/apps-frontend";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { getPublicEnvVar } from "@/lib/env";
 import { useUser } from "@stackframe/stack";
@@ -29,6 +32,35 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
+
+const GRID_STATE_PREFIX = "// __GRID_STATE__:";
+
+function extractGridStateFromSource(tsxSource: string): unknown | null {
+  const idx = tsxSource.indexOf(GRID_STATE_PREFIX);
+  if (idx === -1) return null;
+  const lineStart = idx + GRID_STATE_PREFIX.length;
+  const lineEnd = tsxSource.indexOf("\n", lineStart);
+  const jsonStr = tsxSource.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+}
+
+function stripGridStateFromSource(tsxSource: string): string {
+  const idx = tsxSource.indexOf(GRID_STATE_PREFIX);
+  if (idx === -1) return tsxSource;
+  const lineEnd = tsxSource.indexOf("\n", idx);
+  if (lineEnd === -1) return tsxSource.slice(0, idx).trimEnd();
+  return (tsxSource.slice(0, idx) + tsxSource.slice(lineEnd + 1)).replace(/^\n/, "");
+}
+
+function embedGridStateInSource(tsxSource: string, gridState: unknown | null): string {
+  if (gridState == null) return tsxSource;
+  const clean = stripGridStateFromSource(tsxSource);
+  return `${GRID_STATE_PREFIX}${JSON.stringify(gridState)}\n${clean}`;
+}
 
 function useDashboardId(): string {
   const pathname = usePathname();
@@ -48,6 +80,13 @@ export default function PageClient() {
   const router = useRouter();
   const dashboardId = useDashboardId();
   const [hasEverExisted, setHasEverExisted] = useState(false);
+
+  const enabledAppIds = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
 
   const dashboard = config.customDashboards[dashboardId] as
     | typeof config.customDashboards[string]
@@ -80,6 +119,7 @@ export default function PageClient() {
       router={router}
       currentUser={currentUser}
       backendBaseUrl={backendBaseUrl}
+      enabledAppIds={enabledAppIds}
     />
   );
 }
@@ -94,6 +134,7 @@ function DashboardDetailContent({
   router,
   currentUser,
   backendBaseUrl,
+  enabledAppIds,
 }: {
   dashboardId: string,
   displayName: string,
@@ -104,6 +145,7 @@ function DashboardDetailContent({
   router: ReturnType<typeof useRouter>,
   currentUser: NonNullable<ReturnType<typeof useUser>>,
   backendBaseUrl: string,
+  enabledAppIds: AppId[],
 }) {
   const composerPlaceholder = useTypingPlaceholder(
     "Create a dashboard about ",
@@ -113,11 +155,18 @@ function DashboardDetailContent({
   const hasSource = tsxSource.length > 0;
   const [isChatOpen, setIsChatOpen] = useState(!hasSource);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [currentTsxSource, setCurrentTsxSource] = useState(tsxSource);
-  const [savedTsxSource, setSavedTsxSource] = useState(tsxSource);
-  const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
+  const [currentTsxSource, setCurrentTsxSource] = useState(() => stripGridStateFromSource(tsxSource));
+  const [savedTsxSource, setSavedTsxSource] = useState(() => stripGridStateFromSource(tsxSource));
+  const [gridState, setGridState] = useState<unknown | null>(() => {
+    const gs = extractGridStateFromSource(tsxSource);
+    console.log('[GridSave] initial gridState from source:', gs ? 'present' : 'null');
+    return gs;
+  });
+  const [savedGridState, setSavedGridState] = useState<unknown | null>(() => extractGridStateFromSource(tsxSource));
+  const hasUnsavedChanges = currentTsxSource !== savedTsxSource || JSON.stringify(gridState) !== JSON.stringify(savedGridState);
   const [layoutEditing, setLayoutEditing] = useState(false);
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
+  const [editingWidgetLabel, setEditingWidgetLabel] = useState<string | null>(null);
   const [addingWidgetPosition, setAddingWidgetPosition] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
   const layoutEditingByKeyRef = useRef(false);
 
@@ -187,8 +236,9 @@ function DashboardDetailContent({
     setCurrentTsxSource(toolCall.args.content);
   }, []);
 
-  const handleWidgetEditRequest = useCallback((widgetId: string) => {
+  const handleWidgetEditRequest = useCallback((widgetId: string, widgetLabel: string) => {
     setEditingWidgetId(widgetId);
+    setEditingWidgetLabel(widgetLabel);
     setAddingWidgetPosition(null);
     setIsChatOpen(true);
   }, []);
@@ -196,19 +246,30 @@ function DashboardDetailContent({
   const handleWidgetAddRequest = useCallback((x: number, y: number, width: number, height: number) => {
     setAddingWidgetPosition({ x, y, width, height });
     setEditingWidgetId(null);
+    setEditingWidgetLabel(null);
     setIsChatOpen(true);
   }, []);
 
+  const handleGridStateChange = useCallback((serializedGrid: unknown) => {
+    console.log('[GridSave] handleGridStateChange called, serializedGrid:', JSON.stringify(serializedGrid).slice(0, 200));
+    setGridState(serializedGrid);
+  }, []);
+
   const handleSaveDashboard = useCallback(async () => {
+    const sourceToSave = embedGridStateInSource(currentTsxSource, gridState);
+    console.log('[GridSave] saving, gridState is:', gridState ? 'present' : 'null');
+    console.log('[GridSave] sourceToSave first 300 chars:', sourceToSave.slice(0, 300));
     await updateConfig({
       adminApp,
       configUpdate: {
-        [`customDashboards.${dashboardId}.tsxSource`]: currentTsxSource,
+        [`customDashboards.${dashboardId}.tsxSource`]: sourceToSave,
       },
       pushable: false,
     });
     setSavedTsxSource(currentTsxSource);
-  }, [updateConfig, adminApp, dashboardId, currentTsxSource]);
+    setSavedGridState(gridState);
+    console.log('[GridSave] save complete');
+  }, [updateConfig, adminApp, dashboardId, currentTsxSource, gridState]);
 
   const handleSaveName = async () => {
     const trimmed = editedName.trim();
@@ -246,6 +307,8 @@ function DashboardDetailContent({
       onNavigate={handleNavigate}
       onWidgetEditRequest={handleWidgetEditRequest}
       onWidgetAddRequest={handleWidgetAddRequest}
+      onGridStateChange={handleGridStateChange}
+      savedGridState={gridState}
       isChatOpen={isChatOpen}
       layoutEditing={layoutEditing}
       onDoneEditing={() => {
@@ -345,20 +408,51 @@ function DashboardDetailContent({
                 onClose={currentHasSource ? () => setIsChatOpen(false) : undefined}
                 hasUnsavedChanges={hasUnsavedChanges}
                 onSaveDashboard={handleSaveDashboard}
-                editingWidgetId={editingWidgetId}
-                onClearEditingWidget={() => setEditingWidgetId(null)}
-                addingWidgetPosition={addingWidgetPosition}
-                onClearAddingWidget={() => setAddingWidgetPosition(null)}
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, adminApp, currentTsxSource, handleCodeUpdate, currentUser, editingWidgetId, addingWidgetPosition)}
+                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, editingWidgetId, addingWidgetPosition, enabledAppIds)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : composerPlaceholder}
                 />
               </div>
+              {editingWidgetId != null && (
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
+                  <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />
+                  <span className="text-xs text-primary truncate flex-1">
+                    Editing: {editingWidgetLabel ?? editingWidgetId}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-primary hover:text-primary/80"
+                    onClick={() => {
+                      setEditingWidgetId(null);
+                      setEditingWidgetLabel(null);
+                    }}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              {addingWidgetPosition != null && (
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
+                  <PlusIcon className="h-3 w-3 text-primary shrink-0" />
+                  <span className="text-xs text-primary truncate flex-1">
+                    Adding new widget
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-primary hover:text-primary/80"
+                    onClick={() => setAddingWidgetPosition(null)}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -468,10 +562,6 @@ function ChatPanelHeader({
   onClose,
   hasUnsavedChanges,
   onSaveDashboard,
-  editingWidgetId,
-  onClearEditingWidget,
-  addingWidgetPosition,
-  onClearAddingWidget,
 }: {
   displayName: string,
   isEditingName: boolean,
@@ -484,10 +574,6 @@ function ChatPanelHeader({
   onClose?: () => void,
   hasUnsavedChanges: boolean,
   onSaveDashboard: () => Promise<void>,
-  editingWidgetId?: string | null,
-  onClearEditingWidget?: () => void,
-  addingWidgetPosition?: { x: number, y: number, width: number, height: number } | null,
-  onClearAddingWidget?: () => void,
 }) {
   return (
     <div className="flex flex-col shrink-0">
@@ -557,38 +643,6 @@ function ChatPanelHeader({
           )}
         </div>
       </div>
-      {editingWidgetId != null && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-b border-border/30 dark:border-foreground/[0.06]">
-          <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />
-          <span className="text-xs text-primary truncate flex-1">
-            Editing: {editingWidgetId}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 text-primary hover:text-primary/80"
-            onClick={onClearEditingWidget}
-          >
-            <XIcon className="h-3 w-3" />
-          </Button>
-        </div>
-      )}
-      {addingWidgetPosition != null && (
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-b border-border/30 dark:border-foreground/[0.06]">
-          <PlusIcon className="h-3 w-3 text-primary shrink-0" />
-          <span className="text-xs text-primary truncate flex-1">
-            Adding widget at ({addingWidgetPosition.x}, {addingWidgetPosition.y})
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 text-primary hover:text-primary/80"
-            onClick={onClearAddingWidget}
-          >
-            <XIcon className="h-3 w-3" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
