@@ -530,6 +530,7 @@ type UserSeed = {
   primaryEmailVerified: boolean,
   isAnonymous: boolean,
   oauthProviders: UserSeedOauthProvider[],
+  createdAt?: Date,
 };
 
 type SeedDummyTeamsOptions = {
@@ -592,6 +593,8 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
 async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<string, string>> {
   const { prisma, tenancy, teamNameToId } = options;
 
+  const daysAgo = (d: number, h: number = 12) => new Date(Date.now() - d * 24 * 60 * 60 * 1000 + h * 60 * 60 * 1000);
+
   const userSeeds = [
     {
       displayName: 'Amelia Chen',
@@ -602,6 +605,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       oauthProviders: [
         { providerId: 'github', accountId: 'amelia-chen-gh' },
       ],
+      createdAt: daysAgo(28, 9),
     },
     {
       email: 'leo.park@dummy.dev',
@@ -609,6 +613,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: false,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(28, 15),
     },
     {
       displayName: 'Some-long-display-name with-middle-name with-last-name',
@@ -620,6 +625,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
         { providerId: 'google', accountId: 'isla-rodriguez-google' },
         { providerId: 'microsoft', accountId: 'isla-rodriguez-msft' },
       ],
+      createdAt: daysAgo(25, 10),
     },
     {
       displayName: 'Al',
@@ -628,6 +634,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: true,
       oauthProviders: [],
+      createdAt: daysAgo(25, 16),
     },
     {
       displayName: 'Priya Narang',
@@ -638,6 +645,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       oauthProviders: [
         { providerId: 'spotify', accountId: 'priya-narang-spotify' },
       ],
+      createdAt: daysAgo(23, 8),
     },
     {
       displayName: 'Jonas Richter',
@@ -647,6 +655,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(21, 14),
     },
     {
       displayName: 'Chioma Mensah',
@@ -658,6 +667,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       oauthProviders: [
         { providerId: 'google', accountId: 'chioma-mensah-google' },
       ],
+      createdAt: daysAgo(21, 17),
     },
     {
       displayName: 'Nia Holloway',
@@ -666,6 +676,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(18, 11),
     },
     {
       displayName: 'Mateo Silva',
@@ -676,6 +687,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       oauthProviders: [
         { providerId: 'github', accountId: 'mateo-silva-gh' },
       ],
+      createdAt: daysAgo(15, 9),
     },
     {
       displayName: 'Harper Lin',
@@ -684,6 +696,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(12, 13),
     },
     {
       displayName: 'Zara Malik',
@@ -693,6 +706,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(9, 10),
     },
     {
       displayName: 'Luca Bennett',
@@ -701,6 +715,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: false,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(6, 16),
     },
     {
       displayName: 'Evelyn Brooks',
@@ -710,6 +725,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(4, 8),
     },
     {
       displayName: 'Theo Fischer',
@@ -721,6 +737,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       oauthProviders: [
         { providerId: 'microsoft', accountId: 'theo-fischer-msft' },
       ],
+      createdAt: daysAgo(3, 11),
     },
     {
       email: 'naomi.patel@dummy.dev',
@@ -728,6 +745,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: false,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(1, 9),
     },
     {
       displayName: 'Kai Romero',
@@ -736,6 +754,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       primaryEmailVerified: true,
       isAnonymous: false,
       oauthProviders: [],
+      createdAt: daysAgo(1, 15),
     },
   ] satisfies UserSeed[];
 
@@ -779,6 +798,11 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       userId = createdUser.id;
     }
 
+    await prisma.projectUser.updateMany({
+      where: { tenancyId: tenancy.id, projectUserId: userId },
+      data: { createdAt: user.createdAt },
+    });
+
     userEmailToId.set(user.email, userId);
 
     for (const teamName of user.teamDisplayNames) {
@@ -800,6 +824,94 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
         user_id: userId,
         data: {},
       });
+    }
+  }
+
+  // Generate additional bulk users for realistic chart data
+  // Uses seeded PRNG for reproducibility — each day gets a varying number of sign-ups
+  const bulkFirstNames = [
+    'Alex', 'Jordan', 'Taylor', 'Morgan', 'Riley', 'Quinn', 'Avery', 'Dakota',
+    'Casey', 'Hayden', 'Cameron', 'Rowan', 'Sage', 'Blake', 'Emery', 'Skyler',
+    'Reese', 'Peyton', 'Eden', 'Finley', 'Kendall', 'Aubrey', 'Drew', 'Jesse',
+    'Parker', 'Robin', 'Sydney', 'River', 'Harley', 'Milan',
+  ];
+  const bulkLastNames = [
+    'Kim', 'Liu', 'Patel', 'Garcia', 'Brown', 'Davis', 'Wilson', 'Martinez',
+    'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Clark', 'Lewis',
+    'Robinson', 'Walker', 'Young', 'Allen', 'Scott', 'Adams', 'Nelson',
+    'Hill', 'Moore', 'Hall', 'King', 'Wright', 'Green', 'Baker', 'Turner',
+  ];
+  const bulkOauthProviders = ['google', 'github', 'microsoft'];
+
+  // Seeded PRNG for reproducibility
+  let bulkSeed = 42;
+  const bulkRand = () => {
+    bulkSeed = (bulkSeed * 1664525 + 1013904223) & 0x7fffffff;
+    return bulkSeed / 0x7fffffff;
+  };
+
+  // Per-day sign-up counts (day 0 = 30 days ago, day 29 = yesterday)
+  // Pattern: gradual growth with realistic variance and weekend dips
+  const dailySignUpCounts = [
+    1, 0, 2, 1, 3, 0, 1,   // week 1 (low, starting out)
+    2, 3, 1, 2, 4, 1, 0,   // week 2 (picking up)
+    3, 2, 4, 3, 2, 5, 1,   // week 3 (steady growth)
+    4, 3, 5, 2, 6, 3, 2, 4, // week 4+ (peak recent activity)
+  ];
+
+  let bulkIndex = 0;
+  for (let dayOffset = 0; dayOffset < dailySignUpCounts.length; dayOffset++) {
+    const count = dailySignUpCounts[dayOffset];
+    const dayBack = dailySignUpCounts.length - dayOffset;
+
+    for (let j = 0; j < count; j++) {
+      const fnIdx = Math.floor(bulkRand() * bulkFirstNames.length);
+      const lnIdx = Math.floor(bulkRand() * bulkLastNames.length);
+      const firstName = bulkFirstNames[fnIdx];
+      const lastName = bulkLastNames[lnIdx];
+      const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.bulk${bulkIndex}@dummy.dev`;
+      const displayName = `${firstName} ${lastName}`;
+      const hour = 8 + Math.floor(bulkRand() * 12);
+      const createdAt = daysAgo(dayBack, hour);
+      const hasOauth = bulkRand() > 0.6;
+      const oauthProvider = hasOauth
+        ? [{ providerId: bulkOauthProviders[Math.floor(bulkRand() * bulkOauthProviders.length)], accountId: `${email}-oauth` }]
+        : [];
+
+      const existing = await prisma.projectUser.findFirst({
+        where: {
+          tenancyId: tenancy.id,
+          contactChannels: { some: { type: 'EMAIL', value: email } },
+        },
+        select: { projectUserId: true },
+      });
+
+      if (!existing) {
+        const created = await usersCrudHandlers.adminCreate({
+          tenancy,
+          data: {
+            display_name: displayName,
+            primary_email: email,
+            primary_email_auth_enabled: true,
+            primary_email_verified: bulkRand() > 0.3,
+            otp_auth_enabled: false,
+            is_anonymous: false,
+            oauth_providers: oauthProvider.map((p) => ({
+              id: p.providerId,
+              account_id: p.accountId,
+              email,
+            })),
+            profile_image_url: null,
+          },
+        });
+        await prisma.projectUser.updateMany({
+          where: { tenancyId: tenancy.id, projectUserId: created.id },
+          data: { createdAt },
+        });
+        userEmailToId.set(email, created.id);
+      }
+
+      bulkIndex++;
     }
   }
 
@@ -1200,6 +1312,13 @@ const DUMMY_SEED_IDS = {
     growthLoopRegression: '813c4380-475b-4cb8-ac1a-5204d9839b36',
     mateoGrowthAnnual: 'c4acea49-302a-43b9-82a7-446b19e0e662',
     legacyEnterprise: '11664974-38ff-4356-8e39-2fa9105ed84f',
+    // Additional subs for dashboard breadth
+    harperStarterActive: '22b3c9d1-a123-4abc-8def-000000000001',
+    jonasPastDue: '22b3c9d1-a123-4abc-8def-000000000002',
+    kaiTrialing: '22b3c9d1-a123-4abc-8def-000000000003',
+    eveGrowthCanceled: '22b3c9d1-a123-4abc-8def-000000000004',
+    lucaStarterActive: '22b3c9d1-a123-4abc-8def-000000000005',
+    islaGrowthIncomplete: '22b3c9d1-a123-4abc-8def-000000000006',
   },
   itemQuantityChanges: {
     designSeatsGrant: '44ca1801-0732-4273-ae14-4fd1c3999e24',
@@ -1212,6 +1331,9 @@ const DUMMY_SEED_IDS = {
     ameliaSeatPack: '0b696a83-c54e-4a74-ae47-3ac5a4db49e6',
     launchCouncilUpfront: '10766081-37fd-410c-8b2e-1c3351e2d364',
     designAuditPass: '5939f45e-1cf0-4f76-98f9-d999ed45405b',
+    // Additional for breadth
+    niaSnapshot: '33c4d0e2-b234-5bcd-9ef0-000000000001',
+    theoRegressionAddon: '33c4d0e2-b234-5bcd-9ef0-000000000002',
   },
   emails: {
     welcomeAmelia: 'af8cfd90-8912-4bf7-93a7-20ff2be54767',
@@ -1219,6 +1341,17 @@ const DUMMY_SEED_IDS = {
     invitePriya: 'b7e31f58-cfd7-46cd-920f-d7616ad66bed',
     statusDigest: '2423e8d8-72cf-4355-a475-c2028e3ea958',
     templateFailure: 'faa33233-ba8d-4819-a89a-d442003cd589',
+    // Additional for breadth
+    welcomeJonas: '55e5f1a3-c345-6cde-aef1-000000000001',
+    welcomeHarper: '55e5f1a3-c345-6cde-aef1-000000000002',
+    bounceKai: '55e5f1a3-c345-6cde-aef1-000000000003',
+    spamMateo: '55e5f1a3-c345-6cde-aef1-000000000004',
+    openedEvelyn: '55e5f1a3-c345-6cde-aef1-000000000005',
+    clickedNia: '55e5f1a3-c345-6cde-aef1-000000000006',
+    weeklyDigest1: '55e5f1a3-c345-6cde-aef1-000000000007',
+    weeklyDigest2: '55e5f1a3-c345-6cde-aef1-000000000008',
+    weeklyDigest3: '55e5f1a3-c345-6cde-aef1-000000000009',
+    queuedLuca: '55e5f1a3-c345-6cde-aef1-000000000010',
   },
 } as const;
 
@@ -1537,6 +1670,210 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       },
     });
   }
+
+  // Additional subscriptions for dashboard breadth
+  const extraSubscriptionSeeds: SubscriptionSeed[] = [
+    {
+      id: DUMMY_SEED_IDS.subscriptions.harperStarterActive,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('harper.lin@dummy.dev'),
+      productId: 'starter',
+      priceId: 'monthly',
+      product: resolveProduct('starter'),
+      quantity: 1,
+      status: SubscriptionStatus.active,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      currentPeriodStart: new Date('2025-11-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2025-12-01T00:00:00.000Z'),
+      cancelAtPeriodEnd: false,
+      stripeSubscriptionId: 'sub_starter_harper',
+      createdAt: new Date('2025-11-01T00:00:00.000Z'),
+    },
+    {
+      id: DUMMY_SEED_IDS.subscriptions.jonasPastDue,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('jonas.richter@dummy.dev'),
+      productId: 'growth',
+      priceId: 'monthly',
+      product: resolveProduct('growth'),
+      quantity: 1,
+      status: SubscriptionStatus.past_due,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      currentPeriodStart: new Date('2025-12-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2026-01-01T00:00:00.000Z'),
+      cancelAtPeriodEnd: false,
+      stripeSubscriptionId: 'sub_growth_jonas',
+      createdAt: new Date('2025-10-15T00:00:00.000Z'),
+    },
+    {
+      id: DUMMY_SEED_IDS.subscriptions.kaiTrialing,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('kai.romero@dummy.dev'),
+      productId: 'starter',
+      priceId: 'monthly',
+      product: resolveProduct('starter'),
+      quantity: 1,
+      status: SubscriptionStatus.trialing,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      currentPeriodStart: new Date('2026-02-15T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2026-03-01T00:00:00.000Z'),
+      cancelAtPeriodEnd: false,
+      stripeSubscriptionId: 'sub_starter_kai',
+      createdAt: new Date('2026-02-15T00:00:00.000Z'),
+    },
+    {
+      id: DUMMY_SEED_IDS.subscriptions.eveGrowthCanceled,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('evelyn.brooks@dummy.dev'),
+      productId: 'growth',
+      priceId: 'monthly',
+      product: resolveProduct('growth'),
+      quantity: 1,
+      status: SubscriptionStatus.canceled,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      currentPeriodStart: new Date('2025-08-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2025-09-01T00:00:00.000Z'),
+      cancelAtPeriodEnd: true,
+      stripeSubscriptionId: 'sub_growth_evelyn',
+      createdAt: new Date('2025-07-10T00:00:00.000Z'),
+    },
+    {
+      id: DUMMY_SEED_IDS.subscriptions.lucaStarterActive,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('luca.bennett@dummy.dev'),
+      productId: 'starter',
+      priceId: 'monthly',
+      product: resolveProduct('starter'),
+      quantity: 1,
+      status: SubscriptionStatus.active,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      currentPeriodStart: new Date('2026-02-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2026-03-01T00:00:00.000Z'),
+      cancelAtPeriodEnd: false,
+      stripeSubscriptionId: 'sub_starter_luca',
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+    },
+    {
+      id: DUMMY_SEED_IDS.subscriptions.islaGrowthIncomplete,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('isla.rodriguez@dummy.dev'),
+      productId: 'growth',
+      priceId: 'annual',
+      product: resolveProduct('growth'),
+      quantity: 1,
+      status: SubscriptionStatus.incomplete,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      currentPeriodStart: new Date('2026-03-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2027-03-01T00:00:00.000Z'),
+      cancelAtPeriodEnd: false,
+      stripeSubscriptionId: 'sub_growth_annual_isla',
+      createdAt: new Date('2026-03-01T00:00:00.000Z'),
+    },
+  ];
+
+  for (const subscription of extraSubscriptionSeeds) {
+    await prisma.subscription.upsert({
+      where: {
+        tenancyId_id: {
+          tenancyId,
+          id: subscription.id,
+        },
+      },
+      update: {
+        customerId: subscription.customerId,
+        customerType: subscription.customerType,
+        productId: subscription.productId ?? null,
+        priceId: subscription.priceId ?? null,
+        product: subscription.product,
+        quantity: subscription.quantity,
+        status: subscription.status,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        currentPeriodStart: subscription.currentPeriodStart,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        creationSource: subscription.creationSource,
+        stripeSubscriptionId: subscription.stripeSubscriptionId ?? null,
+      },
+      create: {
+        tenancyId,
+        id: subscription.id,
+        customerId: subscription.customerId,
+        customerType: subscription.customerType,
+        productId: subscription.productId ?? null,
+        priceId: subscription.priceId ?? null,
+        product: subscription.product,
+        quantity: subscription.quantity,
+        status: subscription.status,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        currentPeriodStart: subscription.currentPeriodStart,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        creationSource: subscription.creationSource,
+        stripeSubscriptionId: subscription.stripeSubscriptionId ?? null,
+        createdAt: subscription.createdAt,
+      },
+    });
+  }
+
+  // Additional one-time purchases for breadth
+  const extraOneTimePurchaseSeeds: OneTimePurchaseSeed[] = [
+    {
+      id: DUMMY_SEED_IDS.oneTimePurchases.niaSnapshot,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('nia.holloway@dummy.dev'),
+      productId: 'regression-addon',
+      priceId: 'monthly',
+      product: resolveProduct('regression-addon'),
+      quantity: 1,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      stripePaymentIntentId: 'pi_regression_nia',
+      createdAt: new Date('2026-01-18T00:00:00.000Z'),
+    },
+    {
+      id: DUMMY_SEED_IDS.oneTimePurchases.theoRegressionAddon,
+      customerType: CustomerType.USER,
+      customerId: resolveUserId('theo.fischer@dummy.dev'),
+      productId: 'regression-addon',
+      priceId: 'monthly',
+      product: resolveProduct('regression-addon'),
+      quantity: 2,
+      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
+      stripePaymentIntentId: 'pi_regression_theo',
+      createdAt: new Date('2026-02-05T00:00:00.000Z'),
+    },
+  ];
+
+  for (const purchase of extraOneTimePurchaseSeeds) {
+    await prisma.oneTimePurchase.upsert({
+      where: {
+        tenancyId_id: {
+          tenancyId,
+          id: purchase.id,
+        },
+      },
+      update: {
+        customerId: purchase.customerId,
+        customerType: purchase.customerType,
+        productId: purchase.productId ?? null,
+        priceId: purchase.priceId ?? null,
+        product: purchase.product,
+        quantity: purchase.quantity,
+        creationSource: purchase.creationSource,
+        stripePaymentIntentId: purchase.stripePaymentIntentId ?? null,
+      },
+      create: {
+        tenancyId,
+        id: purchase.id,
+        customerId: purchase.customerId,
+        customerType: purchase.customerType,
+        productId: purchase.productId ?? null,
+        priceId: purchase.priceId ?? null,
+        product: purchase.product,
+        quantity: purchase.quantity,
+        creationSource: purchase.creationSource,
+        stripePaymentIntentId: purchase.stripePaymentIntentId ?? null,
+        createdAt: purchase.createdAt,
+      },
+    });
+  }
 }
 
 async function seedDummyEmails(options: EmailSeedOptions) {
@@ -1550,13 +1887,23 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     return userId;
   };
 
-  const emailSeeds: EmailOutboxSeed[] = [
+  type EmailOutboxSeedExtended = EmailOutboxSeed & {
+    hasBounce?: boolean,
+    hasMarkedAsSpam?: boolean,
+    hasOpened?: boolean,
+    hasClicked?: boolean,
+    isQueued?: boolean,
+  };
+
+  const emailDaysAgo = (d: number, h: number = 12) => new Date(Date.now() - d * 24 * 60 * 60 * 1000 + h * 60 * 60 * 1000);
+
+  const emailSeeds: EmailOutboxSeedExtended[] = [
     {
       id: DUMMY_SEED_IDS.emails.welcomeAmelia,
       subject: 'Welcome to Dummy Project',
       html: '<p>Hi Amelia,<br/>Welcome to Dummy Project.</p>',
       text: 'Hi Amelia,\nWelcome to Dummy Project.',
-      createdAt: new Date('2024-05-01T13:00:00.000Z'),
+      createdAt: emailDaysAgo(27, 13),
       userEmail: 'amelia.chen@dummy.dev',
     },
     {
@@ -1564,7 +1911,7 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       subject: 'Your passkey sign-in link',
       html: '<p>Complete your sign-in within <strong>10 minutes</strong>.</p>',
       text: 'Complete your sign-in within 10 minutes.',
-      createdAt: new Date('2024-05-02T10:00:00.000Z'),
+      createdAt: emailDaysAgo(25, 10),
       userEmail: 'milo.adeyemi@dummy.dev',
     },
     {
@@ -1572,21 +1919,95 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       subject: 'Dashboard invite for Ops',
       html: '<p>Welcome to the dashboard!</p>',
       hasError: true,
-      createdAt: new Date('2024-05-04T18:30:00.000Z'),
+      createdAt: emailDaysAgo(23, 18),
       userEmail: 'priya.narang@dummy.dev',
     },
     {
       id: DUMMY_SEED_IDS.emails.statusDigest,
       subject: 'Nightly status digest',
       text: 'All services operational. 3 warnings acknowledged.',
-      createdAt: new Date('2024-05-06T07:45:00.000Z'),
+      createdAt: emailDaysAgo(21, 7),
     },
     {
       id: DUMMY_SEED_IDS.emails.templateFailure,
       subject: 'Template rendering failed - Review',
       html: '<p>Rendering failed due to <code>undefined</code> data from billing.</p>',
       hasError: true,
-      createdAt: new Date('2024-05-08T12:05:00.000Z'),
+      createdAt: emailDaysAgo(19, 12),
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.welcomeJonas,
+      subject: 'Welcome to Dummy Project, Jonas!',
+      html: '<p>Hi Jonas,<br/>Welcome aboard!</p>',
+      text: 'Hi Jonas,\nWelcome aboard!',
+      createdAt: emailDaysAgo(17, 9),
+      userEmail: 'jonas.richter@dummy.dev',
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.welcomeHarper,
+      subject: 'Welcome to Dummy Project, Harper!',
+      html: '<p>Hi Harper,<br/>Welcome aboard!</p>',
+      text: 'Hi Harper,\nWelcome aboard!',
+      createdAt: emailDaysAgo(15, 11),
+      userEmail: 'harper.lin@dummy.dev',
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.bounceKai,
+      subject: 'Your monthly report',
+      html: '<p>Here is your monthly report.</p>',
+      createdAt: emailDaysAgo(13, 14),
+      userEmail: 'kai.romero@dummy.dev',
+      hasBounce: true,
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.spamMateo,
+      subject: 'Promotional update',
+      html: '<p>Check out our latest features!</p>',
+      createdAt: emailDaysAgo(11, 10),
+      userEmail: 'mateo.silva@dummy.dev',
+      hasMarkedAsSpam: true,
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.openedEvelyn,
+      subject: 'Your subscription is active',
+      html: '<p>Your subscription is now active. Enjoy!</p>',
+      createdAt: emailDaysAgo(9, 8),
+      userEmail: 'evelyn.brooks@dummy.dev',
+      hasOpened: true,
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.clickedNia,
+      subject: 'Complete your profile',
+      html: '<p>Click here to complete your profile!</p>',
+      createdAt: emailDaysAgo(7, 9),
+      userEmail: 'nia.holloway@dummy.dev',
+      hasClicked: true,
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.weeklyDigest1,
+      subject: 'Weekly digest - Week 1',
+      text: 'Your weekly platform digest.',
+      createdAt: emailDaysAgo(5, 7),
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.weeklyDigest2,
+      subject: 'Weekly digest - Week 2',
+      text: 'Your weekly platform digest.',
+      createdAt: emailDaysAgo(3, 7),
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.weeklyDigest3,
+      subject: 'Weekly digest - Week 3',
+      text: 'Your weekly platform digest.',
+      createdAt: emailDaysAgo(1, 7),
+    },
+    {
+      id: DUMMY_SEED_IDS.emails.queuedLuca,
+      subject: 'Scheduled notification for Luca',
+      html: '<p>This email is scheduled to be sent.</p>',
+      createdAt: emailDaysAgo(0, 8),
+      userEmail: 'luca.bennett@dummy.dev',
+      isQueued: true,
     },
   ];
 
@@ -1595,6 +2016,13 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     const recipient = userId
       ? { type: 'user-primary-email', userId }
       : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
+
+    const isQueued = email.isQueued === true;
+    const hasBounce = email.hasBounce === true;
+    const hasMarkedAsSpam = email.hasMarkedAsSpam === true;
+    const hasOpened = email.hasOpened === true;
+    const hasClicked = email.hasClicked === true;
+    const canHaveDelivery = hasOpened || hasClicked || hasBounce || hasMarkedAsSpam;
 
     await globalPrismaClient.emailOutbox.upsert({
       where: {
@@ -1614,24 +2042,123 @@ async function seedDummyEmails(options: EmailSeedOptions) {
         shouldSkipDeliverabilityCheck: false,
         createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
         scheduledAt: email.createdAt,
-        // Rendering fields - renderedByWorkerId and startedRenderingAt must both be set or both be null
-        renderedByWorkerId: email.id, // use the email id as a dummy worker id
+        renderedByWorkerId: email.id,
         startedRenderingAt: email.createdAt,
         finishedRenderingAt: email.createdAt,
         renderedSubject: email.subject,
         renderedHtml: email.html ?? null,
         renderedText: email.text ?? null,
-        // Sending fields
-        startedSendingAt: email.createdAt,
-        finishedSendingAt: email.createdAt,
-        canHaveDeliveryInfo: false,
-        sendServerErrorExternalMessage: email.hasError ? 'Delivery failed' : null,
-        sendServerErrorExternalDetails: email.hasError ? {} : Prisma.DbNull,
-        sendServerErrorInternalMessage: email.hasError ? "Delivery failed. This is the internal error message." : null,
-        sendServerErrorInternalDetails: email.hasError ? { internalError: "No internal error details." } : Prisma.DbNull,
+        ...(isQueued ? {
+          isQueued: true,
+        } : {
+          startedSendingAt: email.createdAt,
+          finishedSendingAt: email.createdAt,
+          canHaveDeliveryInfo: canHaveDelivery,
+          deliveredAt: (hasOpened || hasClicked || hasMarkedAsSpam) ? email.createdAt : null,
+          sendServerErrorExternalMessage: email.hasError ? 'Delivery failed' : null,
+          sendServerErrorExternalDetails: email.hasError ? {} : Prisma.DbNull,
+          sendServerErrorInternalMessage: email.hasError ? 'Delivery failed. This is the internal error message.' : null,
+          sendServerErrorInternalDetails: email.hasError ? { internalError: 'No internal error details.' } : Prisma.DbNull,
+          bouncedAt: hasBounce ? new Date(email.createdAt.getTime() + 60_000) : null,
+          markedAsSpamAt: hasMarkedAsSpam ? new Date(email.createdAt.getTime() + 3600_000) : null,
+          openedAt: (hasOpened || hasClicked) ? new Date(email.createdAt.getTime() + 1800_000) : null,
+          clickedAt: hasClicked ? new Date(email.createdAt.getTime() + 2400_000) : null,
+        }),
         createdAt: email.createdAt,
       },
     });
+  }
+
+  // Generate additional bulk emails for realistic chart data
+  const bulkEmailSubjects = [
+    'Your account has been updated',
+    'New sign-in from a new device',
+    'Weekly activity summary',
+    'Your invoice is ready',
+    'Password reset requested',
+    'Welcome to the platform',
+    'Action required: verify your email',
+    'Your trial is ending soon',
+    'Team invitation accepted',
+    'New comment on your project',
+    'Security alert: unusual activity',
+    'Monthly usage report',
+  ];
+
+  let emailBulkSeed = 7777;
+  const emailBulkRand = () => {
+    emailBulkSeed = (emailBulkSeed * 1664525 + 1013904223) & 0x7fffffff;
+    return emailBulkSeed / 0x7fffffff;
+  };
+
+  // Per-day email counts — varying with a natural pattern
+  const dailyEmailCounts = [
+    1, 2, 0, 3, 1, 2, 0,   // week 1
+    2, 3, 1, 4, 2, 1, 0,   // week 2
+    3, 2, 4, 1, 3, 5, 2,   // week 3
+    4, 3, 5, 2, 6, 3, 2, 5, // week 4+
+  ];
+
+  let emailBulkIndex = 0;
+  for (let dayOffset = 0; dayOffset < dailyEmailCounts.length; dayOffset++) {
+    const count = dailyEmailCounts[dayOffset];
+    const dayBack = dailyEmailCounts.length - dayOffset;
+
+    for (let j = 0; j < count; j++) {
+      const bulkId = generateUuid();
+      const hour = 7 + Math.floor(emailBulkRand() * 14);
+      const createdAt = emailDaysAgo(dayBack, hour);
+      const subject = bulkEmailSubjects[Math.floor(emailBulkRand() * bulkEmailSubjects.length)];
+      const hasBounce = emailBulkRand() < 0.08;
+      const hasOpened = !hasBounce && emailBulkRand() < 0.45;
+      const hasClicked = hasOpened && emailBulkRand() < 0.3;
+      const hasError = !hasBounce && !hasOpened && emailBulkRand() < 0.05;
+
+      const existing = await globalPrismaClient.emailOutbox.findUnique({
+        where: { tenancyId_id: { tenancyId, id: bulkId } },
+        select: { id: true },
+      });
+      if (existing) continue;
+
+      const canHaveDelivery = hasOpened || hasClicked || hasBounce;
+
+      await globalPrismaClient.emailOutbox.upsert({
+        where: { tenancyId_id: { tenancyId, id: bulkId } },
+        update: {},
+        create: {
+          tenancyId,
+          id: bulkId,
+          tsxSource: '',
+          isHighPriority: false,
+          to: { type: 'custom-emails', emails: [`bulk-${emailBulkIndex}@dummy.dev`] },
+          extraRenderVariables: {},
+          shouldSkipDeliverabilityCheck: false,
+          createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+          scheduledAt: createdAt,
+          renderedByWorkerId: bulkId,
+          startedRenderingAt: createdAt,
+          finishedRenderingAt: createdAt,
+          renderedSubject: subject,
+          renderedHtml: `<p>${subject}</p>`,
+          renderedText: subject,
+          startedSendingAt: createdAt,
+          finishedSendingAt: createdAt,
+          canHaveDeliveryInfo: canHaveDelivery,
+          deliveredAt: (hasOpened || hasClicked) ? createdAt : null,
+          sendServerErrorExternalMessage: hasError ? 'Delivery failed' : null,
+          sendServerErrorExternalDetails: hasError ? {} : Prisma.DbNull,
+          sendServerErrorInternalMessage: hasError ? 'Internal delivery error' : null,
+          sendServerErrorInternalDetails: hasError ? { internalError: 'details' } : Prisma.DbNull,
+          bouncedAt: hasBounce ? new Date(createdAt.getTime() + 60_000) : null,
+          markedAsSpamAt: null,
+          openedAt: (hasOpened || hasClicked) ? new Date(createdAt.getTime() + 1800_000) : null,
+          clickedAt: hasClicked ? new Date(createdAt.getTime() + 2400_000) : null,
+          createdAt,
+        },
+      });
+
+      emailBulkIndex++;
+    }
   }
 }
 

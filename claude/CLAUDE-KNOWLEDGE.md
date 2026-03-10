@@ -3,6 +3,12 @@
 Q: How are the development ports derived now that NEXT_PUBLIC_STACK_PORT_PREFIX exists?
 A: Host ports use `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}` plus the two-digit suffix (e.g., Postgres is `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28`, Inbucket SMTP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}29`, POP3 `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}30`, and OTLP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}31` by default).
 
+Q: How do you expand the internal metrics endpoint to include cross-product aggregates?
+A: Extend the existing `/api/v1/internal/metrics` route (in `apps/backend/src/app/api/latest/internal/metrics/route.tsx`) by adding new parallel async queries for each product domain. Add `auth_overview`, `payments_overview`, `email_overview`, and `analytics_overview` to the response schema and the handler. These are loaded via dedicated helper functions that use Prisma (for payments/emails/teams/users) and ClickHouse (for page views, clicks). The client-side `useMetrics` hook already returns `any`, so new fields flow through automatically.
+
+Q: How can duplicate Recharts keys like `rectangle-25-10-0` appear on overview pages with multiple charts?
+A: Recharts can generate colliding internal SVG IDs/keys across chart instances when they share default ID generation paths. Set explicit unique IDs (or instance-unique IDs) on chart roots and avoid duplicated chart-def namespaces to prevent repeated internal keys and console errors.
+
 Q: How can I show helper text beneath metadata text areas in the dashboard?
 A: Use the shared `TextAreaField` component's `helperText` prop in `apps/dashboard/src/components/form-fields.tsx`; it now renders the helper content in a secondary Typography line under the textarea.
 

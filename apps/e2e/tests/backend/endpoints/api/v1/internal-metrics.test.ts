@@ -248,3 +248,88 @@ it("should handle mixed auth methods excluding anonymous users", async ({ expect
 
   await ensureAnonymousUsersAreStillExcluded(response);
 });
+
+it("should return cross-product aggregates in the metrics response", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  await wait(2000);
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  expect(response.status).toBe(200);
+
+  // Core auth fields must always be present
+  expect(response.body).toHaveProperty('total_users');
+  expect(response.body).toHaveProperty('daily_users');
+  expect(response.body).toHaveProperty('daily_active_users');
+  expect(response.body).toHaveProperty('login_methods');
+
+  // Extended aggregate groups must always be present (even for sparse projects)
+  expect(response.body).toHaveProperty('auth_overview');
+  expect(response.body).toHaveProperty('payments_overview');
+  expect(response.body).toHaveProperty('email_overview');
+  expect(response.body).toHaveProperty('analytics_overview');
+
+  // Auth overview shape
+  const authOverview = response.body.auth_overview;
+  expect(typeof authOverview.verified_users).toBe('number');
+  expect(typeof authOverview.unverified_users).toBe('number');
+  expect(typeof authOverview.anonymous_users).toBe('number');
+  expect(typeof authOverview.total_teams).toBe('number');
+
+  // Payments overview shape
+  const paymentsOverview = response.body.payments_overview;
+  expect(typeof paymentsOverview.subscriptions_by_status).toBe('object');
+  expect(typeof paymentsOverview.active_subscription_count).toBe('number');
+  expect(typeof paymentsOverview.total_one_time_purchases).toBe('number');
+  expect(Array.isArray(paymentsOverview.daily_subscriptions)).toBe(true);
+
+  // Email overview shape
+  const emailOverview = response.body.email_overview;
+  expect(typeof emailOverview.emails_by_status).toBe('object');
+  expect(typeof emailOverview.total_emails).toBe('number');
+  expect(Array.isArray(emailOverview.daily_emails)).toBe(true);
+
+  // Analytics overview shape (may have empty arrays for sparse projects)
+  const analyticsOverview = response.body.analytics_overview;
+  expect(Array.isArray(analyticsOverview.daily_page_views)).toBe(true);
+  expect(Array.isArray(analyticsOverview.daily_clicks)).toBe(true);
+  expect(typeof analyticsOverview.total_replays).toBe('number');
+  expect(typeof analyticsOverview.recent_replays).toBe('number');
+});
+
+it("should return correct auth_overview breakdown including teams", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  await InternalApiKey.createAndSetProjectKeys();
+
+  // Create a verified user
+  const verifiedMailbox = createMailbox();
+  backendContext.set({ mailbox: verifiedMailbox });
+  await Auth.Otp.signIn();
+
+  // Create an anonymous user
+  await Auth.Anonymous.signUp();
+
+  await wait(2000);
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  expect(response.status).toBe(200);
+
+  const authOverview = response.body.auth_overview;
+
+  // Total = 1 regular (verified by OTP/magic-link) + 1 anonymous
+  // anonymous_users count should be 1
+  expect(authOverview.anonymous_users).toBeGreaterThanOrEqual(1);
+
+  // verified + unverified should match non-anonymous total
+  const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
+  expect(nonAnonFromOverview).toBeGreaterThanOrEqual(1);
+});

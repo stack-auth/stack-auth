@@ -6,8 +6,8 @@ import {
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
-import { useState } from "react";
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
+import { useId, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type TimeRange = '7d' | '30d' | 'all';
 
@@ -66,7 +66,7 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
 };
 
 // Helper function to filter datapoints by time range
-function filterDatapointsByTimeRange(datapoints: DataPoint[], timeRange: TimeRange): DataPoint[] {
+export function filterDatapointsByTimeRange(datapoints: DataPoint[], timeRange: TimeRange): DataPoint[] {
   if (timeRange === '7d') {
     return datapoints.slice(-7);
   }
@@ -77,7 +77,7 @@ function filterDatapointsByTimeRange(datapoints: DataPoint[], timeRange: TimeRan
 }
 
 // Shared BarChart component to reduce duplication
-function ActivityBarChart({
+export function ActivityBarChart({
   datapoints,
   config,
   height,
@@ -88,6 +88,7 @@ function ActivityBarChart({
   height?: number,
   compact?: boolean,
 }) {
+  const id = useId();
   return (
     <ChartContainer
       config={config.chart}
@@ -95,6 +96,7 @@ function ActivityBarChart({
       maxHeight={height}
     >
       <BarChart
+        id={id}
         accessibilityLayer
         data={datapoints}
         margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
@@ -161,6 +163,138 @@ function ActivityBarChart({
               });
               const day = date.getDate();
               return `${month} ${day}`;
+            }
+            return value;
+          }}
+        />
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
+// ── Stacked bar chart (for DAU/DAT new · reactivated · retained splits) ──────
+
+export type StackedDataPoint = {
+  date: string,
+  new: number,
+  reactivated: number,
+  retained: number,
+};
+
+const stackedChartConfig: ChartConfig = {
+  retained: { label: "Retained", color: "hsl(221, 83%, 53%)" },
+  reactivated: { label: "Reactivated", color: "hsl(38, 92%, 50%)" },
+  new: { label: "New", color: "hsl(142, 71%, 45%)" },
+};
+
+const StackedTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+  if (!active || !payload?.length) return null;
+
+  const row = payload[0].payload as StackedDataPoint;
+  const date = new Date(row.date);
+  const formattedDate = !isNaN(date.getTime())
+    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : row.date;
+
+  const segments: Array<{ key: keyof typeof stackedChartConfig, value: number }> = [
+    { key: 'retained', value: row.retained },
+    { key: 'reactivated', value: row.reactivated },
+    { key: 'new', value: row.new },
+  ];
+
+  return (
+    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
+          {formattedDate}
+        </span>
+        {segments.map((seg) => (
+          <div key={seg.key} className="flex items-center gap-2.5">
+            <span
+              className="h-2 w-2 rounded-full ring-2 ring-white/20"
+              style={{ backgroundColor: `var(--color-${seg.key})` }}
+            />
+            <span className="text-[11px] text-muted-foreground">
+              {stackedChartConfig[seg.key].label}
+            </span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {seg.value.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export function StackedBarChartDisplay({
+  datapoints,
+  height,
+  compact = false,
+}: {
+  datapoints: StackedDataPoint[],
+  height?: number,
+  compact?: boolean,
+}) {
+  const id = useId();
+  return (
+    <ChartContainer
+      config={stackedChartConfig}
+      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      maxHeight={height}
+    >
+      <BarChart
+        id={id}
+        accessibilityLayer
+        data={datapoints}
+        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+      >
+        <CartesianGrid
+          horizontal
+          vertical={false}
+          strokeDasharray="3 3"
+          stroke="hsl(var(--border))"
+          opacity={0.3}
+        />
+        <ChartTooltip
+          content={<StackedTooltip />}
+          cursor={{ fill: "hsl(var(--muted-foreground))", opacity: 0.08, radius: 4 }}
+          offset={20}
+          allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+        />
+        <Bar dataKey="retained" stackId="split" fill="var(--color-retained)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => (
+            <Cell key={`ret-${index}`} opacity={isWeekend(new Date(entry.date)) ? 0.5 : 1} />
+          ))}
+        </Bar>
+        <Bar dataKey="reactivated" stackId="split" fill="var(--color-reactivated)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => (
+            <Cell key={`react-${index}`} opacity={isWeekend(new Date(entry.date)) ? 0.5 : 1} />
+          ))}
+        </Bar>
+        <Bar dataKey="new" stackId="split" fill="var(--color-new)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => (
+            <Cell key={`new-${index}`} opacity={isWeekend(new Date(entry.date)) ? 0.5 : 1} />
+          ))}
+        </Bar>
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          width={compact ? 35 : 50}
+          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 9 : 11 }}
+        />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          tickMargin={compact ? 4 : 8}
+          axisLine={false}
+          interval="equidistantPreserveStart"
+          tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
+          tickFormatter={(value) => {
+            const date = new Date(value);
+            if (!isNaN(date.getTime())) {
+              return `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getDate()}`;
             }
             return value;
           }}
@@ -484,6 +618,415 @@ export function LineChartDisplay({
             height={height}
             compact={compact}
           />
+        )}
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── StatCard ─────────────────────────────────────────────────────────────────
+
+export type StatCardProps = {
+  label: string,
+  value: number | string,
+  delta?: number,
+  deltaLabel?: string,
+  icon?: React.ReactNode,
+  gradientColor?: GradientColor,
+  className?: string,
+  compact?: boolean,
+};
+
+export function StatCard({
+  label,
+  value,
+  delta,
+  deltaLabel,
+  icon,
+  gradientColor = "blue",
+  className,
+  compact = false,
+}: StatCardProps) {
+  const isPositive = delta !== undefined && delta > 0;
+  const isNegative = delta !== undefined && delta < 0;
+
+  return (
+    <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
+      <div className={cn("flex flex-col gap-1 h-full justify-between", compact ? "p-4" : "p-5")}>
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
+            {label}
+          </span>
+          {icon && (
+            <span className="text-muted-foreground/60 shrink-0 mt-0.5">{icon}</span>
+          )}
+        </div>
+        <div className="mt-auto">
+          <div className={cn("font-bold tabular-nums text-foreground leading-none", compact ? "text-2xl" : "text-3xl")}>
+            {typeof value === 'number' ? value.toLocaleString() : value}
+          </div>
+          {delta !== undefined && (
+            <div className={cn(
+              "mt-1.5 text-xs font-medium flex items-center gap-1",
+              isPositive ? "text-emerald-600 dark:text-emerald-400"
+                : isNegative ? "text-red-500 dark:text-red-400"
+                  : "text-muted-foreground"
+            )}>
+              <span>{isPositive ? '↑' : isNegative ? '↓' : '→'}</span>
+              <span>
+                {isPositive ? '+' : ''}{delta}{deltaLabel ?? ''}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── RankedListCard ────────────────────────────────────────────────────────────
+
+export type RankedListItem = {
+  label: string,
+  count: number,
+  color?: string,
+};
+
+export function RankedListCard({
+  title,
+  items,
+  gradientColor = "blue",
+  className,
+  compact = false,
+  emptyMessage = 'No data available',
+}: {
+  title: string,
+  items: RankedListItem[],
+  gradientColor?: GradientColor,
+  className?: string,
+  compact?: boolean,
+  emptyMessage?: string,
+}) {
+  const max = Math.max(...items.map(i => i.count), 1);
+
+  return (
+    <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
+      <div className={cn("border-b border-foreground/[0.05]", compact ? "px-4 py-3" : "px-5 py-4")}>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</span>
+      </div>
+      <div className={cn("flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto", compact ? "p-4 pt-3" : "p-5 pt-4")}>
+        {items.length === 0 ? (
+          <div className="flex items-center justify-center flex-1">
+            <Typography variant="secondary" className="text-xs">{emptyMessage}</Typography>
+          </div>
+        ) : (
+          items.map((item, i) => (
+            <div key={i} className="flex items-center gap-2.5">
+              <span className="text-[10px] font-mono text-muted-foreground w-4 shrink-0 text-right">{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className={cn("text-foreground font-medium truncate", compact ? "text-xs" : "text-sm")}>{item.label}</span>
+                  <span className={cn("text-muted-foreground tabular-nums shrink-0 ml-2", compact ? "text-[10px]" : "text-xs")}>{item.count.toLocaleString()}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-foreground/[0.05] overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${(item.count / max) * 100}%`,
+                      backgroundColor: item.color ?? 'hsl(var(--primary))',
+                      opacity: 0.7,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── StatusBreakdownCard ───────────────────────────────────────────────────────
+
+export type StatusBreakdownItem = {
+  label: string,
+  count: number,
+  color: string,
+};
+
+export function StatusBreakdownCard({
+  title,
+  items,
+  gradientColor = "blue",
+  className,
+  compact = false,
+  emptyMessage = 'No data',
+}: {
+  title: string,
+  items: StatusBreakdownItem[],
+  gradientColor?: GradientColor,
+  className?: string,
+  compact?: boolean,
+  emptyMessage?: string,
+}) {
+  const total = items.reduce((s, i) => s + i.count, 0);
+
+  return (
+    <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
+      <div className={cn("border-b border-foreground/[0.05]", compact ? "px-4 py-3" : "px-5 py-4")}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</span>
+          {total > 0 && (
+            <span className="text-xs font-medium tabular-nums text-muted-foreground">{total.toLocaleString()}</span>
+          )}
+        </div>
+      </div>
+      <div className={cn("flex-1 min-h-0 flex flex-col", compact ? "p-4 pt-3 gap-2" : "p-5 pt-4 gap-2.5")}>
+        {items.length === 0 || total === 0 ? (
+          <div className="flex items-center justify-center flex-1">
+            <Typography variant="secondary" className="text-xs">{emptyMessage}</Typography>
+          </div>
+        ) : (
+          <>
+            {/* Stacked bar */}
+            <div className="flex h-2 rounded-full overflow-hidden gap-px">
+              {items.filter(i => i.count > 0).map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{ width: `${(item.count / total) * 100}%`, backgroundColor: item.color }}
+                />
+              ))}
+            </div>
+            {/* Legend */}
+            <div className="flex flex-col gap-1.5 mt-1">
+              {items.filter(i => i.count > 0).map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                    <span className={cn("text-foreground", compact ? "text-[11px]" : "text-xs")}>{item.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("text-muted-foreground tabular-nums", compact ? "text-[10px]" : "text-[11px]")}>
+                      {((item.count / total) * 100).toFixed(0)}%
+                    </span>
+                    <span className={cn("font-medium text-foreground tabular-nums", compact ? "text-[11px]" : "text-xs")}>
+                      {item.count.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── AlertListCard ─────────────────────────────────────────────────────────────
+
+export type AlertItem = {
+  label: string,
+  detail?: string,
+  severity: 'error' | 'warning' | 'info',
+};
+
+export function AlertListCard({
+  title,
+  alerts,
+  gradientColor = "orange",
+  className,
+  compact = false,
+  emptyMessage = 'No issues detected',
+}: {
+  title: string,
+  alerts: AlertItem[],
+  gradientColor?: GradientColor,
+  className?: string,
+  compact?: boolean,
+  emptyMessage?: string,
+}) {
+  const severityColors = {
+    error: 'bg-red-500/[0.12] text-red-600 dark:text-red-400 ring-red-500/20',
+    warning: 'bg-amber-500/[0.12] text-amber-600 dark:text-amber-400 ring-amber-500/20',
+    info: 'bg-blue-500/[0.08] text-blue-600 dark:text-blue-400 ring-blue-500/20',
+  };
+  const severityDot = {
+    error: 'bg-red-500',
+    warning: 'bg-amber-500',
+    info: 'bg-blue-500',
+  };
+
+  return (
+    <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
+      <div className={cn("border-b border-foreground/[0.05]", compact ? "px-4 py-3" : "px-5 py-4")}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</span>
+          {alerts.length > 0 && (
+            <span className={cn(
+              "text-[10px] font-medium px-2 py-0.5 rounded-full ring-1",
+              alerts.some(a => a.severity === 'error') ? severityColors.error
+                : alerts.some(a => a.severity === 'warning') ? severityColors.warning
+                  : severityColors.info
+            )}>
+              {alerts.length}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className={cn("flex-1 min-h-0 overflow-y-auto flex flex-col", compact ? "p-4 pt-3 gap-1.5" : "p-5 pt-4 gap-2")}>
+        {alerts.length === 0 ? (
+          <div className="flex items-center justify-center flex-1 gap-1.5 text-emerald-600 dark:text-emerald-400">
+            <span className="text-base">✓</span>
+            <Typography className="text-xs font-medium">{emptyMessage}</Typography>
+          </div>
+        ) : (
+          alerts.map((alert, idx) => (
+            <div key={idx} className={cn(
+              "flex items-start gap-2.5 rounded-xl px-3 py-2.5 ring-1",
+              severityColors[alert.severity]
+            )}>
+              <div className={cn("h-2 w-2 rounded-full shrink-0 mt-0.5", severityDot[alert.severity])} />
+              <div className="min-w-0">
+                <div className={cn("font-medium leading-snug", compact ? "text-xs" : "text-sm")}>{alert.label}</div>
+                {alert.detail && (
+                  <div className="text-[11px] opacity-80 mt-0.5">{alert.detail}</div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── CorrelationCard ───────────────────────────────────────────────────────────
+
+export type CorrelationSeries = {
+  key: string,
+  label: string,
+  color: string,
+  dataPoints: DataPoint[],
+};
+
+export function CorrelationCard({
+  title,
+  series,
+  gradientColor = "purple",
+  className,
+  height = 180,
+  compact = false,
+  timeRange,
+}: {
+  title: string,
+  series: CorrelationSeries[],
+  gradientColor?: GradientColor,
+  className?: string,
+  height?: number,
+  compact?: boolean,
+  timeRange: TimeRange,
+}) {
+  // Merge all series data points by date
+  const dateSet = new Set<string>();
+  for (const s of series) {
+    for (const d of s.dataPoints) dateSet.add(d.date);
+  }
+
+  const sortedDates = [...dateSet].sort();
+  const filteredDates = (() => {
+    if (timeRange === '7d') return sortedDates.slice(-7);
+    if (timeRange === '30d') return sortedDates.slice(-30);
+    return sortedDates;
+  })();
+
+  const merged = filteredDates.map(date => {
+    const row: Record<string, number | string> = { date };
+    for (const s of series) {
+      const pt = s.dataPoints.find(d => d.date === date);
+      row[s.key] = pt?.activity ?? 0;
+    }
+    return row;
+  });
+
+  const chartConfig: ChartConfig = Object.fromEntries(
+    series.map(s => [s.key, { label: s.label, color: s.color }])
+  );
+
+  return (
+    <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
+      <div className={cn("border-b border-foreground/[0.05]", compact ? "px-4 py-3" : "px-5 py-4")}>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{title}</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            {series.map(s => (
+              <div key={s.key} className="flex items-center gap-1.5">
+                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+                <span className="text-[11px] text-muted-foreground">{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className={cn("flex-1 min-h-0 overflow-visible", compact ? "p-4 pt-3" : "p-5 pt-4")}>
+        {merged.length === 0 ? (
+          <div className="flex items-center justify-center h-full">
+            <Typography variant="secondary" className="text-xs">No data available</Typography>
+          </div>
+        ) : (
+          <ChartContainer
+            config={chartConfig}
+            className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+            maxHeight={height}
+          >
+            <LineChart data={merged} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+              <CartesianGrid
+                horizontal
+                vertical={false}
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                opacity={0.3}
+              />
+              <XAxis
+                dataKey="date"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={6}
+                interval="equidistantPreserveStart"
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
+                tickFormatter={(value) => {
+                  const date = new Date(value);
+                  if (isNaN(date.getTime())) return value;
+                  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                width={compact ? 30 : 40}
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 9 : 11 }}
+              />
+              <ChartTooltip
+                content={<ChartTooltipContent className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" />}
+                cursor={{ strokeDasharray: '3 3', stroke: "hsl(var(--border))" }}
+                offset={20}
+                allowEscapeViewBox={{ x: true, y: true }}
+                wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+              />
+              {series.map(s => (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  stroke={s.color}
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ))}
+            </LineChart>
+          </ChartContainer>
         )}
       </div>
     </ChartCard>
