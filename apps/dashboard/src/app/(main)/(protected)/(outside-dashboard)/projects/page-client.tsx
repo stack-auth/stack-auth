@@ -170,18 +170,33 @@ function TeamAddUserDialogContent(props: {
   onClose: () => void,
 }) {
   const [invitations, setInvitations] = useState<Awaited<ReturnType<typeof listInvitations>>>();
+  const [invitationsError, setInvitationsError] = useState<string | null>(null);
 
   const fetchInvitations = useCallback(async () => {
-    const invitations = await listInvitations(props.team.id);
-    setInvitations(invitations);
+    setInvitationsError(null);
+    try {
+      const invitations = await listInvitations(props.team.id);
+      setInvitations(invitations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load invitations";
+      setInvitationsError(message);
+      throw error;
+    }
   }, [props.team.id]);
 
   useEffect(() => {
     let canceled = false;
     runAsynchronously(async () => {
-      const invitations = await listInvitations(props.team.id);
-      if (!canceled) {
-        setInvitations(invitations);
+      try {
+        const invitations = await listInvitations(props.team.id);
+        if (!canceled) {
+          setInvitations(invitations);
+        }
+      } catch (error) {
+        if (!canceled) {
+          const message = error instanceof Error ? error.message : "Failed to load invitations";
+          setInvitationsError(message);
+        }
       }
     });
     return () => {
@@ -227,29 +242,19 @@ function TeamAddUserDialogContent(props: {
   };
 
   const handleAddSeat = async () => {
-    try {
-      const checkoutUrl = await props.team.createCheckoutUrl({
-        productId: "extra-seats",
-        returnUrl: window.location.href,
-      });
-      window.location.assign(checkoutUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      toast({ variant: "destructive", title: "Failed to start checkout", description: message });
-    }
+    const checkoutUrl = await props.team.createCheckoutUrl({
+      productId: "extra-seats",
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
   };
 
   const handleUpgrade = async () => {
-    try {
-      const checkoutUrl = await props.team.createCheckoutUrl({
-        productId: "team",
-        returnUrl: window.location.href,
-      });
-      window.location.assign(checkoutUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      toast({ variant: "destructive", title: "Failed to start upgrade", description: message });
-    }
+    const checkoutUrl = await props.team.createCheckoutUrl({
+      productId: "team",
+      returnUrl: window.location.href,
+    });
+    window.location.assign(checkoutUrl);
   };
 
   return (
@@ -283,7 +288,7 @@ function TeamAddUserDialogContent(props: {
             }}
             placeholder="Email"
             type="email"
-            disabled={!invitationsLoaded || atCapacity}
+            disabled={(!invitationsLoaded && !invitationsError) || atCapacity}
             autoFocus
           />
           {formError && (
@@ -295,7 +300,20 @@ function TeamAddUserDialogContent(props: {
 
         <div className="space-y-2">
           <Typography type="label">Pending invitations</Typography>
-          {invitations?.length === 0 ? (
+          {invitationsError ? (
+            <div className="flex items-center justify-between rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2">
+              <Typography variant="secondary" className="text-destructive text-sm">
+                {invitationsError}
+              </Typography>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchInvitations}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : invitations?.length === 0 ? (
             <Typography variant="secondary">None</Typography>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -342,7 +360,7 @@ function TeamAddUserDialogContent(props: {
             </Button>
           )
         ) : (
-          <Button onClick={handleInvite} disabled={!invitationsLoaded}>
+          <Button onClick={handleInvite} disabled={!invitationsLoaded && !invitationsError}>
             Invite
           </Button>
         )}

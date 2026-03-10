@@ -376,8 +376,8 @@ function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: str
   const products = team.useProducts();
   const planId = resolvePlanId(products);
   const totalAllocation = PLAN_LIMITS[planId].sessionReplays;
-  const used = totalAllocation - replaysItem.quantity;
-  const usagePercent = totalAllocation > 0 ? (used / totalAllocation) * 100 : 0;
+  const used = Math.max(0, totalAllocation - replaysItem.quantity);
+  const usagePercent = totalAllocation > 0 ? Math.min(100, (used / totalAllocation) * 100) : 0;
 
   if (usagePercent < 80) {
     return null;
@@ -406,8 +406,8 @@ function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: st
   const products = team.useProducts();
   const planId = resolvePlanId(products);
   const totalAllocation = PLAN_LIMITS[planId].analyticsEvents;
-  const used = totalAllocation - eventsItem.quantity;
-  const usagePercent = totalAllocation > 0 ? (used / totalAllocation) * 100 : 0;
+  const used = Math.max(0, totalAllocation - eventsItem.quantity);
+  const usagePercent = totalAllocation > 0 ? Math.min(100, (used / totalAllocation) * 100) : 0;
 
   if (usagePercent < 80) {
     return null;

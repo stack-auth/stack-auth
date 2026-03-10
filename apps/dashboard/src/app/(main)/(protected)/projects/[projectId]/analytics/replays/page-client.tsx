@@ -1387,7 +1387,7 @@ export default function PageClient() {
       <PageLayout title="Session Replays" fillWidth>
         <AnalyticsEventLimitBanner />
         <SessionReplayLimitBanner />
-        <PanelGroup direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
+        <PanelGroup direction="horizontal" className="flex-1 min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
           <Panel defaultSize={25} minSize={16}>
             <div className="h-full flex flex-col">
               <div className="shrink-0 px-3 py-2 border-b border-border/30 space-y-2">
