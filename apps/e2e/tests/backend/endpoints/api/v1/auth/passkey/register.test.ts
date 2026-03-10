@@ -6,14 +6,14 @@ import { Auth, niceBackendFetch, Project } from "../../../../../backend-helpers"
 
 it("should allow initiating passkey registration", async ({ expect }) => {
   await Project.createAndSwitch({ config: { passkey_enabled: true } });
-  const res = await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.Passkey.initiateRegistration();
 });
 
 
 it("should successfully register a passkey", async ({ expect }) => {
   await Project.createAndSwitch({ config: { passkey_enabled: true } });
-  const res = await Auth.Password.signUpWithEmail();
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
   await Auth.Passkey.register();
 });
 

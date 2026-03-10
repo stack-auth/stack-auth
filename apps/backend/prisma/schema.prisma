@@ -41,8 +41,19 @@ model Project {
   tenancies                  Tenancy[]
   branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
+  localEmulatorProject       LocalEmulatorProject?
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
+}
+
+model LocalEmulatorProject {
+  absoluteFilePath String @id
+  projectId        String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Tenancy {
