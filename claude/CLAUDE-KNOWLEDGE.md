@@ -85,3 +85,9 @@ A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid 
 
 Q: How can overview Recharts on the dashboard dim non-hovered data while keeping the active day emphasized?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, track `hoveredIndex` from Recharts' `activeTooltipIndex` via chart `onMouseMove`/`onMouseLeave`, then use that index to lower non-hovered `Cell` opacity for bar charts and reduce line/area `strokeOpacity`/`fillOpacity` while relying on `activeDot` plus a stronger tooltip cursor to keep the hovered point visually focused.
+
+Q: How do you add a hover-to-swap chart interaction to the hero analytics widget with fade transitions?
+A: In `metrics-page.tsx`, maintain `chartMode` (the hover intent) and `displayMode` (the chart currently rendered) as separate states. On pill mouse-enter, set chartMode immediately, then use a 120ms timer to set displayMode and clear a `fadingOut` flag. Fade is achieved via CSS opacity transitions on the chart container. The pill component uses `onMouseEnter`/`onMouseLeave` rather than `onClick` so hovering is enough to swap. Clear the timer ref when a new mode is requested to avoid flicker during rapid transitions.
+
+Q: How do you add a MAU (monthly active users) metric sourced from ClickHouse to the backend metrics endpoint?
+A: Add a `loadMonthlyActiveUsers` function in `route.tsx` that runs `uniqExact(user_id)` over `$token-refresh` events in the last 30 days on `analytics_internal.events`. Wrap the ClickHouse call in try/catch and return 0 on error. Add the result to `loadAuthOverview`'s return as `mau`, and in the dev fallback block set `mau: totalUsers * 0.3` when `mau === 0` to ensure the dashboard is usable in development.

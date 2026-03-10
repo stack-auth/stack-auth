@@ -29,10 +29,14 @@ import {
   filterStackedDatapointsByTimeRange,
   GradientColor,
   LineChartDisplayConfig,
+  RevenueHoverChart,
+  RevenueHoverDataPoint,
   StackedDataPoint,
   TabbedMetricsCard,
   TimeRange,
   TimeRangeToggle,
+  VisitorsHoverChart,
+  VisitorsHoverDataPoint,
 } from "./line-chart";
 import { MetricsLoadingFallback } from "./metrics-loading";
 
@@ -150,40 +154,207 @@ function StatCard({
   );
 }
 
+type HeroChartMode = 'default' | 'visitors' | 'revenue';
+
+function HeroInChartPill({
+  label,
+  value,
+  delta,
+  color,
+  isHovered,
+  onMouseEnter,
+}: {
+  label: string,
+  value: string,
+  delta?: number,
+  color: string,
+  isHovered: boolean,
+  onMouseEnter: () => void,
+}) {
+  return (
+    <button
+      type="button"
+      onMouseEnter={onMouseEnter}
+      className={cn(
+        "group/pill flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors hover:transition-none cursor-default select-none flex-1",
+        isHovered
+          ? "bg-foreground/[0.06] ring-1 ring-foreground/[0.09]"
+          : "hover:bg-foreground/[0.03]"
+      )}
+    >
+      {/* Color dot */}
+      <span
+        className={cn(
+          "h-2 w-2 rounded-full shrink-0 transition-transform",
+          isHovered ? "scale-125" : ""
+        )}
+        style={{ backgroundColor: color }}
+      />
+      {/* Label + value stacked */}
+      <div className="flex flex-col gap-0.5 text-left min-w-0">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-none">
+          {label}
+        </span>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-[15px] font-bold tabular-nums text-foreground leading-none">
+            {value}
+          </span>
+          {delta != null && (
+            <span className={cn(
+              "text-[10px] font-semibold tabular-nums leading-none shrink-0",
+              delta > 0 ? "text-emerald-500 dark:text-emerald-400" : delta < 0 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
+            )}>
+              {delta > 0 ? "+" : ""}{delta}%
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function HeroAnalyticsWidget({
   composedData,
-  stats,
+  visitorsData,
+  revenueData,
+  outerStats,
+  visitorsLabel,
+  revenueLabel,
+  visitorsTotal,
+  revenueTotal,
+  visitorsDelta,
+  revenueDelta,
   compact = false,
 }: {
   composedData: ComposedDataPoint[],
-  stats: AnalyticsStatPill[],
+  visitorsData: VisitorsHoverDataPoint[],
+  revenueData: RevenueHoverDataPoint[],
+  outerStats: AnalyticsStatPill[],
+  visitorsLabel: string,
+  revenueLabel: string,
+  visitorsTotal: string,
+  revenueTotal: string,
+  visitorsDelta?: number,
+  revenueDelta?: number,
   compact?: boolean,
 }) {
+  const [chartMode, setChartMode] = useState<HeroChartMode>('default');
+  const [fadingOut, setFadingOut] = useState(false);
+  const [displayMode, setDisplayMode] = useState<HeroChartMode>('default');
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const switchToMode = (mode: HeroChartMode) => {
+    if (mode === displayMode) return;
+    if (fadeTimerRef.current != null) {
+      clearTimeout(fadeTimerRef.current);
+    }
+    setFadingOut(true);
+    fadeTimerRef.current = setTimeout(() => {
+      setDisplayMode(mode);
+      setFadingOut(false);
+      fadeTimerRef.current = null;
+    }, 120);
+  };
+
+  const handlePillMouseEnter = (mode: 'visitors' | 'revenue') => {
+    setChartMode(mode);
+    switchToMode(mode);
+  };
+
+  const handlePillMouseLeave = () => {
+    setChartMode('default');
+    switchToMode('default');
+  };
+
+  const visitorsColor = "hsl(210, 84%, 64%)";
+  const revenueColor = "hsl(268, 82%, 66%)";
+
   return (
     <div className="flex flex-col gap-3 h-full">
-      {/* Stat cards row */}
+      {/* Outer stat cards row */}
       <div className="grid grid-cols-3 gap-3">
-        {stats.map((stat) => (
+        {outerStats.map((stat) => (
           <StatCard key={stat.label} stat={stat} compact={compact} />
         ))}
       </div>
 
-      {/* Chart card */}
+      {/* Chart card with in-card pills */}
       <ChartCard gradientColor="blue" className="flex-1 min-h-0">
-        <div className={cn(
-          "flex-1 min-h-0 flex flex-col",
-          compact ? "px-4 pt-2 pb-2" : "px-4 pt-3 pb-3",
-        )}>
-          {composedData.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <Typography variant="secondary" className="text-xs">No data available</Typography>
-            </div>
-          ) : (
-            <ComposedAnalyticsChart
-              datapoints={composedData}
-              compact={compact}
-            />
+        <div
+          className={cn(
+            "flex-1 min-h-0 flex flex-col",
+            compact ? "px-4 pt-2 pb-2" : "px-4 pt-3 pb-3",
           )}
+          onMouseLeave={handlePillMouseLeave}
+        >
+          {/* In-card pills row */}
+          <div className="flex items-stretch mb-2 -mx-1">
+            <HeroInChartPill
+              label={visitorsLabel}
+              value={visitorsTotal}
+              delta={visitorsDelta}
+              color={visitorsColor}
+              isHovered={chartMode === 'visitors'}
+              onMouseEnter={() => handlePillMouseEnter('visitors')}
+            />
+            <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
+            <HeroInChartPill
+              label={revenueLabel}
+              value={revenueTotal}
+              delta={revenueDelta}
+              color={revenueColor}
+              isHovered={chartMode === 'revenue'}
+              onMouseEnter={() => handlePillMouseEnter('revenue')}
+            />
+          </div>
+
+          {/* Chart area with fade transition */}
+          <div className="flex-1 min-h-0 relative" style={{ minHeight: 0 }}>
+            <div
+              className={cn(
+                "h-full flex flex-col",
+                fadingOut ? "opacity-0" : "opacity-100",
+                "transition-opacity duration-[120ms]",
+              )}
+            >
+              {displayMode === 'default' && (
+                composedData.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Typography variant="secondary" className="text-xs">No data available</Typography>
+                  </div>
+                ) : (
+                  <ComposedAnalyticsChart
+                    datapoints={composedData}
+                    compact={compact}
+                  />
+                )
+              )}
+              {displayMode === 'visitors' && (
+                visitorsData.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Typography variant="secondary" className="text-xs">No visitor data available</Typography>
+                  </div>
+                ) : (
+                  <VisitorsHoverChart
+                    datapoints={visitorsData}
+                    compact={compact}
+                  />
+                )
+              )}
+              {displayMode === 'revenue' && (
+                revenueData.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Typography variant="secondary" className="text-xs">No revenue data available</Typography>
+                  </div>
+                ) : (
+                  <RevenueHoverChart
+                    datapoints={revenueData}
+                    compact={compact}
+                  />
+                )
+              )}
+            </div>
+          </div>
         </div>
       </ChartCard>
     </div>
@@ -626,28 +797,84 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
     return points;
   }, [data.analytics_overview, timeRange]);
 
-  const heroStats = useMemo<AnalyticsStatPill[]>(() => {
+  // ── Visitors hover chart data (page views + clicks) ───────────────────────
+  const visitorsHoverData = useMemo<VisitorsHoverDataPoint[]>(() => {
     const analyticsObj = data.analytics_overview ?? {};
-    const paymentsObj = data.payments_overview ?? {};
+    const dailyPv = (analyticsObj.daily_page_views ?? []) as DataPoint[];
+    const dailyCl = (analyticsObj.daily_clicks ?? []) as DataPoint[];
+
+    const pvMap = new Map(dailyPv.map(d => [d.date, d.activity]));
+    const clMap = new Map(dailyCl.map(d => [d.date, d.activity]));
+
+    const allDates = new Set([
+      ...dailyPv.map(d => d.date),
+      ...dailyCl.map(d => d.date),
+    ]);
+
+    const points = [...allDates].map(date => ({
+      date,
+      page_views: pvMap.get(date) ?? 0,
+      clicks: clMap.get(date) ?? 0,
+    })).sort((a, b) => stringCompare(a.date, b.date));
+
+    if (timeRange === '7d') return points.slice(-7);
+    if (timeRange === '30d') return points.slice(-30);
+    return points;
+  }, [data.analytics_overview, timeRange]);
+
+  // ── Revenue hover chart data (new_cents + refund_cents) ───────────────────
+  const revenueHoverData = useMemo<RevenueHoverDataPoint[]>(() => {
+    const analyticsObj = data.analytics_overview ?? {};
+    const dailyRev = (analyticsObj.daily_revenue ?? []) as Array<{ date: string, new_cents: number, refund_cents: number }>;
+
+    const points = dailyRev.map(d => ({
+      date: d.date,
+      new_cents: d.new_cents,
+      refund_cents: d.refund_cents,
+    })).sort((a, b) => stringCompare(a.date, b.date));
+
+    if (timeRange === '7d') return points.slice(-7);
+    if (timeRange === '30d') return points.slice(-30);
+    return points;
+  }, [data.analytics_overview, timeRange]);
+
+  // ── Hero outer stats: MAUs, Total Emails sent, Session time ───────────────
+  const heroOuterStats = useMemo<AnalyticsStatPill[]>(() => {
+    const analyticsObj = data.analytics_overview ?? {};
     const deltasObj = (analyticsObj.deltas ?? {}) as Record<string, number>;
-    const totalRevenueCents = analyticsObj.total_revenue_cents ?? (paymentsObj.revenue_cents ?? 0);
+    const mau = (auth.mau ?? 0) as number;
+    const totalEmailsSent = (email.emails_sent ?? 0) as number;
     return [
       {
-        label: "Visitors",
-        value: formatCompact(analyticsObj.visitors ?? 0),
-        delta: deltasObj.visitors,
+        label: "MAUs",
+        value: formatCompact(mau),
       },
       {
-        label: "Revenue",
-        value: formatUsdFromCents(totalRevenueCents),
-        delta: deltasObj.revenue,
+        label: "Total Emails Sent",
+        value: formatCompact(totalEmailsSent),
       },
       {
-        label: "Session time",
+        label: "Session Time",
         value: formatSeconds(analyticsObj.avg_session_seconds ?? 0),
         delta: deltasObj.session_time,
       },
     ];
+  }, [auth.mau, email.emails_sent, data.analytics_overview]);
+
+  // ── In-chart pill values: Visitors and Revenue ────────────────────────────
+  const inChartPillValues = useMemo(() => {
+    const analyticsObj = data.analytics_overview ?? {};
+    const paymentsObj = data.payments_overview ?? {};
+    const deltasObj = (analyticsObj.deltas ?? {}) as Record<string, number>;
+    const totalRevenueCents = (analyticsObj.total_revenue_cents ?? paymentsObj.revenue_cents ?? 0) as number;
+    return {
+      visitorsTotal: formatCompact(analyticsObj.visitors ?? 0),
+      visitorsLabel: "Visitors",
+      visitorsDelta: deltasObj.visitors as number | undefined,
+      revenueTotal: formatUsdFromCents(totalRevenueCents),
+      revenueLabel: "Revenue",
+      revenueDelta: deltasObj.revenue as number | undefined,
+    };
   }, [data.analytics_overview, data.payments_overview]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
@@ -679,7 +906,9 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
         className={cn(
           "grid gap-4 sm:gap-5 grid-cols-1 lg:grid-cols-12",
         )}
-        style={shouldShowGlobe ? { height: Math.max(400, Math.round(globeColumnWidth)) } : undefined}
+        style={shouldShowGlobe
+          ? { height: Math.max(400, Math.round(globeColumnWidth)) }
+          : { minHeight: 400 }}
       >
         {shouldShowGlobe && (
           <div className="hidden lg:flex lg:col-span-5 h-full relative">
@@ -703,11 +932,20 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
         )}
 
         <div className={cn(
-          shouldShowGlobe ? "lg:col-span-7 h-full" : "lg:col-span-12",
+          "h-full",
+          shouldShowGlobe ? "lg:col-span-7" : "lg:col-span-12",
         )}>
           <HeroAnalyticsWidget
             composedData={composedData}
-            stats={heroStats}
+            visitorsData={visitorsHoverData}
+            revenueData={revenueHoverData}
+            outerStats={heroOuterStats}
+            visitorsLabel={inChartPillValues.visitorsLabel}
+            revenueLabel={inChartPillValues.revenueLabel}
+            visitorsTotal={inChartPillValues.visitorsTotal}
+            revenueTotal={inChartPillValues.revenueTotal}
+            visitorsDelta={inChartPillValues.visitorsDelta}
+            revenueDelta={inChartPillValues.revenueDelta}
             compact={shouldShowGlobe}
           />
         </div>

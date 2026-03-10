@@ -514,6 +514,18 @@ export type ComposedDataPoint = {
   visitors: number,
 };
 
+export type VisitorsHoverDataPoint = {
+  date: string,
+  page_views: number,
+  clicks: number,
+};
+
+export type RevenueHoverDataPoint = {
+  date: string,
+  new_cents: number,
+  refund_cents: number,
+};
+
 type HighlightDotProps = {
   cx?: number,
   cy?: number,
@@ -1956,6 +1968,304 @@ export function EmailStackedBarChartDisplay({
           width={28}
         />
       </ComposedChart>
+    </ChartContainer>
+  );
+}
+
+// ── Visitors hover chart (page views + clicks stacked bar) ──────────────────
+
+const visitorsHoverChartConfig: ChartConfig = {
+  page_views: {
+    label: "Page Views",
+    theme: { light: "hsl(210, 84%, 64%)", dark: "hsl(210, 84%, 72%)" },
+  },
+  clicks: {
+    label: "Clicks",
+    theme: { light: "hsl(210, 84%, 82%)", dark: "hsl(210, 84%, 88%)" },
+  },
+};
+
+function VisitorsHoverTooltip({ active, payload }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null;
+
+  const row = payload[0]?.payload as VisitorsHoverDataPoint | undefined;
+  if (!row) return null;
+
+  const date = new Date(row.date);
+  const formattedDate = !isNaN(date.getTime())
+    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : row.date;
+
+  const total = row.page_views + row.clicks;
+
+  return (
+    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(210, 84%, 64%)" }} />
+            <span className="text-[11px] text-muted-foreground">Page Views</span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {row.page_views.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(210, 84%, 82%)" }} />
+            <span className="text-[11px] text-muted-foreground">Clicks</span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {row.clicks.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5 mt-0.5 pt-1.5 border-t border-foreground/[0.06]">
+            <span className="text-[11px] font-medium text-muted-foreground">Total</span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {total.toLocaleString()}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function VisitorsHoverChart({
+  datapoints,
+  compact = false,
+}: {
+  datapoints: VisitorsHoverDataPoint[],
+  compact?: boolean,
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  return (
+    <ChartContainer
+      config={visitorsHoverChartConfig}
+      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+    >
+      <BarChart
+        data={datapoints}
+        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+        onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
+        <CartesianGrid
+          horizontal
+          vertical={false}
+          strokeDasharray="3 3"
+          stroke="hsl(var(--border))"
+          opacity={0.3}
+        />
+        <ChartTooltip
+          content={<VisitorsHoverTooltip />}
+          cursor={{ fill: "hsl(var(--muted-foreground))", opacity: hoveredIndex == null ? 0.08 : 0.12, radius: 4 }}
+          offset={20}
+          allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+        />
+        <Bar dataKey="page_views" stackId="visitors" fill="var(--color-page_views)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => {
+            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const isActiveBar = hoveredIndex === index;
+            return (
+              <Cell
+                key={`pv-${index}`}
+                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                strokeWidth={isActiveBar ? 1 : 0}
+              />
+            );
+          })}
+        </Bar>
+        <Bar dataKey="clicks" stackId="visitors" fill="var(--color-clicks)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => {
+            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const isActiveBar = hoveredIndex === index;
+            return (
+              <Cell
+                key={`cl-${index}`}
+                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                strokeWidth={isActiveBar ? 1 : 0}
+              />
+            );
+          })}
+        </Bar>
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={compact ? 6 : 8}
+          tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
+          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
+          tickFormatter={(value: string) => {
+            const d = new Date(value);
+            return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          }}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={4}
+          tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
+          allowDecimals={false}
+          width={28}
+        />
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
+// ── Revenue hover chart (new_cents + refund_cents stacked bar) ───────────────
+
+const revenueHoverChartConfig: ChartConfig = {
+  new_cents: {
+    label: "Revenue",
+    theme: { light: "hsl(268, 82%, 66%)", dark: "hsl(268, 82%, 74%)" },
+  },
+  refund_cents: {
+    label: "Refunds",
+    theme: { light: "hsl(355, 70%, 68%)", dark: "hsl(355, 70%, 76%)" },
+  },
+};
+
+function formatUsdCompact(cents: number): string {
+  const dollars = cents / 100;
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}k`;
+  return `$${dollars.toFixed(0)}`;
+}
+
+function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null;
+
+  const row = payload[0]?.payload as RevenueHoverDataPoint | undefined;
+  if (!row) return null;
+
+  const date = new Date(row.date);
+  const formattedDate = !isNaN(date.getTime())
+    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : row.date;
+
+  const net = row.new_cents - row.refund_cents;
+
+  return (
+    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+      <div className="flex flex-col gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(268, 82%, 66%)" }} />
+            <span className="text-[11px] text-muted-foreground">Revenue</span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {formatUsdCompact(row.new_cents)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(355, 70%, 68%)" }} />
+            <span className="text-[11px] text-muted-foreground">Refunds</span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {formatUsdCompact(row.refund_cents)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5 mt-0.5 pt-1.5 border-t border-foreground/[0.06]">
+            <span className="text-[11px] font-medium text-muted-foreground">Net</span>
+            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+              {formatUsdCompact(Math.max(0, net))}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RevenueHoverChart({
+  datapoints,
+  compact = false,
+}: {
+  datapoints: RevenueHoverDataPoint[],
+  compact?: boolean,
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const maxCents = Math.max(...datapoints.map(d => d.new_cents + d.refund_cents), 1);
+  const ticksCents = niceAxisTicks(Math.ceil(maxCents * 1.1), 4);
+
+  return (
+    <ChartContainer
+      config={revenueHoverChartConfig}
+      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+    >
+      <BarChart
+        data={datapoints}
+        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+        onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
+        <CartesianGrid
+          horizontal
+          vertical={false}
+          strokeDasharray="3 3"
+          stroke="hsl(var(--border))"
+          opacity={0.3}
+        />
+        <ChartTooltip
+          content={<RevenueHoverTooltip />}
+          cursor={{ fill: "hsl(var(--muted-foreground))", opacity: hoveredIndex == null ? 0.08 : 0.12, radius: 4 }}
+          offset={20}
+          allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
+        />
+        <Bar dataKey="new_cents" stackId="revenue" fill="var(--color-new_cents)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => {
+            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const isActiveBar = hoveredIndex === index;
+            return (
+              <Cell
+                key={`nc-${index}`}
+                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                strokeWidth={isActiveBar ? 1 : 0}
+              />
+            );
+          })}
+        </Bar>
+        <Bar dataKey="refund_cents" stackId="revenue" fill="var(--color-refund_cents)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+          {datapoints.map((entry, index) => {
+            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const isActiveBar = hoveredIndex === index;
+            return (
+              <Cell
+                key={`rc-${index}`}
+                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                strokeWidth={isActiveBar ? 1 : 0}
+              />
+            );
+          })}
+        </Bar>
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={compact ? 6 : 8}
+          tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
+          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
+          tickFormatter={(value: string) => {
+            const d = new Date(value);
+            return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          }}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickMargin={4}
+          tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
+          ticks={ticksCents}
+          tickFormatter={(v: number) => formatUsdCompact(v)}
+          width={36}
+        />
+      </BarChart>
     </ChartContainer>
   );
 }

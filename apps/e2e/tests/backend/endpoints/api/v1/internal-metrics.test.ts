@@ -279,6 +279,8 @@ it("should return cross-product aggregates in the metrics response", async ({ ex
   expect(typeof authOverview.unverified_users).toBe('number');
   expect(typeof authOverview.anonymous_users).toBe('number');
   expect(typeof authOverview.total_teams).toBe('number');
+  // MAU field introduced for hero widget
+  expect(typeof authOverview.mau).toBe('number');
 
   // Payments overview shape
   const paymentsOverview = response.body.payments_overview;
@@ -299,6 +301,9 @@ it("should return cross-product aggregates in the metrics response", async ({ ex
   expect(Array.isArray(analyticsOverview.daily_clicks)).toBe(true);
   expect(typeof analyticsOverview.total_replays).toBe('number');
   expect(typeof analyticsOverview.recent_replays).toBe('number');
+  // Fields used by visitors/revenue hover charts
+  expect(Array.isArray(analyticsOverview.daily_visitors)).toBe(true);
+  expect(Array.isArray(analyticsOverview.daily_revenue)).toBe(true);
 });
 
 it("should return correct auth_overview breakdown including teams", async ({ expect }) => {
