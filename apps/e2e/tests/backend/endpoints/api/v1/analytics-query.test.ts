@@ -2,7 +2,7 @@ import { PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
-import { backendContext, InternalProjectKeys, Project, User, niceBackendFetch } from "../../../backend-helpers";
+import { Project, User, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
 async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -17,21 +17,20 @@ async function runQuery(body: { query: string, params?: Record<string, string>, 
 }
 
 async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
-  const { createProjectResponse, adminAccessToken } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
   if (planId !== "free") {
-    const savedKeys = backendContext.value.projectKeys;
-    backendContext.set({ projectKeys: InternalProjectKeys });
-    const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
-      method: "POST",
-      accessType: "server",
-      body: { product_id: planId },
+    await withInternalProject(async () => {
+      const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
+        method: "POST",
+        accessType: "server",
+        body: { product_id: planId },
+      });
+      if (grantResponse.status !== 200) {
+        throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
+      }
     });
-    if (grantResponse.status !== 200) {
-      throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
-    }
-    backendContext.set({ projectKeys: savedKeys });
   }
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {

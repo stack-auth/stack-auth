@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { Auth, InternalProjectKeys, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
 async function uploadBatch(options: {
   browserSessionId: string,
@@ -1388,17 +1388,6 @@ it("admin list session replays rejects invalid filter parameters", async ({ expe
 // Session replay limit enforcement tests
 // ============================================================================
 
-async function withInternalProject<T>(fn: () => Promise<T>): Promise<T> {
-  const savedKeys = backendContext.value.projectKeys;
-  const savedUserAuth = backendContext.value.userAuth;
-  backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
-  try {
-    return await fn();
-  } finally {
-    backendContext.set({ projectKeys: savedKeys, userAuth: savedUserAuth });
-  }
-}
-
 async function getSessionReplayItemQuantity(ownerTeamId: string) {
   return await withInternalProject(async () => {
     const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/session_replays`, {
@@ -1481,7 +1470,7 @@ it("accepts new session replay and debits quota by 1", async ({ expect }) => {
   expect(quantityAfter).toBe(quantityBefore - 1);
 });
 
-it("does not debit quota when appending chunks to an existing session replay", async ({ expect }) => {
+it("does not debit quota when appending chunks to an existing session replay, even after quota is exhausted", async ({ expect }) => {
   const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
   const ownerTeamId = createProjectResponse.body.owner_team_id;
@@ -1513,4 +1502,20 @@ it("does not debit quota when appending chunks to an existing session replay", a
 
   const quantityAfterSecond = await getSessionReplayItemQuantity(ownerTeamId);
   expect(quantityAfterSecond).toBe(quantityAfterFirst);
+
+  // Exhaust quota — existing replays should still be able to append
+  await setSessionReplayItemQuantity(ownerTeamId, 0);
+
+  const thirdBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 1500,
+    events: [{ type: 3, timestamp: now + 1000 }],
+  });
+  expect(thirdBatch.status).toBe(200);
+  expect(thirdBatch.body.session_replay_id).toBe(firstBatch.body.session_replay_id);
+
+  const quantityAfterThird = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfterThird).toBe(0);
 });

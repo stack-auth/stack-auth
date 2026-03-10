@@ -2,7 +2,7 @@ import { PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
-import { Auth, InternalProjectKeys, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
 async function uploadEventBatch(options: {
   sessionReplaySegmentId: string,
@@ -440,31 +440,19 @@ async function setupProjectWithPlan(planId: PlanId) {
   const ownerTeamId = createProjectResponse.body.owner_team_id;
 
   if (planId !== "free") {
-    const savedKeys = backendContext.value.projectKeys;
-    backendContext.set({ projectKeys: InternalProjectKeys });
-    const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
-      method: "POST",
-      accessType: "server",
-      body: { product_id: planId },
+    await withInternalProject(async () => {
+      const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
+        method: "POST",
+        accessType: "server",
+        body: { product_id: planId },
+      });
+      if (grantResponse.status !== 200) {
+        throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
+      }
     });
-    if (grantResponse.status !== 200) {
-      throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
-    }
-    backendContext.set({ projectKeys: savedKeys });
   }
 
   return { ownerTeamId };
-}
-
-async function withInternalProject<T>(fn: () => Promise<T>): Promise<T> {
-  const savedKeys = backendContext.value.projectKeys;
-  const savedUserAuth = backendContext.value.userAuth;
-  backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
-  try {
-    return await fn();
-  } finally {
-    backendContext.set({ projectKeys: savedKeys, userAuth: savedUserAuth });
-  }
 }
 
 async function getEventItemQuantity(ownerTeamId: string) {
