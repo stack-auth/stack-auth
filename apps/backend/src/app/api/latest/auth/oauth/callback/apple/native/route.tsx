@@ -132,6 +132,7 @@ export const POST = createSmartRouteHandler({
             authMethod: 'oauth',
             oauthProvider: 'apple',
             ipAddress: null,
+            ipTrusted: null,
             countryCode: null,
             // Note: Request context not easily available in native OAuth callback
           },

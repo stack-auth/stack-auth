@@ -1,11 +1,12 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
-import { getSpoofableEndUserIp, getSpoofableEndUserLocation } from "./end-users";
-import { calculateSignUpRiskScores } from "./risk-scores";
+import { getBestEffortEndUserRequestContext } from "./end-users";
+import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 
@@ -16,8 +17,37 @@ export type SignUpRuleOptions = {
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider: string | null,
   ipAddress: string | null,
+  ipTrusted: boolean | null,
   countryCode: string | null,
 };
+
+async function persistSignUpHeuristicFacts(params: {
+  tenancy: Tenancy,
+  userId: string,
+  signUpHeuristicRecordedAt: Date,
+  signUpIp: string | null,
+  signUpIpTrusted: boolean | null,
+  signUpEmailNormalized: string | null,
+  signUpEmailBase: string | null,
+}) {
+  const prisma = await getPrismaClientForTenancy(params.tenancy);
+  await prisma.projectUser.update({
+    where: {
+      tenancyId_projectUserId: {
+        tenancyId: params.tenancy.id,
+        projectUserId: params.userId,
+      },
+    },
+    data: {
+      signUpHeuristicRecordedAt: params.signUpHeuristicRecordedAt,
+      signUpIp: params.signUpIp,
+      signUpIpTrusted: params.signUpIpTrusted,
+      signUpEmailNormalized: params.signUpEmailNormalized,
+      signUpEmailBase: params.signUpEmailBase,
+      shouldUpdateSequenceId: true,
+    },
+  });
+}
 
 export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
   if (email != null) {
@@ -86,24 +116,28 @@ export async function createOrUpgradeAnonymousUserWithRules(
 ): Promise<UsersCrud["Admin"]["Read"]> {
   const email = createOrUpdate.primary_email ?? currentUser?.primary_email ?? null;
   const primaryEmailVerified = createOrUpdate.primary_email_verified ?? currentUser?.primary_email_verified ?? false;
-  const [requestIpAddress, requestLocation] = await Promise.all([
-    signUpRuleOptions.ipAddress !== null ? Promise.resolve(signUpRuleOptions.ipAddress) : getSpoofableEndUserIp().then((ip) => ip ?? null),
-    signUpRuleOptions.countryCode !== null ? Promise.resolve(null) : getSpoofableEndUserLocation(),
-  ]);
+  const endUserRequestContext = signUpRuleOptions.ipAddress !== null && signUpRuleOptions.ipTrusted !== null && signUpRuleOptions.countryCode !== null
+    ? null
+    : await getBestEffortEndUserRequestContext();
+  const requestIpAddress = signUpRuleOptions.ipAddress ?? endUserRequestContext?.ipAddress ?? null;
+  const requestIpTrusted = signUpRuleOptions.ipTrusted ?? endUserRequestContext?.ipTrusted ?? null;
+  const requestCountryCode = signUpRuleOptions.countryCode ?? endUserRequestContext?.location?.countryCode ?? null;
   const countryCode = signUpRuleOptions.countryCode !== null
     ? signUpRuleOptions.countryCode
-    : getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null, email);
+    : getDerivedSignUpCountryCode(requestCountryCode, email);
   const countryCodeToPersist = currentUser?.is_anonymous && currentUser.country_code != null
     ? currentUser.country_code
     : countryCode;
 
-  const riskScores = await calculateSignUpRiskScores(tenancy, {
+  const riskAssessment = await calculateSignUpRiskAssessment(tenancy, {
     primaryEmail: email ?? null,
     primaryEmailVerified,
     authMethod: signUpRuleOptions.authMethod,
     oauthProvider: signUpRuleOptions.oauthProvider,
     ipAddress: requestIpAddress,
+    ipTrusted: requestIpTrusted,
   });
+  const riskScores = riskAssessment.scores;
 
   const ruleResult = await evaluateSignUpRules(tenancy, createSignUpRuleContext({
     email,
@@ -136,17 +170,29 @@ export async function createOrUpgradeAnonymousUserWithRules(
     risk_scores: {
       sign_up: {
         bot: riskScores.bot,
-        free_trial_abuse: riskScores.freeTrialAbuse,
+        free_trial_abuse: riskScores.free_trial_abuse,
       },
     },
   };
 
-  return await createOrUpgradeAnonymousUserWithoutRules(
+  const user = await createOrUpgradeAnonymousUserWithoutRules(
     tenancy,
     currentUser,
     enrichedCreateOrUpdate as KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
     allowedErrorTypes,
   );
+
+  await persistSignUpHeuristicFacts({
+    tenancy,
+    userId: user.id,
+    signUpHeuristicRecordedAt: riskAssessment.heuristicFacts.signUpHeuristicRecordedAt,
+    signUpIp: riskAssessment.heuristicFacts.signUpIp,
+    signUpIpTrusted: riskAssessment.heuristicFacts.signUpIpTrusted,
+    signUpEmailNormalized: riskAssessment.heuristicFacts.signUpEmailNormalized,
+    signUpEmailBase: riskAssessment.heuristicFacts.signUpEmailBase,
+  });
+
+  return user;
 }
 
 /**

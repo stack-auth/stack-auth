@@ -1,6 +1,10 @@
+import { getPrismaClientForTenancy } from "@/prisma-client";
+import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { checkEmailWithEmailable } from "./emailable";
 import { Tenancy } from "./tenancies";
+import { DerivedSignUpHeuristicFacts, deriveSignUpHeuristicFacts } from "./sign-up-heuristics";
 
 function parseWeight(envName: string, defaultValue: number): number {
   const raw = getEnvVariable(envName, String(defaultValue));
@@ -11,10 +15,16 @@ function parseWeight(envName: string, defaultValue: number): number {
   return parsed;
 }
 
-export type SignUpRiskScores = {
-  bot: number,
-  freeTrialAbuse: number,
-};
+function parsePositiveInteger(envName: string, defaultValue: number): number {
+  const raw = getEnvVariable(envName, String(defaultValue));
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new StackAssertionError(`Invalid ${envName}: expected integer >=1, got "${raw}"`);
+  }
+  return parsed;
+}
+
+export type SignUpRiskScores = SignUpRiskScoresCrud;
 
 export type SignUpRiskScoreContext = {
   primaryEmail: string | null,
@@ -22,113 +32,192 @@ export type SignUpRiskScoreContext = {
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider: string | null,
   ipAddress: string | null,
+  ipTrusted: boolean | null,
 };
 
-type SignUpRiskHeuristic = {
-  id: string,
-  weight: number,
-  matches: (context: SignUpRiskScoreContext) => boolean,
+export type SignUpRiskAssessment = {
+  scores: SignUpRiskScores,
+  heuristicFacts: DerivedSignUpHeuristicFacts,
 };
 
-const disposableEmailDomainPatterns = [
-  /(?:^|[-.])(?:10|20)minute(?:s)?mail(?:$|[-.])/,
-  /(?:^|[-.])temp(?:[-.]?(?:mail|ail)|mailo|mailninja)(?:$|[-.])/,
-  /(?:^|[-.])throwaway(?:$|[-.])/,
-  /(?:^|[-.])guerrilla(?:[-.]?mail)?(?:$|[-.])/,
-  /(?:^|[-.])mailinator(?:$|[-.])/,
-  /(?:^|[-.])yopmail(?:$|[-.])/,
-  /(?:^|[-.])trashmail(?:$|[-.])/,
-  /(?:^|[-.])dropmail(?:$|[-.])/,
-  /(?:^|[-.])mailnesia(?:$|[-.])/,
-  /(?:^|[-.])getnada(?:$|[-.])/,
-  /(?:^|[-.])emailnator(?:$|[-.])/,
-  /(?:^|[-.])emailondeck(?:$|[-.])/,
-  /(?:^|[-.])emailtemporanea(?:$|[-.])/,
-  /(?:^|[-.])fakeinbox(?:$|[-.])/,
-  /(?:^|[-.])mintemail(?:$|[-.])/,
-  /(?:^|[-.])sharklasers(?:$|[-.])/,
-  /(?:^|[-.])dispostable(?:$|[-.])/,
-  /(?:^|[-.])moakt(?:$|[-.])/,
-  /(?:^|[-.])tmpmail(?:$|[-.])/,
-] as const;
+const recentWindowHours = parsePositiveInteger("STACK_RISK_SIGN_UP_RECENT_WINDOW_HOURS", 24);
+const sameIpMinimumMatches = parsePositiveInteger("STACK_RISK_SAME_IP_MIN_RECENT_MATCHES", 1);
+const similarEmailMinimumMatches = parsePositiveInteger("STACK_RISK_SIMILAR_EMAIL_MIN_RECENT_MATCHES", 1);
 
-const botRiskHeuristics: readonly SignUpRiskHeuristic[] = [
-  {
-    id: "disposable-email-domain",
-    weight: parseWeight("STACK_RISK_BOT_DISPOSABLE_EMAIL_WEIGHT", 100),
-    matches: (context) => disposableEmailDomainPatterns.some((pattern) => pattern.test(normalizeEmailDomain(context.primaryEmail))),
-  },
-] as const;
+const trustedSameIpWeights = {
+  bot: parseWeight("STACK_RISK_BOT_TRUSTED_SAME_IP_WEIGHT", 35),
+  free_trial_abuse: parseWeight("STACK_RISK_FTA_TRUSTED_SAME_IP_WEIGHT", 70),
+} as const;
 
-const freeTrialAbuseRiskHeuristics: readonly SignUpRiskHeuristic[] = [
-  {
-    id: "disposable-email-domain",
-    weight: parseWeight("STACK_RISK_FTA_DISPOSABLE_EMAIL_WEIGHT", 100),
-    matches: (context) => disposableEmailDomainPatterns.some((pattern) => pattern.test(normalizeEmailDomain(context.primaryEmail))),
-  },
-] as const;
+const spoofableSameIpWeights = {
+  bot: parseWeight("STACK_RISK_BOT_SPOOFABLE_SAME_IP_WEIGHT", 15),
+  free_trial_abuse: parseWeight("STACK_RISK_FTA_SPOOFABLE_SAME_IP_WEIGHT", 35),
+} as const;
 
-function normalizeEmailDomain(primaryEmail: string | null): string {
-  if (primaryEmail == null) {
-    return "";
-  }
+const similarEmailWeights = {
+  bot: parseWeight("STACK_RISK_BOT_SIMILAR_EMAIL_WEIGHT", 20),
+  free_trial_abuse: parseWeight("STACK_RISK_FTA_SIMILAR_EMAIL_WEIGHT", 60),
+} as const;
 
-  const [, emailDomain = ""] = primaryEmail.trim().toLowerCase().split("@");
-  return emailDomain.replace(/\.+$/, "");
+const disposableEmailWeights = {
+  bot: parseWeight("STACK_RISK_BOT_DISPOSABLE_EMAIL_WEIGHT", 100),
+  free_trial_abuse: parseWeight("STACK_RISK_FTA_DISPOSABLE_EMAIL_WEIGHT", 100),
+} as const;
+
+function clampRiskScore(score: number): number {
+  return Math.min(100, Math.max(0, score));
 }
 
-function calculateWeightedRiskScore(
-  heuristics: readonly SignUpRiskHeuristic[],
-  context: SignUpRiskScoreContext,
-): number {
-  const raw = heuristics.reduce((sum, heuristic) => {
-    return heuristic.matches(context) ? sum + heuristic.weight : sum;
-  }, 0);
-  return Math.min(100, Math.max(0, raw));
-}
-
-function calculateDisposableEmailHeuristicScores(context: SignUpRiskScoreContext): SignUpRiskScores {
+function getRecentSameIpWeights(ipTrusted: boolean | null): SignUpRiskScores {
+  const weights = ipTrusted === true ? trustedSameIpWeights : spoofableSameIpWeights;
   return {
-    bot: calculateWeightedRiskScore(botRiskHeuristics, context),
-    freeTrialAbuse: calculateWeightedRiskScore(freeTrialAbuseRiskHeuristics, context),
+    bot: weights.bot,
+    free_trial_abuse: weights.free_trial_abuse,
   };
 }
 
-export async function calculateSignUpRiskScores(_tenancy: Tenancy, context: SignUpRiskScoreContext): Promise<SignUpRiskScores> {
-  return calculateDisposableEmailHeuristicScores(context);
+type RecentSignUpStats = {
+  sameIpRecentCount: number,
+  similarEmailRecentCount: number,
+};
+
+async function loadRecentSignUpStats(
+  tenancy: Tenancy,
+  heuristicFacts: DerivedSignUpHeuristicFacts,
+): Promise<RecentSignUpStats> {
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const windowStart = new Date(heuristicFacts.signUpHeuristicRecordedAt.getTime() - recentWindowHours * 60 * 60 * 1000);
+
+  const sameIpPromise = heuristicFacts.signUpIp == null
+    ? Promise.resolve(0)
+    : prisma.projectUser
+      .findMany({
+        where: {
+          tenancyId: tenancy.id,
+          signUpHeuristicRecordedAt: {
+            gte: windowStart,
+          },
+          signUpIp: heuristicFacts.signUpIp,
+        },
+        select: {
+          projectUserId: true,
+        },
+        take: sameIpMinimumMatches,
+      })
+      .then((rows) => rows.length);
+
+  const similarEmailPromise = heuristicFacts.signUpEmailBase == null || heuristicFacts.signUpEmailNormalized == null
+    ? Promise.resolve(0)
+    : prisma.projectUser
+      .findMany({
+        where: {
+          tenancyId: tenancy.id,
+          signUpHeuristicRecordedAt: {
+            gte: windowStart,
+          },
+          signUpEmailBase: heuristicFacts.signUpEmailBase,
+          AND: [
+            {
+              signUpEmailNormalized: {
+                not: null,
+              },
+            },
+            {
+              signUpEmailNormalized: {
+                not: heuristicFacts.signUpEmailNormalized,
+              },
+            },
+          ],
+        },
+        select: {
+          projectUserId: true,
+        },
+        take: similarEmailMinimumMatches,
+      })
+      .then((rows) => rows.length);
+
+  const [sameIpRecentCount, similarEmailRecentCount] = await Promise.all([
+    sameIpPromise,
+    similarEmailPromise,
+  ]);
+
+  return {
+    sameIpRecentCount,
+    similarEmailRecentCount,
+  };
 }
 
-import.meta.vitest?.test("calculateDisposableEmailHeuristicScores(...)", ({ expect }) => {
-  expect(calculateDisposableEmailHeuristicScores({
-    primaryEmail: "user@tempmail.com",
-    primaryEmailVerified: false,
-    authMethod: "password",
-    oauthProvider: null,
-    ipAddress: null,
-  })).toEqual({
-    bot: 100,
-    freeTrialAbuse: 100,
+export async function calculateSignUpRiskAssessment(
+  tenancy: Tenancy,
+  context: SignUpRiskScoreContext,
+): Promise<SignUpRiskAssessment> {
+  const heuristicFacts = deriveSignUpHeuristicFacts({
+    primaryEmail: context.primaryEmail,
+    ipAddress: context.ipAddress,
+    ipTrusted: context.ipTrusted,
   });
+  const recentSignUpStats = await loadRecentSignUpStats(tenancy, heuristicFacts);
+  const emailableResult = context.primaryEmail == null
+    ? { status: "ok" } as const
+    : await checkEmailWithEmailable(context.primaryEmail);
 
-  expect(calculateDisposableEmailHeuristicScores({
-    primaryEmail: "user@best-tempmail-service.com",
-    primaryEmailVerified: false,
-    authMethod: "password",
-    oauthProvider: null,
-    ipAddress: null,
-  })).toEqual({
-    bot: 100,
-    freeTrialAbuse: 100,
-  });
+  const disposableEmailMatched = emailableResult.status === "not-deliverable" || emailableResult.status === "error";
+  const recentSameIpMatched = heuristicFacts.signUpIp != null && recentSignUpStats.sameIpRecentCount >= sameIpMinimumMatches;
+  const similarEmailMatched = heuristicFacts.signUpEmailBase != null
+    && heuristicFacts.signUpEmailNormalized != null
+    && recentSignUpStats.similarEmailRecentCount >= similarEmailMinimumMatches;
 
-  expect(calculateDisposableEmailHeuristicScores({
-    primaryEmail: "user@example.com",
-    primaryEmailVerified: false,
-    authMethod: "password",
-    oauthProvider: null,
-    ipAddress: null,
-  })).toEqual({
+  const disposableContribution = disposableEmailMatched ? {
+    bot: disposableEmailWeights.bot,
+    free_trial_abuse: disposableEmailWeights.free_trial_abuse,
+  } : {
     bot: 0,
-    freeTrialAbuse: 0,
+    free_trial_abuse: 0,
+  };
+
+  const sameIpContribution = recentSameIpMatched ? getRecentSameIpWeights(context.ipTrusted) : {
+    bot: 0,
+    free_trial_abuse: 0,
+  };
+
+  const similarEmailContribution = similarEmailMatched ? {
+    bot: similarEmailWeights.bot,
+    free_trial_abuse: similarEmailWeights.free_trial_abuse,
+  } : {
+    bot: 0,
+    free_trial_abuse: 0,
+  };
+
+  const scores = {
+    bot: clampRiskScore(
+      disposableContribution.bot
+      + sameIpContribution.bot
+      + similarEmailContribution.bot,
+    ),
+    free_trial_abuse: clampRiskScore(
+      disposableContribution.free_trial_abuse
+      + sameIpContribution.free_trial_abuse
+      + similarEmailContribution.free_trial_abuse,
+    ),
+  };
+
+  return {
+    scores,
+    heuristicFacts,
+  };
+}
+
+export async function calculateSignUpRiskScores(tenancy: Tenancy, context: SignUpRiskScoreContext): Promise<SignUpRiskScores> {
+  return (await calculateSignUpRiskAssessment(tenancy, context)).scores;
+}
+
+import.meta.vitest?.test("getRecentSameIpWeights(...)", ({ expect }) => {
+  expect(getRecentSameIpWeights(true)).toEqual({
+    bot: trustedSameIpWeights.bot,
+    free_trial_abuse: trustedSameIpWeights.free_trial_abuse,
+  });
+  expect(getRecentSameIpWeights(false)).toEqual({
+    bot: spoofableSameIpWeights.bot,
+    free_trial_abuse: spoofableSameIpWeights.free_trial_abuse,
   });
 });

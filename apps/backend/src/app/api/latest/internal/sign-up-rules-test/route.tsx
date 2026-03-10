@@ -1,9 +1,10 @@
 import { createSignUpRuleContext } from "@/lib/cel-evaluator";
-import { getSpoofableEndUserIp, getSpoofableEndUserLocation } from "@/lib/end-users";
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { calculateSignUpRiskScores } from "@/lib/risk-scores";
 import { evaluateSignUpRulesWithTrace } from "@/lib/sign-up-rules";
 import { getDerivedSignUpCountryCode } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { riskScoreFieldSchema } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { adaptSchema, adminAuthTypeSchema, countryCodeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const AUTH_METHODS = ['password', 'otp', 'oauth', 'passkey'] as const;
@@ -26,8 +27,8 @@ export const POST = createSmartRouteHandler({
       oauth_provider: yupString().nullable().defined(),
       country_code: countryCodeSchema.nullable().defined(),
       risk_scores: yupObject({
-        bot: yupNumber().min(0).max(100).integer().defined(),
-        free_trial_abuse: yupNumber().min(0).max(100).integer().defined(),
+        bot: riskScoreFieldSchema,
+        free_trial_abuse: riskScoreFieldSchema,
       }).optional(),
     }).defined(),
   }),
@@ -42,8 +43,8 @@ export const POST = createSmartRouteHandler({
         auth_method: yupString().oneOf(AUTH_METHODS).defined(),
         oauth_provider: yupString().defined(),
         risk_scores: yupObject({
-          bot: yupNumber().min(0).max(100).integer().defined(),
-          free_trial_abuse: yupNumber().min(0).max(100).integer().defined(),
+          bot: riskScoreFieldSchema,
+          free_trial_abuse: riskScoreFieldSchema,
         }).defined(),
       }).defined(),
       evaluations: yupArray(yupObject({
@@ -67,24 +68,19 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req) => {
-    const [requestIpAddress, requestLocation] = await Promise.all([
-      getSpoofableEndUserIp().then((ip) => ip ?? null),
-      getSpoofableEndUserLocation(),
-    ]);
-    const derivedCountryCode = getDerivedSignUpCountryCode(requestLocation?.countryCode ?? null, req.body.email);
+    const endUserRequestContext = await getBestEffortEndUserRequestContext();
+    const derivedCountryCode = getDerivedSignUpCountryCode(endUserRequestContext.location?.countryCode ?? null, req.body.email);
     const derivedRiskScores = await calculateSignUpRiskScores(req.auth.tenancy, {
       primaryEmail: req.body.email,
       primaryEmailVerified: req.body.auth_method === "otp",
       authMethod: req.body.auth_method,
       oauthProvider: req.body.oauth_provider,
-      ipAddress: requestIpAddress,
+      ipAddress: endUserRequestContext.ipAddress,
+      ipTrusted: endUserRequestContext.ipTrusted,
     });
     const riskScores = req.body.risk_scores === undefined
       ? derivedRiskScores
-      : {
-        bot: req.body.risk_scores.bot,
-        freeTrialAbuse: req.body.risk_scores.free_trial_abuse,
-      };
+      : req.body.risk_scores;
     const context = createSignUpRuleContext({
       email: req.body.email,
       countryCode: req.body.country_code ?? derivedCountryCode,
@@ -106,7 +102,7 @@ export const POST = createSmartRouteHandler({
           oauth_provider: context.oauthProvider,
           risk_scores: {
             bot: context.riskScores.bot,
-            free_trial_abuse: context.riskScores.freeTrialAbuse,
+            free_trial_abuse: context.riskScores.free_trial_abuse,
           },
         },
         evaluations: trace.evaluations.map((evaluation) => ({

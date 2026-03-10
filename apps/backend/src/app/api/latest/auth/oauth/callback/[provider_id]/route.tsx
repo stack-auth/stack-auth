@@ -337,6 +337,7 @@ const handler = createSmartRouteHandler({
                       authMethod: 'oauth',
                       oauthProvider: provider.id,
                       ipAddress: null,
+                      ipTrusted: null,
                       countryCode: null,
                       // Note: Request context not easily available in OAuth callback
                       // TODO: Pass IP and user agent from stored OAuth state if needed
