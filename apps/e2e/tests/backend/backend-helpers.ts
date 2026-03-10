@@ -84,14 +84,7 @@ export const InternalProjectKeys = Object.freeze({
 });
 
 export async function withInternalProject<T>(fn: () => Promise<T>): Promise<T> {
-  const savedKeys = backendContext.value.projectKeys;
-  const savedUserAuth = backendContext.value.userAuth;
-  backendContext.set({ projectKeys: InternalProjectKeys, userAuth: null });
-  try {
-    return await fn();
-  } finally {
-    backendContext.set({ projectKeys: savedKeys, userAuth: savedUserAuth });
-  }
+  return await backendContext.with({ projectKeys: InternalProjectKeys, userAuth: null }, fn);
 }
 
 export const InternalProjectClientKeys = Object.freeze({
