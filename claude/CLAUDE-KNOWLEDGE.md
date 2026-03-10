@@ -112,3 +112,9 @@ A: In `apps/dashboard/src/components/rule-builder/condition-builder.tsx`, single
 
 Q: What must raw `ProjectUser` SQL fixtures include after sign-up risk scores were added?
 A: Any direct `INSERT INTO "ProjectUser"` path that bypasses the CRUD layer must write `"signUpRiskScoreBot"` and `"signUpRiskScoreFreeTrialAbuse"` explicitly, usually as `0, 0`. The migration intentionally removed the temporary DB defaults, so external-db-sync/performance fixtures that omit those columns can fail with `null value in column "signUpRiskScoreBot" violates not-null constraint`.
+
+Q: Where should disposable-email fraud detection live for this PR?
+A: Put it in `apps/backend/src/lib/risk-scores.tsx` as a weighted sign-up heuristic pipeline that outputs `risk_scores`, and keep the sign-up rules engine unchanged. For the current slice, derive bot/free-trial-abuse scores from regex matches against disposable-looking email domains.
+
+Q: Why did `internal-metrics.test.ts` snapshots change after adding signup country and risk scores?
+A: The internal metrics response now includes the server user fields `country_code` and `risk_scores` inside `recently_active`/`recently_registered`, so `apps/e2e/tests/backend/endpoints/api/v1/__snapshots__/internal-metrics.test.ts.snap` must be updated whenever those user read-shape fields change.

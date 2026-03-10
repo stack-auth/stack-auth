@@ -357,7 +357,7 @@ function SortableRuleRow({
     'restrict': 'Restrict',
     'log': 'Log',
   };
-  const actionLabel = actionLabels[actionType] ?? actionType;
+  const actionLabel = actionLabels[actionType];
 
   const conditionSummary = entry.rule.condition || '(no condition)';
   const isEnabled = entry.rule.enabled !== false;

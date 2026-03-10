@@ -9,7 +9,7 @@ describe("risk scores", () => {
   // ==========================================
 
   describe("persistence on password signup", () => {
-    it("should persist non-zero risk scores for high-risk email (test@example.com stub)", async ({ expect }) => {
+    it("should persist non-zero risk scores for disposable-email domains", async ({ expect }) => {
       await Project.createAndSwitch({
         config: { credential_enabled: true },
       });
@@ -18,7 +18,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });
@@ -168,7 +168,7 @@ describe("risk scores", () => {
         accessType: "client",
         headers: { "x-stack-access-token": accessToken },
         body: {
-          email: "test@example.com",
+          email: "user@best-tempmail-service.com",
           password: generateSecureRandomString(),
         },
       });
@@ -574,7 +574,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });
@@ -626,7 +626,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });
@@ -661,7 +661,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });

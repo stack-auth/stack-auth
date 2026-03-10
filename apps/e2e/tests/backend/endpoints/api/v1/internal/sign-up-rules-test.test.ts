@@ -135,6 +135,50 @@ describe("with admin access", () => {
     });
   });
 
+  it("derives risk score conditions from disposable-email heuristics", async ({ expect }) => {
+    await Project.createAndSwitch();
+    backendContext.set({ ipData: undefined });
+    await Project.updateConfig({
+      "auth.signUpRules.block-high-bot-score": {
+        enabled: true,
+        displayName: "Block high bot score",
+        priority: 1,
+        condition: "riskScores.bot >= 80",
+        action: {
+          type: "reject",
+          message: "High bot risk",
+        },
+      },
+      "auth.signUpRulesDefaultAction": "allow",
+    });
+
+    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-test", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        email: "user@best-tempmail-service.com",
+        auth_method: "password",
+        oauth_provider: null,
+        country_code: null,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      context: {
+        risk_scores: {
+          bot: 100,
+          free_trial_abuse: 100,
+        },
+      },
+      outcome: {
+        should_allow: false,
+        decision: "reject",
+        decision_rule_id: "block-high-bot-score",
+      },
+    });
+  });
+
   it("evaluates country code conditions from admin overrides", async ({ expect }) => {
     await Project.createAndSwitch();
     backendContext.set({
