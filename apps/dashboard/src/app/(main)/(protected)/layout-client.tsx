@@ -14,7 +14,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const signIn = async () => {
-      if (getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" && !user) {
+      if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true" && !user) {
         await app.signInWithCredential({
           email: "local-emulator@stack-auth.com",
           password: "LocalEmulatorPassword",
@@ -24,7 +24,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
     runAsynchronouslyWithAlert(signIn());
   }, [user, app]);
 
-  if (getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" && !user) {
+  if (getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true" && !user) {
     return <Loading />;
   } else {
     return (
