@@ -117,7 +117,7 @@ export const POST = createSmartRouteHandler({
       const replaysItem = await app.getItem({ itemId: ITEM_IDS.sessionReplays, teamId: billingTeamId });
       const isDebited = await replaysItem.tryDecreaseQuantity(1);
       if (!isDebited) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, replaysItem.quantity);
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.sessionReplays, billingTeamId, 1);
       }
     }
 

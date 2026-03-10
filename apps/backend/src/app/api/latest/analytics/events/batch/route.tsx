@@ -71,7 +71,7 @@ export const POST = createSmartRouteHandler({
       const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
       const isDebited = await eventsItem.tryDecreaseQuantity(body.events.length);
       if (!isDebited) {
-        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, eventsItem.quantity);
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, body.events.length);
       }
     }
 

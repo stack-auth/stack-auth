@@ -178,8 +178,7 @@ function TeamAddUserDialogContent(props: {
       const invitations = await listInvitations(props.team.id);
       setInvitations(invitations);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load invitations";
-      setInvitationsError(message);
+      setInvitationsError("Failed to load invitations. Please try again.");
     }
   }, [props.team.id]);
 
@@ -193,8 +192,7 @@ function TeamAddUserDialogContent(props: {
         }
       } catch (error) {
         if (!canceled) {
-          const message = error instanceof Error ? error.message : "Failed to load invitations";
-          setInvitationsError(message);
+          setInvitationsError("Failed to load invitations. Please try again.");
         }
       }
     });
