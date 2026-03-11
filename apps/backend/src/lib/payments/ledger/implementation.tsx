@@ -4,6 +4,7 @@ import { PrismaClientTransaction } from "@/prisma-client";
 import type { Transaction } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ensureCustomerExists, OwnedProduct } from "../implementation";
 import { computeLedgerBalanceAtNow, type LedgerTransaction } from "./algo";
 import { getTransactions } from "./transactions";
@@ -72,9 +73,9 @@ function getCurrentDefaultProducts(transactions: Transaction[]): { snapshot: Rec
   for (const tx of sortedTransactions) {
     if ((tx.type as string) !== "default-products-change") continue;
     for (const entry of tx.entries) {
-      if ((entry.type as string) === "default-products-change") {
+      if (entry.type === "default-products-change") {
         return {
-          snapshot: normalizeDefaultSnapshot((entry as any).snapshot as Record<string, any>),
+          snapshot: normalizeDefaultSnapshot(entry.snapshot),
           effectiveAtMillis: tx.effective_at_millis,
         };
       }
@@ -107,13 +108,12 @@ export async function getOwnedProductsForCustomer(options: {
   const subscriptionIds = new Set<string>();
   for (const tx of transactions) {
     for (const entry of tx.entries) {
-      const typedEntry = entry as any;
-      if (typedEntry.type === "product-revocation" && typedEntry.adjusted_transaction_id != null && typedEntry.adjusted_entry_index != null) {
-        const key = `${typedEntry.adjusted_transaction_id}:${typedEntry.adjusted_entry_index}`;
-        revokedQuantities.set(key, (revokedQuantities.get(key) ?? 0) + typedEntry.quantity);
+      if (entry.type === "product-revocation") {
+        const key = `${entry.adjusted_transaction_id}:${entry.adjusted_entry_index}`;
+        revokedQuantities.set(key, (revokedQuantities.get(key) ?? 0) + entry.quantity);
       }
-      if (typedEntry.type === "product-grant" && typedEntry.subscription_id) {
-        subscriptionIds.add(typedEntry.subscription_id);
+      if (entry.type === "product-grant" && entry.subscription_id) {
+        subscriptionIds.add(entry.subscription_id);
       }
     }
   }
@@ -141,38 +141,37 @@ export async function getOwnedProductsForCustomer(options: {
   for (const tx of transactions) {
     for (let i = 0; i < tx.entries.length; i++) {
       const entry = tx.entries[i];
-      const typedEntry = entry as any;
-      if (typedEntry.type !== "product-grant") continue;
+      if (entry.type !== "product-grant") continue;
 
       const revoked = revokedQuantities.get(`${tx.id}:${i}`) ?? 0;
-      const effectiveQuantity = Math.max(0, typedEntry.quantity - revoked);
+      const effectiveQuantity = Math.max(0, entry.quantity - revoked);
       if (effectiveQuantity <= 0) continue;
 
-      const isSubscription = typedEntry.subscription_id != null;
-      const isOneTime = typedEntry.one_time_purchase_id != null;
+      const isSubscription = entry.subscription_id !== undefined;
+      const isOneTime = entry.one_time_purchase_id !== undefined;
       if (!isSubscription && !isOneTime) {
         throw new StackAssertionError("product-grant entry is missing both subscription_id and one_time_purchase_id", {
           transactionId: tx.id,
-          customerId: typedEntry.customer_id,
-          customerType: typedEntry.customer_type,
+          customerId: entry.customer_id,
+          customerType: entry.customer_type,
           entryIndex: i,
-          entry: typedEntry,
+          entry,
         });
       }
-      const subMeta = isSubscription ? subscriptionMetadata.get(typedEntry.subscription_id) : null;
+      const subMeta = isSubscription ? subscriptionMetadata.get(entry.subscription_id!) : null;
 
       ownedProducts.push({
-        id: typedEntry.product_id,
+        id: entry.product_id,
         type: isSubscription ? "subscription" : "one_time",
         quantity: effectiveQuantity,
-        product: typedEntry.product,
+        product: entry.product,
         createdAt: new Date(tx.effective_at_millis),
-        sourceId: typedEntry.subscription_id ?? typedEntry.one_time_purchase_id ?? tx.id,
+        sourceId: entry.subscription_id ?? entry.one_time_purchase_id ?? tx.id,
         subscription: isSubscription ? {
           stripeSubscriptionId: subMeta?.stripeSubscriptionId ?? null,
           currentPeriodEnd: subMeta?.currentPeriodEnd ?? null,
           cancelAtPeriodEnd: subMeta?.cancelAtPeriodEnd ?? false,
-          isCancelable: typedEntry.product_id !== null,
+          isCancelable: entry.product_id !== null,
         } : null,
       });
     }
