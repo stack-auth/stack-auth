@@ -67,9 +67,9 @@ function normalizeDefaultSnapshot(snapshot: Record<string, any>): Record<string,
 }
 
 function getCurrentDefaultProducts(transactions: Transaction[]): { snapshot: Record<string, any>, effectiveAtMillis: number } {
-  const sortedTransactions = [...transactions].sort((a, b) => a.effective_at_millis - b.effective_at_millis);
+  const sortedTransactions = [...transactions].sort((a, b) => b.effective_at_millis - a.effective_at_millis);
 
-  for (const tx of transactions) {
+  for (const tx of sortedTransactions) {
     if ((tx.type as string) !== "default-products-change") continue;
     for (const entry of tx.entries) {
       if ((entry.type as string) === "default-products-change") {

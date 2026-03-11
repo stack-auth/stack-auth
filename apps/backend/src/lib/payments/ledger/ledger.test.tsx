@@ -694,6 +694,61 @@ describe('getOwnedProductsForCustomer - include-by-default', () => {
     vi.useRealTimers();
   });
 
+  it('uses the latest default-products snapshot when multiple snapshots exist', async () => {
+    vi.setSystemTime(new Date('2025-02-10'));
+    const oldFreeProduct = {
+      displayName: 'Free Plan Old',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 1 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+      serverOnly: false,
+      stackable: false,
+    };
+    const newFreeProduct = {
+      displayName: 'Free Plan New',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 2 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+      serverOnly: false,
+      stackable: false,
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [
+        {
+          id: 'snap-old',
+          tenancyId: 'tenancy-1',
+          snapshot: { 'free-old': productToInlineProduct(oldFreeProduct as any) },
+          createdAt: new Date('2025-01-01'),
+        },
+        {
+          id: 'snap-new',
+          tenancyId: 'tenancy-1',
+          snapshot: { 'free-new': productToInlineProduct(newFreeProduct as any) },
+          createdAt: new Date('2025-01-20'),
+        },
+      ],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        'free-old': oldFreeProduct as any,
+        'free-new': newFreeProduct as any,
+      },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const owned = await getOwnedProductsForCustomer({
+      prisma: _currentMockPrisma, tenancy, customerType: 'custom', customerId: 'custom-1',
+    });
+
+    expect(owned.length).toBe(1);
+    expect(owned[0].id).toBe('free-new');
+    expect(owned[0].type).toBe('include-by-default');
+    vi.useRealTimers();
+  });
+
   it('does NOT add default product when a non-default product in same line is owned', async () => {
     vi.setSystemTime(new Date('2025-02-10'));
     const paidProduct = {
