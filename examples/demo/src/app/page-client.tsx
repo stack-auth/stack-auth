@@ -27,7 +27,7 @@ export default function PageClient() {
         </CardHeader>
         <CardContent className='space-y-2'>
           <Typography>
-            Hosted auth pages in this demo will execute Turnstile on sign up, magic link, and OAuth authenticate flows. Password signup now supports an invisible-first attempt that can escalate into a visible fallback challenge.
+            Hosted auth pages in this demo execute Turnstile automatically. Custom React auth components should use <span className='font-mono'>useTurnstileAuth()</span>, and the linked demo page also includes raw backend-debug flows for forcing invalid and no-token cases.
           </Typography>
           <Typography className='text-sm'>
             Status: enabled
@@ -43,10 +43,10 @@ export default function PageClient() {
         </CardContent>
         <CardFooter>
           <div className='flex gap-2'>
-            <Button onClick={() => router.push(app.urls.signUp)}>Open sign-up flow</Button>
-            <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open sign-in flow</Button>
+            <Button onClick={() => router.push(app.urls.signUp)}>Open hosted sign-up</Button>
+            <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open hosted sign-in</Button>
             <Button variant='secondary' onClick={() => router.push('/turnstile-signup')}>
-              Open Turnstile debug flows
+              Open wrapper + debug demo
             </Button>
           </div>
         </CardFooter>

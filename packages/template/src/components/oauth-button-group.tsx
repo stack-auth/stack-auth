@@ -1,7 +1,7 @@
 'use client';
 
 import { useStackApp } from "../lib/hooks";
-import { useStagedTurnstile } from "../lib/turnstile";
+import { useTurnstileAuth } from "../lib/turnstile-auth";
 import { useTranslation } from "../lib/translations";
 import { OAuthButton } from "./oauth-button";
 import { FormWarningText } from "./elements/form-warning";
@@ -20,16 +20,7 @@ export function OAuthButtonGroup({
 }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
-  const {
-    challengeRequiredResult,
-    visibleTurnstileToken,
-    challengeError,
-    invisibleTurnstileWidget,
-    visibleTurnstileWidget,
-    clearChallengeError,
-    getTurnstileFlowOptions,
-    handleChallengeRequired,
-  } = useStagedTurnstile(stackApp, {
+  const turnstile = useTurnstileAuth({
     action: "oauth_authenticate",
     missingVisibleChallengeMessage: t('Please solve the captcha before continuing'),
     challengeRequiredMessage: t('Complete the captcha to continue'),
@@ -40,15 +31,18 @@ export function OAuthButtonGroup({
       {project.config.oauthProviders.map(p => (
         <OAuthButton key={p.id} provider={p.id} type={type}
           isMock={!!mockProject}
-          disabled={!mockProject && challengeRequiredResult != null && visibleTurnstileToken == null}
-          getTurnstileFlowOptions={!mockProject ? getTurnstileFlowOptions : undefined}
-          onTurnstileChallengeRequired={!mockProject ? handleChallengeRequired : undefined}
-          clearTurnstileError={!mockProject ? clearChallengeError : undefined}
+          disabled={!mockProject && !turnstile.canSubmit}
+          onAuthenticate={!mockProject ? async () => {
+            await turnstile.run(async (turnstileFlowOptions) => {
+              await stackApp.signInWithOAuth(p.id, turnstileFlowOptions);
+            });
+          } : undefined}
+          clearTurnstileError={!mockProject ? turnstile.clearChallengeError : undefined}
         />
       ))}
-      {!mockProject ? <FormWarningText text={challengeError ?? undefined} /> : null}
-      {!mockProject ? visibleTurnstileWidget : null}
-      {!mockProject ? invisibleTurnstileWidget : null}
+      {!mockProject ? <FormWarningText text={turnstile.challengeError ?? undefined} /> : null}
+      {!mockProject ? turnstile.visibleTurnstileWidget : null}
+      {!mockProject ? turnstile.invisibleTurnstileWidget : null}
     </div>
   );
 }

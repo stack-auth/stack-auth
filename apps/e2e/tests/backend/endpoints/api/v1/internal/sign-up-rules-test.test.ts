@@ -1,6 +1,24 @@
+import { riskScoreWeights } from "@stackframe/stack-shared/dist/utils/risk-score-weights";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+
+type ScorePair = {
+  bot: number,
+  free_trial_abuse: number,
+};
+
+const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
+
+function sumScores(...contributions: ScorePair[]): ScorePair {
+  return {
+    bot: Math.min(100, contributions.reduce((score, contribution) => score + contribution.bot, 0)),
+    free_trial_abuse: Math.min(100, contributions.reduce((score, contribution) => score + contribution.free_trial_abuse, 0)),
+  };
+}
+
+const derivedTurnstileRiskScore = riskScoreWeights.turnstile;
+const derivedNonDeliverablePasswordRiskScore = sumScores(riskScoreWeights.emailable, riskScoreWeights.turnstile);
 
 describe("with admin access", () => {
   it("uses default action when no rules match", async ({ expect }) => {
@@ -95,7 +113,7 @@ describe("with admin access", () => {
         enabled: true,
         displayName: "Block high bot score",
         priority: 1,
-        condition: "riskScores.bot >= 80",
+        condition: `riskScores.bot >= ${derivedNonDeliverablePasswordRiskScore.bot}`,
         action: {
           type: "reject",
           message: "High bot risk",
@@ -143,7 +161,7 @@ describe("with admin access", () => {
         enabled: true,
         displayName: "Block high bot score",
         priority: 1,
-        condition: "riskScores.bot >= 80",
+        condition: `riskScores.bot >= ${derivedNonDeliverablePasswordRiskScore.bot}`,
         action: {
           type: "reject",
           message: "High bot risk",
@@ -156,7 +174,7 @@ describe("with admin access", () => {
       method: "POST",
       accessType: "admin",
       body: {
-        email: "user@best-tempmail-service.com",
+        email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
         auth_method: "password",
         oauth_provider: null,
         country_code: null,
@@ -167,8 +185,7 @@ describe("with admin access", () => {
     expect(response.body).toMatchObject({
       context: {
         risk_scores: {
-          bot: 100,
-          free_trial_abuse: 100,
+          ...derivedNonDeliverablePasswordRiskScore,
         },
       },
       outcome: {
@@ -187,7 +204,7 @@ describe("with admin access", () => {
         enabled: true,
         displayName: "Block high bot score",
         priority: 1,
-        condition: "riskScores.bot >= 80",
+        condition: `riskScores.bot >= ${derivedTurnstileRiskScore.bot}`,
         action: {
           type: "reject",
           message: "High bot risk",
@@ -213,8 +230,7 @@ describe("with admin access", () => {
       context: {
         turnstile_result: "invalid",
         risk_scores: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...derivedTurnstileRiskScore,
         },
       },
       outcome: {

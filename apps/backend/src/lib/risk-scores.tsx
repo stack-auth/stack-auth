@@ -2,7 +2,7 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } f
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
-import { riskScoreWeights, riskScoreThresholds } from "./risk-score-weights";
+import { riskScoreWeights, riskScoreThresholds } from "@stackframe/stack-shared/dist/utils/risk-score-weights";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
 import { DerivedSignUpHeuristicFacts, deriveSignUpHeuristicFacts } from "./sign-up-heuristics";
@@ -32,11 +32,30 @@ export type SignUpRiskAssessment = {
 
 const ZERO: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
 
-function scaleScores(weights: SignUpRiskScores, factor: number): SignUpRiskScores {
+function scaleScores(scores: SignUpRiskScores, factor: number): SignUpRiskScores {
   return {
-    bot: Math.round(weights.bot * factor),
-    free_trial_abuse: Math.round(weights.free_trial_abuse * factor),
+    bot: Math.round(scores.bot * factor),
+    free_trial_abuse: Math.round(scores.free_trial_abuse * factor),
   };
+}
+
+function scaleRepeatedSignalCount(params: {
+  matchCount: number,
+  minMatches: number,
+  maxMatchesForFullPenalty: number,
+}): number {
+  if (params.matchCount < params.minMatches) {
+    return 0;
+  }
+  if (params.maxMatchesForFullPenalty < params.minMatches) {
+    throw new Error("Expected maxMatchesForFullPenalty to be >= minMatches");
+  }
+
+  const clampedMatchCount = Math.min(params.matchCount, params.maxMatchesForFullPenalty);
+  const penaltySteps = params.maxMatchesForFullPenalty - params.minMatches + 1;
+  const matchedSteps = clampedMatchCount - params.minMatches + 1;
+
+  return matchedSteps / penaltySteps;
 }
 
 function sumScores(...contributions: SignUpRiskScores[]): SignUpRiskScores {
@@ -54,9 +73,14 @@ function getEmailableContribution(result: EmailableCheckResult): SignUpRiskScore
   return scaleScores(riskScoreWeights.emailable, 1 - result.emailableScore / 100);
 }
 
-function getSameIpContribution(matched: boolean, ipTrusted: boolean | null): SignUpRiskScores {
-  if (!matched) return ZERO;
-  return ipTrusted === true ? riskScoreWeights.sameIp.trusted : riskScoreWeights.sameIp.spoofable;
+function getSameIpContribution(matchCount: number, ipTrusted: boolean | null): SignUpRiskScores {
+  const sameIpWeight = ipTrusted === true ? riskScoreWeights.sameIp.trusted : riskScoreWeights.sameIp.spoofable;
+  const factor = scaleRepeatedSignalCount({
+    matchCount,
+    minMatches: riskScoreThresholds.sameIpMinMatches,
+    maxMatchesForFullPenalty: riskScoreThresholds.sameIpMaxMatchesForFullPenalty,
+  });
+  return factor === 0 ? ZERO : scaleScores(sameIpWeight, factor);
 }
 
 function getSimilarEmailContribution(matched: boolean): SignUpRiskScores {
@@ -85,19 +109,19 @@ async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuri
   const [sameIpRows, similarEmailRows] = await Promise.all([
     facts.signUpIp == null
       ? []
-      : prisma.$replica().$queryRaw<{ count: bigint }[]>`
-          SELECT COUNT(*)::bigint AS "count"
+      : prisma.$replica().$queryRaw<{ matched: number }[]>`
+          SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "signUpAt" >= ${windowStart}
             AND "signUpIp" = ${facts.signUpIp}
-          LIMIT ${riskScoreThresholds.sameIpMinMatches}
+          LIMIT ${riskScoreThresholds.sameIpMaxMatchesForFullPenalty}
         `,
 
     facts.signUpEmailBase == null || facts.signUpEmailNormalized == null
       ? []
-      : prisma.$replica().$queryRaw<{ count: bigint }[]>`
-          SELECT COUNT(*)::bigint AS "count"
+      : prisma.$replica().$queryRaw<{ matched: number }[]>`
+          SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "signUpAt" >= ${windowStart}
@@ -109,8 +133,8 @@ async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuri
   ]);
 
   return {
-    sameIpCount: sameIpRows.length > 0 ? Number(sameIpRows[0].count) : 0,
-    similarEmailCount: similarEmailRows.length > 0 ? Number(similarEmailRows[0].count) : 0,
+    sameIpCount: sameIpRows.length,
+    similarEmailCount: similarEmailRows.length,
   };
 }
 
@@ -134,14 +158,13 @@ export async function calculateSignUpRiskAssessment(
       : checkEmailWithEmailable(context.primaryEmail),
   ]);
 
-  const sameIpMatched = heuristicFacts.signUpIp != null && stats.sameIpCount >= riskScoreThresholds.sameIpMinMatches;
   const similarEmailMatched = heuristicFacts.signUpEmailBase != null
     && heuristicFacts.signUpEmailNormalized != null
     && stats.similarEmailCount >= riskScoreThresholds.similarEmailMinMatches;
 
   const scores = sumScores(
     getEmailableContribution(emailableResult),
-    getSameIpContribution(sameIpMatched, context.ipTrusted),
+    getSameIpContribution(heuristicFacts.signUpIp == null ? 0 : stats.sameIpCount, context.ipTrusted),
     getSimilarEmailContribution(similarEmailMatched),
     getTurnstileContribution(context.turnstileAssessment),
   );
@@ -162,16 +185,58 @@ import.meta.vitest?.test("scaleScores", ({ expect }) => {
   expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 0.5)).toEqual({ bot: 50, free_trial_abuse: 40 });
 });
 
+import.meta.vitest?.test("scaleRepeatedSignalCount", ({ expect }) => {
+  const sameIpMaxMatchesForFullPenalty = riskScoreThresholds.sameIpMaxMatchesForFullPenalty;
+
+  expect(scaleRepeatedSignalCount({
+    matchCount: 0,
+    minMatches: 1,
+    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
+  })).toBe(0);
+  expect(scaleRepeatedSignalCount({
+    matchCount: 1,
+    minMatches: 1,
+    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
+  })).toBe(1 / sameIpMaxMatchesForFullPenalty);
+  expect(scaleRepeatedSignalCount({
+    matchCount: 2,
+    minMatches: 1,
+    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
+  })).toBe(2 / sameIpMaxMatchesForFullPenalty);
+  expect(scaleRepeatedSignalCount({
+    matchCount: sameIpMaxMatchesForFullPenalty,
+    minMatches: 1,
+    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
+  })).toBe(1);
+  expect(scaleRepeatedSignalCount({
+    matchCount: 99,
+    minMatches: 1,
+    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
+  })).toBe(1);
+});
+
 import.meta.vitest?.test("sumScores clamps to 100", ({ expect }) => {
   expect(sumScores({ bot: 80, free_trial_abuse: 60 }, { bot: 50, free_trial_abuse: 50 }))
     .toEqual({ bot: 100, free_trial_abuse: 100 });
 });
 
 import.meta.vitest?.test("getSameIpContribution", ({ expect }) => {
-  expect(getSameIpContribution(false, true)).toEqual(ZERO);
-  expect(getSameIpContribution(true, true)).toEqual(riskScoreWeights.sameIp.trusted);
-  expect(getSameIpContribution(true, false)).toEqual(riskScoreWeights.sameIp.spoofable);
-  expect(getSameIpContribution(true, null)).toEqual(riskScoreWeights.sameIp.spoofable);
+  const firstMatchFactor = scaleRepeatedSignalCount({
+    matchCount: 1,
+    minMatches: riskScoreThresholds.sameIpMinMatches,
+    maxMatchesForFullPenalty: riskScoreThresholds.sameIpMaxMatchesForFullPenalty,
+  });
+  const secondMatchFactor = scaleRepeatedSignalCount({
+    matchCount: 2,
+    minMatches: riskScoreThresholds.sameIpMinMatches,
+    maxMatchesForFullPenalty: riskScoreThresholds.sameIpMaxMatchesForFullPenalty,
+  });
+
+  expect(getSameIpContribution(0, true)).toEqual(ZERO);
+  expect(getSameIpContribution(1, true)).toEqual(scaleScores(riskScoreWeights.sameIp.trusted, firstMatchFactor));
+  expect(getSameIpContribution(2, false)).toEqual(scaleScores(riskScoreWeights.sameIp.spoofable, secondMatchFactor));
+  expect(getSameIpContribution(riskScoreThresholds.sameIpMaxMatchesForFullPenalty, false)).toEqual(riskScoreWeights.sameIp.spoofable);
+  expect(getSameIpContribution(10, null)).toEqual(riskScoreWeights.sameIp.spoofable);
 });
 
 import.meta.vitest?.test("getTurnstileContribution", ({ expect }) => {

@@ -28,7 +28,7 @@ export default function Header() {
             Anonymous Test
           </Link>
           <Link href="/turnstile-signup" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
-            Turnstile Demo
+            Turnstile Auth Demo
           </Link>
         </div>
 

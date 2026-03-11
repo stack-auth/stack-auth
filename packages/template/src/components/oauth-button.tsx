@@ -1,11 +1,9 @@
 'use client';
 
 import { BrandIcons, Button, SimpleTooltip } from '@stackframe/stack-ui';
-import { KnownErrors } from "@stackframe/stack-shared";
 import Color, { ColorInstance } from 'color';
 import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '../lib/hooks';
-import type { TurnstileFlowOptions } from "../lib/stack-app/apps/interfaces/client-app";
 import { useTranslation } from '../lib/translations';
 import { useInIframe } from './use-in-iframe';
 
@@ -23,16 +21,14 @@ export function OAuthButton({
   type,
   isMock = false,
   disabled = false,
-  getTurnstileFlowOptions,
-  onTurnstileChallengeRequired,
+  onAuthenticate,
   clearTurnstileError,
 }: {
   provider: string,
   type: 'sign-in' | 'sign-up',
   isMock?: boolean,
   disabled?: boolean,
-  getTurnstileFlowOptions?: () => Promise<TurnstileFlowOptions | null>,
-  onTurnstileChallengeRequired?: (error: InstanceType<typeof KnownErrors.TurnstileChallengeRequired>) => void,
+  onAuthenticate?: () => Promise<void>,
   clearTurnstileError?: () => void,
 }) {
   const { t } = useTranslation();
@@ -197,19 +193,7 @@ export function OAuthButton({
           onClick={async () => {
             localStorage.setItem('_STACK_AUTH.lastUsed', provider);
             clearTurnstileError?.();
-            const turnstileFlowOptions = getTurnstileFlowOptions ? await getTurnstileFlowOptions() : null;
-            if (getTurnstileFlowOptions && turnstileFlowOptions == null) {
-              return;
-            }
-            try {
-              await stackApp.signInWithOAuth(provider, turnstileFlowOptions ?? undefined);
-            } catch (error) {
-              if (KnownErrors.TurnstileChallengeRequired.isInstance(error)) {
-                onTurnstileChallengeRequired?.(error);
-                return;
-              }
-              throw error;
-            }
+            await (onAuthenticate ? onAuthenticate() : stackApp.signInWithOAuth(provider));
           }}
           className={`stack-oauth-button-${styleId} stack-scope relative w-full`}
           disabled={isIframe || disabled}

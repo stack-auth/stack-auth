@@ -1,7 +1,6 @@
 'use client';
 
 import { yupResolver } from "@hookform/resolvers/yup";
-import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { passwordSchema, strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -10,7 +9,7 @@ import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "../lib/hooks";
-import { useStagedTurnstile } from "../lib/turnstile";
+import { useTurnstileAuth } from "../lib/turnstile-auth";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -39,16 +38,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     resolver: yupResolver(schema)
   });
   const app = useStackApp();
-  const {
-    challengeRequiredResult,
-    visibleTurnstileToken,
-    challengeError,
-    invisibleTurnstileWidget,
-    visibleTurnstileWidget,
-    clearChallengeError,
-    getTurnstileFlowOptions,
-    handleChallengeRequired,
-  } = useStagedTurnstile(app, {
+  const turnstile = useTurnstileAuth({
     action: "sign_up_with_credential",
     missingVisibleChallengeMessage: t('Please solve the captcha before signing up'),
     challengeRequiredMessage: t('Complete the captcha to finish signing up'),
@@ -59,21 +49,17 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     setLoading(true);
     try {
       const { email, password } = data;
-      const turnstileOptions = await getTurnstileFlowOptions();
-      if (turnstileOptions == null) {
-        return;
-      }
-      const result = await app.signUpWithCredential({
+      const turnstileResult = await turnstile.run(async (turnstileFlowOptions) => await app.signUpWithCredential({
         email,
         password,
-        ...turnstileOptions,
-      });
+        ...turnstileFlowOptions,
+      }));
+      if (turnstileResult.status === "blocked") {
+        return;
+      }
+      const result = turnstileResult.result;
       if (result.status === 'error') {
-        if (KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-          handleChallengeRequired(result.error);
-        } else {
-          setError('email', { type: 'manual', message: result.error.message });
-        }
+        setError('email', { type: 'manual', message: result.error.message });
       }
     } finally {
       setLoading(false);
@@ -97,7 +83,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         autoComplete="email"
         {...registerEmail}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          clearChallengeError();
+          turnstile.clearChallengeError();
           runAsynchronously(registerEmail.onChange(e));
         }}
       />
@@ -111,7 +97,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           clearErrors('password');
           clearErrors('passwordRepeat');
-          clearChallengeError();
+          turnstile.clearChallengeError();
           runAsynchronously(registerPassword.onChange(e));
         }}
       />
@@ -126,7 +112,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               clearErrors('password');
               clearErrors('passwordRepeat');
-              clearChallengeError();
+              turnstile.clearChallengeError();
               runAsynchronously(registerPasswordRepeat.onChange(e));
               }}
             />
@@ -135,12 +121,12 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         )
       }
 
-      <Button type="submit" className="mt-6" loading={loading} disabled={challengeRequiredResult != null && visibleTurnstileToken == null}>
+      <Button type="submit" className="mt-6" loading={loading} disabled={!turnstile.canSubmit}>
         {t('Sign Up')}
       </Button>
-      <FormWarningText text={challengeError ?? undefined} />
-      {visibleTurnstileWidget}
-      {invisibleTurnstileWidget}
+      <FormWarningText text={turnstile.challengeError ?? undefined} />
+      {turnstile.visibleTurnstileWidget}
+      {turnstile.invisibleTurnstileWidget}
     </form>
   );
 }

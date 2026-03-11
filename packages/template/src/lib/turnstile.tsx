@@ -1,3 +1,5 @@
+'use client';
+
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";

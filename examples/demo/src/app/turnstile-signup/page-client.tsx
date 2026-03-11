@@ -3,7 +3,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { useStackApp, useUser } from "@stackframe/stack";
+import { useStackApp, useTurnstileAuth, useUser } from "@stackframe/stack";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@stackframe/stack-ui";
 import Link from "next/link";
 import { useState } from "react";
@@ -34,6 +34,11 @@ type SubmissionResult = {
   message: string,
 };
 
+type WrapperResult = {
+  status: "success" | "error" | "info",
+  message: string,
+};
+
 type VisibleFallbackState = {
   previousTurnstileResult: TurnstileRetryResult,
 };
@@ -41,8 +46,15 @@ type VisibleFallbackState = {
 export default function TurnstileSignupPageClient() {
   const app = useStackApp();
   const user = useUser();
+  const turnstile = useTurnstileAuth({
+    action: "sign_up_with_credential",
+    missingVisibleChallengeMessage: "Please solve the visible fallback challenge before retrying",
+    challengeRequiredMessage: "Turnstile requested a visible fallback challenge. Solve it below and submit again.",
+  });
   const [email, setEmail] = useState(() => createSuggestedEmail());
   const [password, setPassword] = useState("Demo-password-123!");
+  const [wrapperLoading, setWrapperLoading] = useState(false);
+  const [wrapperResult, setWrapperResult] = useState<WrapperResult | null>(null);
   const [loadingFlow, setLoadingFlow] = useState<SubmissionFlow | null>(null);
   const [submissionResult, setSubmissionResult] = useState<SubmissionResult | null>(null);
   const [visibleFallbackState, setVisibleFallbackState] = useState<VisibleFallbackState | null>(null);
@@ -76,6 +88,45 @@ export default function TurnstileSignupPageClient() {
         </Card>
       </div>
     );
+  }
+
+  async function submitWrapperFlow() {
+    setWrapperLoading(true);
+    setWrapperResult(null);
+
+    try {
+      const turnstileResult = await turnstile.run(async (turnstileFlowOptions) => await app.signUpWithCredential({
+        email,
+        password,
+        noRedirect: true,
+        noVerificationCallback: true,
+        ...turnstileFlowOptions,
+      }));
+
+      if (turnstileResult.status === "blocked") {
+        setWrapperResult({
+          status: "info",
+          message: "The recommended custom-component flow is waiting for the visible fallback challenge. Solve it below and submit again.",
+        });
+        return;
+      }
+
+      const result = turnstileResult.result;
+      if (result.status === "error") {
+        setWrapperResult({
+          status: "error",
+          message: result.error.message,
+        });
+        return;
+      }
+
+      setWrapperResult({
+        status: "success",
+        message: "Signup succeeded through the recommended useTurnstileAuth wrapper flow.",
+      });
+    } finally {
+      setWrapperLoading(false);
+    }
   }
 
   async function submitInvisibleAttempt(params: {
@@ -268,10 +319,10 @@ export default function TurnstileSignupPageClient() {
         <div className="space-y-2">
           <Typography type="h1">Turnstile Signup Demo</Typography>
           <Typography>
-            This page demonstrates the new invisible-first password signup flow and the visible fallback challenge that appears when the backend returns <span className="font-mono">TURNSTILE_CHALLENGE_REQUIRED</span>.
+            This page shows both the recommended custom-component wrapper for Turnstile-aware signup and the lower-level debug flows for forcing specific backend outcomes.
           </Typography>
           <Typography className="text-sm text-gray-600 dark:text-gray-300">
-            The invisible step below uses the local siteverify stub so you can deterministically trigger either the success path or the fallback path without depending on Cloudflare scoring.
+            Use the wrapper section first if you want to see the supported custom React API. Use the raw debug section below when you need to force invalid or no-token backend behavior.
           </Typography>
         </div>
 
@@ -305,6 +356,8 @@ export default function TurnstileSignupPageClient() {
                   value={email}
                   onChange={(event) => {
                     setEmail(event.target.value);
+                    turnstile.clearChallengeError();
+                    setWrapperResult(null);
                     setSubmissionResult(null);
                   }}
                 />
@@ -316,6 +369,8 @@ export default function TurnstileSignupPageClient() {
                   value={password}
                   onChange={(event) => {
                     setPassword(event.target.value);
+                    turnstile.clearChallengeError();
+                    setWrapperResult(null);
                     setSubmissionResult(null);
                   }}
                 />
@@ -326,6 +381,8 @@ export default function TurnstileSignupPageClient() {
                 variant="secondary"
                 onClick={() => {
                   setEmail(createSuggestedEmail());
+                  turnstile.clearChallengeError();
+                  setWrapperResult(null);
                   setSubmissionResult(null);
                   setVisibleFallbackState(null);
                   setVisibleTurnstileToken(null);
@@ -342,35 +399,62 @@ export default function TurnstileSignupPageClient() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <Typography type="h3">Recommended custom component flow</Typography>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Typography>
+              This section uses <span className="font-mono">useTurnstileAuth()</span>, the same wrapper custom React auth components should use when Turnstile is enabled.
+            </Typography>
+            <Typography className="text-sm text-gray-600 dark:text-gray-300">
+              It runs the invisible-first signup attempt automatically and shows the visible fallback challenge only when the backend returns <span className="font-mono">TURNSTILE_CHALLENGE_REQUIRED</span>.
+            </Typography>
+            {wrapperResult != null ? (
+              <Typography
+                className={
+                  wrapperResult.status === "error"
+                    ? "text-red-600 dark:text-red-400"
+                    : wrapperResult.status === "success"
+                      ? "text-green-700 dark:text-green-300"
+                      : "text-blue-700 dark:text-blue-300"
+                }
+              >
+                {wrapperResult.message}
+              </Typography>
+            ) : null}
+            {turnstile.challengeError != null ? (
+              <Typography className="text-sm text-red-600 dark:text-red-400">
+                {turnstile.challengeError}
+              </Typography>
+            ) : null}
+            {turnstile.turnstileWidget}
+          </CardContent>
+          <CardFooter className="flex gap-3">
+            <Button
+              loading={wrapperLoading}
+              disabled={!turnstile.canSubmit}
+              onClick={async () => await submitWrapperFlow()}
+            >
+              Run wrapper flow
+            </Button>
+            <Typography className="text-sm text-gray-600 dark:text-gray-300">
+              This is the supported abstraction for custom Turnstile-aware signup components.
+            </Typography>
+          </CardFooter>
+        </Card>
+
+        <div className="space-y-2">
+          <Typography type="h2">Raw backend-debug flows</Typography>
+          <Typography className="text-sm text-gray-600 dark:text-gray-300">
+            These sections intentionally bypass the wrapper so you can force exact request payloads and backend outcomes.
+          </Typography>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <Typography type="h3">Invisible-first success</Typography>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Typography>
-                Sends the local stub token <span className="font-mono">{demoInvisibleTokens.success}</span>.
-              </Typography>
-              <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                Expected backend effect: signup succeeds immediately with no Turnstile penalty.
-              </Typography>
-            </CardContent>
-            <CardFooter>
-              <Button
-                loading={loadingFlow === "invisible-ok"}
-                onClick={async () => await submitInvisibleAttempt({
-                  flow: "invisible-ok",
-                  token: demoInvisibleTokens.success,
-                })}
-              >
-                Run invisible success flow
-              </Button>
-            </CardFooter>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Typography type="h3">Invisible fail to visible fallback</Typography>
+              <Typography type="h3">Forced invisible fail to visible fallback</Typography>
             </CardHeader>
             <CardContent className="space-y-3">
               <Typography>
@@ -424,7 +508,32 @@ export default function TurnstileSignupPageClient() {
                 disabled={visibleFallbackState == null || visibleTurnstileToken == null}
                 onClick={async () => await completeVisibleFallbackSignup()}
               >
-                Complete visible fallback
+                Complete raw visible fallback
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <Typography type="h3">Forced invisible success</Typography>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Typography>
+                Sends the local stub token <span className="font-mono">{demoInvisibleTokens.success}</span>.
+              </Typography>
+              <Typography className="text-sm text-gray-600 dark:text-gray-300">
+                Expected backend effect: signup succeeds immediately with no Turnstile penalty.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                loading={loadingFlow === "invisible-ok"}
+                onClick={async () => await submitInvisibleAttempt({
+                  flow: "invisible-ok",
+                  token: demoInvisibleTokens.success,
+                })}
+              >
+                Run raw invisible success
               </Button>
             </CardFooter>
           </Card>
@@ -503,7 +612,7 @@ export default function TurnstileSignupPageClient() {
           </CardHeader>
           <CardContent className="space-y-2">
             <Typography>
-              The hosted auth pages use the same SDK behavior automatically. This debug page exists so you can force the invisible success and fallback paths on demand.
+              Hosted auth pages use the same staged Turnstile behavior automatically. This page separates the recommended custom wrapper flow from the raw debug-only flows so you can compare them directly.
             </Typography>
           </CardContent>
           <CardFooter className="flex gap-3">

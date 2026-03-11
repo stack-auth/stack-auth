@@ -1,7 +1,51 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { riskScoreThresholds, riskScoreWeights } from "@stackframe/stack-shared/dist/utils/risk-score-weights";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, mockTurnstileTokens, niceBackendFetch } from "../../../backend-helpers";
+
+type ScorePair = {
+  bot: number,
+  free_trial_abuse: number,
+};
+
+const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
+const zeroSignUpRiskScore = { bot: 0, free_trial_abuse: 0 } satisfies ScorePair;
+const turnstileInvalidSignUpRiskScore = riskScoreWeights.turnstile;
+const nonDeliverablePasswordSignUpRiskScore = sumScores(riskScoreWeights.emailable, turnstileInvalidSignUpRiskScore);
+const similarEmailPasswordSignUpRiskScore = sumScores(riskScoreWeights.similarEmail, turnstileInvalidSignUpRiskScore);
+
+function scaleScores(scores: ScorePair, factor: number): ScorePair {
+  return {
+    bot: Math.round(scores.bot * factor),
+    free_trial_abuse: Math.round(scores.free_trial_abuse * factor),
+  };
+}
+
+function sumScores(...contributions: ScorePair[]): ScorePair {
+  return {
+    bot: Math.min(100, contributions.reduce((score, contribution) => score + contribution.bot, 0)),
+    free_trial_abuse: Math.min(100, contributions.reduce((score, contribution) => score + contribution.free_trial_abuse, 0)),
+  };
+}
+
+function scaleRepeatedSignalCount(matchCount: number): number {
+  if (matchCount < riskScoreThresholds.sameIpMinMatches) {
+    return 0;
+  }
+
+  const clampedMatchCount = Math.min(matchCount, riskScoreThresholds.sameIpMaxMatchesForFullPenalty);
+  const penaltySteps = riskScoreThresholds.sameIpMaxMatchesForFullPenalty - riskScoreThresholds.sameIpMinMatches + 1;
+  const matchedSteps = clampedMatchCount - riskScoreThresholds.sameIpMinMatches + 1;
+  return matchedSteps / penaltySteps;
+}
+
+function getTrustedSameIpSignUpRiskScore(matchCount: number): ScorePair {
+  return sumScores(
+    turnstileInvalidSignUpRiskScore,
+    scaleScores(riskScoreWeights.sameIp.trusted, scaleRepeatedSignalCount(matchCount)),
+  );
+}
 
 describe("risk scores", () => {
   // ==========================================
@@ -18,7 +62,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "user@emailable-not-deliverable.example.com",
+          email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
           password: generateSecureRandomString(),
         },
       });
@@ -32,8 +76,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 100,
-          free_trial_abuse: 100,
+          ...nonDeliverablePasswordSignUpRiskScore,
         },
       });
     });
@@ -56,8 +99,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -80,8 +122,7 @@ describe("risk scores", () => {
       expect(invalidUserResponse.status).toBe(200);
       expect(invalidUserResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
 
@@ -103,8 +144,7 @@ describe("risk scores", () => {
       expect(errorUserResponse.status).toBe(200);
       expect(errorUserResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -133,8 +173,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -187,8 +226,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 40,
-          free_trial_abuse: 20,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -251,8 +289,7 @@ describe("risk scores", () => {
 
       expect(meResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -276,8 +313,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -302,8 +338,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -347,8 +382,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 40,
-          free_trial_abuse: 20,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -393,8 +427,7 @@ describe("risk scores", () => {
 
       expect(meResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -418,8 +451,7 @@ describe("risk scores", () => {
       expect(meResponse.status).toBe(200);
       expect(meResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -444,8 +476,7 @@ describe("risk scores", () => {
       expect(meResponse.status).toBe(200);
       expect(meResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -488,8 +519,7 @@ describe("risk scores", () => {
       expect(meResponse.status).toBe(200);
       expect(meResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 40,
-          free_trial_abuse: 20,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -551,8 +581,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -576,7 +605,7 @@ describe("risk scores", () => {
         accessType: "client",
         headers: { "x-stack-access-token": accessToken },
         body: {
-          email: "user@emailable-not-deliverable.example.com",
+          email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
           password: generateSecureRandomString(),
         },
       });
@@ -590,8 +619,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 100,
-          free_trial_abuse: 100,
+          ...nonDeliverablePasswordSignUpRiskScore,
         },
       });
     });
@@ -627,15 +655,14 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
   });
 
   describe("recent-signup heuristics", () => {
-    it("should score repeated recent signups from the same spoofable IP", async ({ expect }) => {
+    it("should increase same-IP risk as repeated spoofable-IP signups accumulate", async ({ expect }) => {
       await Project.createAndSwitch({
         config: { credential_enabled: true },
       });
@@ -664,28 +691,36 @@ describe("risk scores", () => {
 
       backendContext.set({ userAuth: null });
 
-      const secondResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
-        method: "POST",
-        accessType: "client",
-        body: {
-          email: `same-ip-second-${generateSecureRandomString(8)}@example.com`,
-          password: generateSecureRandomString(),
-        },
-      });
-      expect(secondResponse.status).toBe(200);
+      async function signUpAndReadScores(emailPrefix: string) {
+        const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+          method: "POST",
+          accessType: "client",
+          body: {
+            email: `${emailPrefix}-${generateSecureRandomString(8)}@example.com`,
+            password: generateSecureRandomString(),
+          },
+        });
+        expect(response.status).toBe(200);
 
-      const userResponse = await niceBackendFetch(`/api/v1/users/${secondResponse.body.user_id}`, {
-        method: "GET",
-        accessType: "server",
-      });
+        const userResponse = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+          method: "GET",
+          accessType: "server",
+        });
+        expect(userResponse.status).toBe(200);
 
-      expect(userResponse.status).toBe(200);
-      expect(userResponse.body.risk_scores).toEqual({
-        sign_up: {
-          bot: 15,
-          free_trial_abuse: 35,
-        },
-      });
+        backendContext.set({ userAuth: null });
+        return userResponse.body.risk_scores.sign_up as { bot: number, free_trial_abuse: number };
+      }
+
+      const secondScores = await signUpAndReadScores("same-ip-second");
+      const thirdScores = await signUpAndReadScores("same-ip-third");
+      const fourthScores = await signUpAndReadScores("same-ip-fourth");
+      const fifthScores = await signUpAndReadScores("same-ip-fifth");
+
+      expect(secondScores).toEqual(getTrustedSameIpSignUpRiskScore(1));
+      expect(thirdScores).toEqual(getTrustedSameIpSignUpRiskScore(2));
+      expect(fourthScores).toEqual(getTrustedSameIpSignUpRiskScore(3));
+      expect(fifthScores).toEqual(getTrustedSameIpSignUpRiskScore(4));
     });
 
     it("should score recent similar-email signups without matching unrelated emails", async ({ expect }) => {
@@ -724,8 +759,7 @@ describe("risk scores", () => {
       expect(similarUserResponse.status).toBe(200);
       expect(similarUserResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 20,
-          free_trial_abuse: 60,
+          ...similarEmailPasswordSignUpRiskScore,
         },
       });
 
@@ -749,8 +783,7 @@ describe("risk scores", () => {
       expect(unrelatedUserResponse.status).toBe(200);
       expect(unrelatedUserResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -810,8 +843,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 15,
-          free_trial_abuse: 35,
+          ...getTrustedSameIpSignUpRiskScore(1),
         },
       });
     });
@@ -995,8 +1027,7 @@ describe("risk scores", () => {
       expect(userResponse.status).toBe(200);
       expect(userResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
@@ -1202,8 +1233,9 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "user@tempmail.com",
+          email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
           password: generateSecureRandomString(),
+          turnstile_token: mockTurnstileTokens.invalid,
         },
       });
       expect(response.status).toBe(200);
@@ -1222,8 +1254,7 @@ describe("risk scores", () => {
       expect(updateResponse.body.display_name).toBe("Updated Name");
       expect(updateResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 100,
-          free_trial_abuse: 100,
+          ...nonDeliverablePasswordSignUpRiskScore,
         },
       });
     });
@@ -1262,8 +1293,7 @@ describe("risk scores", () => {
       expect(readResponse.status).toBe(200);
       expect(readResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 80,
-          free_trial_abuse: 40,
+          ...turnstileInvalidSignUpRiskScore,
         },
       });
     });
@@ -1279,12 +1309,14 @@ describe("risk scores", () => {
         config: { credential_enabled: true },
       });
 
+      const nonDeliverableBotThreshold = nonDeliverablePasswordSignUpRiskScore.bot;
+
       await Project.updateConfig({
         'auth.signUpRules.restrict-high-bot': {
           enabled: true,
           displayName: 'Restrict high bot score',
           priority: 0,
-          condition: 'riskScores.bot >= 80',
+          condition: `riskScores.bot >= ${nonDeliverableBotThreshold}`,
           action: { type: 'restrict' },
         },
         'auth.signUpRulesDefaultAction': 'allow',
@@ -1294,7 +1326,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "user@tempmail.com",
+          email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
           password: generateSecureRandomString(),
         },
       });
@@ -1306,7 +1338,7 @@ describe("risk scores", () => {
       });
 
       expect(userResponse.body.restricted_by_admin).toBe(true);
-      expect(userResponse.body.risk_scores.sign_up.bot).toBe(100);
+      expect(userResponse.body.risk_scores.sign_up.bot).toBe(nonDeliverablePasswordSignUpRiskScore.bot);
     });
 
     it("should reject user based on risk score CEL condition", async ({ expect }) => {
@@ -1314,12 +1346,15 @@ describe("risk scores", () => {
         config: { credential_enabled: true },
       });
 
+      const nonDeliverableBotThreshold = nonDeliverablePasswordSignUpRiskScore.bot;
+      const nonDeliverableFreeTrialAbuseThreshold = nonDeliverablePasswordSignUpRiskScore.free_trial_abuse;
+
       await Project.updateConfig({
         'auth.signUpRules.reject-high-risk': {
           enabled: true,
           displayName: 'Reject high risk',
           priority: 0,
-          condition: 'riskScores.bot >= 80 && riskScores.free_trial_abuse >= 80',
+          condition: `riskScores.bot >= ${nonDeliverableBotThreshold} && riskScores.free_trial_abuse >= ${nonDeliverableFreeTrialAbuseThreshold}`,
           action: { type: 'reject' },
         },
         'auth.signUpRulesDefaultAction': 'allow',
@@ -1329,7 +1364,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "user@tempmail.com",
+          email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
           password: generateSecureRandomString(),
         },
       });
@@ -1363,12 +1398,14 @@ describe("risk scores", () => {
         config: { credential_enabled: true },
       });
 
+      const turnstileBotThreshold = turnstileInvalidSignUpRiskScore.bot;
+
       await Project.updateConfig({
         'auth.signUpRules.reject-high-bot': {
           enabled: true,
           displayName: 'Reject high bot score',
           priority: 0,
-          condition: 'riskScores.bot >= 80',
+          condition: `riskScores.bot >= ${turnstileBotThreshold}`,
           action: { type: 'reject' },
         },
         'auth.signUpRulesDefaultAction': 'allow',
@@ -1406,8 +1443,7 @@ describe("risk scores", () => {
       expect(createResponse.status).toBe(201);
       expect(createResponse.body.risk_scores).toEqual({
         sign_up: {
-          bot: 0,
-          free_trial_abuse: 0,
+          ...zeroSignUpRiskScore,
         },
       });
     });
