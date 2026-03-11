@@ -40,6 +40,12 @@ const emailOutboxBaseSchema = fieldSchema.yupObject({
   skip_deliverability_check: fieldSchema.yupBoolean().defined(),
   scheduled_at_millis: fieldSchema.yupNumber().defined(),
 
+
+  // Source tracking for grouping emails by template/draft
+  created_with: fieldSchema.yupString().oneOf(["draft", "programmatic-call"]).defined(),
+  email_draft_id: fieldSchema.yupString().nullable().defined(),
+  email_programmatic_call_template_id: fieldSchema.yupString().nullable().defined(),
+
   // Retry-related fields (for debugging/testing deferred retry logic)
   send_retries: fieldSchema.yupNumber().defined(),
   next_send_retry_at_millis: fieldSchema.yupNumber().nullable().defined(),
