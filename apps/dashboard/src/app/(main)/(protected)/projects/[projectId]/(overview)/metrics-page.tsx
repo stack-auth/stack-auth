@@ -1046,11 +1046,11 @@ function MetricsContent({
       visitorsTotal: formatCompact(visitorsTotalInRange),
       visitorsLabel: "Unique Visitors",
       visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
-      revenueTotal: formatUsdFromCents(totalRevenueCentsInRange),
+      revenueTotal: formatUsdFromCents(totalRevenueCentsInRange > 0 ? totalRevenueCentsInRange : (payments.revenue_cents ?? 0)),
       revenueLabel: "Revenue",
       revenueDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData]);
+  }, [allComposedData, composedData, dauStackedData, payments.revenue_cents]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);

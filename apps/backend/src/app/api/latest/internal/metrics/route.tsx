@@ -654,7 +654,7 @@ async function loadEmailOverview(tenancy: Tenancy) {
 
 // ── Web Analytics Aggregates ─────────────────────────────────────────────────
 
-async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
+async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymous: boolean) {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
   const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -663,7 +663,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
   const clickhouseClient = getClickhouseAdminClient();
 
   try {
-    const [pageViewResult, clickResult, referrerResult, topRegionResult, onlineResult, replayResult] = await Promise.all([
+    const [pageViewResult, clickResult, dailyVisitorResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult, replayResult] = await Promise.all([
       clickhouseClient.query({
         query: `
           SELECT
@@ -683,6 +683,53 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
           branchId: tenancy.branchId,
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+        },
+        format: "JSONEachRow",
+      }),
+      clickhouseClient.query({
+        query: `
+          SELECT
+            toDate(event_at) AS day,
+            uniqExact(assumeNotNull(user_id)) AS cnt
+          FROM analytics_internal.events
+          WHERE event_type = '$page-view'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+            AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+          GROUP BY day
+          ORDER BY day ASC
+        `,
+        query_params: {
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          since: formatClickhouseDateTimeParam(since),
+          untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          includeAnonymous: includeAnonymous ? 1 : 0,
+        },
+        format: "JSONEachRow",
+      }),
+      clickhouseClient.query({
+        query: `
+          SELECT
+            uniqExact(assumeNotNull(user_id)) AS visitors
+          FROM analytics_internal.events
+          WHERE event_type = '$page-view'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+            AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+        `,
+        query_params: {
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
+          since: formatClickhouseDateTimeParam(since),
+          untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          includeAnonymous: includeAnonymous ? 1 : 0,
         },
         format: "JSONEachRow",
       }),
@@ -778,7 +825,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
       // session replay count from Postgres
       (async () => {
         const prisma = await getPrismaClientForTenancy(tenancy);
-        const [total, recent, replayRows, visitorCount, revenue] = await Promise.all([
+        const [total, recent, replayRows, revenue] = await Promise.all([
           prisma.sessionReplay.count({ where: { tenancyId: tenancy.id } }),
           prisma.sessionReplay.count({
             where: {
@@ -796,7 +843,6 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
               lastEventAt: true,
             },
           }),
-          prisma.projectUser.count({ where: { tenancyId: tenancy.id } }),
           prisma.subscriptionInvoice.aggregate({
             where: { tenancyId: tenancy.id, amountTotal: { not: null } },
             _sum: { amountTotal: true },
@@ -806,16 +852,11 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
         const avgSessionSeconds = replayRows.length > 0
           ? replayRows.reduce((sum, row) => sum + Math.max(0, row.lastEventAt.getTime() - row.startedAt.getTime()), 0) / replayRows.length / 1000
           : 0;
-        const revenuePerVisitor = visitorCount > 0
-          ? Number((((revenue._sum.amountTotal ?? 0) / 100) / visitorCount).toFixed(2))
-          : 0;
-
         return {
           total,
           recent,
           avgSessionSeconds: Number(avgSessionSeconds.toFixed(1)),
-          visitorCount,
-          revenuePerVisitor,
+          totalRevenueCents: Number(revenue._sum.amountTotal ?? 0),
         };
       })(),
     ]);
@@ -833,14 +874,24 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
       const key = new Date(row.day + 'Z').toISOString().split('T')[0];
       clByDay.set(key, Number(row.cnt));
     }
+    const visitorRows: { day: string, cnt: number }[] = await dailyVisitorResult.json();
+    const visitorByDay = new Map<string, number>();
+    for (const row of visitorRows) {
+      const key = new Date(row.day + 'Z').toISOString().split('T')[0];
+      visitorByDay.set(key, Number(row.cnt));
+    }
+    const totalVisitorRows: { visitors: number }[] = await totalVisitorResult.json();
+    const visitors = Number(totalVisitorRows[0]?.visitors ?? 0);
 
     const dailyPageViews: DataPoints = [];
     const dailyClicks: DataPoints = [];
+    const dailyVisitors: DataPoints = [];
     for (let i = 0; i <= 30; i++) {
       const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
       const key = day.toISOString().split('T')[0];
       dailyPageViews.push({ date: key, activity: pvByDay.get(key) ?? 0 });
       dailyClicks.push({ date: key, activity: clByDay.get(key) ?? 0 });
+      dailyVisitors.push({ date: key, activity: visitorByDay.get(key) ?? 0 });
     }
 
     const referrers: { referrer: string | null, cnt: number }[] = await referrerResult.json();
@@ -850,10 +901,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
     return {
       daily_page_views: dailyPageViews,
       daily_clicks: dailyClicks,
-      daily_visitors: dailyPageViews.map((p) => ({
-        date: p.date,
-        activity: Math.round(p.activity * 0.45),
-      })),
+      daily_visitors: dailyVisitors,
       daily_revenue: dailyPageViews.map((p) => ({
         date: p.date,
         new_cents: 0,
@@ -862,10 +910,12 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
       total_revenue_cents: 0,
       total_replays: replayResult.total,
       recent_replays: replayResult.recent,
-      visitors: replayResult.visitorCount,
+      visitors,
       avg_session_seconds: replayResult.avgSessionSeconds,
       online_live: Number(onlineRows[0]?.online ?? 0),
-      revenue_per_visitor: replayResult.revenuePerVisitor,
+      revenue_per_visitor: visitors > 0
+        ? Number(((replayResult.totalRevenueCents / 100) / visitors).toFixed(2))
+        : 0,
       top_referrers: referrers.map((row) => ({
         referrer: row.referrer ?? '(direct)',
         visitors: Number(row.cnt),
@@ -1139,7 +1189,7 @@ export const GET = createSmartRouteHandler({
       loadAuthOverview(req.auth.tenancy, includeAnonymous, now),
       loadPaymentsOverview(req.auth.tenancy),
       loadEmailOverview(req.auth.tenancy),
-      loadAnalyticsOverview(req.auth.tenancy, now),
+      loadAnalyticsOverview(req.auth.tenancy, now, includeAnonymous),
     ] as const);
 
     // In dev, ClickHouse may have no events — fill in realistic fallback data
