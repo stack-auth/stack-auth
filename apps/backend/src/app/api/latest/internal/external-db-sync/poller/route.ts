@@ -105,49 +105,25 @@ export const GET = createSmartRouteHandler({
 
       async function claimPendingRequests(): Promise<ClaimedOutgoingRequest[]> {
         return await traceSpan("external-db-sync.poller.claimPendingRequests", async (claimSpan) => {
-          const requests = await retryTransaction(globalPrismaClient, async (tx) => {
-            const claimTime = new Date();
-            const reclaimBefore = new Date(claimTime.getTime() - STALE_CLAIM_INTERVAL_MINUTES * 60 * 1000);
-
-            const candidateRequests = await tx.outgoingRequest.findMany({
-              where: {
-                OR: [
-                  { startedFulfillingAt: null },
-                  { startedFulfillingAt: { lt: reclaimBefore } },
-                ],
-              },
-              orderBy: [
-                { createdAt: "asc" },
-                { id: "asc" },
-              ],
-              take: pollerClaimLimit,
-            });
-
-            const claimedRequests: ClaimedOutgoingRequest[] = [];
-            for (const candidateRequest of candidateRequests) {
-              const claimResult = await tx.outgoingRequest.updateMany({
-                where: {
-                  id: candidateRequest.id,
-                  startedFulfillingAt: candidateRequest.startedFulfillingAt,
-                },
-                data: {
-                  startedFulfillingAt: claimTime,
-                },
-              });
-
-              if (claimResult.count !== 1) {
-                continue;
-              }
-
-              claimedRequests.push({
-                ...candidateRequest,
-                startedFulfillingAt: claimTime,
-                wasStale: candidateRequest.startedFulfillingAt != null,
-              });
-            }
-
-            return claimedRequests;
-          }, { level: "serializable" });
+          const requests = await globalPrismaClient.$queryRaw<ClaimedOutgoingRequest[]>`
+            WITH claimable_requests AS (
+              SELECT
+                "id",
+                "startedFulfillingAt" IS NOT NULL AS "wasStale"
+              FROM "OutgoingRequest"
+              WHERE
+                "startedFulfillingAt" IS NULL
+                OR "startedFulfillingAt" < NOW() - ${STALE_CLAIM_INTERVAL_MINUTES} * INTERVAL '1 minute'
+              ORDER BY "createdAt" ASC, "id" ASC
+              LIMIT ${pollerClaimLimit}
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE "OutgoingRequest" AS outgoing_request
+            SET "startedFulfillingAt" = NOW()
+            FROM claimable_requests
+            WHERE outgoing_request."id" = claimable_requests."id"
+            RETURNING outgoing_request.*, claimable_requests."wasStale";
+          `;
           claimSpan.setAttribute("stack.external-db-sync.claimed-count", requests.length);
           claimSpan.setAttribute("stack.external-db-sync.claimed-stale-count", getClaimedStaleRequestIds(requests).length);
           return requests;
