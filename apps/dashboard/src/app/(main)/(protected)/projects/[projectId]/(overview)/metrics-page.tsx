@@ -101,6 +101,38 @@ function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean) {
   return useMetrics(includeAnonymous);
 }
 
+function SetupAppPrompt({
+  projectId,
+  appId,
+  appLabel,
+  metricLabel,
+}: {
+  projectId: string,
+  appId: AppId,
+  appLabel: string,
+  metricLabel: string,
+}) {
+  return (
+    <div className="flex h-full min-h-0 w-full items-center justify-center px-4 py-4">
+      <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+        <Typography variant="secondary" className="text-xs">
+          Enable{" "}
+          <span className="font-semibold text-foreground">
+            {appLabel}
+          </span>{" "}
+          in Explore Apps to track {metricLabel}.
+        </Typography>
+        <Link
+          href={`/projects/${projectId}/apps/${appId}`}
+          className="inline-flex items-center rounded-md bg-foreground/[0.08] px-3 py-1.5 text-[11px] font-medium text-foreground transition-colors duration-150 hover:bg-foreground/[0.12] hover:transition-none"
+        >
+          Open Explore Apps
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 // ── Compact dual-value stat card ─────────────────────────────────────────────
 
 function DualStatCard({
@@ -225,7 +257,7 @@ function HeroInChartPill({
           <span className="text-[15px] font-bold tabular-nums text-foreground leading-none">
             {value}
           </span>
-          {delta != null && (
+          {delta != null && delta !== 0 && (
             <span className={cn(
               "text-[10px] font-semibold tabular-nums leading-none shrink-0",
               delta > 0 ? "text-emerald-500 dark:text-emerald-400" : delta < 0 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
@@ -254,6 +286,9 @@ function HeroAnalyticsWidget({
   revenueTotal,
   visitorsDelta,
   revenueDelta,
+  analyticsEnabled,
+  paymentsEnabled,
+  projectId,
   compact = false,
 }: {
   composedData: ComposedDataPoint[],
@@ -270,6 +305,9 @@ function HeroAnalyticsWidget({
   revenueTotal: string,
   visitorsDelta?: number,
   revenueDelta?: number,
+  analyticsEnabled: boolean,
+  paymentsEnabled: boolean,
+  projectId: string,
   compact?: boolean,
 }) {
   const [chartMode, setChartMode] = useState<HeroChartMode>('default');
@@ -330,6 +368,7 @@ function HeroAnalyticsWidget({
   const dauColor = "hsl(152, 38%, 52%)";
   const visitorsColor = "hsl(210, 84%, 64%)";
   const revenueColor = "hsl(268, 82%, 66%)";
+  const chartViewportHeight = compact ? 260 : 320;
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -398,7 +437,7 @@ function HeroAnalyticsWidget({
           </div>
 
           {/* Chart area with fade transition */}
-          <div className="flex-1 min-h-0 relative" style={{ minHeight: 0 }}>
+          <div className="flex-1 min-h-0 relative" style={{ minHeight: chartViewportHeight }}>
             <div
               className={cn(
                 "h-full flex flex-col",
@@ -417,6 +456,9 @@ function HeroAnalyticsWidget({
                 ) : (
                   <ComposedAnalyticsChart
                     datapoints={composedData}
+                    showVisitors={analyticsEnabled}
+                    showRevenue={paymentsEnabled}
+                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -429,30 +471,41 @@ function HeroAnalyticsWidget({
                 ) : (
                   <StackedBarChartDisplay
                     datapoints={dauStackedData}
+                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
               )}
               {displayMode === 'visitors' && (
-                visitorsData.length === 0 ? (
+                !analyticsEnabled ? (
+                  <div className="h-full min-h-0">
+                    <SetupAppPrompt projectId={projectId} appId="analytics" appLabel="Analytics" metricLabel="visitor metrics" />
+                  </div>
+                ) : visitorsData.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Typography variant="secondary" className="text-xs">No visitor data available</Typography>
                   </div>
                 ) : (
                   <VisitorsHoverChart
                     datapoints={visitorsData}
+                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
               )}
               {displayMode === 'revenue' && (
-                revenueData.length === 0 ? (
+                !paymentsEnabled ? (
+                  <div className="h-full min-h-0">
+                    <SetupAppPrompt projectId={projectId} appId="payments" appLabel="Payments" metricLabel="revenue metrics" />
+                  </div>
+                ) : revenueData.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <Typography variant="secondary" className="text-xs">No revenue data available</Typography>
                   </div>
                 ) : (
                   <RevenueHoverChart
                     datapoints={revenueData}
+                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -696,8 +749,12 @@ function EmailBreakdownCard({
 
 function ReferrersWithAnalyticsCard({
   topReferrers,
+  analyticsEnabled,
+  projectId,
 }: {
   topReferrers: Array<{ referrer: string, visitors: number }>,
+  analyticsEnabled: boolean,
+  projectId: string,
 }) {
   const listWindow = useInfiniteListWindow(topReferrers.length);
 
@@ -707,7 +764,9 @@ function ReferrersWithAnalyticsCard({
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Referrers</span>
       </div>
       <div ref={listWindow.scrollRef} className="p-4 pt-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-        {topReferrers.length === 0 ? (
+        {!analyticsEnabled ? (
+          <SetupAppPrompt projectId={projectId} appId="analytics" appLabel="Analytics" metricLabel="referrer metrics" />
+        ) : topReferrers.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs">No referrer data</Typography>
           </div>
@@ -866,6 +925,8 @@ function MetricsContent({
       .map(([appId]) => appId as AppId),
     [config.apps.installed]
   );
+  const analyticsEnabled = installedApps.includes("analytics");
+  const paymentsEnabled = installedApps.includes("payments");
 
   const auth = data.auth_overview ?? {};
   const payments = data.payments_overview ?? {};
@@ -942,14 +1003,14 @@ function MetricsContent({
 
     const points = [...allDates].map(date => ({
       date,
-      visitors: visitorMap.get(date) ?? 0,
-      new_cents: revenueMap.get(date)?.new_cents ?? 0,
-      refund_cents: revenueMap.get(date)?.refund_cents ?? 0,
+      visitors: analyticsEnabled ? (visitorMap.get(date) ?? 0) : 0,
+      new_cents: paymentsEnabled ? (revenueMap.get(date)?.new_cents ?? 0) : 0,
+      refund_cents: paymentsEnabled ? (revenueMap.get(date)?.refund_cents ?? 0) : 0,
       dau: dauTotalsByDate.get(date) ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [data.analytics_overview, dauStackedData, dauTotalsByDate]);
+  }, [data.analytics_overview, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
   const composedData = useMemo<ComposedDataPoint[]>(
     () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
     [allComposedData, timeRange, customDateRange],
@@ -974,6 +1035,9 @@ function MetricsContent({
 
   // ── Visitors hover chart data (page views with top countries) ─────────────
   const visitorsHoverData = useMemo<VisitorsHoverDataPoint[]>(() => {
+    if (!analyticsEnabled) {
+      return [];
+    }
     const analyticsObj = data.analytics_overview ?? {};
     const dailyPv = (analyticsObj.daily_page_views ?? []) as DataPoint[];
 
@@ -987,10 +1051,13 @@ function MetricsContent({
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [data.analytics_overview, timeRange, customDateRange, topCountries]);
+  }, [data.analytics_overview, timeRange, customDateRange, topCountries, analyticsEnabled]);
 
   // ── Revenue hover chart data (new_cents + refund_cents) ───────────────────
   const revenueHoverData = useMemo<RevenueHoverDataPoint[]>(() => {
+    if (!paymentsEnabled) {
+      return [];
+    }
     const analyticsObj = data.analytics_overview ?? {};
     const dailyRev = (analyticsObj.daily_revenue ?? []) as Array<{ date: string, new_cents: number, refund_cents: number }>;
 
@@ -1001,12 +1068,13 @@ function MetricsContent({
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [data.analytics_overview, timeRange, customDateRange]);
+  }, [data.analytics_overview, timeRange, customDateRange, paymentsEnabled]);
 
   // ── Hero outer stats: MAUs, Total Emails sent, Session time ───────────────
   const heroOuterStats = useMemo<AnalyticsStatPill[]>(() => {
     const analyticsObj = data.analytics_overview ?? {};
-    const mau = (auth.mau ?? 0) as number;
+    const totalUsers = data.total_users ?? 0;
+    const mau = Math.min((auth.mau ?? 0) as number, totalUsers);
     const totalEmailsSent = (email.emails_sent ?? 0) as number;
     return [
       {
@@ -1019,10 +1087,10 @@ function MetricsContent({
       },
       {
         label: "Avg. Session time",
-        value: formatSeconds(analyticsObj.avg_session_seconds ?? 0),
+        value: analyticsEnabled ? formatSeconds(analyticsObj.avg_session_seconds ?? 0) : "—",
       },
     ];
-  }, [auth.mau, email.emails_sent, data.analytics_overview]);
+  }, [auth.mau, email.emails_sent, data.analytics_overview, data.total_users, analyticsEnabled]);
 
   // ── In-chart pill values: Visitors and Revenue ────────────────────────────
   const inChartPillValues = useMemo(() => {
@@ -1056,14 +1124,16 @@ function MetricsContent({
       dauLabel: "Daily Active Users",
       // DAU delta is day-over-day and independent from the selected time range.
       dauDelta: previousDau == null ? undefined : calculatePeriodDelta(latestDau, previousDau),
-      visitorsTotal: formatCompact(visitorsTotalInRange),
+      visitorsTotal: analyticsEnabled ? formatCompact(visitorsTotalInRange) : "—",
       visitorsLabel: "Unique Visitors",
-      visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
-      revenueTotal: formatUsdFromCents(totalRevenueCentsInRange > 0 ? totalRevenueCentsInRange : (payments.revenue_cents ?? 0)),
+      visitorsDelta: analyticsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
+      revenueTotal: paymentsEnabled
+        ? formatUsdFromCents(totalRevenueCentsInRange > 0 ? totalRevenueCentsInRange : (payments.revenue_cents ?? 0))
+        : "—",
       revenueLabel: "Revenue",
-      revenueDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
+      revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, payments.revenue_cents]);
+  }, [allComposedData, composedData, dauStackedData, payments.revenue_cents, analyticsEnabled, paymentsEnabled]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -1154,6 +1224,9 @@ function MetricsContent({
             dauStackedData={filteredDauStackedData}
             visitorsData={visitorsHoverData}
             revenueData={revenueHoverData}
+            analyticsEnabled={analyticsEnabled}
+            paymentsEnabled={paymentsEnabled}
+            projectId={projectId}
             outerStats={heroOuterStatsForLayout}
             dauLabel={inChartPillValues.dauLabel}
             dauTotal={inChartPillValues.dauTotal}
@@ -1224,6 +1297,8 @@ function MetricsContent({
         />
         <ReferrersWithAnalyticsCard
           topReferrers={topReferrers}
+          analyticsEnabled={analyticsEnabled}
+          projectId={projectId}
         />
       </div>
     </div>
