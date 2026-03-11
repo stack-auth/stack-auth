@@ -103,7 +103,11 @@ function parseChartDate(dateValue: string): Date {
     return new Date(year, month - 1, day);
   }
 
-  return new Date(dateValue);
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Unsupported chart date format: ${dateValue}`);
+  }
+  return parsed;
 }
 
 function formatDateRangeLabel(range: CustomDateRange | null): string {
@@ -117,11 +121,11 @@ function formatDateRangeLabel(range: CustomDateRange | null): string {
   return `${fromLabel} - ${toLabel}`;
 }
 
-export function filterDatapointsByTimeRange(
-  datapoints: DataPoint[],
+function filterPointsByTimeRange<T extends { date: string }>(
+  datapoints: T[],
   timeRange: TimeRange,
   customDateRange: CustomDateRange | null = null,
-): DataPoint[] {
+): T[] {
   if (timeRange === '7d') {
     return datapoints.slice(-7);
   }
@@ -141,24 +145,20 @@ export function filterDatapointsByTimeRange(
   return datapoints;
 }
 
+export function filterDatapointsByTimeRange(
+  datapoints: DataPoint[],
+  timeRange: TimeRange,
+  customDateRange: CustomDateRange | null = null,
+): DataPoint[] {
+  return filterPointsByTimeRange(datapoints, timeRange, customDateRange);
+}
+
 export function filterStackedDatapointsByTimeRange<T extends { date: string }>(
   datapoints: T[],
   timeRange: TimeRange,
   customDateRange: CustomDateRange | null = null,
 ): T[] {
-  if (timeRange === '7d') return datapoints.slice(-7);
-  if (timeRange === '30d') return datapoints.slice(-30);
-  if (timeRange === 'custom') {
-    if (customDateRange == null) {
-      return datapoints;
-    }
-
-    const fromKey = getDateKey(customDateRange.from);
-    const toKey = getDateKey(customDateRange.to);
-
-    return datapoints.filter((point) => point.date >= fromKey && point.date <= toKey);
-  }
-  return datapoints;
+  return filterPointsByTimeRange(datapoints, timeRange, customDateRange);
 }
 
 function getHoveredDataIndex(activeTooltipIndex: unknown, dataLength: number): number | null {

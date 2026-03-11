@@ -3,13 +3,47 @@ import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
+type MetricsUser = {
+  is_anonymous: boolean,
+};
+
+type LoginMethodMetric = {
+  count: number,
+};
+
 async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceResponse) {
+  const baselineTotalUsers = metricsResponse.body.total_users as number;
+  const baselineUsersByCountry = metricsResponse.body.users_by_country as Record<string, number>;
+  const baselineRecentlyRegisteredIds = (metricsResponse.body.recently_registered as Array<{ id: string }>).map((user) => user.id);
+  const baselineRecentlyActiveIds = (metricsResponse.body.recently_active as Array<{ id: string }>).map((user) => user.id);
+
   for (let i = 0; i < 2; i++) {
     await Auth.Anonymous.signUp();
   }
-  await wait(2000); // the event log is async, so let's give it some time to be written to the DB
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(response.body).toEqual(metricsResponse.body);
+
+  // ClickHouse ingestion is async; poll until anonymous users are excluded again.
+  let response!: NiceResponse;
+  for (let i = 0; i < 10; i++) {
+    await wait(2_000);
+    response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+    const noAnonymousInRecentlyRegistered = (response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous);
+    const noAnonymousInRecentlyActive = (response.body.recently_active as MetricsUser[]).every((user) => !user.is_anonymous);
+    if (
+      response.body.total_users === baselineTotalUsers &&
+      JSON.stringify(response.body.users_by_country) === JSON.stringify(baselineUsersByCountry) &&
+      noAnonymousInRecentlyRegistered &&
+      noAnonymousInRecentlyActive
+    ) {
+      return;
+    }
+  }
+
+  expect(response.body.total_users).toBe(baselineTotalUsers);
+  expect(response.body.users_by_country).toEqual(baselineUsersByCountry);
+  expect((response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous)).toBe(true);
+  expect((response.body.recently_active as MetricsUser[]).every((user) => !user.is_anonymous)).toBe(true);
+  expect((response.body.recently_registered as Array<{ id: string }>).map((user) => user.id)).toEqual(baselineRecentlyRegisteredIds);
+  expect((response.body.recently_active as Array<{ id: string }>).map((user) => user.id)).toEqual(baselineRecentlyActiveIds);
 }
 
 async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: string, expectedCount: number }): Promise<NiceResponse> {
@@ -152,10 +186,10 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
 
   // Verify anonymous users don't appear in recently_registered
   expect(result.body.recently_registered.length).toBe(1);
-  expect(result.body.recently_registered.every((user: any) => !user.is_anonymous)).toBe(true);
+  expect(result.body.recently_registered.every((user: MetricsUser) => !user.is_anonymous)).toBe(true);
 
   // Verify anonymous users don't appear in recently_active
-  expect(result.body.recently_active.every((user: any) => !user.is_anonymous)).toBe(true);
+  expect(result.body.recently_active.every((user: MetricsUser) => !user.is_anonymous)).toBe(true);
 
   // Verify anonymous users aren't counted in daily_users
   const lastDayUsers = result.body.daily_users[result.body.daily_users.length - 1];
@@ -243,7 +277,7 @@ it("should handle mixed auth methods excluding anonymous users", async ({ expect
 
   // Login methods should only count regular users' methods
   const loginMethods = response.body.login_methods;
-  const totalMethodCount = loginMethods.reduce((sum: number, method: any) => sum + method.count, 0);
+  const totalMethodCount = loginMethods.reduce((sum: number, method: LoginMethodMetric) => sum + method.count, 0);
   expect(totalMethodCount).toBe(2); // 1 OTP + 1 password, no anonymous
 
   await ensureAnonymousUsersAreStillExcluded(response);
@@ -304,6 +338,8 @@ it("should return cross-product aggregates in the metrics response", async ({ ex
   // Fields used by visitors/revenue hover charts
   expect(Array.isArray(analyticsOverview.daily_visitors)).toBe(true);
   expect(Array.isArray(analyticsOverview.daily_revenue)).toBe(true);
+  expect(typeof analyticsOverview.visitors).toBe('number');
+  expect(Array.isArray(analyticsOverview.top_referrers)).toBe(true);
 });
 
 it("should return correct auth_overview breakdown including teams", async ({ expect }) => {

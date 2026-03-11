@@ -2114,12 +2114,6 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       const hasClicked = hasOpened && emailBulkRand() < 0.3;
       const hasError = !hasBounce && !hasOpened && emailBulkRand() < 0.05;
 
-      const existing = await globalPrismaClient.emailOutbox.findUnique({
-        where: { tenancyId_id: { tenancyId, id: bulkId } },
-        select: { id: true },
-      });
-      if (existing) continue;
-
       const canHaveDelivery = hasOpened || hasClicked || hasBounce;
 
       await globalPrismaClient.emailOutbox.upsert({

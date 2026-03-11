@@ -1,10 +1,11 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, PrismaClientTransaction, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import yup from 'yup';
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
@@ -23,7 +24,7 @@ function formatClickhouseDateTimeParam(date: Date): string {
   return date.toISOString().slice(0, 19);
 }
 
-async function loadUsersByCountry(tenancy: Tenancy, prisma: PrismaClientTransaction, includeAnonymous: boolean = false): Promise<Record<string, number>> {
+async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
   const clickhouseClient = getClickhouseAdminClient();
   const res = await clickhouseClient.query({
     query: `
@@ -240,6 +241,7 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
           AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
           AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+        GROUP BY day, user_id
       `,
       query_params: {
         projectId: tenancy.project.id,
@@ -309,6 +311,7 @@ async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<A
           AND team_id IS NOT NULL
           AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
+        GROUP BY day, team_id
       `,
       query_params: {
         projectId: tenancy.project.id,
@@ -430,7 +433,15 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
     });
     const rows: { mau: number }[] = await result.json();
     return Number(rows[0]?.mau ?? 0);
-  } catch {
+  } catch (error) {
+    captureError("internal-metrics-load-monthly-active-users-failed", new StackAssertionError(
+      "Failed to load monthly active users for internal metrics.",
+      {
+        cause: error,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+      },
+    ));
     return 0;
   }
 }
@@ -587,11 +598,9 @@ async function loadEmailOverview(tenancy: Tenancy) {
 
   // Daily email sends for last 30 days
   const emailByDay = new Map<string, number>();
-  for (const email of recentEmails) {
-    if (email.createdAt >= thirtyDaysAgo) {
-      const key = email.createdAt.toISOString().split('T')[0];
-      emailByDay.set(key, (emailByDay.get(key) ?? 0) + 1);
-    }
+  for (const email of emailsByDayAndStatus) {
+    const key = email.createdAt.toISOString().split('T')[0];
+    emailByDay.set(key, (emailByDay.get(key) ?? 0) + 1);
   }
   const dailyEmails: DataPoints = [];
   for (let i = 0; i <= 30; i++) {
@@ -663,7 +672,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   const clickhouseClient = getClickhouseAdminClient();
 
   try {
-    const [pageViewResult, clickResult, dailyVisitorResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult, replayResult] = await Promise.all([
+    const [pageViewResult, dailyVisitorResult, totalVisitorResult, clickResult, referrerResult, topRegionResult, onlineResult, replayResult] = await Promise.all([
       clickhouseClient.query({
         query: `
           SELECT
@@ -926,7 +935,15 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         count: Number(topRegionRows[0].cnt),
       } : null,
     };
-  } catch {
+  } catch (error) {
+    captureError("internal-metrics-analytics-overview-fallback", new StackAssertionError(
+      "Falling back to empty analytics overview due to query failure.",
+      {
+        cause: error,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+      },
+    ));
     // Analytics may not be enabled for all projects
     return {
       daily_page_views: [] as DataPoints,
@@ -1171,7 +1188,7 @@ export const GET = createSmartRouteHandler({
       }),
       loadTotalUsers(req.auth.tenancy, now, includeAnonymous),
       loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
-      loadUsersByCountry(req.auth.tenancy, prisma, includeAnonymous),
+      loadUsersByCountry(req.auth.tenancy, includeAnonymous),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {

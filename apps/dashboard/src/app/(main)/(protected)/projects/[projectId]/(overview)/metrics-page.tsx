@@ -87,6 +87,20 @@ function calculatePeriodDelta(currentValue: number, previousValue: number): numb
   return Number((((currentValue - previousValue) / previousValue) * 100).toFixed(1));
 }
 
+function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean) {
+  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
+    throw new Error("Admin app internals are unavailable: missing useMetrics");
+  }
+
+  const useMetrics = internals.useMetrics;
+  if (typeof useMetrics !== "function") {
+    throw new Error("Admin app internals are unavailable: useMetrics is not callable");
+  }
+
+  return useMetrics(includeAnonymous);
+}
+
 // ── Compact dual-value stat card ─────────────────────────────────────────────
 
 function DualStatCard({
@@ -845,7 +859,7 @@ function MetricsContent({
   const config = project.useConfig();
   const projectId = useProjectId();
   const router = useRouter();
-  const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
+  const data = useMetricsOrThrow(adminApp, includeAnonymous);
   const installedApps = useMemo(
     () => typedEntries(config.apps.installed)
       .filter(([_, appConfig]) => appConfig?.enabled === true)
@@ -992,7 +1006,6 @@ function MetricsContent({
   // ── Hero outer stats: MAUs, Total Emails sent, Session time ───────────────
   const heroOuterStats = useMemo<AnalyticsStatPill[]>(() => {
     const analyticsObj = data.analytics_overview ?? {};
-    const deltasObj = (analyticsObj.deltas ?? {}) as Record<string, number>;
     const mau = (auth.mau ?? 0) as number;
     const totalEmailsSent = (email.emails_sent ?? 0) as number;
     return [
