@@ -107,7 +107,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
   SuperClass: Super,
   errorCode: ErrorCode,
   create: ((...args: Args) => Readonly<ConstructorParameters<Super>>),
-  constructorArgsFromJson: ((jsonDetails: any) => Args),
+  constructorArgsFromJson: ((jsonDetails: any) => NoInfer<Args>),
 ): KnownErrorConstructor<InstanceType<Super> & KnownErrorBrand<ErrorCode>, Args> & { errorCode: ErrorCode };
 function createKnownErrorConstructor<ErrorCode extends string, Super extends AbstractKnownErrorConstructor<any>>(
   SuperClass: Super,
@@ -119,7 +119,7 @@ function createKnownErrorConstructor<ErrorCode extends string, Super extends Abs
   SuperClass: Super,
   errorCode: ErrorCode,
   create: "inherit" | ((...args: Args) => Readonly<ConstructorParameters<Super>>),
-  constructorArgsFromJson: "inherit" | ((jsonDetails: any) => Args),
+  constructorArgsFromJson: "inherit" | ((jsonDetails: any) => NoInfer<Args>),
 ): KnownErrorConstructor<InstanceType<Super> & KnownErrorBrand<ErrorCode>, Args> & { errorCode: ErrorCode } {
   const createFn = create === "inherit" ? identityArgs<Args> as never : create;
   const constructorArgsFromJsonFn = constructorArgsFromJson === "inherit" ? SuperClass.constructorArgsFromJson as never : constructorArgsFromJson;

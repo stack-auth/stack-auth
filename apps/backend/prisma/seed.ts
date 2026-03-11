@@ -4,6 +4,13 @@ import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
+import {
+  LOCAL_EMULATOR_ADMIN_EMAIL,
+  LOCAL_EMULATOR_ADMIN_PASSWORD,
+  LOCAL_EMULATOR_ADMIN_USER_ID,
+  LOCAL_EMULATOR_OWNER_TEAM_ID,
+  isLocalEmulatorEnabled,
+} from '@/lib/local-emulator';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
@@ -37,15 +44,11 @@ export async function seed() {
   const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
   const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
 
-  const emulatorEnabled = process.env.STACK_EMULATOR_ENABLED === 'true';
-  const emulatorProjectId = process.env.STACK_EMULATOR_PROJECT_ID;
+  const localEmulatorEnabled = isLocalEmulatorEnabled();
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
   const internalTeamId = 'a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c';
-  const emulatorAdminUserId = '63abbc96-5329-454a-ba56-e0460173c6c1';
-  const emulatorAdminTeamId = '5a0c858b-d9e9-49d4-9943-8ce385d86428';
-
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
@@ -404,16 +407,12 @@ export async function seed() {
     }
   }
 
-  if (emulatorEnabled) {
-    if (!emulatorProjectId) {
-      throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
-    }
-
+  if (localEmulatorEnabled) {
     const emulatorTeam = await internalPrisma.team.findUnique({
       where: {
         tenancyId_teamId: {
           tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
         },
       },
     });
@@ -421,7 +420,7 @@ export async function seed() {
       await internalPrisma.team.create({
         data: {
           tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
           displayName: 'Emulator Team',
           mirroredProjectId: "internal",
           mirroredBranchId: DEFAULT_BRANCH_ID,
@@ -434,73 +433,68 @@ export async function seed() {
       where: {
         mirroredProjectId: 'internal',
         mirroredBranchId: DEFAULT_BRANCH_ID,
-        projectUserId: emulatorAdminUserId,
+        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
       }
     });
 
     if (existingUser) {
       console.log('Emulator user already exists, skipping creation');
     } else {
-      const newEmulatorUser = await internalPrisma.projectUser.create({
+      await internalPrisma.projectUser.create({
         data: {
           displayName: 'Local Emulator User',
-          projectUserId: emulatorAdminUserId,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
         }
       });
 
-      await internalPrisma.teamMember.create({
-        data: {
-          tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
-          projectUserId: newEmulatorUser.projectUserId,
-        },
-      });
-
-      await usersCrudHandlers.adminUpdate({
-        tenancy: internalTenancy,
-        user_id: newEmulatorUser.projectUserId,
-        data: {
-          password: 'LocalEmulatorPassword',
-          primary_email: 'local-emulator@stack-auth.com',
-          primary_email_auth_enabled: true,
-        },
-      });
-
       console.log('Created emulator user');
     }
 
-    const existingProject = await internalPrisma.project.findUnique({
+    await internalPrisma.teamMember.upsert({
       where: {
-        id: emulatorProjectId,
+        tenancyId_projectUserId_teamId: {
+          tenancyId: internalTenancy.id,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+        },
+      },
+      create: {
+        tenancyId: internalTenancy.id,
+        teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+      },
+      update: {},
+    });
+
+    await usersCrudHandlers.adminUpdate({
+      tenancy: internalTenancy,
+      user_id: LOCAL_EMULATOR_ADMIN_USER_ID,
+      data: {
+        password: LOCAL_EMULATOR_ADMIN_PASSWORD,
+        primary_email: LOCAL_EMULATOR_ADMIN_EMAIL,
+        primary_email_auth_enabled: true,
       },
     });
 
-    if (existingProject) {
-      console.log('Emulator project already exists, skipping creation');
-    } else {
-      await createOrUpdateProjectWithLegacyConfig({
-        projectId: emulatorProjectId,
-        type: 'create',
-        data: {
-          display_name: 'Emulator Project',
-          owner_team_id: emulatorAdminTeamId,
-          config: {
-            allow_localhost: true,
-            create_team_on_sign_up: false,
-            client_team_creation_enabled: false,
-            passkey_enabled: true,
-            oauth_providers: oauthProviderIds.map((id) => ({
-              id: id as any,
-              type: 'shared',
-            })),
-          }
+    const userTeamMembership = await internalPrisma.teamMember.findUnique({
+      where: {
+        tenancyId_projectUserId_teamId: {
+          tenancyId: internalTenancy.id,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
         },
-      });
-
-      console.log('Created emulator project');
+      },
+      select: {
+        projectUserId: true,
+      },
+    });
+    if (!userTeamMembership) {
+      throw new Error('Local emulator user must be a member of the local emulator owner team');
+    } else {
+      console.log('Ensured emulator user is a member of emulator team');
     }
   }
 

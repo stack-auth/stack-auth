@@ -400,6 +400,69 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async setupManagedEmailProvider(data: {
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{
+      domain_id: string,
+      subdomain: string,
+      sender_local_part: string,
+      name_server_records: string[],
+      status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+    }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async checkManagedEmailStatus(data: {
+    domain_id: string,
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{ status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/check", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async listManagedEmailDomains(): Promise<{
+      items: Array<{
+        domain_id: string,
+        subdomain: string,
+        sender_local_part: string,
+        status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+        name_server_records: string[],
+      }>,
+    }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/list", {
+      method: "GET",
+    }, null);
+    return await response.json();
+  }
+
+  async applyManagedEmailProvider(data: {
+    domain_id: string,
+  }): Promise<{ status: "applied" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/apply", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async sendSignInInvitationEmail(
     email: string,
     callbackUrl: string,

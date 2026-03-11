@@ -2,15 +2,16 @@ import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
 import { isBrowserLike } from './env';
 import { captureError, StackAssertionError, throwErr } from "./errors";
+import { createGlobalAsync } from './globals';
 import { ignoreUnhandledRejection, runAsynchronously } from './promises';
 import { Result } from "./results";
 import { traceSpan, withTraceSpan } from './telemetry';
-import { createGlobalAsync } from './globals';
 
 
 // esbuild requires self property to be set, and it is not set by default in nodejs
 (globalThis.self as any) ??= globalThis as any;
 
+let esbuildInitializePromise: Promise<void> | null = null;
 
 if (process.env.NODE_ENV === 'development' && typeof process !== "undefined" && typeof process.exit === "function") {
   // On development Node.js servers, initialize ESBuild as soon as the module is imported so we have to wait less on the first request
@@ -23,8 +24,6 @@ if (process.env.NODE_ENV === 'development' && typeof process !== "undefined" && 
     }
   });
 }
-
-let esbuildInitializePromise: Promise<void> | null = null;
 
 export function initializeEsbuild(): Promise<void> {
   const esbuildWasmUrl = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;

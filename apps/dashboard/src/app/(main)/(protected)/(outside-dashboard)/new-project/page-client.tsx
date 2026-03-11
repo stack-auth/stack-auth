@@ -2,6 +2,7 @@
 import { FieldLabel, InputField, SwitchListField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { getPublicEnvVar } from "@/lib/env";
 import { AuthPage, TeamSwitcher, useUser } from "@stackframe/stack";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -23,6 +24,7 @@ type ProjectFormValues = yup.InferType<typeof projectFormSchema>
 
 export default function PageClient() {
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -52,6 +54,27 @@ export default function PageClient() {
   };
 
   const redirectToNeonConfirmWith = searchParams.get("redirect_to_neon_confirm_with");
+
+  if (isLocalEmulator) {
+    return (
+      <div className="w-full flex-grow flex items-center justify-center p-4">
+        <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">
+          <Typography type="h2">Project creation is disabled in local emulator mode</Typography>
+          <Typography variant="secondary">
+            Use the <b>Open config file</b> action on the Projects page to open or create projects from a local config file path.
+          </Typography>
+          <div className="flex justify-end">
+            <Button onClick={async () => {
+              router.push("/projects");
+              await wait(2000);
+            }}>
+              Go to Projects
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const onSubmit = async (values: ProjectFormValues, e?: React.BaseSyntheticEvent) => {
     e?.preventDefault();
