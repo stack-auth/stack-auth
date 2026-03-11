@@ -13,7 +13,7 @@ import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Suspense, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
@@ -32,6 +32,7 @@ import {
   LineChartDisplayConfig,
   RevenueHoverChart,
   RevenueHoverDataPoint,
+  StackedBarChartDisplay,
   StackedDataPoint,
   TabbedMetricsCard,
   TimeRange,
@@ -44,7 +45,7 @@ import { MetricsLoadingFallback } from "./metrics-loading";
 // ── Chart configs ────────────────────────────────────────────────────────────
 
 const dailySignUpsConfig: LineChartDisplayConfig = {
-  name: 'Daily Active Users',
+  name: 'Daily Sign-Ups',
   chart: {
     activity: {
       label: "Sign-Ups",
@@ -74,6 +75,16 @@ function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return n.toLocaleString();
+}
+
+function calculatePeriodDelta(currentValue: number, previousValue: number): number | undefined {
+  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
+    return undefined;
+  }
+  if (previousValue === 0) {
+    return currentValue === 0 ? 0 : undefined;
+  }
+  return Number((((currentValue - previousValue) / previousValue) * 100).toFixed(1));
 }
 
 // ── Compact dual-value stat card ─────────────────────────────────────────────
@@ -155,7 +166,7 @@ function StatCard({
   );
 }
 
-type HeroChartMode = 'default' | 'visitors' | 'revenue';
+type HeroChartMode = 'default' | 'dau' | 'visitors' | 'revenue';
 
 function HeroInChartPill({
   label,
@@ -216,11 +227,15 @@ function HeroInChartPill({
 
 function HeroAnalyticsWidget({
   composedData,
+  dauStackedData,
   visitorsData,
   revenueData,
   outerStats,
+  dauLabel,
+  dauTotal,
   visitorsLabel,
   revenueLabel,
+  dauDelta,
   visitorsTotal,
   revenueTotal,
   visitorsDelta,
@@ -228,11 +243,15 @@ function HeroAnalyticsWidget({
   compact = false,
 }: {
   composedData: ComposedDataPoint[],
+  dauStackedData: StackedDataPoint[],
   visitorsData: VisitorsHoverDataPoint[],
   revenueData: RevenueHoverDataPoint[],
   outerStats: AnalyticsStatPill[],
+  dauLabel: string,
+  dauTotal: string,
   visitorsLabel: string,
   revenueLabel: string,
+  dauDelta?: number,
   visitorsTotal: string,
   revenueTotal: string,
   visitorsDelta?: number,
@@ -257,7 +276,7 @@ function HeroAnalyticsWidget({
     }, 120);
   };
 
-  const handlePillMouseEnter = (mode: 'visitors' | 'revenue') => {
+  const handlePillMouseEnter = (mode: 'dau' | 'visitors' | 'revenue') => {
     setChartMode(mode);
     switchToMode(mode);
   };
@@ -267,6 +286,7 @@ function HeroAnalyticsWidget({
     switchToMode('default');
   };
 
+  const dauColor = "hsl(152, 38%, 52%)";
   const visitorsColor = "hsl(210, 84%, 64%)";
   const revenueColor = "hsl(268, 82%, 66%)";
 
@@ -293,6 +313,15 @@ function HeroAnalyticsWidget({
         >
           {/* In-card pills row */}
           <div className="flex items-stretch mb-2 -mx-1">
+            <HeroInChartPill
+              label={dauLabel}
+              value={dauTotal}
+              delta={dauDelta}
+              color={dauColor}
+              isHovered={chartMode === 'dau'}
+              onMouseEnter={() => handlePillMouseEnter('dau')}
+            />
+            <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
               label={visitorsLabel}
               value={visitorsTotal}
@@ -329,6 +358,18 @@ function HeroAnalyticsWidget({
                 ) : (
                   <ComposedAnalyticsChart
                     datapoints={composedData}
+                    compact={compact}
+                  />
+                )
+              )}
+              {displayMode === 'dau' && (
+                dauStackedData.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Typography variant="secondary" className="text-xs">No daily active user data available</Typography>
+                  </div>
+                ) : (
+                  <StackedBarChartDisplay
+                    datapoints={dauStackedData}
                     compact={compact}
                   />
                 )
@@ -441,9 +482,46 @@ function TabbedEmailsCard({
   compact?: boolean,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
+  const LIST_BATCH_SIZE = 12;
+  const [visibleEmailCount, setVisibleEmailCount] = useState(() => Math.min(LIST_BATCH_SIZE, recentEmails.length));
+  const listScrollContainerRef = useRef<HTMLDivElement>(null);
+  const listLoadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const filteredDatapoints = filterStackedDatapointsByTimeRange(stackedChartData, timeRange, customDateRange);
 
   const activeTabColor = "bg-orange-500 dark:bg-[hsl(240,71%,70%)]";
+  const hasMoreEmails = visibleEmailCount < recentEmails.length;
+
+  useEffect(() => {
+    if (view !== "list") {
+      return;
+    }
+    setVisibleEmailCount(Math.min(LIST_BATCH_SIZE, recentEmails.length));
+  }, [view, recentEmails.length]);
+
+  useEffect(() => {
+    if (view !== "list" || !hasMoreEmails) {
+      return;
+    }
+    const root = listScrollContainerRef.current;
+    const target = listLoadMoreSentinelRef.current;
+    if (root == null || target == null) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const firstEntry = entries[0];
+        if (!firstEntry.isIntersecting) {
+          return;
+        }
+        setVisibleEmailCount((current) => Math.min(current + LIST_BATCH_SIZE, recentEmails.length));
+      },
+      { root, rootMargin: "120px 0px", threshold: 0.01 },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [view, hasMoreEmails, recentEmails.length]);
 
   return (
     <ChartCard gradientColor="orange" className="h-full min-h-0 flex flex-col">
@@ -493,16 +571,23 @@ function TabbedEmailsCard({
             <EmailStackedBarChartDisplay datapoints={filteredDatapoints} compact={compact} />
           )
         ) : (
-          <div className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
+          <div ref={listScrollContainerRef} className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
             {recentEmails.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Typography variant="secondary" className="text-xs">No recent emails</Typography>
               </div>
             ) : (
               <div className="divide-y divide-foreground/[0.04]">
-                {recentEmails.map((email) => (
+                {recentEmails.slice(0, visibleEmailCount).map((email) => (
                   <EmailListRow key={email.id} email={email} />
                 ))}
+                {hasMoreEmails && (
+                  <div ref={listLoadMoreSentinelRef} className="py-2 text-center">
+                    <Typography variant="secondary" className="text-[10px]">
+                      Loading more...
+                    </Typography>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -591,19 +676,54 @@ function ReferrersWithAnalyticsCard({
 }: {
   topReferrers: Array<{ referrer: string, visitors: number }>,
 }) {
+  const LIST_BATCH_SIZE = 12;
+  const [visibleReferrerCount, setVisibleReferrerCount] = useState(() => Math.min(LIST_BATCH_SIZE, topReferrers.length));
+  const listScrollContainerRef = useRef<HTMLDivElement>(null);
+  const listLoadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const hasMoreReferrers = visibleReferrerCount < topReferrers.length;
+
+  useEffect(() => {
+    setVisibleReferrerCount(Math.min(LIST_BATCH_SIZE, topReferrers.length));
+  }, [topReferrers.length]);
+
+  useEffect(() => {
+    if (!hasMoreReferrers) {
+      return;
+    }
+    const root = listScrollContainerRef.current;
+    const target = listLoadMoreSentinelRef.current;
+    if (root == null || target == null) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const firstEntry = entries[0];
+        if (!firstEntry.isIntersecting) {
+          return;
+        }
+        setVisibleReferrerCount((current) => Math.min(current + LIST_BATCH_SIZE, topReferrers.length));
+      },
+      { root, rootMargin: "120px 0px", threshold: 0.01 },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreReferrers, topReferrers.length]);
+
   return (
     <ChartCard gradientColor="purple" className="h-full">
       <div className="px-4 py-3 border-b border-foreground/[0.05]">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Referrers</span>
       </div>
-      <div className="p-4 pt-3 flex-1 flex flex-col gap-2">
+      <div ref={listScrollContainerRef} className="p-4 pt-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {topReferrers.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs">No referrer data</Typography>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {topReferrers.map((item) => {
+            {topReferrers.slice(0, visibleReferrerCount).map((item) => {
               const max = topReferrers[0].visitors;
               return (
                 <div key={item.referrer} className="relative flex items-center justify-between rounded-lg px-2.5 py-1.5 overflow-hidden">
@@ -616,6 +736,13 @@ function ReferrersWithAnalyticsCard({
                 </div>
               );
             })}
+            {hasMoreReferrers && (
+              <div ref={listLoadMoreSentinelRef} className="py-2 text-center">
+                <Typography variant="secondary" className="text-[10px]">
+                  Loading more...
+                </Typography>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -697,7 +824,7 @@ function QuickAccessApps({ projectId, installedApps }: { projectId: string, inst
 
 export default function MetricsPage(props: { toSetup: () => void }) {
   const includeAnonymous = false;
-  const [timeRange, setTimeRange] = useState<TimeRange>("7d");
+  const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
   const user = useUser();
 
@@ -785,6 +912,23 @@ function MetricsContent({
       reactivated: reactivatedMap.get(date) ?? 0,
     }));
   }, [dauSplit.new, dauSplit.retained, dauSplit.reactivated]);
+  const signUpsStackedData = useMemo<StackedDataPoint[]>(
+    () => (data.daily_users ?? []).map((point: DataPoint) => ({
+      date: point.date,
+      new: point.activity,
+      retained: 0,
+      reactivated: 0,
+    })),
+    [data.daily_users],
+  );
+  const filteredDauStackedData = useMemo<StackedDataPoint[]>(
+    () => filterStackedDatapointsByTimeRange(dauStackedData, timeRange, customDateRange),
+    [dauStackedData, timeRange, customDateRange],
+  );
+  const dauTotalsByDate = useMemo<Map<string, number>>(
+    () => new Map(dauStackedData.map((point) => [point.date, point.new + point.retained + point.reactivated])),
+    [dauStackedData],
+  );
 
   // ── Email stacked data (ok/error/in_progress per day) ────────────────────
   const emailStackedData = useMemo<EmailStackedDataPoint[]>(() => {
@@ -792,7 +936,7 @@ function MetricsContent({
   }, [email.daily_emails_by_status]);
 
   // ── Composed chart data (visitors bars + revenue line) ───────────────────
-  const composedData = useMemo<ComposedDataPoint[]>(() => {
+  const allComposedData = useMemo<ComposedDataPoint[]>(() => {
     const analyticsObj = data.analytics_overview ?? {};
     const dailyRev = (analyticsObj.daily_revenue ?? []) as Array<{ date: string, new_cents: number, refund_cents: number }>;
     const dailyVis = (analyticsObj.daily_visitors ?? []) as DataPoint[];
@@ -803,6 +947,7 @@ function MetricsContent({
     const allDates = new Set([
       ...dailyVis.map(d => d.date),
       ...dailyRev.map(d => d.date),
+      ...dauStackedData.map(d => d.date),
     ]);
 
     const points = [...allDates].map(date => ({
@@ -810,33 +955,49 @@ function MetricsContent({
       visitors: visitorMap.get(date) ?? 0,
       new_cents: revenueMap.get(date)?.new_cents ?? 0,
       refund_cents: revenueMap.get(date)?.refund_cents ?? 0,
+      dau: dauTotalsByDate.get(date) ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
-    return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [data.analytics_overview, timeRange, customDateRange]);
+    return points;
+  }, [data.analytics_overview, dauStackedData, dauTotalsByDate]);
+  const composedData = useMemo<ComposedDataPoint[]>(
+    () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
+    [allComposedData, timeRange, customDateRange],
+  );
 
-  // ── Visitors hover chart data (page views + clicks) ───────────────────────
+  const topCountries = useMemo<Array<{ country_code: string, count: number }>>(() => {
+    const rawCountryCounts = data.users_by_country;
+    if (typeof rawCountryCounts !== "object" || rawCountryCounts == null) {
+      return [];
+    }
+
+    const countries: Array<{ country_code: string, count: number }> = [];
+    for (const [countryCode, count] of Object.entries(rawCountryCounts)) {
+      if (typeof countryCode !== "string" || countryCode.length === 0) continue;
+      if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) continue;
+      countries.push({ country_code: countryCode.toUpperCase(), count });
+    }
+
+    countries.sort((a, b) => b.count - a.count || stringCompare(a.country_code, b.country_code));
+    return countries.slice(0, 3);
+  }, [data.users_by_country]);
+
+  // ── Visitors hover chart data (page views with top countries) ─────────────
   const visitorsHoverData = useMemo<VisitorsHoverDataPoint[]>(() => {
     const analyticsObj = data.analytics_overview ?? {};
     const dailyPv = (analyticsObj.daily_page_views ?? []) as DataPoint[];
-    const dailyCl = (analyticsObj.daily_clicks ?? []) as DataPoint[];
 
     const pvMap = new Map(dailyPv.map(d => [d.date, d.activity]));
-    const clMap = new Map(dailyCl.map(d => [d.date, d.activity]));
-
-    const allDates = new Set([
-      ...dailyPv.map(d => d.date),
-      ...dailyCl.map(d => d.date),
-    ]);
+    const allDates = new Set(dailyPv.map(d => d.date));
 
     const points = [...allDates].map(date => ({
       date,
       page_views: pvMap.get(date) ?? 0,
-      clicks: clMap.get(date) ?? 0,
+      top_countries: topCountries,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [data.analytics_overview, timeRange, customDateRange]);
+  }, [data.analytics_overview, timeRange, customDateRange, topCountries]);
 
   // ── Revenue hover chart data (new_cents + refund_cents) ───────────────────
   const revenueHoverData = useMemo<RevenueHoverDataPoint[]>(() => {
@@ -860,7 +1021,7 @@ function MetricsContent({
     const totalEmailsSent = (email.emails_sent ?? 0) as number;
     return [
       {
-        label: "MAUs",
+        label: "Monthly active users",
         value: formatCompact(mau),
       },
       {
@@ -868,28 +1029,52 @@ function MetricsContent({
         value: formatCompact(totalEmailsSent),
       },
       {
-        label: "Session Time",
+        label: "Avg. Session time",
         value: formatSeconds(analyticsObj.avg_session_seconds ?? 0),
-        delta: deltasObj.session_time,
       },
     ];
   }, [auth.mau, email.emails_sent, data.analytics_overview]);
 
   // ── In-chart pill values: Visitors and Revenue ────────────────────────────
   const inChartPillValues = useMemo(() => {
-    const analyticsObj = data.analytics_overview ?? {};
-    const deltasObj = (analyticsObj.deltas ?? {}) as Record<string, number>;
+    const latestDauPoint = dauStackedData.at(-1);
+    const latestDau = latestDauPoint == null
+      ? 0
+      : latestDauPoint.new + latestDauPoint.retained + latestDauPoint.reactivated;
+    const previousDauPoint = dauStackedData.at(-2);
+    const previousDau = previousDauPoint == null
+      ? undefined
+      : previousDauPoint.new + previousDauPoint.retained + previousDauPoint.reactivated;
     const visitorsTotalInRange = composedData.reduce((sum, row) => sum + row.visitors, 0);
     const totalRevenueCentsInRange = composedData.reduce((sum, row) => sum + row.new_cents, 0);
+
+    const composedIndexByDate = new Map(allComposedData.map((row, index) => [row.date, index]));
+    const firstComposedPoint = composedData.at(0);
+    const composedCurrentStartIndex = firstComposedPoint == null ? -1 : (composedIndexByDate.get(firstComposedPoint.date) ?? -1);
+    const composedCurrentLength = composedData.length;
+    const composedPreviousStartIndex = composedCurrentStartIndex - composedCurrentLength;
+    const composedPreviousEndIndex = composedCurrentStartIndex - 1;
+    const previousComposedWindow = composedPreviousStartIndex < 0
+      ? []
+      : allComposedData.slice(composedPreviousStartIndex, composedPreviousEndIndex + 1);
+    const hasFullPreviousComposedWindow = previousComposedWindow.length === composedCurrentLength && composedCurrentLength > 0;
+    const previousVisitorsTotal = previousComposedWindow.reduce((sum, row) => sum + row.visitors, 0);
+    const previousRevenueTotalCents = previousComposedWindow.reduce((sum, row) => sum + row.new_cents, 0);
+
     return {
+      // This pill is a point-in-time metric (latest day), not a range aggregate.
+      dauTotal: formatCompact(latestDau),
+      dauLabel: "Daily Active Users",
+      // DAU delta is day-over-day and independent from the selected time range.
+      dauDelta: previousDau == null ? undefined : calculatePeriodDelta(latestDau, previousDau),
       visitorsTotal: formatCompact(visitorsTotalInRange),
-      visitorsLabel: "Visitors",
-      visitorsDelta: deltasObj.visitors as number | undefined,
+      visitorsLabel: "Unique Visitors",
+      visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
       revenueTotal: formatUsdFromCents(totalRevenueCentsInRange),
       revenueLabel: "Revenue",
-      revenueDelta: deltasObj.revenue as number | undefined,
+      revenueDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [composedData, data.analytics_overview]);
+  }, [allComposedData, composedData, dauStackedData]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -977,11 +1162,15 @@ function MetricsContent({
         )}>
           <HeroAnalyticsWidget
             composedData={composedData}
+            dauStackedData={filteredDauStackedData}
             visitorsData={visitorsHoverData}
             revenueData={revenueHoverData}
             outerStats={heroOuterStatsForLayout}
+            dauLabel={inChartPillValues.dauLabel}
+            dauTotal={inChartPillValues.dauTotal}
             visitorsLabel={inChartPillValues.visitorsLabel}
             revenueLabel={inChartPillValues.revenueLabel}
+            dauDelta={inChartPillValues.dauDelta}
             visitorsTotal={inChartPillValues.visitorsTotal}
             revenueTotal={inChartPillValues.revenueTotal}
             visitorsDelta={inChartPillValues.visitorsDelta}
@@ -1004,7 +1193,10 @@ function MetricsContent({
           <TabbedMetricsCard
             config={dailySignUpsConfig}
             chartData={data.daily_users ?? []}
-            stackedChartData={dauStackedData}
+            stackedChartData={signUpsStackedData}
+            stackedLegendItems={[
+              { key: "new", label: "Sign-Ups", color: "hsl(152, 38%, 52%)" },
+            ]}
             listData={data.recently_registered ?? []}
             listTitle="Recent Sign-Ups"
             projectId={projectId}

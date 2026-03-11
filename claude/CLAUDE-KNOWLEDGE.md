@@ -111,3 +111,15 @@ A: Normalize picker dates to local midnight and pass `disabled={{ after: latestS
 
 Q: How should overview dashboard rows handle fixed chart heights across breakpoints?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx`, only apply fixed row heights like `h-[340px]` at the desktop layout breakpoint (`lg:`). When a two-column chart row collapses to one column, wrap each card in a `min-h-[340px]` container so stacked charts keep a usable height instead of being squeezed into the old shared row height.
+
+Q: How do we add Daily Active Users into the hero analytics chart modes while keeping the lower card focused on sign-ups?
+A: In `metrics-page.tsx`, keep DAU split data as `StackedDataPoint[]`, pass a time-filtered version to `HeroAnalyticsWidget` as the first in-card mode, and aggregate DAU totals into the shared `composedData` points as a `dau` field so `ComposedAnalyticsChart` can render a third line. Then remove `stackedChartData` from the lower `TabbedMetricsCard` so that card displays plain Daily Sign-Ups behavior while DAU remains in the hero.
+
+Q: Why can tuple corner radii on Recharts `Cell` fail TypeScript checks even though they work at runtime?
+A: In dashboard charts, `Cell` props are typed broadly from SVG attributes (`radius` as `string | number`), but Recharts bar rectangles accept tuple radii like `[4, 4, 0, 0]`. For stacked bars that need per-cell top-corner rounding, keep tuple `radius` on `Cell` and document it with `@ts-expect-error` at the specific line.
+
+Q: How can overview "recent" tabs support infinite lazy loading without adding new endpoints?
+A: Return a larger bounded page from `/api/v1/internal/metrics` (for example 100 recent sign-ups/emails), then implement client-side incremental rendering in the tab list views using an `IntersectionObserver` sentinel inside the scroll container (batching e.g. 12 items at a time). This gives infinite-scroll UX while keeping backend changes minimal.
+
+Q: How can the Top Referrers card on overview support infinite lazy loading?
+A: In `metrics-page.tsx`, make the referrers list container scrollable (`min-h-0 overflow-y-auto`) and append rows incrementally via an `IntersectionObserver` sentinel (e.g. 12 rows per batch). In `internal/metrics/route.tsx`, raise the ClickHouse referrer query limit (e.g. `TOP_REFERRERS_PAGE_SIZE = 100`) so the UI has enough rows to lazy-load.

@@ -547,7 +547,7 @@ async function loadEmailOverview(tenancy: Tenancy) {
       return await prisma.emailOutbox.findMany({
         where: { tenancyId: tenancy.id },
         orderBy: { createdAt: 'desc' },
-        take: 30,
+        take: RECENT_LIST_PAGE_SIZE,
         select: { id: true, createdAt: true, simpleStatus: true, status: true, renderedSubject: true },
       });
     })(),
@@ -620,7 +620,7 @@ async function loadEmailOverview(tenancy: Tenancy) {
       const s = email.simpleStatus;
       if (s === 'OK') entry.ok += 1;
       else if (s === 'ERROR') entry.error += 1;
-      else if (s === 'IN_PROGRESS') entry.in_progress += 1;
+      else entry.in_progress += 1;
     }
   }
   const dailyEmailsByStatus: DayStatusCounts[] = [...dayStatusMap.entries()].map(([date, counts]) => ({
@@ -634,7 +634,7 @@ async function loadEmailOverview(tenancy: Tenancy) {
     daily_emails: dailyEmails,
     daily_emails_by_status: dailyEmailsByStatus,
     emails_sent: finishedSendingCount,
-    recent_emails: recentEmails.slice(0, 6).map((email) => ({
+    recent_emails: recentEmails.map((email) => ({
       id: email.id,
       status: email.status,
       subject: email.renderedSubject ?? '(no subject)',
@@ -721,7 +721,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date) {
             AND event_at < {untilExclusive:DateTime}
           GROUP BY referrer
           ORDER BY cnt DESC
-          LIMIT 5
+          LIMIT ${TOP_REFERRERS_PAGE_SIZE}
         `,
         query_params: {
           projectId: tenancy.project.id,
@@ -1062,6 +1062,9 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
   };
 }
 
+const RECENT_LIST_PAGE_SIZE = 100;
+const TOP_REFERRERS_PAGE_SIZE = 100;
+
 export const GET = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -1124,7 +1127,7 @@ export const GET = createSmartRouteHandler({
         query: {
           order_by: 'signed_up_at',
           desc: "true",
-          limit: 5,
+          limit: RECENT_LIST_PAGE_SIZE,
           include_anonymous: includeAnonymous ? "true" : "false",
         },
         allowedErrorTypes: [

@@ -9,7 +9,7 @@ import { DesignCardTint, DesignCategoryTabs, DesignPillToggle } from "@/componen
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type CustomDateRange = {
@@ -39,6 +39,8 @@ type UserListItem = {
   signed_up_at_millis?: number | null,
 }
 
+const tooltipSurfaceClass = "rounded-xl bg-white dark:bg-background shadow-[0_10px_24px_rgba(15,23,42,0.14)] dark:shadow-lg ring-1 ring-slate-900/10 dark:ring-foreground/[0.12]";
+
 const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
 
@@ -49,7 +51,7 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
     : data.date;
 
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+    <div className={`${tooltipSurfaceClass} px-3.5 py-2.5`} style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
           {formattedDate}
@@ -343,10 +345,11 @@ const StackedTooltip = ({ active, payload }: TooltipProps<number, string>) => {
     { key: 'reactivated', value: row.reactivated },
     { key: 'new', value: row.new },
   ];
+  const nonZeroSegments = segments.filter((segment) => segment.value > 0);
   const total = row.retained + row.reactivated + row.new;
 
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+    <div className={`${tooltipSurfaceClass} px-3.5 py-2.5`} style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-6">
           <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
@@ -354,7 +357,7 @@ const StackedTooltip = ({ active, payload }: TooltipProps<number, string>) => {
           </span>
           <span className="text-[11px] font-semibold tabular-nums text-foreground">{total} total</span>
         </div>
-        {segments.map((seg) => (
+        {nonZeroSegments.map((seg) => (
           <div key={seg.key} className="flex items-center gap-2.5">
             <span
               className="h-2 w-2 rounded-full ring-2 ring-white/20"
@@ -581,18 +584,25 @@ export type ComposedDataPoint = {
   new_cents: number,
   refund_cents: number,
   visitors: number,
+  dau: number,
 };
 
 export type VisitorsHoverDataPoint = {
   date: string,
   page_views: number,
-  clicks: number,
+  movingAvg?: number | null,
+  avg7d?: number,
+  highlightedAvg?: number | null,
+  top_countries?: Array<{ country_code: string, count: number }>,
 };
 
 export type RevenueHoverDataPoint = {
   date: string,
   new_cents: number,
   refund_cents: number,
+  movingAvg?: number | null,
+  avg7d?: number,
+  highlightedAvg?: number | null,
 };
 
 type HighlightDotProps = {
@@ -602,8 +612,12 @@ type HighlightDotProps = {
 };
 
 const composedChartConfig: ChartConfig = {
+  dau: {
+    label: "Daily Active Users",
+    theme: { light: "hsl(152, 38%, 52%)", dark: "hsl(152, 38%, 62%)" },
+  },
   visitors: {
-    label: "Visitors",
+    label: "Unique Visitors",
     theme: { light: "hsl(210, 84%, 64%)", dark: "hsl(210, 84%, 72%)" },
   },
   revenue: {
@@ -627,7 +641,7 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
   const revenuePerVisitor = row.visitors > 0 ? (revenueDollars / row.visitors) : 0;
 
   return (
-    <div className="rounded-xl bg-background/95 px-4 py-3 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08] min-w-[180px]" style={{ zIndex: 9999 }}>
+    <div className={`${tooltipSurfaceClass} px-4 py-3 min-w-[180px]`} style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">
           {formattedDate}
@@ -635,8 +649,18 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
 
         <div className="flex items-center justify-between gap-6">
           <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-dau)" }} />
+            <span className="text-xs text-muted-foreground">Daily active users</span>
+          </div>
+          <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
+            {row.dau.toLocaleString()}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-visitors)" }} />
-            <span className="text-xs text-muted-foreground">Visitors</span>
+            <span className="text-xs text-muted-foreground">Unique visitors</span>
           </div>
           <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
             {row.visitors.toLocaleString()}
@@ -693,7 +717,7 @@ export function ComposedAnalyticsChart({
   const id = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [hoveredX, setHoveredX] = useState<number | null>(null);
-  const maxVisitors = Math.max(...datapoints.map(d => d.visitors), 1);
+  const maxVisitors = Math.max(...datapoints.map(d => Math.max(d.visitors, d.dau)), 1);
   const maxRevenueCents = Math.max(...datapoints.map(d => d.new_cents), 1);
   const visitorTicks = niceAxisTicks(Math.ceil(maxVisitors * 1.1), 5);
   const revenueTicks = niceAxisTicks(Math.ceil(maxRevenueCents * 1.15), 5);
@@ -728,6 +752,9 @@ export function ComposedAnalyticsChart({
           {hoveredX != null && (
             <>
               <clipPath id={`visitors-highlight-clip-${id}`}>
+                <rect x={hoveredX - 56} y={-1000} width={112} height={3000} />
+              </clipPath>
+              <clipPath id={`dau-highlight-clip-${id}`}>
                 <rect x={hoveredX - 56} y={-1000} width={112} height={3000} />
               </clipPath>
               <clipPath id={`revenue-highlight-clip-${id}`}>
@@ -777,6 +804,34 @@ export function ComposedAnalyticsChart({
             strokeLinecap="round"
             strokeLinejoin="round"
             style={{ clipPath: `url(#visitors-highlight-clip-${id})` }}
+            legendType="none"
+          />
+        )}
+        <Line
+          type="monotone"
+          dataKey="dau"
+          yAxisId="visitors"
+          stroke="var(--color-dau)"
+          strokeWidth={2}
+          strokeOpacity={hoveredIndex == null ? 0.95 : 0.24}
+          dot={false}
+          activeDot={<HighlightedLineDot fill="var(--color-dau)" />}
+          isAnimationActive={false}
+        />
+        {hoveredIndex != null && hoveredX != null && (
+          <Line
+            type="monotone"
+            dataKey="dau"
+            yAxisId="visitors"
+            stroke="var(--color-dau)"
+            strokeWidth={3}
+            strokeOpacity={1}
+            dot={false}
+            activeDot={<HighlightedLineDot fill="var(--color-dau)" />}
+            isAnimationActive={false}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ clipPath: `url(#dau-highlight-clip-${id})` }}
             legendType="none"
           />
         )}
@@ -1109,11 +1164,13 @@ export function TimeRangeToggle({
               ),
               outside: "text-muted-foreground/30 aria-selected:text-muted-foreground/50",
               disabled: cn(
-                "pointer-events-none text-muted-foreground/30",
-                "[&>button]:text-muted-foreground/30",
-                "[&>button]:opacity-35",
+                "pointer-events-none text-muted-foreground/45 dark:text-muted-foreground/30",
+                "[&>button]:text-muted-foreground/45 dark:[&>button]:text-muted-foreground/30",
+                "[&>button]:opacity-60 dark:[&>button]:opacity-40",
+                "[&>button]:bg-foreground/[0.02] dark:[&>button]:bg-transparent",
                 "[&>button]:cursor-not-allowed",
-                "[&>button]:hover:bg-transparent [&>button]:hover:text-muted-foreground/30",
+                "[&>button]:hover:bg-foreground/[0.02] dark:[&>button]:hover:bg-transparent",
+                "[&>button]:hover:text-muted-foreground/45 dark:[&>button]:hover:text-muted-foreground/30",
               ),
               hidden: "invisible",
             }}
@@ -1139,6 +1196,7 @@ export function TabbedMetricsCard({
   customDateRange = null,
   totalAllTime,
   showTotal = false,
+  stackedLegendItems,
 }: {
   config: LineChartDisplayConfig,
   chartData: DataPoint[],
@@ -1154,8 +1212,13 @@ export function TabbedMetricsCard({
   customDateRange?: CustomDateRange | null,
   totalAllTime?: number,
   showTotal?: boolean,
+  stackedLegendItems?: Array<{ key: string, label: string, color: string }>,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
+  const LIST_BATCH_SIZE = 12;
+  const [visibleListCount, setVisibleListCount] = useState(() => Math.min(LIST_BATCH_SIZE, listData.length));
+  const listScrollContainerRef = useRef<HTMLDivElement>(null);
+  const listLoadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   const filteredDatapoints = filterDatapointsByTimeRange(chartData, timeRange, customDateRange);
   const filteredStackedDatapoints = stackedChartData ? filterStackedDatapointsByTimeRange(stackedChartData, timeRange, customDateRange) : null;
@@ -1177,6 +1240,39 @@ export function TabbedMetricsCard({
 
   const hoverAccentClass = hoverAccentColors[gradientColor];
   const tabsGradient: "blue" | "cyan" | "purple" | "green" | "orange" | "default" = gradientColor === "slate" ? "default" : gradientColor;
+  const hasMoreListItems = visibleListCount < listData.length;
+
+  useEffect(() => {
+    if (view !== "list") {
+      return;
+    }
+    setVisibleListCount(Math.min(LIST_BATCH_SIZE, listData.length));
+  }, [view, listData.length]);
+
+  useEffect(() => {
+    if (view !== "list" || !hasMoreListItems) {
+      return;
+    }
+    const root = listScrollContainerRef.current;
+    const target = listLoadMoreSentinelRef.current;
+    if (root == null || target == null) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const firstEntry = entries[0];
+        if (!firstEntry.isIntersecting) {
+          return;
+        }
+        setVisibleListCount((current) => Math.min(current + LIST_BATCH_SIZE, listData.length));
+      },
+      { root, rootMargin: "120px 0px", threshold: 0.01 },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [view, hasMoreListItems, listData.length]);
 
   return (
     <ChartCard className="h-full min-h-0 flex flex-col" gradientColor={gradientColor}>
@@ -1216,11 +1312,11 @@ export function TabbedMetricsCard({
 
       {filteredStackedDatapoints != null && view === 'chart' && (
         <div className={cn("flex items-center gap-3 flex-wrap", compact ? "px-4 pt-2" : "px-5 pt-2.5")}>
-          {[
+          {(stackedLegendItems ?? [
             { key: 'new',         label: 'New',         color: 'hsl(152, 38%, 52%)' },
             { key: 'reactivated', label: 'Reactivated', color: 'hsl(36,  55%, 58%)'  },
             { key: 'retained',    label: 'Retained',    color: 'hsl(221, 42%, 55%)' },
-          ].map((item) => (
+          ]).map((item) => (
             <div key={item.key} className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
               <span className="text-[10px] font-medium text-muted-foreground">{item.label}</span>
@@ -1266,7 +1362,7 @@ export function TabbedMetricsCard({
             />
           )
         ) : (
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div ref={listScrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
             {listData.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Typography variant="secondary" className="text-xs">
@@ -1275,7 +1371,7 @@ export function TabbedMetricsCard({
               </div>
             ) : (
               <div className="divide-y divide-foreground/[0.04]">
-                {listData.map((user) => {
+                {listData.slice(0, visibleListCount).map((user) => {
                   const displayName = user.display_name || user.primary_email || 'Anonymous User';
                   const secondaryEmail = user.display_name && user.primary_email ? user.primary_email : null;
                   const timeLabel = config.name === 'Daily Active Users'
@@ -1324,6 +1420,13 @@ export function TabbedMetricsCard({
                     </button>
                   );
                 })}
+                {hasMoreListItems && (
+                  <div ref={listLoadMoreSentinelRef} className="py-2 text-center">
+                    <Typography variant="secondary" className="text-[10px]">
+                      Loading more...
+                    </Typography>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1776,7 +1879,7 @@ export function CorrelationCard({
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 9 : 11 }}
               />
               <ChartTooltip
-                content={<ChartTooltipContent className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" />}
+                content={<ChartTooltipContent className={`${tooltipSurfaceClass} px-3.5 py-2.5`} />}
                 cursor={{ strokeDasharray: '3 3', stroke: "hsl(var(--border))" }}
                 offset={20}
                 allowEscapeViewBox={{ x: true, y: true }}
@@ -1886,7 +1989,7 @@ export function DonutChartDisplay({
                   wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
                   content={
                     <ChartTooltipContent
-                      className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]"
+                      className={`${tooltipSurfaceClass} px-3.5 py-2.5`}
                       hideIndicator
                       nameKey="method"
                       formatter={(value, _name, item) => {
@@ -1992,7 +2095,7 @@ const EmailStackedTooltip = ({ active, payload }: TooltipProps<number, string>) 
     { key: 'in_progress', value: row.in_progress },
   ];
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+    <div className={`${tooltipSurfaceClass} px-3.5 py-2.5`} style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-6">
           <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
@@ -2091,48 +2194,34 @@ export function EmailStackedBarChartDisplay({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        <Bar dataKey="ok" stackId="split" fill="var(--color-ok)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
-          {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
-            const isActiveBar = hoveredIndex === index;
-            return (
-              <Cell
-                key={`ok-${index}`}
-                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
-                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
-                strokeWidth={isActiveBar ? 1 : 0}
-              />
-            );
-          })}
-        </Bar>
-        <Bar dataKey="in_progress" stackId="split" fill="var(--color-in_progress)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
-          {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
-            const isActiveBar = hoveredIndex === index;
-            return (
-              <Cell
-                key={`ip-${index}`}
-                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
-                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
-                strokeWidth={isActiveBar ? 1 : 0}
-              />
-            );
-          })}
-        </Bar>
-        <Bar dataKey="error" stackId="split" fill="var(--color-error)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-          {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
-            const isActiveBar = hoveredIndex === index;
-            return (
-              <Cell
-                key={`err-${index}`}
-                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
-                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
-                strokeWidth={isActiveBar ? 1 : 0}
-              />
-            );
-          })}
-        </Bar>
+        {/* Stack order: ok (bottom) → in_progress → error (top). Only the topmost segment per bar gets rounded corners. */}
+        {(["ok", "in_progress", "error"] as const).map((dataKey) => {
+          const isTopmost = (entry: EmailStackedDataPoint) => {
+            if (entry.error > 0) return dataKey === "error";
+            if (entry.in_progress > 0) return dataKey === "in_progress";
+            return dataKey === "ok";
+          };
+          const colorVar = dataKey === "ok" ? "ok" : dataKey === "in_progress" ? "in_progress" : "error";
+          return (
+            <Bar key={dataKey} dataKey={dataKey} stackId="split" fill={`var(--color-${colorVar})`} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              {datapoints.map((entry, index) => {
+                const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
+                const isActiveBar = hoveredIndex === index;
+                return (
+                  <Cell
+                    key={`${dataKey}-${index}`}
+                    // Recharts supports tuple radius for bar cells, but the Cell prop type is still SVG-typed.
+                    // @ts-expect-error tuple radius is intentional for top-segment rounding.
+                    radius={isTopmost(entry) ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                    opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
+                    stroke={isActiveBar ? "hsl(var(--background))" : undefined}
+                    strokeWidth={isActiveBar ? 1 : 0}
+                  />
+                );
+              })}
+            </Bar>
+          );
+        })}
         <Line
           dataKey="movingAvg"
           type="natural"
@@ -2198,16 +2287,16 @@ export function EmailStackedBarChartDisplay({
   );
 }
 
-// ── Visitors hover chart (page views + clicks stacked bar) ──────────────────
+// ── Visitors hover chart (page views + avg line) ────────────────────────────
 
 const visitorsHoverChartConfig: ChartConfig = {
   page_views: {
     label: "Page Views",
     theme: { light: "hsl(210, 84%, 64%)", dark: "hsl(210, 84%, 72%)" },
   },
-  clicks: {
-    label: "Clicks",
-    theme: { light: "hsl(210, 84%, 82%)", dark: "hsl(210, 84%, 88%)" },
+  movingAvg: {
+    label: "Moving avg",
+    color: "hsl(var(--foreground))",
   },
 };
 
@@ -2222,33 +2311,46 @@ function VisitorsHoverTooltip({ active, payload }: TooltipProps<number, string>)
     ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : row.date;
 
-  const total = row.page_views + row.clicks;
+  const topCountries = (row.top_countries ?? []).slice(0, 3);
 
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+    <div className={`${tooltipSurfaceClass} px-3.5 py-2.5`} style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
-        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
+          <span className="text-[11px] font-semibold tabular-nums text-foreground">
+            {row.page_views.toLocaleString()} total
+          </span>
+        </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(210, 84%, 64%)" }} />
+            <span className="h-2 w-2 rounded-full ring-2 ring-white/20" style={{ backgroundColor: "var(--color-page_views)" }} />
             <span className="text-[11px] text-muted-foreground">Page Views</span>
             <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
               {row.page_views.toLocaleString()}
             </span>
           </div>
-          <div className="flex items-center gap-2.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(210, 84%, 82%)" }} />
-            <span className="text-[11px] text-muted-foreground">Clicks</span>
-            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
-              {row.clicks.toLocaleString()}
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5 mt-0.5 pt-1.5 border-t border-foreground/[0.06]">
-            <span className="text-[11px] font-medium text-muted-foreground">Total</span>
-            <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
-              {total.toLocaleString()}
-            </span>
-          </div>
+          {row.avg7d != null && (
+            <div className="mt-0.5 pt-1.5 border-t border-foreground/[0.06] flex items-center gap-2.5">
+              <span className="text-[11px] text-muted-foreground">7-day avg</span>
+              <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+                {Math.round(row.avg7d).toLocaleString()}
+              </span>
+            </div>
+          )}
+          {topCountries.length > 0 && (
+            <div className="mt-0.5 pt-1.5 border-t border-foreground/[0.06] flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium text-muted-foreground">Top countries</span>
+              {topCountries.map((country) => (
+                <div key={country.country_code} className="flex items-center gap-2.5">
+                  <span className="text-[11px] text-muted-foreground">{country.country_code}</span>
+                  <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+                    {country.count.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2263,16 +2365,34 @@ export function VisitorsHoverChart({
   compact?: boolean,
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const windowSize = Math.max(4, Math.round(datapoints.length / 2.5));
+  const totals = datapoints.map((p) => p.page_views);
+  const avgValues = rollingAvg(totals, windowSize);
+  const sevenDayAvgs = totals.map((_, i) => sevenDayAvg(totals, i));
+  const chartData = datapoints.map((p, i) => {
+    const total = totals[i];
+    const rawAvg = avgValues[i];
+    const movingAvg = total > 0 && rawAvg != null
+      ? Math.min(total * 0.9, Math.max(total * 0.35, rawAvg))
+      : null;
+    const isHighlightedAvg = hoveredIndex != null && i <= hoveredIndex && i >= hoveredIndex - 6;
+    return {
+      ...p,
+      movingAvg,
+      avg7d: sevenDayAvgs[i],
+      highlightedAvg: isHighlightedAvg ? movingAvg : null,
+    };
+  });
 
   return (
     <ChartContainer
       config={visitorsHoverChartConfig}
       className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
     >
-      <BarChart
-        data={datapoints}
+      <ComposedChart
+        data={chartData}
         margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-        onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
+        onMouseMove={(state) => updateHoveredIndexFromChartState(state, chartData.length, setHoveredIndex)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
         <CartesianGrid
@@ -2289,7 +2409,7 @@ export function VisitorsHoverChart({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        <Bar dataKey="page_views" stackId="visitors" fill="var(--color-page_views)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
+        <Bar dataKey="page_views" stackId="visitors" fill="var(--color-page_views)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
             const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
@@ -2303,27 +2423,54 @@ export function VisitorsHoverChart({
             );
           })}
         </Bar>
-        <Bar dataKey="clicks" stackId="visitors" fill="var(--color-clicks)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-          {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
-            const isActiveBar = hoveredIndex === index;
-            return (
-              <Cell
-                key={`cl-${index}`}
-                opacity={getDimmedOpacity(baseOpacity, index, hoveredIndex)}
-                stroke={isActiveBar ? "hsl(var(--background))" : undefined}
-                strokeWidth={isActiveBar ? 1 : 0}
-              />
-            );
-          })}
-        </Bar>
+        <Line
+          dataKey="movingAvg"
+          type="natural"
+          stroke="hsl(var(--foreground))"
+          strokeWidth={5}
+          strokeOpacity={hoveredIndex == null ? 0.14 : 0.05}
+          strokeDasharray="2.5 3.5"
+          dot={false}
+          activeDot={false}
+          isAnimationActive={false}
+          connectNulls={false}
+          legendType="none"
+        />
+        <Line
+          dataKey="movingAvg"
+          type="natural"
+          stroke="hsl(var(--foreground))"
+          strokeWidth={2.1}
+          strokeOpacity={hoveredIndex == null ? 0.85 : 0.28}
+          strokeDasharray="2.5 3.5"
+          dot={false}
+          activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
+          isAnimationActive={false}
+          connectNulls={false}
+          legendType="none"
+        />
+        {hoveredIndex != null && (
+          <Line
+            dataKey="highlightedAvg"
+            type="natural"
+            stroke="hsl(var(--foreground))"
+            strokeWidth={3}
+            strokeOpacity={1}
+            strokeDasharray="2.5 3.5"
+            dot={false}
+            activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
+            isAnimationActive={false}
+            connectNulls={false}
+            legendType="none"
+          />
+        )}
         <XAxis
           dataKey="date"
           tickLine={false}
           axisLine={false}
           tickMargin={compact ? 6 : 8}
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
-          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
+          interval={chartData.length <= 7 ? 0 : "equidistantPreserveStart"}
           tickFormatter={(value: string) => {
             const d = parseChartDate(value);
             return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -2337,7 +2484,7 @@ export function VisitorsHoverChart({
           allowDecimals={false}
           width={28}
         />
-      </BarChart>
+      </ComposedChart>
     </ChartContainer>
   );
 }
@@ -2352,6 +2499,10 @@ const revenueHoverChartConfig: ChartConfig = {
   refund_cents: {
     label: "Refunds",
     theme: { light: "hsl(355, 70%, 68%)", dark: "hsl(355, 70%, 76%)" },
+  },
+  movingAvg: {
+    label: "Moving avg",
+    color: "hsl(var(--foreground))",
   },
 };
 
@@ -2375,7 +2526,7 @@ function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) 
   const net = row.new_cents - row.refund_cents;
 
   return (
-    <div className="rounded-xl bg-background/95 px-3.5 py-2.5 shadow-lg backdrop-blur-xl ring-1 ring-foreground/[0.08]" style={{ zIndex: 9999 }}>
+    <div className={`${tooltipSurfaceClass} px-3.5 py-2.5`} style={{ zIndex: 9999 }}>
       <div className="flex flex-col gap-2">
         <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{formattedDate}</span>
         <div className="flex flex-col gap-1.5">
@@ -2399,6 +2550,14 @@ function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) 
               {formatUsdCompact(Math.max(0, net))}
             </span>
           </div>
+          {row.avg7d != null && (
+            <div className="flex items-center gap-2.5">
+              <span className="text-[11px] text-muted-foreground">7-day avg</span>
+              <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-foreground">
+                {formatUsdCompact(Math.round(row.avg7d))}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2413,8 +2572,26 @@ export function RevenueHoverChart({
   compact?: boolean,
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const windowSize = Math.max(4, Math.round(datapoints.length / 2.5));
+  const totals = datapoints.map((p) => p.new_cents + p.refund_cents);
+  const avgValues = rollingAvg(totals, windowSize);
+  const sevenDayAvgs = totals.map((_, i) => sevenDayAvg(totals, i));
+  const chartData = datapoints.map((p, i) => {
+    const total = totals[i];
+    const rawAvg = avgValues[i];
+    const movingAvg = total > 0 && rawAvg != null
+      ? Math.min(total * 0.9, Math.max(total * 0.35, rawAvg))
+      : null;
+    const isHighlightedAvg = hoveredIndex != null && i <= hoveredIndex && i >= hoveredIndex - 6;
+    return {
+      ...p,
+      movingAvg,
+      avg7d: sevenDayAvgs[i],
+      highlightedAvg: isHighlightedAvg ? movingAvg : null,
+    };
+  });
 
-  const maxCents = Math.max(...datapoints.map(d => d.new_cents + d.refund_cents), 1);
+  const maxCents = Math.max(...chartData.map(d => d.new_cents + d.refund_cents), 1);
   const ticksCents = niceAxisTicks(Math.ceil(maxCents * 1.1), 4);
 
   return (
@@ -2422,10 +2599,10 @@ export function RevenueHoverChart({
       config={revenueHoverChartConfig}
       className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
     >
-      <BarChart
-        data={datapoints}
+      <ComposedChart
+        data={chartData}
         margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-        onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
+        onMouseMove={(state) => updateHoveredIndexFromChartState(state, chartData.length, setHoveredIndex)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
         <CartesianGrid
@@ -2470,13 +2647,54 @@ export function RevenueHoverChart({
             );
           })}
         </Bar>
+        <Line
+          dataKey="movingAvg"
+          type="natural"
+          stroke="hsl(var(--foreground))"
+          strokeWidth={5}
+          strokeOpacity={hoveredIndex == null ? 0.14 : 0.05}
+          strokeDasharray="2.5 3.5"
+          dot={false}
+          activeDot={false}
+          isAnimationActive={false}
+          connectNulls={false}
+          legendType="none"
+        />
+        <Line
+          dataKey="movingAvg"
+          type="natural"
+          stroke="hsl(var(--foreground))"
+          strokeWidth={2.1}
+          strokeOpacity={hoveredIndex == null ? 0.85 : 0.28}
+          strokeDasharray="2.5 3.5"
+          dot={false}
+          activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
+          isAnimationActive={false}
+          connectNulls={false}
+          legendType="none"
+        />
+        {hoveredIndex != null && (
+          <Line
+            dataKey="highlightedAvg"
+            type="natural"
+            stroke="hsl(var(--foreground))"
+            strokeWidth={3}
+            strokeOpacity={1}
+            strokeDasharray="2.5 3.5"
+            dot={false}
+            activeDot={{ r: 3.5, fill: "hsl(var(--foreground))", stroke: "hsl(var(--background))", strokeWidth: 1.5 }}
+            isAnimationActive={false}
+            connectNulls={false}
+            legendType="none"
+          />
+        )}
         <XAxis
           dataKey="date"
           tickLine={false}
           axisLine={false}
           tickMargin={compact ? 6 : 8}
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
-          interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
+          interval={chartData.length <= 7 ? 0 : "equidistantPreserveStart"}
           tickFormatter={(value: string) => {
             const d = parseChartDate(value);
             return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -2491,7 +2709,7 @@ export function RevenueHoverChart({
           tickFormatter={(v: number) => formatUsdCompact(v)}
           width={36}
         />
-      </BarChart>
+      </ComposedChart>
     </ChartContainer>
   );
 }
