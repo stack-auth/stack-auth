@@ -150,11 +150,20 @@ export async function getOwnedProductsForCustomer(options: {
 
       const isSubscription = typedEntry.subscription_id != null;
       const isOneTime = typedEntry.one_time_purchase_id != null;
+      if (!isSubscription && !isOneTime) {
+        throw new StackAssertionError("product-grant entry is missing both subscription_id and one_time_purchase_id", {
+          transactionId: tx.id,
+          customerId: typedEntry.customer_id,
+          customerType: typedEntry.customer_type,
+          entryIndex: i,
+          entry: typedEntry,
+        });
+      }
       const subMeta = isSubscription ? subscriptionMetadata.get(typedEntry.subscription_id) : null;
 
       ownedProducts.push({
         id: typedEntry.product_id,
-        type: isSubscription ? "subscription" : isOneTime ? "one_time" : "include-by-default",
+        type: isSubscription ? "subscription" : "one_time",
         quantity: effectiveQuantity,
         product: typedEntry.product,
         createdAt: new Date(tx.effective_at_millis),
