@@ -1,30 +1,14 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
+import { riskScoreWeights, riskScoreThresholds } from "./risk-score-weights";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
 import { DerivedSignUpHeuristicFacts, deriveSignUpHeuristicFacts } from "./sign-up-heuristics";
 
-function parseWeight(envName: string, defaultValue: number): number {
-  const raw = getEnvVariable(envName, String(defaultValue));
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-    throw new StackAssertionError(`Invalid ${envName}: expected integer 0-100, got "${raw}"`);
-  }
-  return parsed;
-}
 
-function parsePositiveInteger(envName: string, defaultValue: number): number {
-  const raw = getEnvVariable(envName, String(defaultValue));
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    throw new StackAssertionError(`Invalid ${envName}: expected integer >=1, got "${raw}"`);
-  }
-  return parsed;
-}
+// ── Types ──────────────────────────────────────────────────────────────
 
 export type SignUpRiskScores = SignUpRiskScoresCrud;
 
@@ -43,178 +27,99 @@ export type SignUpRiskAssessment = {
   heuristicFacts: DerivedSignUpHeuristicFacts,
 };
 
-const recentWindowHours = parsePositiveInteger("STACK_RISK_SIGN_UP_RECENT_WINDOW_HOURS", 24);
-const sameIpMinimumMatches = parsePositiveInteger("STACK_RISK_SAME_IP_MIN_RECENT_MATCHES", 1);
-const similarEmailMinimumMatches = parsePositiveInteger("STACK_RISK_SIMILAR_EMAIL_MIN_RECENT_MATCHES", 1);
 
-const trustedSameIpWeights = {
-  bot: parseWeight("STACK_RISK_BOT_TRUSTED_SAME_IP_WEIGHT", 35),
-  free_trial_abuse: parseWeight("STACK_RISK_FTA_TRUSTED_SAME_IP_WEIGHT", 70),
-} as const;
+// ── Score arithmetic helpers ───────────────────────────────────────────
 
-const spoofableSameIpWeights = {
-  bot: parseWeight("STACK_RISK_BOT_SPOOFABLE_SAME_IP_WEIGHT", 15),
-  free_trial_abuse: parseWeight("STACK_RISK_FTA_SPOOFABLE_SAME_IP_WEIGHT", 35),
-} as const;
+const ZERO: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
 
-const similarEmailWeights = {
-  bot: parseWeight("STACK_RISK_BOT_SIMILAR_EMAIL_WEIGHT", 20),
-  free_trial_abuse: parseWeight("STACK_RISK_FTA_SIMILAR_EMAIL_WEIGHT", 60),
-} as const;
-
-const disposableEmailWeights = {
-  bot: parseWeight("STACK_RISK_BOT_DISPOSABLE_EMAIL_WEIGHT", 100),
-  free_trial_abuse: parseWeight("STACK_RISK_FTA_DISPOSABLE_EMAIL_WEIGHT", 100),
-} as const;
-
-const turnstileFailedWeights = {
-  bot: parseWeight("STACK_RISK_BOT_TURNSTILE_FAILED_WEIGHT", 80),
-  free_trial_abuse: parseWeight("STACK_RISK_FTA_TURNSTILE_FAILED_WEIGHT", 40),
-} as const;
-
-const turnstileRecoveredWeights = {
-  bot: parseWeight("STACK_RISK_BOT_TURNSTILE_RECOVERED_WEIGHT", 40),
-  free_trial_abuse: parseWeight("STACK_RISK_FTA_TURNSTILE_RECOVERED_WEIGHT", 20),
-} as const;
-
-function clampRiskScore(score: number): number {
-  return Math.min(100, Math.max(0, score));
-}
-
-function getRecentSameIpWeights(ipTrusted: boolean | null): SignUpRiskScores {
-  const weights = ipTrusted === true ? trustedSameIpWeights : spoofableSameIpWeights;
+function scaleScores(weights: SignUpRiskScores, factor: number): SignUpRiskScores {
   return {
-    bot: weights.bot,
-    free_trial_abuse: weights.free_trial_abuse,
+    bot: Math.round(weights.bot * factor),
+    free_trial_abuse: Math.round(weights.free_trial_abuse * factor),
   };
 }
 
-function getTurnstileWeights(turnstileAssessment: SignUpTurnstileAssessment): SignUpRiskScores {
-  if (turnstileAssessment.status === "invalid") {
-    if (turnstileAssessment.visibleChallengeResult === "ok") {
-      return {
-        bot: turnstileRecoveredWeights.bot,
-        free_trial_abuse: turnstileRecoveredWeights.free_trial_abuse,
-      };
-    }
-
-    return {
-      bot: turnstileFailedWeights.bot,
-      free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
-    };
-  }
-
+function sumScores(...contributions: SignUpRiskScores[]): SignUpRiskScores {
   return {
-    bot: 0,
-    free_trial_abuse: 0,
+    bot: Math.min(100, contributions.reduce((s, c) => s + c.bot, 0)),
+    free_trial_abuse: Math.min(100, contributions.reduce((s, c) => s + c.free_trial_abuse, 0)),
   };
 }
 
-function getDisposableEmailContribution(emailableResult: EmailableCheckResult): SignUpRiskScores {
-  const emailableScore = emailableResult.emailableScore;
 
-  // Use emailable score (0-100, higher = more deliverable) for granular contribution.
-  // When score is available, scale the weight: contribution = weight * (1 - score/100).
-  // When status is "not-deliverable", enforce at least half the weight as a floor.
-  // When Emailable is unavailable, treat that as neutral so external outages do not block signups.
-  if (emailableScore != null) {
-    const scaleFactor = 1 - emailableScore / 100;
-    if (emailableResult.status === "not-deliverable") {
-      return {
-        bot: Math.round(Math.max(disposableEmailWeights.bot * 0.5, disposableEmailWeights.bot * scaleFactor)),
-        free_trial_abuse: Math.round(Math.max(disposableEmailWeights.free_trial_abuse * 0.5, disposableEmailWeights.free_trial_abuse * scaleFactor)),
-      };
-    }
+// ── Per-signal contribution functions ──────────────────────────────────
 
-    return {
-      bot: Math.round(disposableEmailWeights.bot * scaleFactor),
-      free_trial_abuse: Math.round(disposableEmailWeights.free_trial_abuse * scaleFactor),
-    };
-  }
-
-  if (emailableResult.status === "not-deliverable") {
-    return {
-      bot: disposableEmailWeights.bot,
-      free_trial_abuse: disposableEmailWeights.free_trial_abuse,
-    };
-  }
-
-  return {
-    bot: 0,
-    free_trial_abuse: 0,
-  };
+function getEmailableContribution(result: EmailableCheckResult): SignUpRiskScores {
+  if (result.emailableScore == null) return ZERO;
+  return scaleScores(riskScoreWeights.emailable, 1 - result.emailableScore / 100);
 }
+
+function getSameIpContribution(matched: boolean, ipTrusted: boolean | null): SignUpRiskScores {
+  if (!matched) return ZERO;
+  return ipTrusted === true ? riskScoreWeights.sameIp.trusted : riskScoreWeights.sameIp.spoofable;
+}
+
+function getSimilarEmailContribution(matched: boolean): SignUpRiskScores {
+  return matched ? riskScoreWeights.similarEmail : ZERO;
+}
+
+function getTurnstileContribution(assessment: SignUpTurnstileAssessment): SignUpRiskScores {
+  // The invisible check initially failed (user recovered via visible CAPTCHA to reach this point).
+  if (assessment.status === "invalid") return riskScoreWeights.turnstile;
+  return ZERO;
+}
+
+
+// ── Recent sign-up stats (DB) ──────────────────────────────────────────
 
 type RecentSignUpStats = {
-  sameIpRecentCount: number,
-  similarEmailRecentCount: number,
+  sameIpCount: number,
+  similarEmailCount: number,
 };
 
-async function loadRecentSignUpStats(
-  tenancy: Tenancy,
-  heuristicFacts: DerivedSignUpHeuristicFacts,
-): Promise<RecentSignUpStats> {
+async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuristicFacts): Promise<RecentSignUpStats> {
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const windowStart = new Date(heuristicFacts.signUpAt.getTime() - recentWindowHours * 60 * 60 * 1000);
+  const windowStart = new Date(facts.signUpAt.getTime() - riskScoreThresholds.recentWindowHours * 60 * 60 * 1000);
 
-  const sameIpPromise = heuristicFacts.signUpIp == null
-    ? Promise.resolve(0)
-    : prisma.projectUser
-      .findMany({
-        where: {
-          tenancyId: tenancy.id,
-          signUpAt: {
-            gte: windowStart,
+  const [sameIpCount, similarEmailCount] = await Promise.all([
+    facts.signUpIp == null
+      ? 0
+      : prisma.projectUser
+        .findMany({
+          where: {
+            tenancyId: tenancy.id,
+            signUpAt: { gte: windowStart },
+            signUpIp: facts.signUpIp,
           },
-          signUpIp: heuristicFacts.signUpIp,
-        },
-        select: {
-          projectUserId: true,
-        },
-        take: sameIpMinimumMatches,
-      })
-      .then((rows) => rows.length);
+          select: { projectUserId: true },
+          take: riskScoreThresholds.sameIpMinMatches,
+        })
+        .then((rows) => rows.length),
 
-  const similarEmailPromise = heuristicFacts.signUpEmailBase == null || heuristicFacts.signUpEmailNormalized == null
-    ? Promise.resolve(0)
-    : prisma.projectUser
-      .findMany({
-        where: {
-          tenancyId: tenancy.id,
-          signUpAt: {
-            gte: windowStart,
+    facts.signUpEmailBase == null || facts.signUpEmailNormalized == null
+      ? 0
+      : prisma.projectUser
+        .findMany({
+          where: {
+            tenancyId: tenancy.id,
+            signUpAt: { gte: windowStart },
+            signUpEmailBase: facts.signUpEmailBase,
+            AND: [
+              { signUpEmailNormalized: { not: null } },
+              { signUpEmailNormalized: { not: facts.signUpEmailNormalized } },
+            ],
           },
-          signUpEmailBase: heuristicFacts.signUpEmailBase,
-          AND: [
-            {
-              signUpEmailNormalized: {
-                not: null,
-              },
-            },
-            {
-              signUpEmailNormalized: {
-                not: heuristicFacts.signUpEmailNormalized,
-              },
-            },
-          ],
-        },
-        select: {
-          projectUserId: true,
-        },
-        take: similarEmailMinimumMatches,
-      })
-      .then((rows) => rows.length);
-
-  const [sameIpRecentCount, similarEmailRecentCount] = await Promise.all([
-    sameIpPromise,
-    similarEmailPromise,
+          select: { projectUserId: true },
+          take: riskScoreThresholds.similarEmailMinMatches,
+        })
+        .then((rows) => rows.length),
   ]);
 
-  return {
-    sameIpRecentCount,
-    similarEmailRecentCount,
-  };
+  return { sameIpCount, similarEmailCount };
 }
+
+
+// ── Public API ─────────────────────────────────────────────────────────
 
 export async function calculateSignUpRiskAssessment(
   tenancy: Tenancy,
@@ -225,108 +130,89 @@ export async function calculateSignUpRiskAssessment(
     ipAddress: context.ipAddress,
     ipTrusted: context.ipTrusted,
   });
-  const recentSignUpStats = await loadRecentSignUpStats(tenancy, heuristicFacts);
-  const emailableResult: EmailableCheckResult = context.primaryEmail == null
-    ? { status: "ok", emailableScore: null }
-    : await checkEmailWithEmailable(context.primaryEmail);
 
-  const recentSameIpMatched = heuristicFacts.signUpIp != null && recentSignUpStats.sameIpRecentCount >= sameIpMinimumMatches;
+  const [stats, emailableResult] = await Promise.all([
+    loadRecentSignUpStats(tenancy, heuristicFacts),
+    context.primaryEmail == null
+      ? { status: "ok" as const, emailableScore: null }
+      : checkEmailWithEmailable(context.primaryEmail),
+  ]);
+
+  const sameIpMatched = heuristicFacts.signUpIp != null && stats.sameIpCount >= riskScoreThresholds.sameIpMinMatches;
   const similarEmailMatched = heuristicFacts.signUpEmailBase != null
     && heuristicFacts.signUpEmailNormalized != null
-    && recentSignUpStats.similarEmailRecentCount >= similarEmailMinimumMatches;
+    && stats.similarEmailCount >= riskScoreThresholds.similarEmailMinMatches;
 
-  const disposableContribution = getDisposableEmailContribution(emailableResult);
+  const scores = sumScores(
+    getEmailableContribution(emailableResult),
+    getSameIpContribution(sameIpMatched, context.ipTrusted),
+    getSimilarEmailContribution(similarEmailMatched),
+    getTurnstileContribution(context.turnstileAssessment),
+  );
 
-  const sameIpContribution = recentSameIpMatched ? getRecentSameIpWeights(context.ipTrusted) : {
-    bot: 0,
-    free_trial_abuse: 0,
-  };
-
-  const similarEmailContribution = similarEmailMatched ? {
-    bot: similarEmailWeights.bot,
-    free_trial_abuse: similarEmailWeights.free_trial_abuse,
-  } : {
-    bot: 0,
-    free_trial_abuse: 0,
-  };
-
-  const turnstileContribution = getTurnstileWeights(context.turnstileAssessment);
-
-  const scores = {
-    bot: clampRiskScore(
-      disposableContribution.bot
-      + sameIpContribution.bot
-      + similarEmailContribution.bot
-      + turnstileContribution.bot,
-    ),
-    free_trial_abuse: clampRiskScore(
-      disposableContribution.free_trial_abuse
-      + sameIpContribution.free_trial_abuse
-      + similarEmailContribution.free_trial_abuse
-      + turnstileContribution.free_trial_abuse,
-    ),
-  };
-
-  return {
-    scores,
-    heuristicFacts,
-  };
+  return { scores, heuristicFacts };
 }
 
 export async function calculateSignUpRiskScores(tenancy: Tenancy, context: SignUpRiskScoreContext): Promise<SignUpRiskScores> {
   return (await calculateSignUpRiskAssessment(tenancy, context)).scores;
 }
 
-import.meta.vitest?.test("getRecentSameIpWeights(...)", ({ expect }) => {
-  expect(getRecentSameIpWeights(true)).toEqual({
-    bot: trustedSameIpWeights.bot,
-    free_trial_abuse: trustedSameIpWeights.free_trial_abuse,
-  });
-  expect(getRecentSameIpWeights(false)).toEqual({
-    bot: spoofableSameIpWeights.bot,
-    free_trial_abuse: spoofableSameIpWeights.free_trial_abuse,
-  });
+
+// ── Tests ──────────────────────────────────────────────────────────────
+
+import.meta.vitest?.test("scaleScores", ({ expect }) => {
+  expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 0)).toEqual({ bot: 0, free_trial_abuse: 0 });
+  expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 1)).toEqual({ bot: 100, free_trial_abuse: 80 });
+  expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 0.5)).toEqual({ bot: 50, free_trial_abuse: 40 });
 });
 
-import.meta.vitest?.test("getTurnstileWeights(...)", ({ expect }) => {
-  expect(getTurnstileWeights({ status: "ok" })).toEqual({
-    bot: 0,
-    free_trial_abuse: 0,
-  });
-  expect(getTurnstileWeights({ status: "error" })).toEqual({
-    bot: 0,
-    free_trial_abuse: 0,
-  });
-  expect(getTurnstileWeights({ status: "invalid" })).toEqual({
-    bot: turnstileFailedWeights.bot,
-    free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
-  });
-  expect(getTurnstileWeights({ status: "invalid", visibleChallengeResult: "ok" })).toEqual({
-    bot: turnstileRecoveredWeights.bot,
-    free_trial_abuse: turnstileRecoveredWeights.free_trial_abuse,
-  });
+import.meta.vitest?.test("sumScores clamps to 100", ({ expect }) => {
+  expect(sumScores({ bot: 80, free_trial_abuse: 60 }, { bot: 50, free_trial_abuse: 50 }))
+    .toEqual({ bot: 100, free_trial_abuse: 100 });
 });
 
-import.meta.vitest?.test("getDisposableEmailContribution(...)", ({ expect }) => {
-  expect(getDisposableEmailContribution({
-    status: "error",
-    error: new Error("Emailable unavailable"),
-    emailableScore: null,
-  })).toEqual({
-    bot: 0,
-    free_trial_abuse: 0,
-  });
+import.meta.vitest?.test("getSameIpContribution", ({ expect }) => {
+  expect(getSameIpContribution(false, true)).toEqual(ZERO);
+  expect(getSameIpContribution(true, true)).toEqual(riskScoreWeights.sameIp.trusted);
+  expect(getSameIpContribution(true, false)).toEqual(riskScoreWeights.sameIp.spoofable);
+  expect(getSameIpContribution(true, null)).toEqual(riskScoreWeights.sameIp.spoofable);
+});
 
-  expect(getDisposableEmailContribution({
+import.meta.vitest?.test("getTurnstileContribution", ({ expect }) => {
+  expect(getTurnstileContribution({ status: "ok" })).toEqual(ZERO);
+  expect(getTurnstileContribution({ status: "error" })).toEqual(ZERO);
+  expect(getTurnstileContribution({ status: "invalid" })).toEqual(riskScoreWeights.turnstile);
+  expect(getTurnstileContribution({ status: "invalid", visibleChallengeResult: "ok" })).toEqual(riskScoreWeights.turnstile);
+});
+
+import.meta.vitest?.test("getEmailableContribution", ({ expect }) => {
+  expect(getEmailableContribution({ status: "error", error: new Error("unavailable"), emailableScore: null })).toEqual(ZERO);
+  expect(getEmailableContribution({ status: "ok", emailableScore: null })).toEqual(ZERO);
+  expect(getEmailableContribution({
     status: "not-deliverable",
-    emailableResponse: {
-      state: "undeliverable",
-      disposable: false,
-      score: null,
-    },
+    emailableResponse: { state: "undeliverable", disposable: false, score: null },
     emailableScore: null,
-  })).toEqual({
-    bot: disposableEmailWeights.bot,
-    free_trial_abuse: disposableEmailWeights.free_trial_abuse,
-  });
+  })).toEqual(ZERO);
+
+  expect(getEmailableContribution({ status: "ok", emailableScore: 100 })).toEqual(ZERO);
+  expect(getEmailableContribution({ status: "ok", emailableScore: 0 })).toEqual(riskScoreWeights.emailable);
+  expect(getEmailableContribution({ status: "ok", emailableScore: 50 })).toEqual(
+    scaleScores(riskScoreWeights.emailable, 0.5),
+  );
+
+  expect(getEmailableContribution({
+    status: "not-deliverable",
+    emailableResponse: { state: "undeliverable", disposable: false, score: 10 },
+    emailableScore: 10,
+  })).toEqual(scaleScores(riskScoreWeights.emailable, 0.9));
+});
+
+import.meta.vitest?.test("worst-case scenario produces exactly 100", ({ expect }) => {
+  const worstCase = sumScores(
+    riskScoreWeights.emailable,
+    riskScoreWeights.sameIp.trusted,
+    riskScoreWeights.similarEmail,
+    riskScoreWeights.turnstile,
+  );
+  expect(worstCase).toEqual({ bot: 100, free_trial_abuse: 100 });
 });
