@@ -27,7 +27,7 @@ export default function PageClient() {
         </CardHeader>
         <CardContent className='space-y-2'>
           <Typography>
-            Hosted auth pages in this demo execute Turnstile automatically. Custom React auth components should use <span className='font-mono'>useTurnstileAuth()</span>, and the linked demo page also includes raw backend-debug flows for forcing invalid and no-token cases.
+            Turnstile fraud protection is handled transparently by the SDK. All auth methods (credential signup, magic link, OAuth) acquire invisible tokens and show visible challenge overlays automatically when needed — no consumer code required.
           </Typography>
           <Typography className='text-sm'>
             Status: enabled

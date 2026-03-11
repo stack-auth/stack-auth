@@ -9,7 +9,6 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "../lib/hooks";
-import { useTurnstileAuth } from "../lib/turnstile-auth";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -79,11 +78,6 @@ function OTP(props: {
 export function MagicLinkSignIn() {
   const { t } = useTranslation();
   const app = useStackApp();
-  const turnstile = useTurnstileAuth({
-    action: "send_magic_link_email",
-    missingVisibleChallengeMessage: t('Please solve the captcha before sending the email'),
-    challengeRequiredMessage: t('Complete the captcha to continue'),
-  });
   const [loading, setLoading] = useState(false);
   const [nonce, setNonce] = useState<string | null>(null);
 
@@ -100,13 +94,7 @@ export function MagicLinkSignIn() {
     setLoading(true);
     try {
       const { email } = data;
-      const turnstileResult = await turnstile.run(async (turnstileFlowOptions) => await app.sendMagicLinkEmail(email, {
-        ...turnstileFlowOptions,
-      }));
-      if (turnstileResult.status === "blocked") {
-        return;
-      }
-      const result = turnstileResult.result;
+      const result = await app.sendMagicLinkEmail(email);
       if (result.status === 'error') {
         setError('email', { type: 'manual', message: result.error.message });
         return;
@@ -140,18 +128,14 @@ export function MagicLinkSignIn() {
           autoComplete="email"
           {...registerEmail}
           onChange={(e) => {
-            turnstile.clearChallengeError();
             runAsynchronously(registerEmail.onChange(e));
           }}
         />
         <FormWarningText text={errors.email?.message?.toString()} />
 
-        <Button type="submit" className="mt-6" loading={loading} disabled={!turnstile.canSubmit}>
+        <Button type="submit" className="mt-6" loading={loading}>
           {t('Send email')}
         </Button>
-        <FormWarningText text={turnstile.challengeError ?? undefined} />
-        {turnstile.visibleTurnstileWidget}
-        {turnstile.invisibleTurnstileWidget}
       </form>
     );
   }

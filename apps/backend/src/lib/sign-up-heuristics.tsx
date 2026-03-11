@@ -87,23 +87,14 @@ export function getBaseEmailForSignUpHeuristics(primaryEmail: string | null): st
   }
 
   const canonicalDomain = emailProviderRules.get(parts.domain)?.canonicalDomain ?? parts.domain;
+  const dealiased = parts.localPart.replace(/\+.*$/, "");
+  const base = dealiased
+    .replace(/[._-]+/g, "-")       // normalize separators to a single dash
+    .replace(/(-\d+)+$/, "")       // strip trailing -N segments (e.g. alice-12-34 → alice)
+    .replace(/\d+$/, "")           // strip remaining bare trailing digits (e.g. alice123 → alice)
+    .replace(/(^-|-$)/g, "");      // trim leading/trailing dashes
 
-  // Reduce the local part to a "base" form by:
-  // 1. Normalizing separators (._-) to a single dash
-  // 2. Stripping numeric suffixes (+N, -N, trailing digits)
-  // 3. Cleaning up leftover dashes
-  let templateLocalPart = parts.localPart
-    .replace(/[._-]+/g, "-")       // normalize separators
-    .replace(/[+-]\d+$/g, "")      // strip +N or -N suffix
-    .replace(/\d+$/g, "")          // strip remaining trailing digits
-    .replace(/-+/g, "-")           // collapse consecutive dashes
-    .replace(/^-|-$/g, "");        // trim leading/trailing dashes
-
-  if (templateLocalPart === "") {
-    templateLocalPart = parts.localPart;
-  }
-
-  return `${templateLocalPart}@${canonicalDomain}`;
+  return `${base || dealiased || parts.localPart}@${canonicalDomain}`;
 }
 
 export function deriveSignUpHeuristicFacts(params: {
@@ -160,10 +151,21 @@ import.meta.vitest?.test("getBaseEmailForSignUpHeuristics(...)", ({ expect }) =>
     expect(getBaseEmailForSignUpHeuristics(`${baseLocalPart}${suffix}@example.com`)).toBe("alice@example.com");
   }
 
-  const preservedAliasCases = ["alice+sales@example.com", "alice+team@example.com"];
-  for (const preservedAliasCase of preservedAliasCases) {
-    expect(getBaseEmailForSignUpHeuristics(preservedAliasCase)).toBe(preservedAliasCase);
+  // Plus aliases are stripped regardless of content (not just numeric suffixes)
+  const plusAliasCases = ["alice+sales@example.com", "alice+team@example.com", "alice+abc123@example.com"];
+  for (const plusAliasCase of plusAliasCases) {
+    expect(getBaseEmailForSignUpHeuristics(plusAliasCase)).toBe("alice@example.com");
   }
+
+  // Turnstile demo pattern: random hex plus tags all map to the same base
+  const demoEmails = ["turnstile-demo+a1b2c3d4@example.com", "turnstile-demo+e5f6a7b8@example.com"];
+  for (const demoEmail of demoEmails) {
+    expect(getBaseEmailForSignUpHeuristics(demoEmail)).toBe("turnstile-demo@example.com");
+  }
+
+  // Gmail plus aliases also map to the same base
+  expect(getBaseEmailForSignUpHeuristics("alice+1@gmail.com")).toBe("alice@gmail.com");
+  expect(getBaseEmailForSignUpHeuristics("alice+sales@gmail.com")).toBe("alice@gmail.com");
 });
 
 import.meta.vitest?.test("deriveSignUpHeuristicFacts(...)", ({ expect }) => {

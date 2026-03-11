@@ -20,16 +20,12 @@ export function OAuthButton({
   provider,
   type,
   isMock = false,
-  disabled = false,
   onAuthenticate,
-  clearTurnstileError,
 }: {
   provider: string,
   type: 'sign-in' | 'sign-up',
   isMock?: boolean,
-  disabled?: boolean,
   onAuthenticate?: () => Promise<void>,
-  clearTurnstileError?: () => void,
 }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
@@ -192,11 +188,10 @@ export function OAuthButton({
         <Button
           onClick={async () => {
             localStorage.setItem('_STACK_AUTH.lastUsed', provider);
-            clearTurnstileError?.();
             await (onAuthenticate ? onAuthenticate() : stackApp.signInWithOAuth(provider));
           }}
           className={`stack-oauth-button-${styleId} stack-scope relative w-full`}
-          disabled={isIframe || disabled}
+          disabled={isIframe}
         >
           {!isMock && lastUsed === provider && (
             <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-md">

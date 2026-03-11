@@ -5,8 +5,6 @@ export { getConvexProvidersConfig } from "./integrations/convex";
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";
 export { default as StackHandler } from "./components-page/stack-handler";
 export { useStackApp, useUser } from "./lib/hooks";
-export { useTurnstileAuth } from "./lib/turnstile-auth";
-export type { TurnstileAuthRunResult, UseTurnstileAuthOptions } from "./lib/turnstile-auth";
 export { default as StackProvider } from "./providers/stack-provider";
 export { StackTheme } from './providers/theme-provider';
 

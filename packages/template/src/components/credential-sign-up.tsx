@@ -9,7 +9,6 @@ import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "../lib/hooks";
-import { useTurnstileAuth } from "../lib/turnstile-auth";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -38,26 +37,13 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     resolver: yupResolver(schema)
   });
   const app = useStackApp();
-  const turnstile = useTurnstileAuth({
-    action: "sign_up_with_credential",
-    missingVisibleChallengeMessage: t('Please solve the captcha before signing up'),
-    challengeRequiredMessage: t('Complete the captcha to finish signing up'),
-  });
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
     setLoading(true);
     try {
       const { email, password } = data;
-      const turnstileResult = await turnstile.run(async (turnstileFlowOptions) => await app.signUpWithCredential({
-        email,
-        password,
-        ...turnstileFlowOptions,
-      }));
-      if (turnstileResult.status === "blocked") {
-        return;
-      }
-      const result = turnstileResult.result;
+      const result = await app.signUpWithCredential({ email, password });
       if (result.status === 'error') {
         setError('email', { type: 'manual', message: result.error.message });
       }
@@ -83,7 +69,6 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         autoComplete="email"
         {...registerEmail}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          turnstile.clearChallengeError();
           runAsynchronously(registerEmail.onChange(e));
         }}
       />
@@ -97,7 +82,6 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           clearErrors('password');
           clearErrors('passwordRepeat');
-          turnstile.clearChallengeError();
           runAsynchronously(registerPassword.onChange(e));
         }}
       />
@@ -112,7 +96,6 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               clearErrors('password');
               clearErrors('passwordRepeat');
-              turnstile.clearChallengeError();
               runAsynchronously(registerPasswordRepeat.onChange(e));
               }}
             />
@@ -121,12 +104,9 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         )
       }
 
-      <Button type="submit" className="mt-6" loading={loading} disabled={!turnstile.canSubmit}>
+      <Button type="submit" className="mt-6" loading={loading}>
         {t('Sign Up')}
       </Button>
-      <FormWarningText text={turnstile.challengeError ?? undefined} />
-      {turnstile.visibleTurnstileWidget}
-      {turnstile.invisibleTurnstileWidget}
     </form>
   );
 }

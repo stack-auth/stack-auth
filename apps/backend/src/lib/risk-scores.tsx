@@ -118,7 +118,7 @@ async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuri
           LIMIT ${riskScoreThresholds.sameIpMaxMatchesForFullPenalty}
         `,
 
-    facts.signUpEmailBase == null || facts.signUpEmailNormalized == null
+    facts.signUpEmailBase == null
       ? []
       : prisma.$replica().$queryRaw<{ matched: number }[]>`
           SELECT 1 AS "matched"
@@ -126,8 +126,6 @@ async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuri
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "signUpAt" >= ${windowStart}
             AND "signUpEmailBase" = ${facts.signUpEmailBase}
-            AND "signUpEmailNormalized" IS NOT NULL
-            AND "signUpEmailNormalized" != ${facts.signUpEmailNormalized}
           LIMIT ${riskScoreThresholds.similarEmailMinMatches}
         `,
   ]);
@@ -159,7 +157,6 @@ export async function calculateSignUpRiskAssessment(
   ]);
 
   const similarEmailMatched = heuristicFacts.signUpEmailBase != null
-    && heuristicFacts.signUpEmailNormalized != null
     && stats.similarEmailCount >= riskScoreThresholds.similarEmailMinMatches;
 
   const scores = sumScores(

@@ -24,7 +24,7 @@ export const riskScoreWeights = {
 export const riskScoreThresholds = {
   recentWindowHours: 24,
   sameIpMinMatches: 1,
-  sameIpMaxMatchesForFullPenalty: 3,
+  sameIpMaxMatchesForFullPenalty: 10,
   similarEmailMinMatches: 1,
 } as const;
 

@@ -1,66 +1,114 @@
 'use client';
 
 import { KnownErrors } from "@stackframe/stack-shared";
-import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { stackAppInternalsSymbol, useStackApp, useUser } from "@stackframe/stack";
 import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { useStackApp, useTurnstileAuth, useUser } from "@stackframe/stack";
+import { executeTurnstileInvisible, showTurnstileVisibleChallenge, TurnstileUserCancelledError, withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@stackframe/stack-ui";
 import Link from "next/link";
 import { useState } from "react";
-import { TurnstileVisibleWidget } from "src/components/turnstile-visible-widget";
-
-const forcedChallengeSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY || turnstileDevelopmentKeys.forcedChallengeSiteKey;
-const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || turnstileDevelopmentKeys.invisibleSiteKey;
-const sharedTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || turnstileDevelopmentKeys.visibleSiteKey;
-const forcedChallengeSiteKeySource = process.env.NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY
-  ? "NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY"
-  : "built-in Cloudflare interactive test key";
 
 function createSuggestedEmail() {
   const suffix = crypto.randomUUID().slice(0, 8);
   return `turnstile-demo+${suffix}@example.com`;
 }
 
-const demoInvisibleTokens = {
-  success: "mock-turnstile-ok:sign_up_with_credential",
-  invalid: "mock-turnstile-invalid",
-} as const;
+const testKeys = {
+  invisiblePass: turnstileDevelopmentKeys.invisibleSiteKey,
+  visiblePass: turnstileDevelopmentKeys.visibleSiteKey,
+  forceChallenge: turnstileDevelopmentKeys.forcedChallengeSiteKey,
+};
 
-type SubmissionFlow = "invisible-ok" | "invisible-invalid" | "visible-retry" | "visible-fail" | "no-token";
-
-type SubmissionResult = {
-  flow: SubmissionFlow,
+type FlowResult = {
   status: "success" | "error" | "info",
   message: string,
 };
 
-type WrapperResult = {
-  status: "success" | "error" | "info",
-  message: string,
-};
+type SignupResult =
+  | { ok: true }
+  | { ok: false, code: string, message: string };
 
-type VisibleFallbackState = {
-  previousTurnstileResult: TurnstileRetryResult,
-};
+/**
+ * Sends a signup request through the SDK's internal request pipeline.
+ * Catches KnownErrors (which sendClientRequest throws) and returns structured results.
+ */
+async function debugSignup(
+  sendRequest: (path: string, init: RequestInit) => Promise<Response>,
+  options: {
+    email: string,
+    password: string,
+    turnstileToken?: string,
+    turnstilePhase?: "invisible" | "visible",
+    turnstilePreviousResult?: string,
+  },
+): Promise<SignupResult> {
+  const bodyObj: Record<string, unknown> = {
+    email: options.email,
+    password: options.password,
+  };
+  if (options.turnstileToken) {
+    bodyObj.turnstile_token = options.turnstileToken;
+  }
+  if (options.turnstilePhase) {
+    bodyObj.turnstile_phase = options.turnstilePhase;
+  }
+  if (options.turnstilePreviousResult) {
+    bodyObj.turnstile_previous_result = options.turnstilePreviousResult;
+  }
+
+  try {
+    const res = await sendRequest("/auth/password/sign-up", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bodyObj),
+    });
+    if (res.ok) {
+      return { ok: true };
+    }
+    const resBody = await res.json().catch(() => ({}));
+    return { ok: false, code: resBody.code ?? `HTTP_${res.status}`, message: resBody.message ?? res.statusText };
+  } catch (e: unknown) {
+    // sendClientRequest throws KnownErrors instead of returning error responses
+    if (e instanceof KnownErrors.TurnstileChallengeRequired) {
+      return { ok: false, code: "TURNSTILE_CHALLENGE_REQUIRED", message: e.message };
+    }
+    if (e instanceof KnownErrors.UserWithEmailAlreadyExists) {
+      return { ok: false, code: "USER_EMAIL_ALREADY_EXISTS", message: e.message };
+    }
+    if (e instanceof KnownErrors.PasswordRequirementsNotMet) {
+      return { ok: false, code: "PASSWORD_REQUIREMENTS_NOT_MET", message: e.message };
+    }
+    // Re-throw unknown errors
+    throw e;
+  }
+}
+
+function isChallengeRequired(result: SignupResult): boolean {
+  return !result.ok && result.code === "TURNSTILE_CHALLENGE_REQUIRED";
+}
 
 export default function TurnstileSignupPageClient() {
   const app = useStackApp();
   const user = useUser();
-  const turnstile = useTurnstileAuth({
-    action: "sign_up_with_credential",
-    missingVisibleChallengeMessage: "Please solve the visible fallback challenge before retrying",
-    challengeRequiredMessage: "Turnstile requested a visible fallback challenge. Solve it below and submit again.",
-  });
   const [email, setEmail] = useState(() => createSuggestedEmail());
   const [password, setPassword] = useState("Demo-password-123!");
-  const [wrapperLoading, setWrapperLoading] = useState(false);
-  const [wrapperResult, setWrapperResult] = useState<WrapperResult | null>(null);
-  const [loadingFlow, setLoadingFlow] = useState<SubmissionFlow | null>(null);
-  const [submissionResult, setSubmissionResult] = useState<SubmissionResult | null>(null);
-  const [visibleFallbackState, setVisibleFallbackState] = useState<VisibleFallbackState | null>(null);
-  const [visibleTurnstileToken, setVisibleTurnstileToken] = useState<string | null>(null);
-  const [visibleTurnstileError, setVisibleTurnstileError] = useState<string | null>(null);
-  const [challengeWidgetKey, setChallengeWidgetKey] = useState(0);
+
+  // SDK signup state
+  const [sdkLoading, setSdkLoading] = useState(false);
+  const [sdkResult, setSdkResult] = useState<FlowResult | null>(null);
+
+  // Debug card state
+  const [loadingFlow, setLoadingFlow] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<FlowResult | null>(null);
+
+  const internals = app[stackAppInternalsSymbol] as any;
+  const sendRequest: (path: string, init: RequestInit) => Promise<Response> = internals.sendRequest;
+
+  function freshEmail() {
+    const e = createSuggestedEmail();
+    setEmail(e);
+    return e;
+  }
 
   if (user != null) {
     return (
@@ -71,10 +119,10 @@ export default function TurnstileSignupPageClient() {
           </CardHeader>
           <CardContent className="space-y-3">
             <Typography>
-              You are currently signed in as <span className="font-mono">{user.primaryEmail ?? user.id}</span>.
+              Signed in as <span className="font-mono">{user.primaryEmail ?? user.id}</span>.
             </Typography>
             <Typography className="text-sm text-gray-600 dark:text-gray-300">
-              Sign out first to rerun the invisible-first signup flow from a clean state.
+              Sign out to rerun the flows from a clean state.
             </Typography>
           </CardContent>
           <CardFooter className="flex gap-3">
@@ -90,541 +138,476 @@ export default function TurnstileSignupPageClient() {
     );
   }
 
-  async function submitWrapperFlow() {
-    setWrapperLoading(true);
-    setWrapperResult(null);
-
-    try {
-      const turnstileResult = await turnstile.run(async (turnstileFlowOptions) => await app.signUpWithCredential({
-        email,
-        password,
-        noRedirect: true,
-        noVerificationCallback: true,
-        ...turnstileFlowOptions,
-      }));
-
-      if (turnstileResult.status === "blocked") {
-        setWrapperResult({
-          status: "info",
-          message: "The recommended custom-component flow is waiting for the visible fallback challenge. Solve it below and submit again.",
-        });
-        return;
-      }
-
-      const result = turnstileResult.result;
-      if (result.status === "error") {
-        setWrapperResult({
-          status: "error",
-          message: result.error.message,
-        });
-        return;
-      }
-
-      setWrapperResult({
-        status: "success",
-        message: "Signup succeeded through the recommended useTurnstileAuth wrapper flow.",
-      });
-    } finally {
-      setWrapperLoading(false);
-    }
-  }
-
-  async function submitInvisibleAttempt(params: {
-    flow: "invisible-ok" | "invisible-invalid",
-    token: string,
-  }) {
-    setLoadingFlow(params.flow);
-    setSubmissionResult(null);
-    setVisibleFallbackState(null);
-    setVisibleTurnstileToken(null);
-    setVisibleTurnstileError(null);
-    setChallengeWidgetKey((current) => current + 1);
-
+  // ── SDK signup ──
+  async function handleSdkSignUp() {
+    setSdkLoading(true);
+    setSdkResult(null);
     try {
       const result = await app.signUpWithCredential({
         email,
         password,
         noRedirect: true,
         noVerificationCallback: true,
-        turnstileToken: params.token,
+      });
+      if (result.status === "error") {
+        setSdkResult({ status: "error", message: result.error.message });
+      } else {
+        setSdkResult({ status: "success", message: "Signup succeeded. Turnstile was handled transparently by the SDK." });
+      }
+    } catch (e) {
+      if (e instanceof TurnstileUserCancelledError) {
+        setSdkResult({ status: "error", message: "Turnstile challenge cancelled by user." });
+      } else {
+        setSdkResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    } finally {
+      setSdkLoading(false);
+    }
+  }
+
+  // ── Debug flow runner ──
+  async function runFlow(
+    id: string,
+    fn: (signupEmail: string) => Promise<FlowResult>,
+  ) {
+    setLoadingFlow(id);
+    setLastResult(null);
+    const signupEmail = freshEmail();
+    try {
+      const result = await fn(signupEmail);
+      setLastResult(result);
+    } catch (e) {
+      if (e instanceof TurnstileUserCancelledError) {
+        setLastResult({ status: "error", message: "User cancelled the visible challenge — signup blocked." });
+      } else {
+        setLastResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    } finally {
+      setLoadingFlow(null);
+    }
+  }
+
+  // Flow: invisible token succeeds → signup
+  async function flowInvisibleOk(signupEmail: string): Promise<FlowResult> {
+    const token = await executeTurnstileInvisible(testKeys.invisiblePass, "sign_up_with_credential");
+    const res = await debugSignup(sendRequest, {
+      email: signupEmail, password,
+      turnstileToken: token,
+      turnstilePhase: "invisible",
+    });
+    if (res.ok) {
+      return { status: "success", message: "Signup succeeded. Invisible token was accepted." };
+    }
+    return { status: "error", message: `Signup failed: ${res.code} — ${res.message}` };
+  }
+
+  // Flow: invisible fails → visible challenge → signup
+  async function flowChallengeRequired(signupEmail: string): Promise<FlowResult> {
+    const firstRes = await debugSignup(sendRequest, {
+      email: signupEmail, password,
+      turnstileToken: "mock-turnstile-invalid",
+      turnstilePhase: "invisible",
+    });
+
+    if (firstRes.ok) {
+      return { status: "success", message: "Signup unexpectedly succeeded on first attempt (no challenge required)." };
+    }
+
+    if (!isChallengeRequired(firstRes)) {
+      return { status: "error", message: `Expected TURNSTILE_CHALLENGE_REQUIRED, got: ${firstRes.code}` };
+    }
+
+    const visibleToken = await showTurnstileVisibleChallenge(testKeys.forceChallenge, "sign_up_with_credential");
+
+    const secondRes = await debugSignup(sendRequest, {
+      email: signupEmail, password,
+      turnstileToken: visibleToken,
+      turnstilePhase: "visible",
+      turnstilePreviousResult: "invalid",
+    });
+
+    if (secondRes.ok) {
+      return { status: "success", message: "Signup succeeded after visible challenge." };
+    }
+    return { status: "error", message: `Retry failed: ${secondRes.code} — ${secondRes.message}` };
+  }
+
+  // Flow: both invisible and visible fail → blocked
+  async function flowBothFail(signupEmail: string): Promise<FlowResult> {
+    const firstRes = await debugSignup(sendRequest, {
+      email: signupEmail, password,
+      turnstileToken: "mock-turnstile-invalid",
+      turnstilePhase: "invisible",
+    });
+
+    if (!isChallengeRequired(firstRes)) {
+      return { status: "error", message: `Expected TURNSTILE_CHALLENGE_REQUIRED, got: ${firstRes.ok ? "ok" : firstRes.code}` };
+    }
+
+    const secondRes = await debugSignup(sendRequest, {
+      email: signupEmail, password,
+      turnstileToken: "mock-turnstile-invalid",
+      turnstilePhase: "visible",
+      turnstilePreviousResult: "invalid",
+    });
+
+    if (secondRes.ok) {
+      return { status: "error", message: "Signup unexpectedly succeeded even with invalid visible token." };
+    }
+    return { status: "success", message: `Signup correctly blocked: ${secondRes.code}` };
+  }
+
+  // Flow: no token at all
+  async function flowNoToken(signupEmail: string): Promise<FlowResult> {
+    const res = await debugSignup(sendRequest, { email: signupEmail, password });
+    if (res.ok) {
+      return { status: "success", message: "Signup succeeded without any token. Backend accepted it." };
+    }
+    return { status: "error", message: `Signup failed: ${res.code} — ${res.message}` };
+  }
+
+  // Flow: withTurnstileFlow orchestrator
+  async function flowOrchestrator(signupEmail: string): Promise<FlowResult> {
+    const result = await withTurnstileFlow({
+      invisibleSiteKey: testKeys.invisiblePass,
+      visibleSiteKey: testKeys.forceChallenge,
+      action: "sign_up_with_credential",
+      execute: async (turnstile) => {
+        return await debugSignup(sendRequest, {
+          email: signupEmail, password,
+          turnstileToken: turnstile.token,
+          turnstilePhase: turnstile.phase,
+          turnstilePreviousResult: turnstile.previousResult,
+        });
+      },
+      isChallengeRequired: (res) => {
+        if (!res.ok && res.code === "TURNSTILE_CHALLENGE_REQUIRED") {
+          return "invalid";
+        }
+        return null;
+      },
+    });
+
+    if (result.ok) {
+      return { status: "success", message: "Signup succeeded via withTurnstileFlow orchestrator." };
+    }
+    return { status: "error", message: `Signup failed: ${result.code} — ${result.message}` };
+  }
+
+  // Flow: random outcome (simulates realistic behavior)
+  async function flowRandom(signupEmail: string): Promise<FlowResult> {
+    const rand = Math.random();
+    if (rand < 0.4) {
+      // 40%: invisible succeeds
+      const token = await executeTurnstileInvisible(testKeys.invisiblePass, "sign_up_with_credential");
+      const res = await debugSignup(sendRequest, {
+        email: signupEmail, password,
+        turnstileToken: token,
         turnstilePhase: "invisible",
       });
-
-      if (result.status === "error") {
-        if (KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-          const [previousTurnstileResult] = result.error.constructorArgs;
-          setVisibleFallbackState({ previousTurnstileResult });
-          setSubmissionResult({
-            flow: params.flow,
-            status: "info",
-            message: `The invisible attempt returned ${previousTurnstileResult}. Solve the visible fallback challenge below to finish signup.`,
-          });
-          return;
-        }
-
-        setSubmissionResult({
-          flow: params.flow,
-          status: "error",
-          message: result.error.message,
-        });
-        return;
+      if (res.ok) {
+        return { status: "success", message: "[Random: invisible pass] Signup succeeded." };
       }
-
-      setSubmissionResult({
-        flow: params.flow,
-        status: "success",
-        message: "Signup succeeded directly from the invisible-first attempt.",
+      return { status: "error", message: `[Random: invisible pass] Failed: ${res.code}` };
+    } else if (rand < 0.7) {
+      // 30%: invisible fails → visible challenge → succeeds
+      const firstRes = await debugSignup(sendRequest, {
+        email: signupEmail, password,
+        turnstileToken: "mock-turnstile-invalid",
+        turnstilePhase: "invisible",
       });
-    } finally {
-      setLoadingFlow(null);
-    }
-  }
-
-  async function completeVisibleFallbackSignup() {
-    setLoadingFlow("visible-retry");
-    setSubmissionResult(null);
-
-    try {
-      if (visibleFallbackState == null) {
-        setSubmissionResult({
-          flow: "visible-retry",
-          status: "error",
-          message: "Run the invisible-invalid step first so the backend requests a visible fallback challenge.",
-        });
-        return;
+      if (!isChallengeRequired(firstRes)) {
+        return { status: "info", message: `[Random: challenge] Unexpected: ${firstRes.ok ? "ok" : firstRes.code}` };
       }
-
-      if (visibleTurnstileToken == null) {
-        setVisibleTurnstileError("Complete the visible Turnstile challenge first.");
-        return;
-      }
-
-      const result = await app.signUpWithCredential({
-        email,
-        password,
-        noRedirect: true,
-        noVerificationCallback: true,
-        turnstileToken: visibleTurnstileToken,
+      const visibleToken = await showTurnstileVisibleChallenge(testKeys.forceChallenge, "sign_up_with_credential");
+      const secondRes = await debugSignup(sendRequest, {
+        email: signupEmail, password,
+        turnstileToken: visibleToken,
         turnstilePhase: "visible",
-        previousTurnstileResult: visibleFallbackState.previousTurnstileResult,
+        turnstilePreviousResult: "invalid",
       });
-
-      if (result.status === "error") {
-        if (KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-          setVisibleTurnstileToken(null);
-          setVisibleTurnstileError("The visible fallback token failed verification. Solve the challenge again.");
-          setChallengeWidgetKey((current) => current + 1);
-          setSubmissionResult({
-            flow: "visible-retry",
-            status: "error",
-            message: "The backend still requires a valid visible challenge token.",
-          });
-          return;
-        }
-
-        setSubmissionResult({
-          flow: "visible-retry",
-          status: "error",
-          message: result.error.message,
-        });
-        return;
+      if (secondRes.ok) {
+        return { status: "success", message: "[Random: challenge -> pass] Signup succeeded after challenge." };
       }
-
-      setSubmissionResult({
-        flow: "visible-retry",
-        status: "success",
-        message: "Signup succeeded after the visible fallback challenge. The backend should persist the softened recovered Turnstile risk score for this signup.",
+      return { status: "error", message: `[Random: challenge -> pass] Retry failed: ${secondRes.code}` };
+    } else if (rand < 0.9) {
+      // 20%: both fail → blocked
+      const firstRes = await debugSignup(sendRequest, {
+        email: signupEmail, password,
+        turnstileToken: "mock-turnstile-invalid",
+        turnstilePhase: "invisible",
       });
-    } finally {
-      setLoadingFlow(null);
-    }
-  }
-
-  async function submitVisibleFailAttempt() {
-    setLoadingFlow("visible-fail");
-    setSubmissionResult(null);
-    setVisibleFallbackState(null);
-    setVisibleTurnstileToken(null);
-    setVisibleTurnstileError(null);
-    setChallengeWidgetKey((current) => current + 1);
-
-    try {
-      const result = await app.signUpWithCredential({
-        email,
-        password,
-        noRedirect: true,
-        noVerificationCallback: true,
-        turnstileToken: demoInvisibleTokens.invalid,
+      if (!isChallengeRequired(firstRes)) {
+        return { status: "info", message: `[Random: both fail] Unexpected: ${firstRes.ok ? "ok" : firstRes.code}` };
+      }
+      const secondRes = await debugSignup(sendRequest, {
+        email: signupEmail, password,
+        turnstileToken: "mock-turnstile-invalid",
         turnstilePhase: "visible",
-        previousTurnstileResult: "invalid",
+        turnstilePreviousResult: "invalid",
       });
-
-      if (result.status === "error") {
-        setSubmissionResult({
-          flow: "visible-fail",
-          status: "error",
-          message: result.error.message,
-        });
-        return;
+      if (secondRes.ok) {
+        return { status: "error", message: "[Random: both fail] Signup unexpectedly succeeded." };
       }
-
-      setSubmissionResult({
-        flow: "visible-fail",
-        status: "success",
-        message: "Signup unexpectedly succeeded even though both Turnstile stages sent invalid tokens.",
-      });
-    } finally {
-      setLoadingFlow(null);
-    }
-  }
-
-  async function submitNoTokenAttempt() {
-    setLoadingFlow("no-token");
-    setSubmissionResult(null);
-    setVisibleFallbackState(null);
-    setVisibleTurnstileToken(null);
-    setVisibleTurnstileError(null);
-    setChallengeWidgetKey((current) => current + 1);
-
-    try {
-      const result = await app.signUpWithCredential({
-        email,
-        password,
-        noRedirect: true,
-        noVerificationCallback: true,
-      });
-
-      if (result.status === "error") {
-        setSubmissionResult({
-          flow: "no-token",
-          status: "error",
-          message: result.error.message,
-        });
-        return;
+      return { status: "success", message: `[Random: both fail] Signup correctly blocked: ${secondRes.code}` };
+    } else {
+      // 10%: no token
+      const res = await debugSignup(sendRequest, { email: signupEmail, password });
+      if (res.ok) {
+        return { status: "success", message: "[Random: no token] Signup succeeded." };
       }
-
-      setSubmissionResult({
-        flow: "no-token",
-        status: "success",
-        message: "Signup succeeded without any Turnstile token. The backend accepted the request for backwards compatibility.",
-      });
-    } finally {
-      setLoadingFlow(null);
+      return { status: "error", message: `[Random: no token] Failed: ${res.code}` };
     }
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <Typography type="h1">Turnstile Signup Demo</Typography>
-          <Typography>
-            This page shows both the recommended custom-component wrapper for Turnstile-aware signup and the lower-level debug flows for forcing specific backend outcomes.
-          </Typography>
-          <Typography className="text-sm text-gray-600 dark:text-gray-300">
-            Use the wrapper section first if you want to see the supported custom React API. Use the raw debug section below when you need to force invalid or no-token backend behavior.
-          </Typography>
-        </div>
+    <div className="container mx-auto p-6 max-w-5xl space-y-8">
+      {/* Header */}
+      <div className="space-y-2">
+        <Typography type="h1">Turnstile Signup Demo</Typography>
+        <Typography className="text-gray-600 dark:text-gray-300">
+          Test the SDK&apos;s transparent Turnstile integration and exercise individual flows.
+        </Typography>
+      </div>
 
-        <Card>
-          <CardHeader>
-            <Typography type="h3">Current Turnstile config</Typography>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Typography className="text-sm break-all">
-              Hosted fallback / visible site key: <span className="font-mono">{sharedTurnstileSiteKey === "" ? "not set" : sharedTurnstileSiteKey}</span>
-            </Typography>
-            <Typography className="text-sm break-all">
-              Hosted invisible site key: <span className="font-mono">{invisibleTurnstileSiteKey === "" ? "not set" : invisibleTurnstileSiteKey}</span>
-            </Typography>
-            <Typography className="text-sm break-all">
-              Demo visible challenge site key: <span className="font-mono">{forcedChallengeSiteKey}</span> <span className="text-gray-600 dark:text-gray-300">({forcedChallengeSiteKeySource})</span>
-            </Typography>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <Typography type="h3">Shared credentials</Typography>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="turnstile-demo-email">Email</Label>
-                <Input
-                  id="turnstile-demo-email"
-                  value={email}
-                  onChange={(event) => {
-                    setEmail(event.target.value);
-                    turnstile.clearChallengeError();
-                    setWrapperResult(null);
-                    setSubmissionResult(null);
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="turnstile-demo-password">Password</Label>
-                <PasswordInput
-                  id="turnstile-demo-password"
-                  value={password}
-                  onChange={(event) => {
-                    setPassword(event.target.value);
-                    turnstile.clearChallengeError();
-                    setWrapperResult(null);
-                    setSubmissionResult(null);
-                  }}
-                />
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setEmail(createSuggestedEmail());
-                  turnstile.clearChallengeError();
-                  setWrapperResult(null);
-                  setSubmissionResult(null);
-                  setVisibleFallbackState(null);
-                  setVisibleTurnstileToken(null);
-                  setVisibleTurnstileError(null);
-                  setChallengeWidgetKey((current) => current + 1);
+      {/* Shared credentials */}
+      <Card>
+        <CardHeader>
+          <Typography type="h3">Shared credentials</Typography>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="demo-email">Email</Label>
+              <Input
+                id="demo-email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
                 }}
-              >
-                Generate new email
-              </Button>
-              <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                The suggested email uses a random local-part so you can repeat the flow without manual cleanup.
-              </Typography>
+              />
             </div>
-          </CardContent>
-        </Card>
+            <div className="space-y-2">
+              <Label htmlFor="demo-password">Password</Label>
+              <PasswordInput
+                id="demo-password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                }}
+              />
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button variant="secondary" size="sm" onClick={() => { freshEmail(); }}>
+            Generate new email
+          </Button>
+        </CardFooter>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <Typography type="h3">Recommended custom component flow</Typography>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Typography>
-              This section uses <span className="font-mono">useTurnstileAuth()</span>, the same wrapper custom React auth components should use when Turnstile is enabled.
-            </Typography>
-            <Typography className="text-sm text-gray-600 dark:text-gray-300">
-              It runs the invisible-first signup attempt automatically and shows the visible fallback challenge only when the backend returns <span className="font-mono">TURNSTILE_CHALLENGE_REQUIRED</span>.
-            </Typography>
-            {wrapperResult != null ? (
-              <Typography
-                className={
-                  wrapperResult.status === "error"
-                    ? "text-red-600 dark:text-red-400"
-                    : wrapperResult.status === "success"
-                      ? "text-green-700 dark:text-green-300"
-                      : "text-blue-700 dark:text-blue-300"
-                }
-              >
-                {wrapperResult.message}
-              </Typography>
-            ) : null}
-            {turnstile.challengeError != null ? (
-              <Typography className="text-sm text-red-600 dark:text-red-400">
-                {turnstile.challengeError}
-              </Typography>
-            ) : null}
-            {turnstile.turnstileWidget}
-          </CardContent>
-          <CardFooter className="flex gap-3">
-            <Button
-              loading={wrapperLoading}
-              disabled={!turnstile.canSubmit}
-              onClick={async () => await submitWrapperFlow()}
-            >
-              Run wrapper flow
-            </Button>
-            <Typography className="text-sm text-gray-600 dark:text-gray-300">
-              This is the supported abstraction for custom Turnstile-aware signup components.
-            </Typography>
-          </CardFooter>
-        </Card>
-
-        <div className="space-y-2">
-          <Typography type="h2">Raw backend-debug flows</Typography>
-          <Typography className="text-sm text-gray-600 dark:text-gray-300">
-            These sections intentionally bypass the wrapper so you can force exact request payloads and backend outcomes.
+      {/* SDK signup (recommended) */}
+      <Card>
+        <CardHeader>
+          <Typography type="h3">SDK signup (recommended)</Typography>
+          <Typography className="text-sm text-gray-500">
+            Calls <span className="font-mono">app.signUpWithCredential()</span> — Turnstile is handled entirely by the SDK.
           </Typography>
-        </div>
+        </CardHeader>
+        <CardContent>
+          {sdkResult && (
+            <Typography className={
+              sdkResult.status === "error" ? "text-red-600 dark:text-red-400"
+                : sdkResult.status === "success" ? "text-green-700 dark:text-green-300"
+                  : "text-blue-600 dark:text-blue-300"
+            }>
+              {sdkResult.message}
+            </Typography>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button loading={sdkLoading} onClick={handleSdkSignUp}>Sign up with SDK</Button>
+        </CardFooter>
+      </Card>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+      {/* Debug flows */}
+      <div className="space-y-4">
+        <Typography type="h2">Debug flows</Typography>
+        <Typography className="text-sm text-gray-600 dark:text-gray-300">
+          Each card sends controlled Turnstile params to the backend via the SDK&apos;s internal request pipeline. A fresh email is generated per attempt.
+        </Typography>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Invisible pass */}
           <Card>
             <CardHeader>
-              <Typography type="h3">Forced invisible fail to visible fallback</Typography>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Typography>
-                First sends <span className="font-mono">{demoInvisibleTokens.invalid}</span> to force the invisible attempt into the fallback path.
-              </Typography>
-              <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                Expected backend effect: the first request returns <span className="font-mono">TURNSTILE_CHALLENGE_REQUIRED</span>, and a successful visible retry should persist the reduced recovered penalty instead of the old full invalid score.
-              </Typography>
-              {visibleFallbackState != null ? (
-                <div className="rounded-md border p-4 space-y-3">
-                  <Typography className="text-sm">
-                    Waiting for visible fallback completion. Previous invisible result: <span className="font-mono">{visibleFallbackState.previousTurnstileResult}</span>
-                  </Typography>
-                  <TurnstileVisibleWidget
-                    key={challengeWidgetKey}
-                    siteKey={forcedChallengeSiteKey}
-                    action="sign_up_with_credential"
-                    onTokenChange={(token) => {
-                      setVisibleTurnstileError(null);
-                      setVisibleTurnstileToken(token);
-                    }}
-                    onError={(message) => {
-                      setVisibleTurnstileToken(null);
-                      setVisibleTurnstileError(message);
-                    }}
-                  />
-                  <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                    Current visible token: {visibleTurnstileToken == null ? "not ready" : "ready"}
-                  </Typography>
-                  {visibleTurnstileError != null ? (
-                    <Typography className="text-sm text-red-600 dark:text-red-400">
-                      {visibleTurnstileError}
-                    </Typography>
-                  ) : null}
-                </div>
-              ) : null}
-            </CardContent>
-            <CardFooter className="flex gap-3">
-              <Button
-                loading={loadingFlow === "invisible-invalid"}
-                onClick={async () => await submitInvisibleAttempt({
-                  flow: "invisible-invalid",
-                  token: demoInvisibleTokens.invalid,
-                })}
-              >
-                Run invisible fail step
-              </Button>
-              <Button
-                variant="secondary"
-                loading={loadingFlow === "visible-retry"}
-                disabled={visibleFallbackState == null || visibleTurnstileToken == null}
-                onClick={async () => await completeVisibleFallbackSignup()}
-              >
-                Complete raw visible fallback
-              </Button>
-            </CardFooter>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Typography type="h3">Forced invisible success</Typography>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Typography>
-                Sends the local stub token <span className="font-mono">{demoInvisibleTokens.success}</span>.
-              </Typography>
-              <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                Expected backend effect: signup succeeds immediately with no Turnstile penalty.
-              </Typography>
-            </CardContent>
-            <CardFooter>
-              <Button
-                loading={loadingFlow === "invisible-ok"}
-                onClick={async () => await submitInvisibleAttempt({
-                  flow: "invisible-ok",
-                  token: demoInvisibleTokens.success,
-                })}
-              >
-                Run raw invisible success
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <Typography type="h3">Visible captcha also fails</Typography>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Typography>
-                Sends <span className="font-mono">{demoInvisibleTokens.invalid}</span> with <span className="font-mono">turnstilePhase: &quot;visible&quot;</span> and <span className="font-mono">previousTurnstileResult: &quot;invalid&quot;</span>.
-              </Typography>
-              <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                Simulates the worst case: the invisible attempt failed, then the visible fallback token also fails server-side validation. The backend should reject the signup.
-              </Typography>
-            </CardContent>
-            <CardFooter>
-              <Button
-                loading={loadingFlow === "visible-fail"}
-                onClick={async () => await submitVisibleFailAttempt()}
-              >
-                Run both-fail flow
-              </Button>
-            </CardFooter>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Typography type="h3">No token (backwards compatibility)</Typography>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Typography>
-                Calls <span className="font-mono">signUpWithCredential</span> without passing any Turnstile token or phase.
-              </Typography>
-              <Typography className="text-sm text-gray-600 dark:text-gray-300">
-                Simulates an older SDK client that does not support Turnstile yet. The backend should still accept the request and apply a default risk penalty for the missing token.
-              </Typography>
-            </CardContent>
-            <CardFooter>
-              <Button
-                loading={loadingFlow === "no-token"}
-                onClick={async () => await submitNoTokenAttempt()}
-              >
-                Run no-token signup
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-
-        {submissionResult != null ? (
-          <Card>
-            <CardHeader>
-              <Typography type="h3">Last result</Typography>
+              <Typography type="h4">Invisible token succeeds</Typography>
             </CardHeader>
             <CardContent>
-              <Typography
-                className={
-                  submissionResult.status === "error"
-                    ? "text-red-600 dark:text-red-400"
-                    : submissionResult.status === "success"
-                      ? "text-green-700 dark:text-green-300"
-                      : "text-blue-700 dark:text-blue-300"
-                }
-              >
-                {submissionResult.flow}: {submissionResult.message}
+              <Typography className="text-sm text-gray-500">
+                Acquires a valid invisible token (always-pass test key) and signs up.
               </Typography>
             </CardContent>
+            <CardFooter>
+              <Button
+                size="sm"
+                loading={loadingFlow === "invisible-ok"}
+                onClick={() => runFlow("invisible-ok", flowInvisibleOk)}
+              >
+                Run
+              </Button>
+            </CardFooter>
           </Card>
-        ) : null}
 
+          {/* Challenge required → visible → signup */}
+          <Card>
+            <CardHeader>
+              <Typography type="h4">Invisible fails → visible challenge</Typography>
+            </CardHeader>
+            <CardContent>
+              <Typography className="text-sm text-gray-500">
+                Sends an invalid invisible token, then shows the visible challenge overlay. Solve it to complete signup.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                size="sm"
+                loading={loadingFlow === "challenge"}
+                onClick={() => runFlow("challenge", flowChallengeRequired)}
+              >
+                Run
+              </Button>
+            </CardFooter>
+          </Card>
+
+          {/* Both fail → blocked */}
+          <Card>
+            <CardHeader>
+              <Typography type="h4">Both fail → signup blocked</Typography>
+            </CardHeader>
+            <CardContent>
+              <Typography className="text-sm text-gray-500">
+                Invalid invisible token, then invalid visible token. Signup should be rejected.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                size="sm"
+                variant="destructive"
+                loading={loadingFlow === "both-fail"}
+                onClick={() => runFlow("both-fail", flowBothFail)}
+              >
+                Run
+              </Button>
+            </CardFooter>
+          </Card>
+
+          {/* No token */}
+          <Card>
+            <CardHeader>
+              <Typography type="h4">No token (backwards compat)</Typography>
+            </CardHeader>
+            <CardContent>
+              <Typography className="text-sm text-gray-500">
+                Sends signup with no Turnstile token at all. Tests backwards compatibility.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={loadingFlow === "no-token"}
+                onClick={() => runFlow("no-token", flowNoToken)}
+              >
+                Run
+              </Button>
+            </CardFooter>
+          </Card>
+
+          {/* withTurnstileFlow orchestrator */}
+          <Card>
+            <CardHeader>
+              <Typography type="h4">withTurnstileFlow orchestrator</Typography>
+            </CardHeader>
+            <CardContent>
+              <Typography className="text-sm text-gray-500">
+                Uses <span className="font-mono">withTurnstileFlow()</span> to automatically handle invisible → visible fallback.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={loadingFlow === "orchestrator"}
+                onClick={() => runFlow("orchestrator", flowOrchestrator)}
+              >
+                Run
+              </Button>
+            </CardFooter>
+          </Card>
+
+          {/* Random */}
+          <Card>
+            <CardHeader>
+              <Typography type="h4">Random scenario</Typography>
+            </CardHeader>
+            <CardContent>
+              <Typography className="text-sm text-gray-500">
+                Randomly picks a scenario (40% invisible pass, 30% challenge, 20% both fail, 10% no token) for realistic testing.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={loadingFlow === "random"}
+                onClick={() => runFlow("random", flowRandom)}
+              >
+                Run
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+
+      {/* Last result */}
+      {lastResult && (
         <Card>
           <CardHeader>
-            <Typography type="h3">Hosted auth flow</Typography>
+            <Typography type="h4">Last result</Typography>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <Typography>
-              Hosted auth pages use the same staged Turnstile behavior automatically. This page separates the recommended custom wrapper flow from the raw debug-only flows so you can compare them directly.
+          <CardContent>
+            <Typography className={
+              lastResult.status === "error" ? "text-red-600 dark:text-red-400"
+                : lastResult.status === "success" ? "text-green-700 dark:text-green-300"
+                  : "text-blue-600 dark:text-blue-300"
+            }>
+              {lastResult.message}
             </Typography>
           </CardContent>
-          <CardFooter className="flex gap-3">
-            <Link href="/" className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
-              Back to home
-            </Link>
-            <Link href={app.urls.signUp} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
-              Open hosted sign-up
-            </Link>
-          </CardFooter>
         </Card>
-      </div>
+      )}
+
+      {/* Config info */}
+      <Card>
+        <CardHeader>
+          <Typography type="h4">Config</Typography>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm font-mono">
+          <Typography>Project: {app.projectId}</Typography>
+          <Typography>Invisible key: {testKeys.invisiblePass}</Typography>
+          <Typography>Visible key: {testKeys.visiblePass}</Typography>
+          <Typography>Force challenge key: {testKeys.forceChallenge}</Typography>
+        </CardContent>
+        <CardFooter className="flex gap-3">
+          <Link href="/" className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+            Back to home
+          </Link>
+          <Link href={app.urls.signUp} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+            Open hosted sign-up
+          </Link>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

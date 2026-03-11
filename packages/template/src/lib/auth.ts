@@ -7,54 +7,6 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
-import type { TurnstileFlowOptions } from "./stack-app/apps/interfaces/client-app";
-
-export type OAuthAuthenticateOptions = {
-  provider: string,
-  redirectUrl: string,
-  errorRedirectUrl: string,
-  providerScope?: string,
-} & TurnstileFlowOptions;
-
-export async function sendMagicLinkEmailWithTurnstileFlow(
-  iface: StackClientInterface,
-  options: {
-    email: string,
-    callbackUrl: string,
-  } & TurnstileFlowOptions,
-): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
-  return await iface.sendMagicLinkEmail(options.email, options.callbackUrl, {
-    token: options.turnstileToken,
-    phase: options.turnstilePhase,
-    previousResult: options.previousTurnstileResult,
-  });
-}
-
-export async function signInWithOAuth(
-  iface: StackClientInterface,
-  options: OAuthAuthenticateOptions,
-  session: InternalSession,
-) {
-  const { codeChallenge, state } = await saveVerifierAndState();
-  const authorizeResult = await iface.authorizeOAuth({
-    provider: options.provider,
-    redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
-    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    type: "authenticate",
-    providerScope: options.providerScope,
-    codeChallenge,
-    state,
-    turnstile: {
-      token: options.turnstileToken,
-      phase: options.turnstilePhase,
-      previousResult: options.previousTurnstileResult,
-    },
-    session,
-  });
-  const location = Result.orThrow(authorizeResult);
-  window.location.assign(location);
-  await neverResolve();
-}
 
 export async function addNewOAuthProviderOrScope(
   iface: StackClientInterface,
@@ -105,7 +57,7 @@ function consumeOAuthCallbackQueryParams() {
     // Maybe the website uses another OAuth library?
     console.warn(deindent`
       Stack found an outer OAuth callback state in the query parameters, but not in cookies.
-      
+
       This could have multiple reasons:
         - The cookie expired, because the OAuth flow took too long.
         - The user's browser deleted the cookie, either manually or because of a very strict cookie policy.

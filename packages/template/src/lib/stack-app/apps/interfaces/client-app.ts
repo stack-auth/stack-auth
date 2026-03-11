@@ -1,7 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
@@ -48,25 +47,6 @@ export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends 
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
 };
 
-export type CredentialSignUpTurnstileOptions =
-  | {
-    turnstileToken?: undefined,
-    turnstilePhase?: undefined,
-    previousTurnstileResult?: undefined,
-  }
-  | {
-    turnstileToken: string,
-    turnstilePhase?: "invisible",
-    previousTurnstileResult?: undefined,
-  }
-  | {
-    turnstileToken: string,
-    turnstilePhase: "visible",
-    previousTurnstileResult: TurnstileRetryResult,
-  };
-
-export type TurnstileFlowOptions = CredentialSignUpTurnstileOptions;
-
 export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & {
     readonly projectId: ProjectId,
@@ -78,18 +58,18 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     readonly urls: Readonly<HandlerUrls>,
 
-    signInWithOAuth(provider: string, options?: { returnTo?: string } & TurnstileFlowOptions): Promise<void>,
+    signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
     signUpWithCredential(options: {
       email: string,
       password: string,
       noRedirect?: boolean,
-    } & CredentialSignUpTurnstileOptions & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["TurnstileChallengeRequired"]>>,
+    } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
-    sendMagicLinkEmail(email: string, options?: { callbackUrl?: string } & TurnstileFlowOptions): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>>,
+    sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyPasswordResetCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
