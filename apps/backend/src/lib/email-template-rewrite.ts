@@ -11,7 +11,7 @@ const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
 const AI_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_REWRITE_ATTEMPTS = 3;
 
-const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
+const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
 const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
 const openai = isMockMode ? null : createOpenAI({
   apiKey,
