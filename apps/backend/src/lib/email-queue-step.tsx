@@ -60,7 +60,7 @@ async function verifyEmailDeliverability(
 ): Promise<EmailableCheckResult> {
   // Skip deliverability check if requested or using non-shared email config
   if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
-    return { status: "ok" };
+    return { status: "ok", emailableScore: null };
   }
 
   return await checkEmailWithEmailable(email, {

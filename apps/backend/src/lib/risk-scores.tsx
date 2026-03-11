@@ -2,7 +2,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { checkEmailWithEmailable } from "./emailable";
+import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
 import { DerivedSignUpHeuristicFacts, deriveSignUpHeuristicFacts } from "./sign-up-heuristics";
@@ -71,6 +71,11 @@ const turnstileFailedWeights = {
   free_trial_abuse: parseWeight("STACK_RISK_FTA_TURNSTILE_FAILED_WEIGHT", 40),
 } as const;
 
+const turnstileRecoveredWeights = {
+  bot: parseWeight("STACK_RISK_BOT_TURNSTILE_RECOVERED_WEIGHT", 40),
+  free_trial_abuse: parseWeight("STACK_RISK_FTA_TURNSTILE_RECOVERED_WEIGHT", 20),
+} as const;
+
 function clampRiskScore(score: number): number {
   return Math.min(100, Math.max(0, score));
 }
@@ -84,10 +89,52 @@ function getRecentSameIpWeights(ipTrusted: boolean | null): SignUpRiskScores {
 }
 
 function getTurnstileWeights(turnstileAssessment: SignUpTurnstileAssessment): SignUpRiskScores {
-  if (turnstileAssessment.status === "missing" || turnstileAssessment.status === "invalid") {
+  if (turnstileAssessment.status === "invalid") {
+    if (turnstileAssessment.visibleChallengeResult === "ok") {
+      return {
+        bot: turnstileRecoveredWeights.bot,
+        free_trial_abuse: turnstileRecoveredWeights.free_trial_abuse,
+      };
+    }
+
     return {
       bot: turnstileFailedWeights.bot,
       free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
+    };
+  }
+
+  return {
+    bot: 0,
+    free_trial_abuse: 0,
+  };
+}
+
+function getDisposableEmailContribution(emailableResult: EmailableCheckResult): SignUpRiskScores {
+  const emailableScore = emailableResult.emailableScore;
+
+  // Use emailable score (0-100, higher = more deliverable) for granular contribution.
+  // When score is available, scale the weight: contribution = weight * (1 - score/100).
+  // When status is "not-deliverable", enforce at least half the weight as a floor.
+  // When Emailable is unavailable, treat that as neutral so external outages do not block signups.
+  if (emailableScore != null) {
+    const scaleFactor = 1 - emailableScore / 100;
+    if (emailableResult.status === "not-deliverable") {
+      return {
+        bot: Math.round(Math.max(disposableEmailWeights.bot * 0.5, disposableEmailWeights.bot * scaleFactor)),
+        free_trial_abuse: Math.round(Math.max(disposableEmailWeights.free_trial_abuse * 0.5, disposableEmailWeights.free_trial_abuse * scaleFactor)),
+      };
+    }
+
+    return {
+      bot: Math.round(disposableEmailWeights.bot * scaleFactor),
+      free_trial_abuse: Math.round(disposableEmailWeights.free_trial_abuse * scaleFactor),
+    };
+  }
+
+  if (emailableResult.status === "not-deliverable") {
+    return {
+      bot: disposableEmailWeights.bot,
+      free_trial_abuse: disposableEmailWeights.free_trial_abuse,
     };
   }
 
@@ -178,23 +225,16 @@ export async function calculateSignUpRiskAssessment(
     ipTrusted: context.ipTrusted,
   });
   const recentSignUpStats = await loadRecentSignUpStats(tenancy, heuristicFacts);
-  const emailableResult = context.primaryEmail == null
-    ? { status: "ok" } as const
+  const emailableResult: EmailableCheckResult = context.primaryEmail == null
+    ? { status: "ok", emailableScore: null }
     : await checkEmailWithEmailable(context.primaryEmail);
 
-  const disposableEmailMatched = emailableResult.status === "not-deliverable" || emailableResult.status === "error";
   const recentSameIpMatched = heuristicFacts.signUpIp != null && recentSignUpStats.sameIpRecentCount >= sameIpMinimumMatches;
   const similarEmailMatched = heuristicFacts.signUpEmailBase != null
     && heuristicFacts.signUpEmailNormalized != null
     && recentSignUpStats.similarEmailRecentCount >= similarEmailMinimumMatches;
 
-  const disposableContribution = disposableEmailMatched ? {
-    bot: disposableEmailWeights.bot,
-    free_trial_abuse: disposableEmailWeights.free_trial_abuse,
-  } : {
-    bot: 0,
-    free_trial_abuse: 0,
-  };
+  const disposableContribution = getDisposableEmailContribution(emailableResult);
 
   const sameIpContribution = recentSameIpMatched ? getRecentSameIpWeights(context.ipTrusted) : {
     bot: 0,
@@ -256,16 +296,36 @@ import.meta.vitest?.test("getTurnstileWeights(...)", ({ expect }) => {
     bot: 0,
     free_trial_abuse: 0,
   });
-  expect(getTurnstileWeights({ status: "not_configured" })).toEqual({
-    bot: 0,
-    free_trial_abuse: 0,
-  });
-  expect(getTurnstileWeights({ status: "missing" })).toEqual({
-    bot: turnstileFailedWeights.bot,
-    free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
-  });
   expect(getTurnstileWeights({ status: "invalid" })).toEqual({
     bot: turnstileFailedWeights.bot,
     free_trial_abuse: turnstileFailedWeights.free_trial_abuse,
+  });
+  expect(getTurnstileWeights({ status: "invalid", visibleChallengeResult: "ok" })).toEqual({
+    bot: turnstileRecoveredWeights.bot,
+    free_trial_abuse: turnstileRecoveredWeights.free_trial_abuse,
+  });
+});
+
+import.meta.vitest?.test("getDisposableEmailContribution(...)", ({ expect }) => {
+  expect(getDisposableEmailContribution({
+    status: "error",
+    error: new Error("Emailable unavailable"),
+    emailableScore: null,
+  })).toEqual({
+    bot: 0,
+    free_trial_abuse: 0,
+  });
+
+  expect(getDisposableEmailContribution({
+    status: "not-deliverable",
+    emailableResponse: {
+      state: "undeliverable",
+      disposable: false,
+      score: null,
+    },
+    emailableScore: null,
+  })).toEqual({
+    bot: disposableEmailWeights.bot,
+    free_trial_abuse: disposableEmailWeights.free_trial_abuse,
   });
 });

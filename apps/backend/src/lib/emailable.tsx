@@ -6,17 +6,23 @@ import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 export const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
 
 const VERIFY_STATES = ["deliverable", "undeliverable", "risky", "unknown"] as const;
+type EmailableVerifyResponse = ReturnType<typeof validateVerifyResponse>;
+export type EmailableCheckResult =
+  | { status: "ok", emailableScore: number | null }
+  | { status: "not-deliverable", emailableResponse: EmailableVerifyResponse, emailableScore: number | null }
+  | { status: "error", error: unknown, emailableScore: null };
 
 function validateVerifyResponse(value: unknown) {
   if (value == null || typeof value !== "object" || Array.isArray(value)) {
     throw new StackAssertionError("Emailable returned a non-object response body", { value });
   }
   const response = Object.fromEntries(Object.entries(value));
-  const { state, disposable } = response;
+  const { state, disposable, score } = response;
   if (typeof state !== "string" || !VERIFY_STATES.some(s => s === state)) {
     throw new StackAssertionError("Emailable verify response has invalid or missing state", { response });
   }
-  return { ...response, state, disposable: disposable === true };
+  const parsedScore = typeof score === "number" && score >= 0 && score <= 100 ? score : null;
+  return { ...response, state, disposable: disposable === true, score: parsedScore };
 }
 
 async function verifyWithRetries(
@@ -78,7 +84,7 @@ export async function checkEmailWithEmailable(
     onError?: "return-error" | "return-ok",
     retryExponentialDelayBaseMs?: number,
   },
-) {
+): Promise<EmailableCheckResult> {
   const apiKey = options?.apiKey ?? getEnvVariable("STACK_EMAILABLE_API_KEY", "");
   const onError = options?.onError ?? "return-error";
   const retryDelayBase = options?.retryExponentialDelayBaseMs ?? 4000;
@@ -86,12 +92,14 @@ export async function checkEmailWithEmailable(
   if (!apiKey) {
     const emailDomain = email.split("@")[1]?.toLowerCase();
     if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
+      const testResponse = createTestModeUndeliverableResponse(email);
       return {
         status: "not-deliverable" as const,
-        emailableResponse: createTestModeUndeliverableResponse(email),
+        emailableResponse: testResponse,
+        emailableScore: testResponse.score,
       };
     }
-    return { status: "ok" as const };
+    return { status: "ok", emailableScore: null };
   }
 
   return await traceSpan("checking email address with Emailable", async () => {
@@ -101,21 +109,19 @@ export async function checkEmailWithEmailable(
       const response = validateVerifyResponse(raw);
 
       if (response.state === "undeliverable" || response.disposable) {
-        return { status: "not-deliverable" as const, emailableResponse: response };
+        return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
       }
 
-      return { status: "ok" as const };
+      return { status: "ok", emailableScore: response.score };
     } catch (error) {
       captureError("emailable-api-error", error);
       if (onError === "return-ok") {
-        return { status: "ok" as const };
+        return { status: "ok", emailableScore: null };
       }
-      return { status: "error" as const, error };
+      return { status: "error", error, emailableScore: null };
     }
   });
 }
-
-export type EmailableCheckResult = Awaited<ReturnType<typeof checkEmailWithEmailable>>;
 
 import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   import.meta.vitest?.test("returns test-domain rejection when no API key is set", async ({ expect }) => {
@@ -130,14 +136,11 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     });
   });
 
-  import.meta.vitest?.test("calls emailable test API and returns a valid result", async ({ expect }) => {
-    const testApiKey = getEnvVariable("STACK_EMAILABLE_TEST_API_KEY", "");
-    if (!testApiKey) {
+  import.meta.vitest?.test("calls emailable API and returns a valid result when STACK_EMAILABLE_API_KEY is set", async ({ expect }) => {
+    if (!getEnvVariable("STACK_EMAILABLE_API_KEY", "")) {
       return;
     }
-    const result = await checkEmailWithEmailable("test@gmail.com", {
-      apiKey: testApiKey,
-    });
+    const result = await checkEmailWithEmailable("test@gmail.com");
     expect(["ok", "not-deliverable"]).toContain(result.status);
   });
 

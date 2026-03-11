@@ -1,33 +1,41 @@
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { getTurnstileTestResult, TurnstileAction, TurnstileResult } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { TurnstileAction, TurnstileResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 
 export type SignUpTurnstileAssessment = {
   status: TurnstileResult,
+  visibleChallengeResult?: TurnstileResult,
 };
+
+const developmentVisibleTurnstileSiteKey = "1x00000000000000000000AA";
+const developmentTurnstileSecretKey = "1x0000000000000000000000000000000AA";
 
 type TurnstileSiteverifyResponse = {
   success: boolean,
   action?: string,
 };
 
+function normalizeLegacyTurnstileToken(token: string | undefined): string {
+  // Backward compatibility: older clients can omit Turnstile entirely.
+  // Normalize that to an empty token so verification consistently maps it to "invalid".
+  return token?.trim() ?? "";
+}
+
 function getTurnstileConfig(options?: {
   siteKey?: string,
   secretKey?: string,
 }) {
+  const isDevelopmentLike = ["development", "test"].includes(getNodeEnvironment());
   return {
-    siteKey: options?.siteKey ?? getEnvVariable("NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", ""),
-    secretKey: options?.secretKey ?? getEnvVariable("STACK_TURNSTILE_SECRET_KEY", ""),
+    siteKey: options?.siteKey ?? getEnvVariable("NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", isDevelopmentLike ? developmentVisibleTurnstileSiteKey : ""),
+    secretKey: options?.secretKey ?? getEnvVariable("STACK_TURNSTILE_SECRET_KEY", isDevelopmentLike ? developmentTurnstileSecretKey : ""),
   };
 }
 
-function isTurnstileConfigured(options?: {
-  siteKey?: string,
-  secretKey?: string,
-}) {
-  const { siteKey, secretKey } = getTurnstileConfig(options);
-  return siteKey !== "" && secretKey !== "";
+function getTurnstileSiteverifyUrl() {
+  // Local development and E2E can point this at a stub verifier, but production should keep the Cloudflare default.
+  return getEnvVariable("STACK_TURNSTILE_SITEVERIFY_URL", "https://challenges.cloudflare.com/turnstile/v0/siteverify");
 }
 
 function isTurnstileSiteverifyResponse(value: unknown): value is TurnstileSiteverifyResponse {
@@ -53,7 +61,7 @@ async function fetchTurnstileVerification(params: {
   }
 
   const fetchImpl = params.fetchImpl ?? fetch;
-  const response = await fetchImpl("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+  const response = await fetchImpl(getTurnstileSiteverifyUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -77,25 +85,16 @@ async function fetchTurnstileVerification(params: {
 }
 
 export async function verifyTurnstileToken(params: {
-  token: string | null | undefined,
+  token: string | undefined,
   remoteIp: string | null,
   expectedAction: TurnstileAction,
   siteKey?: string,
   secretKey?: string,
   fetchImpl?: typeof fetch,
 }): Promise<SignUpTurnstileAssessment> {
-  const testResult = getTurnstileTestResult(params.token);
-  if (testResult != null && ["development", "test"].includes(getNodeEnvironment())) {
-    return { status: testResult };
-  }
-
-  if (!isTurnstileConfigured(params)) {
-    return { status: "not_configured" };
-  }
-
-  const token = params.token?.trim();
+  const token = normalizeLegacyTurnstileToken(params.token);
   if (!token) {
-    return { status: "missing" };
+    return { status: "invalid" };
   }
 
   const { secretKey } = getTurnstileConfig(params);
@@ -123,24 +122,24 @@ export async function verifyTurnstileToken(params: {
 }
 
 import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
-  import.meta.vitest?.test("returns not_configured when env vars are missing", async ({ expect }) => {
+  import.meta.vitest?.test("returns invalid when empty token is provided", async ({ expect }) => {
     await expect(verifyTurnstileToken({
-      token: null,
-      remoteIp: null,
-      expectedAction: "sign_up_with_credential",
-      siteKey: "",
-      secretKey: "",
-    })).resolves.toEqual({ status: "not_configured" });
-  });
-
-  import.meta.vitest?.test("returns missing when configured but no token was provided", async ({ expect }) => {
-    await expect(verifyTurnstileToken({
-      token: null,
+      token: "",
       remoteIp: null,
       expectedAction: "sign_up_with_credential",
       siteKey: "site-key",
       secretKey: "secret-key",
-    })).resolves.toEqual({ status: "missing" });
+    })).resolves.toEqual({ status: "invalid" });
+  });
+
+  import.meta.vitest?.test("treats an omitted legacy token as invalid", async ({ expect }) => {
+    await expect(verifyTurnstileToken({
+      token: undefined,
+      remoteIp: null,
+      expectedAction: "sign_up_with_credential",
+      siteKey: "site-key",
+      secretKey: "secret-key",
+    })).resolves.toEqual({ status: "invalid" });
   });
 
   import.meta.vitest?.test("maps siteverify success, invalid, and action mismatch responses", async ({ expect }) => {
@@ -187,5 +186,47 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
         throw new Error("network down");
       },
     })).resolves.toEqual({ status: "error" });
+  });
+
+  import.meta.vitest?.test("falls back to the development Turnstile secret when none is configured", async ({ expect }) => {
+    const processEnv = Reflect.get(process, "env");
+
+    const originalNodeEnv = Reflect.get(processEnv, "NODE_ENV");
+    const originalSecretKey = Reflect.get(processEnv, "STACK_TURNSTILE_SECRET_KEY");
+    const originalSiteKey = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY");
+    Reflect.set(processEnv, "NODE_ENV", "development");
+    Reflect.set(processEnv, "STACK_TURNSTILE_SECRET_KEY", "");
+    Reflect.set(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", "");
+
+    let postedSecret = "";
+    try {
+      await expect(verifyTurnstileToken({
+        token: "real-token",
+        remoteIp: "127.0.0.1",
+        expectedAction: "sign_up_with_credential",
+        fetchImpl: async (_input, init) => {
+          const body = init?.body;
+          if (!(body instanceof URLSearchParams)) {
+            throw new Error("Expected URLSearchParams body");
+          }
+          postedSecret = body.get("secret") ?? "";
+          return new Response(JSON.stringify({
+            success: true,
+            action: "sign_up_with_credential",
+          }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        },
+      })).resolves.toEqual({ status: "ok" });
+    } finally {
+      Reflect.set(processEnv, "NODE_ENV", originalNodeEnv);
+      Reflect.set(processEnv, "STACK_TURNSTILE_SECRET_KEY", originalSecretKey);
+      Reflect.set(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", originalSiteKey);
+    }
+
+    expect(postedSecret).toBe(developmentTurnstileSecretKey);
   });
 });

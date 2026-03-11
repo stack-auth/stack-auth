@@ -53,8 +53,85 @@ const simulatedRefreshErrors = new Map<string, { error: string, error_descriptio
 // Storage for simulating errors by grant ID (since we can't easily get refresh tokens)
 const simulatedRefreshErrorsByGrant = new Map<string, { error: string, error_description: string }>();
 
+function getMockTurnstileVerificationResponse(token: unknown): {
+  statusCode: number,
+  body: {
+    success: boolean,
+    action?: string,
+  },
+} | null {
+  const normalizedToken = typeof token === "string" ? token.trim() : "";
+
+  if (normalizedToken === "mock-turnstile-error") {
+    return {
+      statusCode: 503,
+      body: {
+        success: false,
+      },
+    };
+  }
+
+  if (normalizedToken === "mock-turnstile-invalid") {
+    return {
+      statusCode: 200,
+      body: {
+        success: false,
+      },
+    };
+  }
+
+  for (const prefix of ["mock-turnstile-ok:", "mock-turnstile-visible-ok:"]) {
+    if (normalizedToken.startsWith(prefix)) {
+      return {
+        statusCode: 200,
+        body: {
+          success: true,
+          action: normalizedToken.slice(prefix.length),
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json()); // Add JSON parsing middleware
+
+// Local-only Turnstile stub so tests still exercise the HTTP siteverify boundary without a backend bypass.
+// Non-mock tokens are proxied to Cloudflare so ordinary local dev widgets keep working.
+app.post('/turnstile/siteverify', async (req: express.Request, res: express.Response) => {
+  const verification = getMockTurnstileVerificationResponse(req.body.response);
+  if (verification) {
+    res.status(verification.statusCode).json(verification.body);
+    return;
+  }
+
+  try {
+    const proxyBody = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.body)) {
+      if (typeof value === "string") {
+        proxyBody.set(key, value);
+      }
+    }
+
+    const cloudflareResponse = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: proxyBody,
+    });
+    const responseText = await cloudflareResponse.text();
+    const contentType = cloudflareResponse.headers.get("content-type") ?? "application/json";
+    res.status(cloudflareResponse.status).type(contentType).send(responseText);
+  } catch {
+    res.status(502).json({
+      success: false,
+      error: "turnstile_proxy_failed",
+    });
+  }
+});
 
 // Middleware to intercept token refresh requests and return simulated errors
 app.post('/token', async (req: express.Request, res: express.Response, next: express.NextFunction) => {

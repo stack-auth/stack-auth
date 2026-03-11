@@ -80,13 +80,11 @@ export const GET = createSmartRouteHandler({
     }
 
     const requestContext = await getBestEffortEndUserRequestContext();
-    const turnstileAssessment = query.type === "authenticate"
-      ? await verifyTurnstileToken({
-        token: query.turnstile_token,
-        remoteIp: requestContext.ipAddress,
-        expectedAction: "oauth_authenticate",
-      })
-      : null;
+    const turnstileAssessment = await verifyTurnstileToken({
+      token: query.turnstile_token,
+      remoteIp: requestContext.ipAddress,
+      expectedAction: "oauth_authenticate",
+    });
 
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
@@ -138,7 +136,7 @@ export const GET = createSmartRouteHandler({
           providerScope: query.provider_scope,
           errorRedirectUrl: query.error_redirect_uri || query.error_redirect_url,
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
-          turnstileResult: turnstileAssessment?.status,
+          turnstileResult: turnstileAssessment.status,
         } satisfies yup.InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },

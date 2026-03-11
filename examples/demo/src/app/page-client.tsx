@@ -6,7 +6,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-const turnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY;
+const developmentVisibleTurnstileSiteKey = "1x00000000000000000000AA";
+const developmentInvisibleTurnstileSiteKey = "1x00000000000000000000BB";
+const turnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || developmentVisibleTurnstileSiteKey;
+const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || developmentInvisibleTurnstileSiteKey;
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });
@@ -25,25 +28,27 @@ export default function PageClient() {
         </CardHeader>
         <CardContent className='space-y-2'>
           <Typography>
-            Hosted auth pages in this demo will execute Turnstile on sign up, magic link, and OAuth authenticate flows.
+            Hosted auth pages in this demo will execute Turnstile on sign up, magic link, and OAuth authenticate flows. Password signup now supports an invisible-first attempt that can escalate into a visible fallback challenge.
           </Typography>
           <Typography className='text-sm'>
-            Status: {turnstileSiteKey == null || turnstileSiteKey === '' ? 'disabled' : 'enabled'}
+            Status: enabled
           </Typography>
-          {turnstileSiteKey != null && turnstileSiteKey !== '' ? (
-            <Typography className='text-sm break-all'>
-              Site key: <span className='font-mono'>{turnstileSiteKey}</span>
+          <div className='space-y-1 text-sm'>
+            <Typography className='break-all'>
+              Fallback / visible site key: <span className='font-mono'>{turnstileSiteKey}</span>
             </Typography>
-          ) : (
-            <Typography className='text-sm'>
-              Set <span className='font-mono'>NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY</span> in the demo env to test it visually.
+            <Typography className='break-all'>
+              Invisible site key: <span className='font-mono'>{invisibleTurnstileSiteKey}</span>
             </Typography>
-          )}
+          </div>
         </CardContent>
         <CardFooter>
           <div className='flex gap-2'>
             <Button onClick={() => router.push(app.urls.signUp)}>Open sign-up flow</Button>
             <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open sign-in flow</Button>
+            <Button variant='secondary' onClick={() => router.push('/turnstile-signup')}>
+              Open Turnstile debug flows
+            </Button>
           </div>
         </CardFooter>
       </Card>

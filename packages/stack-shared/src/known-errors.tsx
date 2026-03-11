@@ -752,6 +752,19 @@ const SignUpRejected = createKnownErrorConstructor(
   (json: any) => [json.message] as const,
 );
 
+const TurnstileChallengeRequired = createKnownErrorConstructor(
+  KnownError,
+  "TURNSTILE_CHALLENGE_REQUIRED",
+  (invisibleResult: "invalid" | "error") => [
+    409,
+    "An additional Turnstile challenge is required before sign-up can continue.",
+    {
+      invisible_result: invisibleResult,
+    },
+  ] as const,
+  (json: any) => [json.invisible_result] as const,
+);
+
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
   "PASSWORD_AUTHENTICATION_NOT_ENABLED",
@@ -1857,6 +1870,7 @@ export const KnownErrors = {
   BranchDoesNotExist,
   SignUpNotEnabled,
   SignUpRejected,
+  TurnstileChallengeRequired,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,

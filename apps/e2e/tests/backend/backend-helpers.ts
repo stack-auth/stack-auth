@@ -88,6 +88,15 @@ export const InternalProjectClientKeys = Object.freeze({
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
 });
 
+export const mockTurnstileTokens = Object.freeze({
+  signUpOk: "mock-turnstile-ok:sign_up_with_credential",
+  magicLinkOk: "mock-turnstile-ok:send_magic_link_email",
+  oauthOk: "mock-turnstile-ok:oauth_authenticate",
+  invalid: "mock-turnstile-invalid",
+  error: "mock-turnstile-error",
+  visibleSignUpOk: "mock-turnstile-visible-ok:sign_up_with_credential",
+});
+
 function expectSnakeCase(obj: unknown, path: string): void {
   if (typeof obj !== "object" || obj === null) return;
   if (Array.isArray(obj)) {
@@ -436,11 +445,11 @@ export namespace Auth {
       const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
         method: "POST",
         accessType: "client",
-        body: {
+        body: filterUndefined({
           email: mailbox.emailAddress,
           callback_url: "http://localhost:12345/some-callback-url",
-          turnstile_token: options.turnstileToken,
-        },
+          turnstile_token: options.turnstileToken ?? mockTurnstileTokens.magicLinkOk,
+        }),
       });
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
@@ -530,12 +539,12 @@ export namespace Auth {
       const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
         method: "POST",
         accessType: "client",
-        body: {
+        body: filterUndefined({
           email,
           password,
           verification_callback_url: "http://localhost:12345/some-callback-url",
-          turnstile_token: options.turnstileToken,
-        },
+          turnstile_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
+        }),
       });
       expect(response).toMatchObject({
         status: 200,
@@ -730,7 +739,7 @@ export namespace Auth {
         code_challenge: "some-code-challenge",
         code_challenge_method: "plain",
         token: userAuth?.accessToken ?? undefined,
-        turnstile_token: options.turnstileToken,
+        turnstile_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
       });
     }
 

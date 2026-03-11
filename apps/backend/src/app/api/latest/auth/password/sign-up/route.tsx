@@ -8,6 +8,7 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailVerificationCallbackUrlSchema, passwordSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { turnstileRetryResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { contactChannelVerificationCodeHandler } from "../../../contact-channels/verify/verification-code-handler";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -28,6 +29,8 @@ export const POST = createSmartRouteHandler({
       password: passwordSchema.defined(),
       verification_callback_url: emailVerificationCallbackUrlSchema.optional(),
       turnstile_token: yupString().optional(),
+      turnstile_phase: yupString().oneOf(["invisible", "visible"]).optional(),
+      turnstile_previous_result: yupString().oneOf(turnstileRetryResultValues).optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -39,7 +42,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, turnstile_token: turnstileToken } }) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, turnstile_token: turnstileToken, turnstile_phase: turnstilePhase, turnstile_previous_result: turnstilePreviousResult } }) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -64,6 +67,29 @@ export const POST = createSmartRouteHandler({
       expectedAction: "sign_up_with_credential",
     });
 
+    if (turnstilePhase === "visible") {
+      if (turnstilePreviousResult == null) {
+        throw new KnownErrors.SchemaError("turnstile_previous_result is required when turnstile_phase is visible");
+      }
+
+      if (turnstileAssessment.status !== "ok") {
+        throw new KnownErrors.TurnstileChallengeRequired(turnstilePreviousResult);
+      }
+    } else if (turnstilePhase === "invisible" && turnstileAssessment.status !== "ok") {
+      throw new KnownErrors.TurnstileChallengeRequired(turnstileAssessment.status);
+    }
+
+    let persistedTurnstileAssessment = turnstileAssessment;
+    if (turnstilePhase === "visible") {
+      if (turnstilePreviousResult == null) {
+        throw new KnownErrors.SchemaError("turnstile_previous_result must exist for visible phase");
+      }
+      persistedTurnstileAssessment = {
+        status: turnstilePreviousResult,
+        visibleChallengeResult: "ok",
+      };
+    }
+
     const createdUser = await createOrUpgradeAnonymousUserWithRules(
       tenancy,
       currentUser ?? null,
@@ -80,7 +106,7 @@ export const POST = createSmartRouteHandler({
         ipAddress: requestContext.ipAddress,
         ipTrusted: requestContext.ipTrusted,
         countryCode: requestContext.location?.countryCode ?? null,
-        turnstileAssessment,
+        turnstileAssessment: persistedTurnstileAssessment,
       }
     );
 

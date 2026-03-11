@@ -8,36 +8,30 @@ export type TurnstileAction = typeof turnstileActionValues[number];
 
 export const turnstileResultValues = [
   "ok",
-  "missing",
   "invalid",
   "error",
-  "not_configured",
 ] as const;
 
 export type TurnstileResult = typeof turnstileResultValues[number];
 
+export const turnstileDevelopmentKeys = {
+  visibleSiteKey: "1x00000000000000000000AA",
+  invisibleSiteKey: "1x00000000000000000000BB",
+  secretKey: "1x0000000000000000000000000000000AA",
+  forcedChallengeSiteKey: "3x00000000000000000000FF",
+} as const;
+
+export const turnstileRetryResultValues = [
+  "invalid",
+  "error",
+] as const;
+
+export type TurnstileRetryResult = typeof turnstileRetryResultValues[number];
+
+export function isTurnstileRetryResult(value: unknown): value is TurnstileRetryResult {
+  return typeof value === "string" && turnstileRetryResultValues.some((status) => status === value);
+}
+
 export function isTurnstileResult(value: unknown): value is TurnstileResult {
   return typeof value === "string" && turnstileResultValues.some((status) => status === value);
 }
-
-export function getTurnstileTestResult(token: string | null | undefined): TurnstileResult | null {
-  if (token == null) {
-    return null;
-  }
-
-  const trimmed = token.trim();
-  if (!trimmed.startsWith("stack-turnstile-test:")) {
-    return null;
-  }
-
-  const result = trimmed.slice("stack-turnstile-test:".length);
-  return isTurnstileResult(result) ? result : null;
-}
-
-import.meta.vitest?.test("getTurnstileTestResult(...)", ({ expect }) => {
-  expect(getTurnstileTestResult("stack-turnstile-test:ok")).toBe("ok");
-  expect(getTurnstileTestResult("stack-turnstile-test:invalid")).toBe("invalid");
-  expect(getTurnstileTestResult("stack-turnstile-test:error")).toBe("error");
-  expect(getTurnstileTestResult("stack-turnstile-test:wat")).toBeNull();
-  expect(getTurnstileTestResult("real-token")).toBeNull();
-});

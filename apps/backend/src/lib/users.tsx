@@ -20,7 +20,7 @@ export type SignUpRuleOptions = {
   ipAddress: string | null,
   ipTrusted: boolean | null,
   countryCode: string | null,
-  turnstileAssessment: SignUpTurnstileAssessment | null,
+  turnstileAssessment: SignUpTurnstileAssessment,
 };
 
 async function persistSignUpHeuristicFacts(params: {
@@ -138,7 +138,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
     oauthProvider: signUpRuleOptions.oauthProvider,
     ipAddress: requestIpAddress,
     ipTrusted: requestIpTrusted,
-    turnstileAssessment: signUpRuleOptions.turnstileAssessment ?? { status: "not_configured" },
+    turnstileAssessment: signUpRuleOptions.turnstileAssessment,
   });
   const riskScores = riskAssessment.scores;
 

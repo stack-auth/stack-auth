@@ -3,6 +3,7 @@
  */
 
 import React, { act } from "react";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { createRoot, type Root } from "../test-utils/react-dom-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +20,9 @@ const mockApp = {
   })),
 };
 
-const executeTurnstile = vi.fn<[], Promise<string | null>>();
+const executeInvisibleTurnstile = vi.fn<[], Promise<string>>();
+const resetVisibleTurnstile = vi.fn();
+let visibleTurnstileTokenChange: ((token: string | null) => void) | null = null;
 
 vi.mock("@stackframe/stack-ui", () => {
   const Input = React.forwardRef<HTMLInputElement, React.ComponentPropsWithoutRef<"input">>((props, ref) => React.createElement("input", { ...props, ref }));
@@ -95,11 +98,28 @@ vi.mock("../lib/translations", () => ({
 }));
 
 vi.mock("../lib/turnstile", () => ({
+  getTurnstileInvisibleSiteKey: () => "invisible-site-key",
   getTurnstileSiteKey: () => "site-key",
-  useTurnstile: () => ({
-    executeTurnstile,
-    turnstileWidget: React.createElement("div", { "data-testid": "turnstile-widget" }),
-  }),
+  useTurnstile: (options: {
+    execution?: "render" | "execute",
+    enabled?: boolean,
+    onTokenChange?: (token: string | null) => void,
+  }) => {
+    if (options.execution === "render") {
+      visibleTurnstileTokenChange = options.onTokenChange ?? null;
+      return {
+        executeTurnstile: vi.fn(),
+        resetTurnstile: resetVisibleTurnstile,
+        turnstileWidget: options.enabled === false ? null : React.createElement("div", { "data-testid": "visible-turnstile-widget" }),
+      };
+    }
+
+    return {
+      executeTurnstile: executeInvisibleTurnstile,
+      resetTurnstile: vi.fn(),
+      turnstileWidget: React.createElement("div", { "data-testid": "invisible-turnstile-widget" }),
+    };
+  },
 }));
 
 vi.mock("./use-in-iframe", () => ({
@@ -172,7 +192,8 @@ async function waitForAssertion(assertion: () => void, timeoutMs = 2000) {
 
 describe("hosted auth Turnstile integration", () => {
   beforeEach(() => {
-    executeTurnstile.mockResolvedValue("stack-turnstile-test:ok");
+    visibleTurnstileTokenChange = null;
+    executeInvisibleTurnstile.mockResolvedValue("mock-turnstile-token");
     mockApp.signUpWithCredential.mockResolvedValue({ status: "ok", data: undefined });
     mockApp.sendMagicLinkEmail.mockResolvedValue({ status: "ok", data: { nonce: "nonce" } });
     mockApp.signInWithOAuth.mockResolvedValue(undefined);
@@ -205,7 +226,8 @@ describe("hosted auth Turnstile integration", () => {
       expect(mockApp.signUpWithCredential).toHaveBeenCalledWith({
         email: "user@example.com",
         password: "password123",
-        turnstileToken: "stack-turnstile-test:ok",
+        turnstilePhase: "invisible",
+        turnstileToken: "mock-turnstile-token",
       });
     });
 
@@ -223,7 +245,7 @@ describe("hosted auth Turnstile integration", () => {
 
     await waitForAssertion(() => {
       expect(mockApp.sendMagicLinkEmail).toHaveBeenCalledWith("user@example.com", {
-        turnstileToken: "stack-turnstile-test:ok",
+        turnstileToken: "mock-turnstile-token",
       });
     });
 
@@ -240,7 +262,7 @@ describe("hosted auth Turnstile integration", () => {
 
     await waitForAssertion(() => {
       expect(mockApp.signInWithOAuth).toHaveBeenCalledWith("google", {
-        turnstileToken: "stack-turnstile-test:ok",
+        turnstileToken: "mock-turnstile-token",
       });
     });
 
@@ -249,9 +271,12 @@ describe("hosted auth Turnstile integration", () => {
     });
   });
 
-  it("preserves existing hosted signup behavior when Turnstile is effectively disabled", async () => {
+  it("requires a visible Turnstile challenge after the invisible attempt is rejected", async () => {
     const { CredentialSignUp } = await loadComponents();
-    executeTurnstile.mockResolvedValueOnce(null);
+    mockApp.signUpWithCredential
+      .mockResolvedValueOnce({ status: "error", error: new KnownErrors.TurnstileChallengeRequired("invalid") })
+      .mockResolvedValueOnce({ status: "ok", data: undefined });
+
     const { container, root } = await renderElement(React.createElement(CredentialSignUp));
 
     await changeValue(container.querySelector("#email"), "user@example.com");
@@ -260,9 +285,34 @@ describe("hosted auth Turnstile integration", () => {
     await submitForm(container.querySelector("form"));
 
     await waitForAssertion(() => {
-      expect(mockApp.signUpWithCredential).toHaveBeenCalledWith({
+      expect(mockApp.signUpWithCredential).toHaveBeenNthCalledWith(1, {
         email: "user@example.com",
         password: "password123",
+        turnstilePhase: "invisible",
+        turnstileToken: "mock-turnstile-token",
+      });
+    });
+
+    const submitButton = container.querySelector("button");
+    if (!(submitButton instanceof HTMLButtonElement)) {
+      throw new Error("Expected submit button");
+    }
+    expect(submitButton.disabled).toBe(true);
+
+    await act(async () => {
+      visibleTurnstileTokenChange?.("mock-visible-turnstile-token");
+    });
+    expect(submitButton.disabled).toBe(false);
+
+    await submitForm(container.querySelector("form"));
+
+    await waitForAssertion(() => {
+      expect(mockApp.signUpWithCredential).toHaveBeenNthCalledWith(2, {
+        email: "user@example.com",
+        password: "password123",
+        previousTurnstileResult: "invalid",
+        turnstilePhase: "visible",
+        turnstileToken: "mock-visible-turnstile-token",
       });
     });
 

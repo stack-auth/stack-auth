@@ -1,7 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
-import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, mockTurnstileTokens, niceBackendFetch } from "../../../backend-helpers";
 
 describe("risk scores", () => {
   // ==========================================
@@ -43,7 +43,9 @@ describe("risk scores", () => {
         config: { credential_enabled: true },
       });
 
-      const res = await Auth.Password.signUpWithEmail();
+      const res = await Auth.Password.signUpWithEmail({
+        turnstileToken: mockTurnstileTokens.signUpOk,
+      });
       expect(res.signUpResponse.status).toBe(200);
 
       const userResponse = await niceBackendFetch(`/api/v1/users/${res.userId}`, {
@@ -67,7 +69,7 @@ describe("risk scores", () => {
 
       const invalidResult = await Auth.Password.signUpWithEmail({
         noWaitForEmail: true,
-        turnstileToken: "stack-turnstile-test:invalid",
+        turnstileToken: mockTurnstileTokens.invalid,
       });
       expect(invalidResult.signUpResponse.status).toBe(200);
 
@@ -90,7 +92,7 @@ describe("risk scores", () => {
 
       const errorResult = await Auth.Password.signUpWithEmail({
         noWaitForEmail: true,
-        turnstileToken: "stack-turnstile-test:error",
+        turnstileToken: mockTurnstileTokens.error,
       });
       expect(errorResult.signUpResponse.status).toBe(200);
 
@@ -103,6 +105,132 @@ describe("risk scores", () => {
         sign_up: {
           bot: 0,
           free_trial_abuse: 0,
+        },
+      });
+    });
+
+    it("should treat omitted Turnstile fields as invalid for backward compatibility", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const email = `turnstile-legacy-${generateSecureRandomString(8)}@example.com`;
+      const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email,
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(response.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 80,
+          free_trial_abuse: 40,
+        },
+      });
+    });
+
+    it("should require a visible challenge after an invisible failure and persist the reduced recovered score", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const email = `turnstile-recovered-${generateSecureRandomString(8)}@example.com`;
+      const password = generateSecureRandomString();
+      const firstResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email,
+          password,
+          turnstile_token: mockTurnstileTokens.invalid,
+          turnstile_phase: "invisible",
+        },
+      });
+
+      expect(firstResponse.status).toBe(409);
+      expect(firstResponse.body).toMatchObject({
+        code: "TURNSTILE_CHALLENGE_REQUIRED",
+        details: {
+          invisible_result: "invalid",
+        },
+      });
+
+      const secondResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email,
+          password,
+          turnstile_token: mockTurnstileTokens.visibleSignUpOk,
+          turnstile_phase: "visible",
+          turnstile_previous_result: "invalid",
+        },
+      });
+
+      expect(secondResponse.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${secondResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 40,
+          free_trial_abuse: 20,
+        },
+      });
+    });
+
+    it("should continue requiring the visible challenge when the fallback token also fails", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      const email = `turnstile-visible-fail-${generateSecureRandomString(8)}@example.com`;
+      const password = generateSecureRandomString();
+
+      const firstResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email,
+          password,
+          turnstile_token: mockTurnstileTokens.invalid,
+          turnstile_phase: "invisible",
+        },
+      });
+
+      expect(firstResponse.status).toBe(409);
+
+      const secondResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email,
+          password,
+          turnstile_token: mockTurnstileTokens.invalid,
+          turnstile_phase: "visible",
+          turnstile_previous_result: "invalid",
+        },
+      });
+
+      expect(secondResponse.status).toBe(409);
+      expect(secondResponse.body).toMatchObject({
+        code: "TURNSTILE_CHALLENGE_REQUIRED",
+        details: {
+          invisible_result: "invalid",
         },
       });
     });
@@ -135,7 +263,7 @@ describe("risk scores", () => {
       });
 
       const sendResult = await Auth.Otp.sendSignInCode({
-        turnstileToken: "stack-turnstile-test:invalid",
+        turnstileToken: mockTurnstileTokens.invalid,
       });
       const signInResult = await Auth.Otp.signInWithCode(
         await Auth.Otp.getSignInCodeFromMailbox(sendResult.sendSignInCodeResponse.body.nonce)
@@ -189,7 +317,7 @@ describe("risk scores", () => {
       await InternalApiKey.createAndSetProjectKeys();
 
       const response = await Auth.OAuth.signIn({
-        turnstileToken: "stack-turnstile-test:invalid",
+        turnstileToken: mockTurnstileTokens.invalid,
       });
       expect(response.tokenResponse.status).toBe(200);
 
@@ -304,7 +432,7 @@ describe("risk scores", () => {
         body: {
           email: `convert-turnstile-${generateSecureRandomString(8)}@example.com`,
           password: generateSecureRandomString(),
-          turnstile_token: "stack-turnstile-test:invalid",
+          turnstile_token: mockTurnstileTokens.invalid,
         },
       });
       expect(convertResponse.status).toBe(200);
@@ -926,7 +1054,7 @@ describe("risk scores", () => {
 
       const signUpResult = await Auth.Password.signUpWithEmail({
         noWaitForEmail: true,
-        turnstileToken: "stack-turnstile-test:invalid",
+        turnstileToken: mockTurnstileTokens.invalid,
       });
       expect(signUpResult.signUpResponse.status).toBe(200);
 
@@ -1069,7 +1197,7 @@ describe("risk scores", () => {
         body: {
           email: `turnstile-rule-${generateSecureRandomString(8)}@example.com`,
           password: generateSecureRandomString(),
-          turnstile_token: "stack-turnstile-test:invalid",
+          turnstile_token: mockTurnstileTokens.invalid,
         },
       });
 

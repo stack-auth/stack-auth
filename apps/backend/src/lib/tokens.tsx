@@ -46,7 +46,7 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
-  turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
+  turnstileResult: yupString().oneOf(turnstileResultValues).defined(),
 });
 
 type UserType = 'normal' | 'restricted' | 'anonymous';

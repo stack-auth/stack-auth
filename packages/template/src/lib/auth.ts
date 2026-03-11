@@ -7,15 +7,17 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
 
+export type OAuthAuthenticateOptions = {
+  provider: string,
+  redirectUrl: string,
+  errorRedirectUrl: string,
+  providerScope?: string,
+  turnstileToken?: string,
+};
+
 export async function signInWithOAuth(
   iface: StackClientInterface,
-  options: {
-    provider: string,
-    redirectUrl: string,
-    errorRedirectUrl: string,
-    providerScope?: string,
-    turnstileToken?: string,
-  },
+  options: OAuthAuthenticateOptions,
   session: InternalSession,
 ) {
   const { codeChallenge, state } = await saveVerifierAndState();

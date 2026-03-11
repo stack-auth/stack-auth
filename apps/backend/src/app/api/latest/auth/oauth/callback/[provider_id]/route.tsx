@@ -340,7 +340,7 @@ const handler = createSmartRouteHandler({
                       ipTrusted: null,
                       countryCode: null,
                       turnstileAssessment: {
-                        status: outerInfo.turnstileResult ?? "not_configured",
+                        status: outerInfo.turnstileResult,
                       },
                       // Note: Request context not easily available in OAuth callback
                       // TODO: Pass IP and user agent from stored OAuth state if needed

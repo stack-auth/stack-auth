@@ -15,6 +15,7 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { type TurnstileRetryResult } from '../utils/turnstile';
 import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
@@ -46,6 +47,39 @@ export type ClientInterfaceOptions = {
 } | {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
+
+function getRequiredTurnstileToken(token: string | undefined, context: string): string {
+  const trimmedToken = token?.trim();
+  if (trimmedToken) {
+    return trimmedToken;
+  }
+
+  throw new StackAssertionError(`${context} requires a Turnstile token.`);
+}
+
+function getCredentialSignUpTurnstilePayload(turnstile: {
+  token?: string,
+  phase?: "invisible" | "visible",
+  previousResult?: TurnstileRetryResult,
+} | undefined) {
+  const turnstileToken = getRequiredTurnstileToken(turnstile?.token, "Credential sign-up");
+  if (turnstile?.phase === "visible") {
+    if (turnstile.previousResult == null) {
+      throw new StackAssertionError("Credential sign-up visible Turnstile retries require previousResult.");
+    }
+
+    return {
+      turnstile_token: turnstileToken,
+      turnstile_phase: "visible" as const,
+      turnstile_previous_result: turnstile.previousResult,
+    };
+  }
+
+  return {
+    turnstile_token: turnstileToken,
+    turnstile_phase: "invisible" as const,
+  };
+}
 
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
@@ -602,7 +636,7 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
-          turnstile_token: turnstileToken,
+          turnstile_token: getRequiredTurnstileToken(turnstileToken, "Magic link sign-in"),
         }),
       },
       null,
@@ -908,8 +942,12 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
-    turnstileToken?: string,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
+    turnstile?: {
+      token?: string,
+      phase?: "invisible" | "visible",
+      previousResult?: "invalid" | "error",
+    },
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -921,11 +959,11 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
-          turnstile_token: turnstileToken,
+          ...getCredentialSignUpTurnstilePayload(turnstile),
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, KnownErrors.TurnstileChallengeRequired]
     );
 
     if (res.status === "error") {
@@ -1096,9 +1134,7 @@ export class StackClientInterface {
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
     }
-    if (options.turnstileToken) {
-      url.searchParams.set("turnstile_token", options.turnstileToken);
-    }
+    url.searchParams.set("turnstile_token", getRequiredTurnstileToken(options.turnstileToken, `OAuth ${options.type}`));
 
     return url.toString();
   }

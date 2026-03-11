@@ -75,7 +75,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   },
   type: VerificationCodeType.ONE_TIME_PASSWORD,
   data: yupObject({
-    turnstile_result: yupString().oneOf(turnstileResultValues).optional(),
+    turnstile_result: yupString().oneOf(turnstileResultValues).defined(),
   }),
   method: yupObject({
     email: emailSchema.defined(),
@@ -127,7 +127,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           ipTrusted: null,
           countryCode: null,
           turnstileAssessment: {
-            status: data.turnstile_result ?? "not_configured",
+            status: data.turnstile_result,
           },
           // TODO: Pass request context when available in verification code handler
         }

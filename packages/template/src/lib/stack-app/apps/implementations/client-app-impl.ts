@@ -39,9 +39,11 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
+import type { OAuthAuthenticateOptions } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import type { CredentialSignUpTurnstileOptions } from "../interfaces/client-app";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -2515,15 +2517,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
+    const oAuthOptions: OAuthAuthenticateOptions = {
+      provider,
+      redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
+      errorRedirectUrl: this.urls.error,
+      providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
+      turnstileToken: options?.turnstileToken,
+    };
     await signInWithOAuth(
       this._interface,
-      {
-        provider,
-        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
-        errorRedirectUrl: this.urls.error,
-        providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-        turnstileToken: options?.turnstileToken,
-      },
+      oAuthOptions,
       session,
     );
   }
@@ -2594,8 +2597,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-    turnstileToken?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+  } & CredentialSignUpTurnstileOptions): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["TurnstileChallengeRequired"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
@@ -2608,7 +2610,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       options.password,
       emailVerificationRedirectUrl,
       session,
-      options.turnstileToken,
+      {
+        token: options.turnstileToken,
+        phase: options.turnstilePhase,
+        previousResult: options.previousTurnstileResult,
+      },
     );
 
     // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
@@ -2624,7 +2630,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         options.password,
         undefined, // No email verification
         session,
-        options.turnstileToken,
+        {
+          token: options.turnstileToken,
+          phase: options.turnstilePhase,
+          previousResult: options.previousTurnstileResult,
+        },
       );
     }
 

@@ -90,7 +90,7 @@ type SignUpRulesTestResult = {
     country_code: string,
     auth_method: 'password' | 'otp' | 'oauth' | 'passkey',
     oauth_provider: string,
-    turnstile_result: 'ok' | 'missing' | 'invalid' | 'error' | 'not_configured',
+    turnstile_result: 'ok' | 'invalid' | 'error',
     risk_scores: {
       bot: number,
       free_trial_abuse: number,
@@ -530,7 +530,7 @@ function TestRulesCard({
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
   const [countryCodeOverride, setCountryCodeOverride] = useState('');
-  const [turnstileResultOverride, setTurnstileResultOverride] = useState<'not_configured' | 'ok' | 'missing' | 'invalid' | 'error'>('not_configured');
+  const [turnstileResultOverride, setTurnstileResultOverride] = useState<'ok' | 'invalid' | 'error' | ''>('');
   const [botRiskScoreOverride, setBotRiskScoreOverride] = useState('');
   const [freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride] = useState('');
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
@@ -563,7 +563,7 @@ function TestRulesCard({
             ? (oauthProvider === '' ? null : oauthProvider)
             : null,
           country_code: normalizedCountryCodeOverride === '' ? null : normalizedCountryCodeOverride,
-          ...(turnstileResultOverride === 'not_configured'
+          ...(turnstileResultOverride === ''
             ? {}
             : {
               turnstile_result: turnstileResultOverride,
@@ -734,7 +734,7 @@ function TestRulesCard({
               Turnstile override
             </Typography>
             <Select value={turnstileResultOverride} onValueChange={(value) => {
-              if (value === "not_configured" || value === "ok" || value === "missing" || value === "invalid" || value === "error") {
+              if (value === "" || value === "ok" || value === "invalid" || value === "error") {
                 setTurnstileResultOverride(value);
               }
             }}>
@@ -742,9 +742,8 @@ function TestRulesCard({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="not_configured">Not configured</SelectItem>
+                <SelectItem value="">Default (use real result)</SelectItem>
                 <SelectItem value="ok">OK</SelectItem>
-                <SelectItem value="missing">Missing</SelectItem>
                 <SelectItem value="invalid">Invalid</SelectItem>
                 <SelectItem value="error">Error</SelectItem>
               </SelectContent>

@@ -134,8 +134,8 @@ export const POST = createSmartRouteHandler({
             ipAddress: null,
             ipTrusted: null,
             countryCode: null,
-            turnstileAssessment: null,
-            // Note: Request context not easily available in native OAuth callback
+            turnstileAssessment: { status: "invalid" },
+            // TODO: Apple native OAuth doesn't pass a turnstile token yet
           },
         });
         projectUserId = result.projectUserId;

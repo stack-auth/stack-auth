@@ -28,7 +28,7 @@ export const POST = createSmartRouteHandler({
       auth_method: yupString().oneOf(AUTH_METHODS).defined(),
       oauth_provider: yupString().nullable().defined(),
       country_code: countryCodeSchema.nullable().defined(),
-      turnstile_result: yupString().oneOf(["ok", "invalid", "missing", "error"]).optional(),
+      turnstile_result: yupString().oneOf(["ok", "invalid", "error"]).optional(),
       risk_scores: yupObject({
         bot: riskScoreFieldSchema,
         free_trial_abuse: riskScoreFieldSchema,
@@ -74,7 +74,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req) => {
     const endUserRequestContext = await getBestEffortEndUserRequestContext();
     const derivedCountryCode = getDerivedSignUpCountryCode(endUserRequestContext.location?.countryCode ?? null, req.body.email);
-    const normalizedTurnstileResult: TurnstileResult = req.body.turnstile_result ?? "not_configured";
+    const normalizedTurnstileResult: TurnstileResult = req.body.turnstile_result ?? "invalid";
     const derivedRiskScores = await calculateSignUpRiskScores(req.auth.tenancy, {
       primaryEmail: req.body.email,
       primaryEmailVerified: req.body.auth_method === "otp",
