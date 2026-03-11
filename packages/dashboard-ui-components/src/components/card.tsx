@@ -92,7 +92,7 @@ export function DesignCard({
   contentClassName,
   ...props
 }: DesignCardProps) {
-  const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
+  const glassmorphic = glassmorphicProp ?? true;
   const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
   const hasContent = React.Children.count(children) > 0;
 
@@ -107,9 +107,9 @@ export function DesignCard({
         className={cn(
           "group relative rounded-2xl overflow-hidden",
           glassmorphic && [
-            "bg-white/90 dark:bg-background/60 backdrop-blur-xl border-0 transition-all duration-150 hover:transition-none",
+            "bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl border-0 transition-all duration-150 hover:transition-none",
             "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-            "shadow-sm hover:shadow-md",
+            "shadow-none",
           ],
           className
         )}
@@ -207,9 +207,9 @@ export function DesignCardTint({
   return (
     <div
       className={cn(
-        "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+        "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl transition-all duration-150 hover:transition-none",
         "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-        "shadow-sm hover:shadow-md overflow-hidden",
+        "shadow-none overflow-hidden",
         className
       )}
       {...props}

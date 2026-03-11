@@ -320,8 +320,7 @@ export class WidgetInstanceGrid {
 
   public canSwap(x1: number, y1: number, x2: number, y2: number) {
     const elementsToSwap = [this.getElementAt(x1, y1), this.getElementAt(x2, y2)];
-    return (elementsToSwap[0].instance !== null ? this._canFitSize(elementsToSwap[0], elementsToSwap[1].x, elementsToSwap[1].y, elementsToSwap[1].width, elementsToSwap[1].height) : true)
-      && (elementsToSwap[1].instance !== null ? this._canFitSize(elementsToSwap[1], elementsToSwap[0].x, elementsToSwap[0].y, elementsToSwap[0].width, elementsToSwap[0].height) : true);
+    return elementsToSwap[0].instance !== null || elementsToSwap[1].instance !== null;
   }
 
   public withSwappedElements(x1: number, y1: number, x2: number, y2: number) {
@@ -336,6 +335,28 @@ export class WidgetInstanceGrid {
       }
       if (element.x === elementsToSwap[1].x && element.y === elementsToSwap[1].y) {
         return { ...element, instance: elementsToSwap[0].instance };
+      }
+      return element;
+    });
+    return new WidgetInstanceGrid(newElements.filter((element) => element.instance !== null), this._varHeights, this.width, this._fixedHeight);
+  }
+
+  /**
+   * Swaps two elements fully: each element takes the other's position AND size.
+   */
+  public withFullySwappedElements(x1: number, y1: number, x2: number, y2: number) {
+    if (!this.canSwap(x1, y1, x2, y2)) {
+      throw new StackAssertionError(`Cannot fully swap elements at ${x1}, ${y1} and ${x2}, ${y2}`);
+    }
+
+    const el0 = this.getElementAt(x1, y1);
+    const el1 = this.getElementAt(x2, y2);
+    const newElements = [...this.elements()].map((element) => {
+      if (element.x === el0.x && element.y === el0.y) {
+        return { instance: el0.instance, x: el1.x, y: el1.y, width: el1.width, height: el1.height };
+      }
+      if (element.x === el1.x && element.y === el1.y) {
+        return { instance: el1.instance, x: el0.x, y: el0.y, width: el0.width, height: el0.height };
       }
       return element;
     });
@@ -522,50 +543,91 @@ export class WidgetInstanceGrid {
   public withResizedElementAndPush(
     x: number, y: number,
     requestedDelta: { top: number, left: number, bottom: number, right: number },
-  ): { grid: WidgetInstanceGrid, achievedDelta: { top: number, left: number, bottom: number, right: number } } {
+  ): { grid: WidgetInstanceGrid, achievedDelta: { top: number, left: number, bottom: number, right: number }, blocked: { top: boolean, left: boolean, right: boolean, bottom: boolean } } {
     const element = this.getElementAt(x, y);
     if (!element.instance) {
-      return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 } };
+      return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 }, blocked: { top: false, left: false, right: false, bottom: false } };
     }
 
-    const vertDelta = { top: requestedDelta.top, left: 0, bottom: requestedDelta.bottom, right: 0 };
+    // For vertical expansion, allow bottom to grow freely (grid height will expand).
+    // Only clamp top (which can't go above the grid).
+    const vertDelta = { top: requestedDelta.top, left: 0, bottom: 0, right: 0 };
     const clampedVert = this.clampElementResize(x, y, vertDelta);
+    const blockedTop = requestedDelta.top !== 0 && clampedVert.top !== requestedDelta.top;
 
     const array = this.as2dArray();
+
+    // Bottom expansion: allow freely, only blocked by other widgets below
+    let achievedBottom = requestedDelta.bottom;
+    let blockedBottom = false;
+    if (achievedBottom > 0) {
+      for (let row = element.y + element.height; row < element.y + element.height + achievedBottom && row < this.height; row++) {
+        for (let col = element.x; col < element.x + element.width; col++) {
+          const occ = array[col]?.[row];
+          if (occ && occ !== element.instance) {
+            achievedBottom = Math.min(achievedBottom, row - (element.y + element.height));
+            blockedBottom = true;
+          }
+        }
+      }
+      if (achievedBottom === 0 && requestedDelta.bottom > 0) {
+        // Check if we're already touching a neighbor below
+        const nextRow = element.y + element.height;
+        if (nextRow < this.height) {
+          for (let col = element.x; col < element.x + element.width; col++) {
+            const occ = array[col]?.[nextRow];
+            if (occ && occ !== element.instance) {
+              blockedBottom = true;
+              break;
+            }
+          }
+        }
+      }
+      achievedBottom = Math.max(0, achievedBottom);
+    } else if (achievedBottom < 0) {
+      // Shrinking bottom: check min height
+      const minSize = this.elementMinSize(element);
+      const newHeight = element.height + achievedBottom;
+      if (newHeight < minSize.height) {
+        achievedBottom = minSize.height - element.height;
+      }
+    }
     let achievedRight = requestedDelta.right;
     let achievedLeft = requestedDelta.left;
-    const neighborChanges = new Map<string, { x: number, width: number }>();
+    let blockedRight = false;
+    let blockedLeft = false;
 
     if (achievedRight > 0) {
       achievedRight = Math.min(achievedRight, this.width - element.x - element.width);
 
       if (achievedRight > 0) {
-        const blockerIds = new Set<string>();
+        // Check for any blockers and stop at their edge instead of pushing them
         for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
           for (let col = element.x + element.width; col < element.x + element.width + achievedRight && col < this.width; col++) {
             const occ = array[col][row];
-            if (occ && occ !== element.instance) blockerIds.add(occ.id);
+            if (occ && occ !== element.instance) {
+              const blocker = this.getElementByInstanceId(occ.id);
+              if (blocker?.instance) {
+                // Stop at the blocker's left edge
+                achievedRight = Math.min(achievedRight, Math.max(0, blocker.x - element.x - element.width));
+                blockedRight = true;
+              }
+            }
           }
         }
+      }
 
-        for (const id of blockerIds) {
-          const blocker = this.getElementByInstanceId(id);
-          if (!blocker?.instance) continue;
-
-          const blockerMinWidth = this.elementMinSize(blocker).width;
-          const maxShrink = blocker.width - blockerMinWidth;
-          const maxGrowth = blocker.x - element.x - element.width + maxShrink;
-          achievedRight = Math.min(achievedRight, Math.max(0, maxGrowth));
-        }
-
-        if (achievedRight > 0) {
-          const newRightEdge = element.x + element.width + achievedRight;
-          for (const id of blockerIds) {
-            const blocker = this.getElementByInstanceId(id);
-            if (!blocker?.instance) continue;
-            const overlap = newRightEdge - blocker.x;
-            if (overlap > 0) {
-              neighborChanges.set(id, { x: blocker.x + overlap, width: blocker.width - overlap });
+      if (achievedRight === 0 && requestedDelta.right > 0) {
+        // Check if we're already touching a neighbor
+        const nextCol = element.x + element.width;
+        if (nextCol >= this.width) {
+          blockedRight = true;
+        } else {
+          for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
+            const occ = array[nextCol][row];
+            if (occ && occ !== element.instance) {
+              blockedRight = true;
+              break;
             }
           }
         }
@@ -577,32 +639,33 @@ export class WidgetInstanceGrid {
       achievedLeft = Math.max(achievedLeft, -element.x);
 
       if (achievedLeft < 0) {
-        const blockerIds = new Set<string>();
+        // Check for any blockers and stop at their edge instead of pushing them
         for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
           for (let col = element.x + achievedLeft; col < element.x && col >= 0; col++) {
             const occ = array[col][row];
-            if (occ && occ !== element.instance) blockerIds.add(occ.id);
+            if (occ && occ !== element.instance) {
+              const blocker = this.getElementByInstanceId(occ.id);
+              if (blocker?.instance) {
+                // Stop at the blocker's right edge
+                achievedLeft = Math.max(achievedLeft, Math.min(0, -(element.x - (blocker.x + blocker.width))));
+                blockedLeft = true;
+              }
+            }
           }
         }
+      }
 
-        for (const id of blockerIds) {
-          const blocker = this.getElementByInstanceId(id);
-          if (!blocker?.instance) continue;
-
-          const blockerMinWidth = this.elementMinSize(blocker).width;
-          const maxShrink = blocker.width - blockerMinWidth;
-          const maxGrowth = (blocker.x + blocker.width) - element.x + maxShrink;
-          achievedLeft = Math.max(achievedLeft, Math.min(0, -maxGrowth));
-        }
-
-        if (achievedLeft < 0) {
-          const newLeftEdge = element.x + achievedLeft;
-          for (const id of blockerIds) {
-            const blocker = this.getElementByInstanceId(id);
-            if (!blocker?.instance) continue;
-            const overlap = (blocker.x + blocker.width) - newLeftEdge;
-            if (overlap > 0) {
-              neighborChanges.set(id, { x: blocker.x, width: blocker.width - overlap });
+      if (achievedLeft === 0 && requestedDelta.left < 0) {
+        // Check if we're already touching a neighbor
+        const prevCol = element.x - 1;
+        if (prevCol < 0) {
+          blockedLeft = true;
+        } else {
+          for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
+            const occ = array[prevCol][row];
+            if (occ && occ !== element.instance) {
+              blockedLeft = true;
+              break;
             }
           }
         }
@@ -613,18 +676,18 @@ export class WidgetInstanceGrid {
     const elementMinWidth = this.elementMinSize(element).width;
     const newWidth = element.width - achievedLeft + achievedRight;
     if (newWidth < elementMinWidth) {
-      return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 } };
+      return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 }, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
     }
 
     const achievedDelta = {
       top: clampedVert.top,
       left: achievedLeft,
-      bottom: clampedVert.bottom,
+      bottom: achievedBottom,
       right: achievedRight,
     };
 
     if (achievedDelta.top === 0 && achievedDelta.left === 0 && achievedDelta.bottom === 0 && achievedDelta.right === 0) {
-      return { grid: this, achievedDelta };
+      return { grid: this, achievedDelta, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
     }
 
     const newElements = this._nonEmptyElements.map(el => {
@@ -637,25 +700,29 @@ export class WidgetInstanceGrid {
           height: el.height - achievedDelta.top + achievedDelta.bottom,
         };
       }
-      const change = neighborChanges.get(el.instance?.id ?? '');
-      if (change) {
-        return { ...el, x: change.x, width: change.width };
-      }
       return el;
     });
 
     try {
-      const newGrid = new WidgetInstanceGrid(newElements, this._varHeights, this.width, this._fixedHeight);
-      return { grid: newGrid, achievedDelta };
+      // Expand the grid height if needed to accommodate bottom growth
+      let newFixedHeight = this._fixedHeight;
+      if (newFixedHeight !== "auto") {
+        const resizedElement = newElements.find(el => el.instance?.id === element.instance?.id);
+        if (resizedElement && resizedElement.y + resizedElement.height > newFixedHeight) {
+          newFixedHeight = resizedElement.y + resizedElement.height;
+        }
+      }
+      const newGrid = new WidgetInstanceGrid(newElements, this._varHeights, this.width, newFixedHeight);
+      return { grid: newGrid, achievedDelta, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
     } catch {
       const clamped = this.clampElementResize(x, y, requestedDelta);
       if (clamped.top === 0 && clamped.left === 0 && clamped.bottom === 0 && clamped.right === 0) {
-        return { grid: this, achievedDelta: clamped };
+        return { grid: this, achievedDelta: clamped, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       }
       try {
-        return { grid: this.withResizedElement(x, y, clamped), achievedDelta: clamped };
+        return { grid: this.withResizedElement(x, y, clamped), achievedDelta: clamped, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       } catch {
-        return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 } };
+        return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 }, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       }
     }
   }

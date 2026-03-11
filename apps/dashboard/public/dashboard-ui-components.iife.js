@@ -200,7 +200,7 @@ var DashboardUI = (() => {
             var nodeRep;
             try {
               nodeRep = ", node was:" + JSON.stringify(node);
-            } catch (e16) {
+            } catch (e15) {
               nodeRep = "";
             }
             throw new Error("Cyclic dependency" + nodeRep);
@@ -422,165 +422,136 @@ var DashboardUI = (() => {
     ]
   ]);
 
-  // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/defs/PencilSimple.es.js
-  var a4 = __toESM(require_react(), 1);
-  var e4 = /* @__PURE__ */ new Map([
-    [
-      "bold",
-      /* @__PURE__ */ a4.createElement(a4.Fragment, null, /* @__PURE__ */ a4.createElement("path", { d: "M230.14,70.54,185.46,25.85a20,20,0,0,0-28.29,0L33.86,149.17A19.85,19.85,0,0,0,28,163.31V208a20,20,0,0,0,20,20H92.69a19.86,19.86,0,0,0,14.14-5.86L230.14,98.82a20,20,0,0,0,0-28.28ZM91,204H52V165l84-84,39,39ZM192,103,153,64l18.34-18.34,39,39Z" }))
-    ],
-    [
-      "duotone",
-      /* @__PURE__ */ a4.createElement(a4.Fragment, null, /* @__PURE__ */ a4.createElement(
-        "path",
-        {
-          d: "M221.66,90.34,192,120,136,64l29.66-29.66a8,8,0,0,1,11.31,0L221.66,79A8,8,0,0,1,221.66,90.34Z",
-          opacity: "0.2"
-        }
-      ), /* @__PURE__ */ a4.createElement("path", { d: "M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" }))
-    ],
-    [
-      "fill",
-      /* @__PURE__ */ a4.createElement(a4.Fragment, null, /* @__PURE__ */ a4.createElement("path", { d: "M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM192,108.68,147.31,64l24-24L216,84.68Z" }))
-    ],
-    [
-      "light",
-      /* @__PURE__ */ a4.createElement(a4.Fragment, null, /* @__PURE__ */ a4.createElement("path", { d: "M225.9,74.78,181.21,30.09a14,14,0,0,0-19.8,0L38.1,153.41a13.94,13.94,0,0,0-4.1,9.9V208a14,14,0,0,0,14,14H92.69a13.94,13.94,0,0,0,9.9-4.1L225.9,94.58a14,14,0,0,0,0-19.8ZM94.1,209.41a2,2,0,0,1-1.41.59H48a2,2,0,0,1-2-2V163.31a2,2,0,0,1,.59-1.41L136,72.48,183.51,120ZM217.41,86.1,192,111.51,144.49,64,169.9,38.58a2,2,0,0,1,2.83,0l44.68,44.69a2,2,0,0,1,0,2.83Z" }))
-    ],
-    [
-      "regular",
-      /* @__PURE__ */ a4.createElement(a4.Fragment, null, /* @__PURE__ */ a4.createElement("path", { d: "M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z" }))
-    ],
-    [
-      "thin",
-      /* @__PURE__ */ a4.createElement(a4.Fragment, null, /* @__PURE__ */ a4.createElement("path", { d: "M224.49,76.2,179.8,31.51a12,12,0,0,0-17,0L133.17,61.17h0L39.52,154.83A11.9,11.9,0,0,0,36,163.31V208a12,12,0,0,0,12,12H92.69a12,12,0,0,0,8.48-3.51L224.48,93.17a12,12,0,0,0,0-17Zm-129,134.63A4,4,0,0,1,92.69,212H48a4,4,0,0,1-4-4V163.31a4,4,0,0,1,1.17-2.83L136,69.65,186.34,120ZM218.83,87.51,192,114.34,141.66,64l26.82-26.83a4,4,0,0,1,5.66,0l44.69,44.68a4,4,0,0,1,0,5.66Z" }))
-    ]
-  ]);
-
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/defs/Plus.es.js
-  var e5 = __toESM(require_react(), 1);
-  var a5 = /* @__PURE__ */ new Map([
+  var e4 = __toESM(require_react(), 1);
+  var a4 = /* @__PURE__ */ new Map([
     [
       "bold",
-      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z" }))
+      /* @__PURE__ */ e4.createElement(e4.Fragment, null, /* @__PURE__ */ e4.createElement("path", { d: "M228,128a12,12,0,0,1-12,12H140v76a12,12,0,0,1-24,0V140H40a12,12,0,0,1,0-24h76V40a12,12,0,0,1,24,0v76h76A12,12,0,0,1,228,128Z" }))
     ],
     [
       "duotone",
-      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement(
+      /* @__PURE__ */ e4.createElement(e4.Fragment, null, /* @__PURE__ */ e4.createElement(
         "path",
         {
           d: "M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z",
           opacity: "0.2"
         }
-      ), /* @__PURE__ */ e5.createElement("path", { d: "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" }))
+      ), /* @__PURE__ */ e4.createElement("path", { d: "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" }))
     ],
     [
       "fill",
-      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM184,136H136v48a8,8,0,0,1-16,0V136H72a8,8,0,0,1,0-16h48V72a8,8,0,0,1,16,0v48h48a8,8,0,0,1,0,16Z" }))
+      /* @__PURE__ */ e4.createElement(e4.Fragment, null, /* @__PURE__ */ e4.createElement("path", { d: "M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM184,136H136v48a8,8,0,0,1-16,0V136H72a8,8,0,0,1,0-16h48V72a8,8,0,0,1,16,0v48h48a8,8,0,0,1,0,16Z" }))
     ],
     [
       "light",
-      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M222,128a6,6,0,0,1-6,6H134v82a6,6,0,0,1-12,0V134H40a6,6,0,0,1,0-12h82V40a6,6,0,0,1,12,0v82h82A6,6,0,0,1,222,128Z" }))
+      /* @__PURE__ */ e4.createElement(e4.Fragment, null, /* @__PURE__ */ e4.createElement("path", { d: "M222,128a6,6,0,0,1-6,6H134v82a6,6,0,0,1-12,0V134H40a6,6,0,0,1,0-12h82V40a6,6,0,0,1,12,0v82h82A6,6,0,0,1,222,128Z" }))
     ],
     [
       "regular",
-      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" }))
+      /* @__PURE__ */ e4.createElement(e4.Fragment, null, /* @__PURE__ */ e4.createElement("path", { d: "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z" }))
     ],
     [
       "thin",
-      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M220,128a4,4,0,0,1-4,4H132v84a4,4,0,0,1-8,0V132H40a4,4,0,0,1,0-8h84V40a4,4,0,0,1,8,0v84h84A4,4,0,0,1,220,128Z" }))
-    ]
-  ]);
-
-  // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/defs/Trash.es.js
-  var a6 = __toESM(require_react(), 1);
-  var e6 = /* @__PURE__ */ new Map([
-    [
-      "bold",
-      /* @__PURE__ */ a6.createElement(a6.Fragment, null, /* @__PURE__ */ a6.createElement("path", { d: "M216,48H180V36A28,28,0,0,0,152,8H104A28,28,0,0,0,76,36V48H40a12,12,0,0,0,0,24h4V208a20,20,0,0,0,20,20H192a20,20,0,0,0,20-20V72h4a12,12,0,0,0,0-24ZM100,36a4,4,0,0,1,4-4h48a4,4,0,0,1,4,4V48H100Zm88,168H68V72H188ZM116,104v64a12,12,0,0,1-24,0V104a12,12,0,0,1,24,0Zm48,0v64a12,12,0,0,1-24,0V104a12,12,0,0,1,24,0Z" }))
-    ],
-    [
-      "duotone",
-      /* @__PURE__ */ a6.createElement(a6.Fragment, null, /* @__PURE__ */ a6.createElement("path", { d: "M200,56V208a8,8,0,0,1-8,8H64a8,8,0,0,1-8-8V56Z", opacity: "0.2" }), /* @__PURE__ */ a6.createElement("path", { d: "M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" }))
-    ],
-    [
-      "fill",
-      /* @__PURE__ */ a6.createElement(a6.Fragment, null, /* @__PURE__ */ a6.createElement("path", { d: "M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z" }))
-    ],
-    [
-      "light",
-      /* @__PURE__ */ a6.createElement(a6.Fragment, null, /* @__PURE__ */ a6.createElement("path", { d: "M216,50H174V40a22,22,0,0,0-22-22H104A22,22,0,0,0,82,40V50H40a6,6,0,0,0,0,12H50V208a14,14,0,0,0,14,14H192a14,14,0,0,0,14-14V62h10a6,6,0,0,0,0-12ZM94,40a10,10,0,0,1,10-10h48a10,10,0,0,1,10,10V50H94ZM194,208a2,2,0,0,1-2,2H64a2,2,0,0,1-2-2V62H194ZM110,104v64a6,6,0,0,1-12,0V104a6,6,0,0,1,12,0Zm48,0v64a6,6,0,0,1-12,0V104a6,6,0,0,1,12,0Z" }))
-    ],
-    [
-      "regular",
-      /* @__PURE__ */ a6.createElement(a6.Fragment, null, /* @__PURE__ */ a6.createElement("path", { d: "M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" }))
-    ],
-    [
-      "thin",
-      /* @__PURE__ */ a6.createElement(a6.Fragment, null, /* @__PURE__ */ a6.createElement("path", { d: "M216,52H172V40a20,20,0,0,0-20-20H104A20,20,0,0,0,84,40V52H40a4,4,0,0,0,0,8H52V208a12,12,0,0,0,12,12H192a12,12,0,0,0,12-12V60h12a4,4,0,0,0,0-8ZM92,40a12,12,0,0,1,12-12h48a12,12,0,0,1,12,12V52H92ZM196,208a4,4,0,0,1-4,4H64a4,4,0,0,1-4-4V60H196ZM108,104v64a4,4,0,0,1-8,0V104a4,4,0,0,1,8,0Zm48,0v64a4,4,0,0,1-8,0V104a4,4,0,0,1,8,0Z" }))
+      /* @__PURE__ */ e4.createElement(e4.Fragment, null, /* @__PURE__ */ e4.createElement("path", { d: "M220,128a4,4,0,0,1-4,4H132v84a4,4,0,0,1-8,0V132H40a4,4,0,0,1,0-8h84V40a4,4,0,0,1,8,0v84h84A4,4,0,0,1,220,128Z" }))
     ]
   ]);
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/defs/WarningCircle.es.js
-  var e7 = __toESM(require_react(), 1);
-  var a7 = /* @__PURE__ */ new Map([
+  var e5 = __toESM(require_react(), 1);
+  var a5 = /* @__PURE__ */ new Map([
     [
       "bold",
-      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M128,20A108,108,0,1,0,236,128,108.12,108.12,0,0,0,128,20Zm0,192a84,84,0,1,1,84-84A84.09,84.09,0,0,1,128,212Zm-12-80V80a12,12,0,0,1,24,0v52a12,12,0,0,1-24,0Zm28,40a16,16,0,1,1-16-16A16,16,0,0,1,144,172Z" }))
+      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M128,20A108,108,0,1,0,236,128,108.12,108.12,0,0,0,128,20Zm0,192a84,84,0,1,1,84-84A84.09,84.09,0,0,1,128,212Zm-12-80V80a12,12,0,0,1,24,0v52a12,12,0,0,1-24,0Zm28,40a16,16,0,1,1-16-16A16,16,0,0,1,144,172Z" }))
     ],
     [
       "duotone",
-      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z", opacity: "0.2" }), /* @__PURE__ */ e7.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z" }))
+      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z", opacity: "0.2" }), /* @__PURE__ */ e5.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z" }))
     ],
     [
       "fill",
-      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm-8,56a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm8,104a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z" }))
+      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm-8,56a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm8,104a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z" }))
     ],
     [
       "light",
-      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm-6-82V80a6,6,0,0,1,12,0v56a6,6,0,0,1-12,0Zm16,36a10,10,0,1,1-10-10A10,10,0,0,1,138,172Z" }))
+      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm-6-82V80a6,6,0,0,1,12,0v56a6,6,0,0,1-12,0Zm16,36a10,10,0,1,1-10-10A10,10,0,0,1,138,172Z" }))
     ],
     [
       "regular",
-      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z" }))
+      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z" }))
     ],
     [
       "thin",
-      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M128,28A100,100,0,1,0,228,128,100.11,100.11,0,0,0,128,28Zm0,192a92,92,0,1,1,92-92A92.1,92.1,0,0,1,128,220Zm-4-84V80a4,4,0,0,1,8,0v56a4,4,0,0,1-8,0Zm12,36a8,8,0,1,1-8-8A8,8,0,0,1,136,172Z" }))
+      /* @__PURE__ */ e5.createElement(e5.Fragment, null, /* @__PURE__ */ e5.createElement("path", { d: "M128,28A100,100,0,1,0,228,128,100.11,100.11,0,0,0,128,28Zm0,192a92,92,0,1,1,92-92A92.1,92.1,0,0,1,128,220Zm-4-84V80a4,4,0,0,1,8,0v56a4,4,0,0,1-8,0Zm12,36a8,8,0,1,1-8-8A8,8,0,0,1,136,172Z" }))
+    ]
+  ]);
+
+  // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/defs/X.es.js
+  var e6 = __toESM(require_react(), 1);
+  var a6 = /* @__PURE__ */ new Map([
+    [
+      "bold",
+      /* @__PURE__ */ e6.createElement(e6.Fragment, null, /* @__PURE__ */ e6.createElement("path", { d: "M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z" }))
+    ],
+    [
+      "duotone",
+      /* @__PURE__ */ e6.createElement(e6.Fragment, null, /* @__PURE__ */ e6.createElement(
+        "path",
+        {
+          d: "M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z",
+          opacity: "0.2"
+        }
+      ), /* @__PURE__ */ e6.createElement("path", { d: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" }))
+    ],
+    [
+      "fill",
+      /* @__PURE__ */ e6.createElement(e6.Fragment, null, /* @__PURE__ */ e6.createElement("path", { d: "M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM181.66,170.34a8,8,0,0,1-11.32,11.32L128,139.31,85.66,181.66a8,8,0,0,1-11.32-11.32L116.69,128,74.34,85.66A8,8,0,0,1,85.66,74.34L128,116.69l42.34-42.35a8,8,0,0,1,11.32,11.32L139.31,128Z" }))
+    ],
+    [
+      "light",
+      /* @__PURE__ */ e6.createElement(e6.Fragment, null, /* @__PURE__ */ e6.createElement("path", { d: "M204.24,195.76a6,6,0,1,1-8.48,8.48L128,136.49,60.24,204.24a6,6,0,0,1-8.48-8.48L119.51,128,51.76,60.24a6,6,0,0,1,8.48-8.48L128,119.51l67.76-67.75a6,6,0,0,1,8.48,8.48L136.49,128Z" }))
+    ],
+    [
+      "regular",
+      /* @__PURE__ */ e6.createElement(e6.Fragment, null, /* @__PURE__ */ e6.createElement("path", { d: "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z" }))
+    ],
+    [
+      "thin",
+      /* @__PURE__ */ e6.createElement(e6.Fragment, null, /* @__PURE__ */ e6.createElement("path", { d: "M202.83,197.17a4,4,0,0,1-5.66,5.66L128,133.66,58.83,202.83a4,4,0,0,1-5.66-5.66L122.34,128,53.17,58.83a4,4,0,0,1,5.66-5.66L128,122.34l69.17-69.17a4,4,0,1,1,5.66,5.66L133.66,128Z" }))
     ]
   ]);
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/defs/XCircle.es.js
-  var e8 = __toESM(require_react(), 1);
-  var a8 = /* @__PURE__ */ new Map([
+  var e7 = __toESM(require_react(), 1);
+  var a7 = /* @__PURE__ */ new Map([
     [
       "bold",
-      /* @__PURE__ */ e8.createElement(e8.Fragment, null, /* @__PURE__ */ e8.createElement("path", { d: "M168.49,104.49,145,128l23.52,23.51a12,12,0,0,1-17,17L128,145l-23.51,23.52a12,12,0,0,1-17-17L111,128,87.51,104.49a12,12,0,0,1,17-17L128,111l23.51-23.52a12,12,0,0,1,17,17ZM236,128A108,108,0,1,1,128,20,108.12,108.12,0,0,1,236,128Zm-24,0a84,84,0,1,0-84,84A84.09,84.09,0,0,0,212,128Z" }))
+      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M168.49,104.49,145,128l23.52,23.51a12,12,0,0,1-17,17L128,145l-23.51,23.52a12,12,0,0,1-17-17L111,128,87.51,104.49a12,12,0,0,1,17-17L128,111l23.51-23.52a12,12,0,0,1,17,17ZM236,128A108,108,0,1,1,128,20,108.12,108.12,0,0,1,236,128Zm-24,0a84,84,0,1,0-84,84A84.09,84.09,0,0,0,212,128Z" }))
     ],
     [
       "duotone",
-      /* @__PURE__ */ e8.createElement(e8.Fragment, null, /* @__PURE__ */ e8.createElement("path", { d: "M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z", opacity: "0.2" }), /* @__PURE__ */ e8.createElement("path", { d: "M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" }))
+      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z", opacity: "0.2" }), /* @__PURE__ */ e7.createElement("path", { d: "M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" }))
     ],
     [
       "fill",
-      /* @__PURE__ */ e8.createElement(e8.Fragment, null, /* @__PURE__ */ e8.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm37.66,130.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32L139.31,128Z" }))
+      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm37.66,130.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32L139.31,128Z" }))
     ],
     [
       "light",
-      /* @__PURE__ */ e8.createElement(e8.Fragment, null, /* @__PURE__ */ e8.createElement("path", { d: "M164.24,100.24,136.48,128l27.76,27.76a6,6,0,1,1-8.48,8.48L128,136.48l-27.76,27.76a6,6,0,0,1-8.48-8.48L119.52,128,91.76,100.24a6,6,0,0,1,8.48-8.48L128,119.52l27.76-27.76a6,6,0,0,1,8.48,8.48ZM230,128A102,102,0,1,1,128,26,102.12,102.12,0,0,1,230,128Zm-12,0a90,90,0,1,0-90,90A90.1,90.1,0,0,0,218,128Z" }))
+      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M164.24,100.24,136.48,128l27.76,27.76a6,6,0,1,1-8.48,8.48L128,136.48l-27.76,27.76a6,6,0,0,1-8.48-8.48L119.52,128,91.76,100.24a6,6,0,0,1,8.48-8.48L128,119.52l27.76-27.76a6,6,0,0,1,8.48,8.48ZM230,128A102,102,0,1,1,128,26,102.12,102.12,0,0,1,230,128Zm-12,0a90,90,0,1,0-90,90A90.1,90.1,0,0,0,218,128Z" }))
     ],
     [
       "regular",
-      /* @__PURE__ */ e8.createElement(e8.Fragment, null, /* @__PURE__ */ e8.createElement("path", { d: "M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" }))
+      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z" }))
     ],
     [
       "thin",
-      /* @__PURE__ */ e8.createElement(e8.Fragment, null, /* @__PURE__ */ e8.createElement("path", { d: "M162.83,98.83,133.66,128l29.17,29.17a4,4,0,0,1-5.66,5.66L128,133.66,98.83,162.83a4,4,0,0,1-5.66-5.66L122.34,128,93.17,98.83a4,4,0,0,1,5.66-5.66L128,122.34l29.17-29.17a4,4,0,1,1,5.66,5.66ZM228,128A100,100,0,1,1,128,28,100.11,100.11,0,0,1,228,128Zm-8,0a92,92,0,1,0-92,92A92.1,92.1,0,0,0,220,128Z" }))
+      /* @__PURE__ */ e7.createElement(e7.Fragment, null, /* @__PURE__ */ e7.createElement("path", { d: "M162.83,98.83,133.66,128l29.17,29.17a4,4,0,0,1-5.66,5.66L128,133.66,98.83,162.83a4,4,0,0,1-5.66-5.66L122.34,128,93.17,98.83a4,4,0,0,1,5.66-5.66L128,122.34l29.17-29.17a4,4,0,1,1,5.66,5.66ZM228,128A100,100,0,1,1,128,28,100.11,100.11,0,0,1,228,128Zm-8,0a92,92,0,1,0-92,92A92.1,92.1,0,0,0,220,128Z" }))
     ]
   ]);
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/lib/IconBase.es.js
-  var e9 = __toESM(require_react(), 1);
+  var e8 = __toESM(require_react(), 1);
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/lib/context.es.js
   var import_react = __toESM(require_react(), 1);
@@ -592,13 +563,13 @@ var DashboardUI = (() => {
   });
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/lib/IconBase.es.js
-  var p = e9.forwardRef(
-    (s4, a10) => {
+  var p = e8.forwardRef(
+    (s4, a8) => {
       const {
         alt: n3,
-        color: r6,
+        color: r5,
         size: t,
-        weight: o8,
+        weight: o7,
         mirrored: c3,
         children: i,
         weights: m2,
@@ -609,75 +580,69 @@ var DashboardUI = (() => {
         weight: f = "regular",
         mirrored: g = false,
         ...w
-      } = e9.useContext(o);
-      return /* @__PURE__ */ e9.createElement(
+      } = e8.useContext(o);
+      return /* @__PURE__ */ e8.createElement(
         "svg",
         {
-          ref: a10,
+          ref: a8,
           xmlns: "http://www.w3.org/2000/svg",
           width: t != null ? t : l,
           height: t != null ? t : l,
-          fill: r6 != null ? r6 : d,
+          fill: r5 != null ? r5 : d,
           viewBox: "0 0 256 256",
           transform: c3 || g ? "scale(-1, 1)" : void 0,
           ...w,
           ...x
         },
-        !!n3 && /* @__PURE__ */ e9.createElement("title", null, n3),
+        !!n3 && /* @__PURE__ */ e8.createElement("title", null, n3),
         i,
-        m2.get(o8 != null ? o8 : f)
+        m2.get(o7 != null ? o7 : f)
       );
     }
   );
   p.displayName = "IconBase";
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/CheckCircle.es.js
-  var e10 = __toESM(require_react(), 1);
-  var c = e10.forwardRef((o8, r6) => /* @__PURE__ */ e10.createElement(p, { ref: r6, ...o8, weights: a }));
+  var e9 = __toESM(require_react(), 1);
+  var c = e9.forwardRef((o7, r5) => /* @__PURE__ */ e9.createElement(p, { ref: r5, ...o7, weights: a }));
   c.displayName = "CheckCircleIcon";
   var s = c;
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/GridFour.es.js
   var o2 = __toESM(require_react(), 1);
-  var r2 = o2.forwardRef((e16, t) => /* @__PURE__ */ o2.createElement(p, { ref: t, ...e16, weights: a2 }));
+  var r2 = o2.forwardRef((e15, t) => /* @__PURE__ */ o2.createElement(p, { ref: t, ...e15, weights: a2 }));
   r2.displayName = "GridFourIcon";
   var s2 = r2;
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/Info.es.js
   var o3 = __toESM(require_react(), 1);
-  var e11 = o3.forwardRef((r6, t) => /* @__PURE__ */ o3.createElement(p, { ref: t, ...r6, weights: a3 }));
-  e11.displayName = "InfoIcon";
-  var c2 = e11;
-
-  // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/PencilSimple.es.js
-  var e12 = __toESM(require_react(), 1);
-  var o4 = e12.forwardRef((i, m2) => /* @__PURE__ */ e12.createElement(p, { ref: m2, ...i, weights: e4 }));
-  o4.displayName = "PencilSimpleIcon";
-  var a9 = o4;
+  var e10 = o3.forwardRef((r5, t) => /* @__PURE__ */ o3.createElement(p, { ref: t, ...r5, weights: a3 }));
+  e10.displayName = "InfoIcon";
+  var c2 = e10;
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/Plus.es.js
-  var o5 = __toESM(require_react(), 1);
-  var e13 = o5.forwardRef((r6, s4) => /* @__PURE__ */ o5.createElement(p, { ref: s4, ...r6, weights: a5 }));
-  e13.displayName = "PlusIcon";
-  var n = e13;
-
-  // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/Trash.es.js
-  var o6 = __toESM(require_react(), 1);
-  var r3 = o6.forwardRef((a10, e16) => /* @__PURE__ */ o6.createElement(p, { ref: e16, ...a10, weights: e6 }));
-  r3.displayName = "TrashIcon";
-  var n2 = r3;
+  var o4 = __toESM(require_react(), 1);
+  var e11 = o4.forwardRef((r5, s4) => /* @__PURE__ */ o4.createElement(p, { ref: s4, ...r5, weights: a4 }));
+  e11.displayName = "PlusIcon";
+  var n = e11;
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/WarningCircle.es.js
-  var r4 = __toESM(require_react(), 1);
-  var e14 = r4.forwardRef((o8, n3) => /* @__PURE__ */ r4.createElement(p, { ref: n3, ...o8, weights: a7 }));
-  e14.displayName = "WarningCircleIcon";
-  var m = e14;
+  var r3 = __toESM(require_react(), 1);
+  var e12 = r3.forwardRef((o7, n3) => /* @__PURE__ */ r3.createElement(p, { ref: n3, ...o7, weights: a5 }));
+  e12.displayName = "WarningCircleIcon";
+  var m = e12;
+
+  // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/X.es.js
+  var o5 = __toESM(require_react(), 1);
+  var e13 = o5.forwardRef((r5, t) => /* @__PURE__ */ o5.createElement(p, { ref: t, ...r5, weights: a6 }));
+  e13.displayName = "XIcon";
+  var n2 = e13;
 
   // ../../node_modules/.pnpm/@phosphor-icons+react@2.1.10_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/@phosphor-icons/react/dist/csr/XCircle.es.js
-  var e15 = __toESM(require_react(), 1);
-  var o7 = e15.forwardRef((r6, c3) => /* @__PURE__ */ e15.createElement(p, { ref: c3, ...r6, weights: a8 }));
-  o7.displayName = "XCircleIcon";
-  var s3 = o7;
+  var e14 = __toESM(require_react(), 1);
+  var o6 = e14.forwardRef((r5, c3) => /* @__PURE__ */ e14.createElement(p, { ref: c3, ...r5, weights: a7 }));
+  o6.displayName = "XCircleIcon";
+  var s3 = o6;
 
   // jsx-shim:react/jsx-runtime
   var import_react2 = __toESM(require_react());
@@ -687,7 +652,7 @@ var DashboardUI = (() => {
   function jsxs(type, props, key) {
     return import_react2.default.createElement(type, key !== void 0 ? Object.assign({}, props, { key }) : props);
   }
-  var Fragment9 = import_react2.default.Fragment;
+  var Fragment8 = import_react2.default.Fragment;
 
   // ../stack-shared/dist/esm/utils/arrays.js
   function findLastIndex(arr, predicate) {
@@ -709,13 +674,13 @@ var DashboardUI = (() => {
   }
 
   // ../stack-shared/dist/esm/utils/strings.js
-  function stringCompare(a10, b) {
-    if (typeof a10 !== "string" || typeof b !== "string") throw new StackAssertionError(`Expected two strings for stringCompare, found ${typeof a10} and ${typeof b}`, {
-      a: a10,
+  function stringCompare(a8, b) {
+    if (typeof a8 !== "string" || typeof b !== "string") throw new StackAssertionError(`Expected two strings for stringCompare, found ${typeof a8} and ${typeof b}`, {
+      a: a8,
       b
     });
-    const cmp = (a11, b2) => a11 < b2 ? -1 : a11 > b2 ? 1 : 0;
-    return cmp(a10.toUpperCase(), b.toUpperCase()) || cmp(b, a10);
+    const cmp = (a9, b2) => a9 < b2 ? -1 : a9 > b2 ? 1 : 0;
+    return cmp(a8.toUpperCase(), b.toUpperCase()) || cmp(b, a8);
   }
   function getWhitespacePrefix(s4) {
     return s4.substring(0, s4.length - s4.trimStart().length);
@@ -922,7 +887,7 @@ ${currentIndent}`);
     function isRecordLike(value2) {
       return recordLikes.some((x) => value2 instanceof x);
     }
-    if (isRecordLike(value)) return [...value.entries()].sort(([a10], [b]) => stringCompare(`${a10}`, `${b}`));
+    if (isRecordLike(value)) return [...value.entries()].sort(([a8], [b]) => stringCompare(`${a8}`, `${b}`));
     return getNicifiableKeys(value).map((k) => [k, value[k]]);
   }
   function getNicifiedObjectExtraLines(value) {
@@ -1269,17 +1234,17 @@ This is likely an error in Stack. Please make sure you are running the newest ve
   StatusError.prototype.name = "StatusError";
 
   // ../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
-  function r5(e16) {
+  function r4(e15) {
     var t, f, n3 = "";
-    if ("string" == typeof e16 || "number" == typeof e16) n3 += e16;
-    else if ("object" == typeof e16) if (Array.isArray(e16)) {
-      var o8 = e16.length;
-      for (t = 0; t < o8; t++) e16[t] && (f = r5(e16[t])) && (n3 && (n3 += " "), n3 += f);
-    } else for (f in e16) e16[f] && (n3 && (n3 += " "), n3 += f);
+    if ("string" == typeof e15 || "number" == typeof e15) n3 += e15;
+    else if ("object" == typeof e15) if (Array.isArray(e15)) {
+      var o7 = e15.length;
+      for (t = 0; t < o7; t++) e15[t] && (f = r4(e15[t])) && (n3 && (n3 += " "), n3 += f);
+    } else for (f in e15) e15[f] && (n3 && (n3 += " "), n3 += f);
     return n3;
   }
   function clsx() {
-    for (var e16, t, f = 0, n3 = "", o8 = arguments.length; f < o8; f++) (e16 = arguments[f]) && (t = r5(e16)) && (n3 && (n3 += " "), n3 += t);
+    for (var e15, t, f = 0, n3 = "", o7 = arguments.length; f < o7; f++) (e15 = arguments[f]) && (t = r4(e15)) && (n3 && (n3 += " "), n3 += t);
     return n3;
   }
 
@@ -3839,7 +3804,7 @@ This is likely an error in Stack. Please make sure you are running the newest ve
   }
   var RetryError = class extends AggregateError {
     constructor(errors) {
-      const strings = errors.map((e16) => nicify(e16));
+      const strings = errors.map((e15) => nicify(e15));
       const isAllSame = strings.length > 1 && strings.every((s4) => s4 === strings[0]);
       super(errors, deindent`
       Error after ${errors.length} attempts.
@@ -3960,8 +3925,8 @@ This is likely an error in Stack. Please make sure you are running the newest ve
     deindent`
       This endpoint has multiple overloads, but they all failed to process the request.
 
-        ${overloadErrors.map((e16, i) => deindent`
-          Overload ${i + 1}: ${JSON.stringify(e16, void 0, 2)}
+        ${overloadErrors.map((e15, i) => deindent`
+          Overload ${i + 1}: ${JSON.stringify(e15, void 0, 2)}
         `).join("\n\n")}
     `,
     { overload_errors: overloadErrors }
@@ -4621,7 +4586,7 @@ This is likely an error in Stack. Please make sure you are running the newest ve
   function createUrlIfValid(...args) {
     try {
       return new URL(...args);
-    } catch (e16) {
+    } catch (e15) {
       return null;
     }
   }
@@ -6322,7 +6287,7 @@ attempted value: ${formattedValue}
   function sortFields(fields, excludedEdges = []) {
     let edges = [];
     let nodes = /* @__PURE__ */ new Set();
-    let excludes = new Set(excludedEdges.map(([a10, b]) => `${a10}-${b}`));
+    let excludes = new Set(excludedEdges.map(([a8, b]) => `${a8}-${b}`));
     function addNode(depPath, key) {
       let node = (0, import_property_expr.split)(depPath)[0];
       nodes.add(node);
@@ -6348,8 +6313,8 @@ attempted value: ${formattedValue}
     return idx;
   }
   function sortByKeyOrder(keys) {
-    return (a10, b) => {
-      return findIndex(keys, a10) - findIndex(keys, b);
+    return (a8, b) => {
+      return findIndex(keys, a8) - findIndex(keys, b);
     };
   }
   var parseJson = (value, _, schema) => {
@@ -6583,7 +6548,7 @@ attempted value: ${formattedValue}
       for (const key of keys) {
         if (this.fields[key]) picked[key] = this.fields[key];
       }
-      return this.setFields(picked, this._excludedEdges.filter(([a10, b]) => keys.includes(a10) && keys.includes(b)));
+      return this.setFields(picked, this._excludedEdges.filter(([a8, b]) => keys.includes(a8) && keys.includes(b)));
     }
     omit(keys) {
       const remaining = [];
@@ -6843,7 +6808,7 @@ attempted value: ${formattedValue}
       });
     }
     compact(rejector) {
-      let reject = !rejector ? (v) => !!v : (v, i, a10) => !rejector(v, i, a10);
+      let reject = !rejector ? (v) => !!v : (v, i, a8) => !rejector(v, i, a8);
       return this.transform((values) => values != null ? values.filter(reject) : values);
     }
     describe(options) {
@@ -7047,9 +7012,9 @@ attempted value: ${formattedValue}
     else try {
       reach(this, path);
       return true;
-    } catch (e16) {
-      if (e16 instanceof Error && e16.message.includes("The schema does not contain the path")) return false;
-      throw e16;
+    } catch (e15) {
+      if (e15 instanceof Error && e15.message.includes("The schema does not contain the path")) return false;
+      throw e15;
     }
   });
   addMethod(Schema, "getNested", function(path) {
@@ -7169,15 +7134,15 @@ attempted value: ${formattedValue}
       for (const schema of args) try {
         await yupValidate(schema, value, context.options);
         return true;
-      } catch (e16) {
-        errors.push(e16);
+      } catch (e15) {
+        errors.push(e15);
       }
       return context.createError({
         message: deindent`
         ${context.path} is not matched by any of the provided schemas:
-          ${errors.map((e16, i) => deindent`
+          ${errors.map((e15, i) => deindent`
             Schema ${i}:
-              ${e16.errors.join("\n")}
+              ${e15.errors.join("\n")}
           `).join("\n")}`,
         path: context.path
       });
@@ -7202,10 +7167,10 @@ attempted value: ${formattedValue}
               path: path ? `${path}.${key}` : key
             }
           });
-        } catch (e16) {
+        } catch (e15) {
           return createError({
             path: path ? `${path}.${key}` : key,
-            message: e16.message
+            message: e15.message
           });
         }
       }
@@ -7239,7 +7204,7 @@ attempted value: ${formattedValue}
         if (url.username.includes(PLACEHOLDER) || url.password.includes(PLACEHOLDER) || url.pathname.includes(PLACEHOLDER) || url.search.includes(PLACEHOLDER) || url.hash.includes(PLACEHOLDER)) return false;
         if (url.protocol !== "http:" && url.protocol !== "https:") return false;
         return isValidHostnameWithWildcards(url.hostname.split(PLACEHOLDER).join("*"));
-      } catch (e16) {
+      } catch (e15) {
         return false;
       }
     }
@@ -7253,7 +7218,7 @@ attempted value: ${formattedValue}
         const normalized = value.replace(/\*/g, "wildcard-placeholder");
         const url = new URL(normalized);
         return url.protocol !== "" && url.hostname !== "" && url.pathname === "/" && url.search === "" && url.hash === "";
-      } catch (e16) {
+      } catch (e15) {
         return false;
       }
     }
@@ -7904,15 +7869,15 @@ attempted value: ${formattedValue}
       function fulfilled(value) {
         try {
           step(generator.next(value));
-        } catch (e16) {
-          reject(e16);
+        } catch (e15) {
+          reject(e15);
         }
       }
       function rejected2(value) {
         try {
           step(generator["throw"](value));
-        } catch (e16) {
-          reject(e16);
+        } catch (e15) {
+          reject(e15);
         }
       }
       function step(result) {
@@ -8029,13 +7994,13 @@ attempted value: ${formattedValue}
       return (this._queue.length === 0 || this._queue[0].priority < priority) && weight <= this._value;
     }
   };
-  function insertSorted(a10, v) {
-    const i = findIndexFromEnd(a10, (other) => v.priority <= other.priority);
-    a10.splice(i + 1, 0, v);
+  function insertSorted(a8, v) {
+    const i = findIndexFromEnd(a8, (other) => v.priority <= other.priority);
+    a8.splice(i + 1, 0, v);
   }
-  function findIndexFromEnd(a10, predicate) {
-    for (let i = a10.length - 1; i >= 0; i--) {
-      if (predicate(a10[i])) {
+  function findIndexFromEnd(a8, predicate) {
+    for (let i = a8.length - 1; i >= 0; i--) {
+      if (predicate(a8[i])) {
         return i;
       }
     }
@@ -8184,12 +8149,12 @@ attempted value: ${formattedValue}
   var IterableWeakMap = (_a2 = class {
     constructor(entries) {
       this[_Symbol$toStringTag3] = "IterableWeakMap";
-      const mappedEntries = entries?.map((e16) => [e16[0], {
-        value: e16[1],
-        keyRef: new WeakRefIfAvailable(e16[0])
+      const mappedEntries = entries?.map((e15) => [e15[0], {
+        value: e15[1],
+        keyRef: new WeakRefIfAvailable(e15[0])
       }]);
       this._weakMap = new WeakMap(mappedEntries ?? []);
-      this._keyRefs = new Set(mappedEntries?.map((e16) => e16[1].keyRef) ?? []);
+      this._keyRefs = new Set(mappedEntries?.map((e15) => e15[1].keyRef) ?? []);
     }
     get(key) {
       return this._weakMap.get(key)?.value;
@@ -8229,8 +8194,8 @@ attempted value: ${formattedValue}
     constructor(entries) {
       this[_Symbol$toStringTag22] = "MaybeWeakMap";
       const entriesArray = [...entries ?? []];
-      this._primitiveMap = new Map(entriesArray.filter((e16) => !this._isAllowedInWeakMap(e16[0])));
-      this._weakMap = new IterableWeakMap(entriesArray.filter((e16) => this._isAllowedInWeakMap(e16[0])));
+      this._primitiveMap = new Map(entriesArray.filter((e15) => !this._isAllowedInWeakMap(e15[0])));
+      this._weakMap = new IterableWeakMap(entriesArray.filter((e15) => this._isAllowedInWeakMap(e15[0])));
     }
     _isAllowedInWeakMap(key) {
       return typeof key === "object" && key !== null || typeof key === "symbol" && Symbol.keyFor(key) === void 0;
@@ -8525,7 +8490,7 @@ ${error}`);
   });
   SlotClone.displayName = "SlotClone";
   var Slottable = ({ children }) => {
-    return /* @__PURE__ */ jsx(Fragment9, { children });
+    return /* @__PURE__ */ jsx(Fragment8, { children });
   };
   function isSlottable(child) {
     return React4.isValidElement(child) && child.type === Slottable;
@@ -8577,9 +8542,9 @@ ${error}`);
         setLoadingCount((c3) => c3 + 1);
         try {
           return await callback(...args);
-        } catch (e16) {
-          setError(e16);
-          throw e16;
+        } catch (e15) {
+          setError(e15);
+          throw e15;
         } finally {
           setLoadingCount((c3) => c3 - 1);
         }
@@ -9729,7 +9694,7 @@ ${error}`);
               }
             };
           }
-          let resetPlacement = (_overflowsData$filter = overflowsData.filter((d) => d.overflows[0] <= 0).sort((a10, b) => a10.overflows[1] - b.overflows[1])[0]) == null ? void 0 : _overflowsData$filter.placement;
+          let resetPlacement = (_overflowsData$filter = overflowsData.filter((d) => d.overflows[0] <= 0).sort((a8, b) => a8.overflows[1] - b.overflows[1])[0]) == null ? void 0 : _overflowsData$filter.placement;
           if (!resetPlacement) {
             switch (fallbackStrategy) {
               case "bestFit": {
@@ -9742,7 +9707,7 @@ ${error}`);
                     currentSideAxis === "y";
                   }
                   return true;
-                }).map((d) => [d.placement, d.overflows.filter((overflow2) => overflow2 > 0).reduce((acc, overflow2) => acc + overflow2, 0)]).sort((a10, b) => a10[1] - b[1])[0]) == null ? void 0 : _overflowsData$filter2[0];
+                }).map((d) => [d.placement, d.overflows.filter((overflow2) => overflow2 > 0).reduce((acc, overflow2) => acc + overflow2, 0)]).sort((a8, b) => a8[1] - b[1])[0]) == null ? void 0 : _overflowsData$filter2[0];
                 if (placement2) {
                   resetPlacement = placement2;
                 }
@@ -10166,7 +10131,7 @@ ${error}`);
     return [":popover-open", ":modal"].some((selector) => {
       try {
         return element.matches(selector);
-      } catch (e16) {
+      } catch (e15) {
         return false;
       }
     });
@@ -10744,7 +10709,7 @@ ${error}`);
           // Handle <iframe>s
           root: root.ownerDocument
         });
-      } catch (e16) {
+      } catch (e15) {
         io = new IntersectionObserver(handleObserve, options);
       }
       io.observe(element);
@@ -10848,31 +10813,31 @@ ${error}`);
   var import_react8 = __toESM(require_react(), 1);
   var ReactDOM2 = __toESM(require_react_dom(), 1);
   var index = typeof document !== "undefined" ? import_react8.useLayoutEffect : import_react8.useEffect;
-  function deepEqual(a10, b) {
-    if (a10 === b) {
+  function deepEqual(a8, b) {
+    if (a8 === b) {
       return true;
     }
-    if (typeof a10 !== typeof b) {
+    if (typeof a8 !== typeof b) {
       return false;
     }
-    if (typeof a10 === "function" && a10.toString() === b.toString()) {
+    if (typeof a8 === "function" && a8.toString() === b.toString()) {
       return true;
     }
     let length;
     let i;
     let keys;
-    if (a10 && b && typeof a10 === "object") {
-      if (Array.isArray(a10)) {
-        length = a10.length;
+    if (a8 && b && typeof a8 === "object") {
+      if (Array.isArray(a8)) {
+        length = a8.length;
         if (length !== b.length) return false;
         for (i = length; i-- !== 0; ) {
-          if (!deepEqual(a10[i], b[i])) {
+          if (!deepEqual(a8[i], b[i])) {
             return false;
           }
         }
         return true;
       }
-      keys = Object.keys(a10);
+      keys = Object.keys(a8);
       length = keys.length;
       if (length !== Object.keys(b).length) {
         return false;
@@ -10884,16 +10849,16 @@ ${error}`);
       }
       for (i = length; i-- !== 0; ) {
         const key = keys[i];
-        if (key === "_owner" && a10.$$typeof) {
+        if (key === "_owner" && a8.$$typeof) {
           continue;
         }
-        if (!deepEqual(a10[key], b[key])) {
+        if (!deepEqual(a8[key], b[key])) {
           return false;
         }
       }
       return true;
     }
-    return a10 !== a10 && b !== b;
+    return a8 !== a8 && b !== b;
   }
   function getDPR(element) {
     if (typeof window === "undefined") {
@@ -11607,8 +11572,8 @@ ${error}`);
             if (!alreadyHidden) {
               node.setAttribute(controlAttribute, "true");
             }
-          } catch (e16) {
-            console.error("aria-hidden: cannot operate on ", node, e16);
+          } catch (e15) {
+            console.error("aria-hidden: cannot operate on ", node, e15);
           }
         }
       });
@@ -11667,13 +11632,13 @@ ${error}`);
     };
     return __assign.apply(this, arguments);
   };
-  function __rest(s4, e16) {
+  function __rest(s4, e15) {
     var t = {};
-    for (var p2 in s4) if (Object.prototype.hasOwnProperty.call(s4, p2) && e16.indexOf(p2) < 0)
+    for (var p2 in s4) if (Object.prototype.hasOwnProperty.call(s4, p2) && e15.indexOf(p2) < 0)
       t[p2] = s4[p2];
     if (s4 != null && typeof Object.getOwnPropertySymbols === "function")
       for (var i = 0, p2 = Object.getOwnPropertySymbols(s4); i < p2.length; i++) {
-        if (e16.indexOf(p2[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s4, p2[i]))
+        if (e15.indexOf(p2[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s4, p2[i]))
           t[p2[i]] = s4[p2[i]];
       }
     return t;
@@ -11771,8 +11736,8 @@ ${error}`);
   }
 
   // ../../node_modules/.pnpm/use-sidecar@1.1.3_@types+react@18.3.12_react@19.2.1/node_modules/use-sidecar/dist/es2015/medium.js
-  function ItoI(a10) {
-    return a10;
+  function ItoI(a8) {
+    return a8;
   }
   function innerCreateMedium(defaults, middleware) {
     if (middleware === void 0) {
@@ -12281,8 +12246,8 @@ ${error}`);
         return;
       }
       var delta = "deltaY" in event ? getDeltaXY(event) : getTouchXY(event);
-      var sourceEvent = shouldPreventQueue.current.filter(function(e16) {
-        return e16.name === event.type && (e16.target === event.target || event.target === e16.shadowParent) && deltaCompare(e16.delta, delta);
+      var sourceEvent = shouldPreventQueue.current.filter(function(e15) {
+        return e15.name === event.type && (e15.target === event.target || event.target === e15.shadowParent) && deltaCompare(e15.delta, delta);
       })[0];
       if (sourceEvent && sourceEvent.should) {
         if (event.cancelable) {
@@ -12306,8 +12271,8 @@ ${error}`);
       var event = { name, delta, target, should, shadowParent: getOutermostShadowParent(target) };
       shouldPreventQueue.current.push(event);
       setTimeout(function() {
-        shouldPreventQueue.current = shouldPreventQueue.current.filter(function(e16) {
-          return e16 !== event;
+        shouldPreventQueue.current = shouldPreventQueue.current.filter(function(e15) {
+          return e15 !== event;
         });
       }, 1);
     }, []);
@@ -12701,7 +12666,7 @@ ${error}`);
       const contentRef = React32.useRef(null);
       const composedRefs = useComposedRefs(forwardedRef, contentRef);
       useFocusGuards();
-      return /* @__PURE__ */ jsxs(Fragment9, { children: [
+      return /* @__PURE__ */ jsxs(Fragment8, { children: [
         /* @__PURE__ */ jsx(
           FocusScope,
           {
@@ -12725,7 +12690,7 @@ ${error}`);
             )
           }
         ),
-        /* @__PURE__ */ jsxs(Fragment9, { children: [
+        /* @__PURE__ */ jsxs(Fragment8, { children: [
           /* @__PURE__ */ jsx(TitleWarning, { titleId: context.titleId }),
           /* @__PURE__ */ jsx(DescriptionWarning, { contentRef, descriptionId: context.descriptionId })
         ] })
@@ -13274,11 +13239,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
   function getHull(points) {
     const newPoints = points.slice();
-    newPoints.sort((a10, b) => {
-      if (a10.x < b.x) return -1;
-      else if (a10.x > b.x) return 1;
-      else if (a10.y < b.y) return -1;
-      else if (a10.y > b.y) return 1;
+    newPoints.sort((a8, b) => {
+      if (a8.x < b.x) return -1;
+      else if (a8.x > b.x) return 1;
+      else if (a8.y < b.y) return -1;
+      else if (a8.y > b.y) return 1;
       else return 0;
     });
     return getHullPresorted(newPoints);
@@ -13290,8 +13255,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const p2 = points[i];
       while (upperHull.length >= 2) {
         const q = upperHull[upperHull.length - 1];
-        const r6 = upperHull[upperHull.length - 2];
-        if ((q.x - r6.x) * (p2.y - r6.y) >= (q.y - r6.y) * (p2.x - r6.x)) upperHull.pop();
+        const r5 = upperHull[upperHull.length - 2];
+        if ((q.x - r5.x) * (p2.y - r5.y) >= (q.y - r5.y) * (p2.x - r5.x)) upperHull.pop();
         else break;
       }
       upperHull.push(p2);
@@ -13302,8 +13267,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const p2 = points[i];
       while (lowerHull.length >= 2) {
         const q = lowerHull[lowerHull.length - 1];
-        const r6 = lowerHull[lowerHull.length - 2];
-        if ((q.x - r6.x) * (p2.y - r6.y) >= (q.y - r6.y) * (p2.x - r6.x)) lowerHull.pop();
+        const r5 = lowerHull[lowerHull.length - 2];
+        if ((q.x - r5.x) * (p2.y - r5.y) >= (q.y - r5.y) * (p2.x - r5.x)) lowerHull.pop();
         else break;
       }
       lowerHull.push(p2);
@@ -13641,7 +13606,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   // @__NO_SIDE_EFFECTS__
   function createSlottable(ownerName) {
     const Slottable22 = ({ children }) => {
-      return /* @__PURE__ */ jsx(Fragment9, { children });
+      return /* @__PURE__ */ jsx(Fragment8, { children });
     };
     Slottable22.displayName = `${ownerName}.Slottable`;
     Slottable22.__radixId = SLOTTABLE_IDENTIFIER;
@@ -13774,8 +13739,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   DesignOriginalButton.displayName = "DesignButton";
   var DesignButton = forwardRefIfNeeded(
     ({ onClick, loading: loadingProp, loadingStyle = "spinner", children, size: size5, ...props }, ref) => {
-      const [handleClick, isLoading] = useAsyncCallback(async (e16) => {
-        await onClick?.(e16);
+      const [handleClick, isLoading] = useAsyncCallback(async (e15) => {
+        await onClick?.(e15);
       }, [onClick]);
       const loading = loadingProp || isLoading;
       return /* @__PURE__ */ jsxs(
@@ -13784,7 +13749,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
           ...props,
           ref,
           disabled: props.disabled || loading,
-          onClick: (e16) => runAsynchronouslyWithAlert(handleClick(e16)),
+          onClick: (e15) => runAsynchronouslyWithAlert(handleClick(e15)),
           size: size5,
           className: cn("relative", loading && "[&>:not(.stack-button-do-not-hide-when-siblings-are)]:invisible", props.className),
           children: [
@@ -13836,7 +13801,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     contentClassName,
     ...props
   }) {
-    const glassmorphic = useGlassmorphicDefault(glassmorphicProp);
+    const glassmorphic = glassmorphicProp ?? true;
     const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
     const hasContent = import_react17.default.Children.count(children) > 0;
     const variant = title != null ? subtitle != null ? "header" : "compact" : "bodyOnly";
@@ -13846,15 +13811,15 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
         className: cn(
           "group relative rounded-2xl overflow-hidden",
           glassmorphic && [
-            "bg-white/90 dark:bg-background/60 backdrop-blur-xl border-0 transition-all duration-150 hover:transition-none",
+            "bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl border-0 transition-all duration-150 hover:transition-none",
             "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-            "shadow-sm hover:shadow-md"
+            "shadow-none"
           ],
           className
         ),
         ...props,
         children: [
-          glassmorphic && /* @__PURE__ */ jsxs(Fragment9, { children: [
+          glassmorphic && /* @__PURE__ */ jsxs(Fragment8, { children: [
             /* @__PURE__ */ jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl" }),
             /* @__PURE__ */ jsx(
               "div",
@@ -13912,9 +13877,9 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       "div",
       {
         className: cn(
-          "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
+          "group/tint relative rounded-2xl bg-white/90 dark:bg-background/60 dark:backdrop-blur-xl transition-all duration-150 hover:transition-none",
           "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-          "shadow-sm hover:shadow-md overflow-hidden",
+          "shadow-none overflow-hidden",
           className
         ),
         ...props,
@@ -14043,7 +14008,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
     if (!mounted) {
       return null;
     }
-    const blastElements = /* @__PURE__ */ jsxs(Fragment9, { children: [
+    const blastElements = /* @__PURE__ */ jsxs(Fragment8, { children: [
       blasts.map((blast) => /* @__PURE__ */ jsxs(
         "div",
         {
@@ -14397,7 +14362,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   // @__NO_SIDE_EFFECTS__
   function createSlottable2(ownerName) {
     const Slottable22 = ({ children }) => {
-      return /* @__PURE__ */ jsx(Fragment9, { children });
+      return /* @__PURE__ */ jsx(Fragment8, { children });
     };
     Slottable22.displayName = `${ownerName}.Slottable`;
     Slottable22.__radixId = SLOTTABLE_IDENTIFIER2;
@@ -14737,31 +14702,31 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   var import_react21 = __toESM(require_react(), 1);
   var ReactDOM5 = __toESM(require_react_dom(), 1);
   var index2 = typeof document !== "undefined" ? import_react21.useLayoutEffect : import_react21.useEffect;
-  function deepEqual2(a10, b) {
-    if (a10 === b) {
+  function deepEqual2(a8, b) {
+    if (a8 === b) {
       return true;
     }
-    if (typeof a10 !== typeof b) {
+    if (typeof a8 !== typeof b) {
       return false;
     }
-    if (typeof a10 === "function" && a10.toString() === b.toString()) {
+    if (typeof a8 === "function" && a8.toString() === b.toString()) {
       return true;
     }
     let length;
     let i;
     let keys;
-    if (a10 && b && typeof a10 === "object") {
-      if (Array.isArray(a10)) {
-        length = a10.length;
+    if (a8 && b && typeof a8 === "object") {
+      if (Array.isArray(a8)) {
+        length = a8.length;
         if (length !== b.length) return false;
         for (i = length; i-- !== 0; ) {
-          if (!deepEqual2(a10[i], b[i])) {
+          if (!deepEqual2(a8[i], b[i])) {
             return false;
           }
         }
         return true;
       }
-      keys = Object.keys(a10);
+      keys = Object.keys(a8);
       length = keys.length;
       if (length !== Object.keys(b).length) {
         return false;
@@ -14773,16 +14738,16 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       }
       for (i = length; i-- !== 0; ) {
         const key = keys[i];
-        if (key === "_owner" && a10.$$typeof) {
+        if (key === "_owner" && a8.$$typeof) {
           continue;
         }
-        if (!deepEqual2(a10[key], b[key])) {
+        if (!deepEqual2(a8[key], b[key])) {
           return false;
         }
       }
       return true;
     }
-    return a10 !== a10 && b !== b;
+    return a8 !== a8 && b !== b;
   }
   function getDPR2(element) {
     if (typeof window === "undefined") {
@@ -16009,11 +15974,11 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
   function getHull2(points) {
     const newPoints = points.slice();
-    newPoints.sort((a10, b) => {
-      if (a10.x < b.x) return -1;
-      else if (a10.x > b.x) return 1;
-      else if (a10.y < b.y) return -1;
-      else if (a10.y > b.y) return 1;
+    newPoints.sort((a8, b) => {
+      if (a8.x < b.x) return -1;
+      else if (a8.x > b.x) return 1;
+      else if (a8.y < b.y) return -1;
+      else if (a8.y > b.y) return 1;
       else return 0;
     });
     return getHullPresorted2(newPoints);
@@ -16025,8 +15990,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const p2 = points[i];
       while (upperHull.length >= 2) {
         const q = upperHull[upperHull.length - 1];
-        const r6 = upperHull[upperHull.length - 2];
-        if ((q.x - r6.x) * (p2.y - r6.y) >= (q.y - r6.y) * (p2.x - r6.x)) upperHull.pop();
+        const r5 = upperHull[upperHull.length - 2];
+        if ((q.x - r5.x) * (p2.y - r5.y) >= (q.y - r5.y) * (p2.x - r5.x)) upperHull.pop();
         else break;
       }
       upperHull.push(p2);
@@ -16037,8 +16002,8 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
       const p2 = points[i];
       while (lowerHull.length >= 2) {
         const q = lowerHull[lowerHull.length - 1];
-        const r6 = lowerHull[lowerHull.length - 2];
-        if ((q.x - r6.x) * (p2.y - r6.y) >= (q.y - r6.y) * (p2.x - r6.x)) lowerHull.pop();
+        const r5 = lowerHull[lowerHull.length - 2];
+        if ((q.x - r5.x) * (p2.y - r5.y) >= (q.y - r5.y) * (p2.x - r5.x)) lowerHull.pop();
         else break;
       }
       lowerHull.push(p2);
@@ -16188,7 +16153,7 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
   }
 
   // src/components/table.tsx
-  var DesignTable = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", { className: "relative w-full overflow-auto rounded-2xl ring-1 ring-black/[0.06] dark:ring-white/[0.06]", children: /* @__PURE__ */ jsx(
+  var DesignTable = forwardRefIfNeeded(({ className, ...props }, ref) => /* @__PURE__ */ jsx("div", { className: "relative w-full overflow-auto", children: /* @__PURE__ */ jsx(
     "table",
     {
       ref,
@@ -16595,7 +16560,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                     "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                     indicator === "dot" && "items-center"
                   ),
-                  children: formatter && item.value !== void 0 && item.name ? formatter(item.value, item.name, item, index3, item.payload) : /* @__PURE__ */ jsxs(Fragment9, { children: [
+                  children: formatter && item.value !== void 0 && item.name ? formatter(item.value, item.name, item, index3, item.payload) : /* @__PURE__ */ jsxs(Fragment8, { children: [
                     itemConfig?.icon ? /* @__PURE__ */ jsx(itemConfig.icon, {}) : !hideIndicator && /* @__PURE__ */ jsx(
                       "div",
                       {
@@ -16708,7 +16673,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     ...props
   }) {
     const hoverTintClass = hoverTintClasses2.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
-    return /* @__PURE__ */ jsxs(Fragment9, { children: [
+    return /* @__PURE__ */ jsxs(Fragment8, { children: [
       /* @__PURE__ */ jsx("style", { dangerouslySetInnerHTML: { __html: `
         .design-chart-card-tooltip-escape .recharts-tooltip-wrapper {
           z-index: 9999 !important;
@@ -17055,7 +17020,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         y: Math.floor(index3 / Math.floor(width / elemWidth)) * elemHeight,
         width: elemWidth,
         height: elemHeight
-      })).sort((a10, b) => Math.sign(a10.x - b.x) + 0.1 * Math.sign(a10.y - b.y));
+      })).sort((a8, b) => Math.sign(a8.x - b.x) + 0.1 * Math.sign(a8.y - b.y));
       const allVarHeightsWidgets = widgetInstances.filter((instance) => instance.widget.isHeightVariable);
       const varHeights = new Map(allVarHeightsWidgets.length === 0 ? [] : [[0, allVarHeightsWidgets]]);
       return new _WidgetInstanceGrid(
@@ -17257,7 +17222,7 @@ ${colorConfig.map(([key, itemConfig]) => {
     }
     canSwap(x1, y1, x2, y2) {
       const elementsToSwap = [this.getElementAt(x1, y1), this.getElementAt(x2, y2)];
-      return (elementsToSwap[0].instance !== null ? this._canFitSize(elementsToSwap[0], elementsToSwap[1].x, elementsToSwap[1].y, elementsToSwap[1].width, elementsToSwap[1].height) : true) && (elementsToSwap[1].instance !== null ? this._canFitSize(elementsToSwap[1], elementsToSwap[0].x, elementsToSwap[0].y, elementsToSwap[0].width, elementsToSwap[0].height) : true);
+      return elementsToSwap[0].instance !== null || elementsToSwap[1].instance !== null;
     }
     withSwappedElements(x1, y1, x2, y2) {
       if (!this.canSwap(x1, y1, x2, y2)) {
@@ -17270,6 +17235,26 @@ ${colorConfig.map(([key, itemConfig]) => {
         }
         if (element.x === elementsToSwap[1].x && element.y === elementsToSwap[1].y) {
           return { ...element, instance: elementsToSwap[0].instance };
+        }
+        return element;
+      });
+      return new _WidgetInstanceGrid(newElements.filter((element) => element.instance !== null), this._varHeights, this.width, this._fixedHeight);
+    }
+    /**
+     * Swaps two elements fully: each element takes the other's position AND size.
+     */
+    withFullySwappedElements(x1, y1, x2, y2) {
+      if (!this.canSwap(x1, y1, x2, y2)) {
+        throw new StackAssertionError(`Cannot fully swap elements at ${x1}, ${y1} and ${x2}, ${y2}`);
+      }
+      const el0 = this.getElementAt(x1, y1);
+      const el1 = this.getElementAt(x2, y2);
+      const newElements = [...this.elements()].map((element) => {
+        if (element.x === el0.x && element.y === el0.y) {
+          return { instance: el0.instance, x: el1.x, y: el1.y, width: el1.width, height: el1.height };
+        }
+        if (element.x === el1.x && element.y === el1.y) {
+          return { instance: el1.instance, x: el0.x, y: el0.y, width: el0.width, height: el0.height };
         }
         return element;
       });
@@ -17291,9 +17276,9 @@ ${colorConfig.map(([key, itemConfig]) => {
       if (newX === element.x && newY === element.y) return this;
       const movedElement = { ...element, x: newX, y: newY };
       const otherElements = this._nonEmptyElements.filter(
-        (e16) => e16.instance?.id !== element.instance?.id
+        (e15) => e15.instance?.id !== element.instance?.id
       );
-      const sorted = [...otherElements].sort((a10, b) => a10.y - b.y || a10.x - b.x);
+      const sorted = [...otherElements].sort((a8, b) => a8.y - b.y || a8.x - b.x);
       const placed = [movedElement];
       for (const el of sorted) {
         const overlaps = placed.some(
@@ -17416,40 +17401,74 @@ ${colorConfig.map(([key, itemConfig]) => {
     withResizedElementAndPush(x, y, requestedDelta) {
       const element = this.getElementAt(x, y);
       if (!element.instance) {
-        return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 } };
+        return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 }, blocked: { top: false, left: false, right: false, bottom: false } };
       }
-      const vertDelta = { top: requestedDelta.top, left: 0, bottom: requestedDelta.bottom, right: 0 };
+      const vertDelta = { top: requestedDelta.top, left: 0, bottom: 0, right: 0 };
       const clampedVert = this.clampElementResize(x, y, vertDelta);
+      const blockedTop = requestedDelta.top !== 0 && clampedVert.top !== requestedDelta.top;
       const array2 = this.as2dArray();
+      let achievedBottom = requestedDelta.bottom;
+      let blockedBottom = false;
+      if (achievedBottom > 0) {
+        for (let row = element.y + element.height; row < element.y + element.height + achievedBottom && row < this.height; row++) {
+          for (let col = element.x; col < element.x + element.width; col++) {
+            const occ = array2[col]?.[row];
+            if (occ && occ !== element.instance) {
+              achievedBottom = Math.min(achievedBottom, row - (element.y + element.height));
+              blockedBottom = true;
+            }
+          }
+        }
+        if (achievedBottom === 0 && requestedDelta.bottom > 0) {
+          const nextRow = element.y + element.height;
+          if (nextRow < this.height) {
+            for (let col = element.x; col < element.x + element.width; col++) {
+              const occ = array2[col]?.[nextRow];
+              if (occ && occ !== element.instance) {
+                blockedBottom = true;
+                break;
+              }
+            }
+          }
+        }
+        achievedBottom = Math.max(0, achievedBottom);
+      } else if (achievedBottom < 0) {
+        const minSize = this.elementMinSize(element);
+        const newHeight = element.height + achievedBottom;
+        if (newHeight < minSize.height) {
+          achievedBottom = minSize.height - element.height;
+        }
+      }
       let achievedRight = requestedDelta.right;
       let achievedLeft = requestedDelta.left;
-      const neighborChanges = /* @__PURE__ */ new Map();
+      let blockedRight = false;
+      let blockedLeft = false;
       if (achievedRight > 0) {
         achievedRight = Math.min(achievedRight, this.width - element.x - element.width);
         if (achievedRight > 0) {
-          const blockerIds = /* @__PURE__ */ new Set();
           for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
             for (let col = element.x + element.width; col < element.x + element.width + achievedRight && col < this.width; col++) {
               const occ = array2[col][row];
-              if (occ && occ !== element.instance) blockerIds.add(occ.id);
+              if (occ && occ !== element.instance) {
+                const blocker = this.getElementByInstanceId(occ.id);
+                if (blocker?.instance) {
+                  achievedRight = Math.min(achievedRight, Math.max(0, blocker.x - element.x - element.width));
+                  blockedRight = true;
+                }
+              }
             }
           }
-          for (const id of blockerIds) {
-            const blocker = this.getElementByInstanceId(id);
-            if (!blocker?.instance) continue;
-            const blockerMinWidth = this.elementMinSize(blocker).width;
-            const maxShrink = blocker.width - blockerMinWidth;
-            const maxGrowth = blocker.x - element.x - element.width + maxShrink;
-            achievedRight = Math.min(achievedRight, Math.max(0, maxGrowth));
-          }
-          if (achievedRight > 0) {
-            const newRightEdge = element.x + element.width + achievedRight;
-            for (const id of blockerIds) {
-              const blocker = this.getElementByInstanceId(id);
-              if (!blocker?.instance) continue;
-              const overlap = newRightEdge - blocker.x;
-              if (overlap > 0) {
-                neighborChanges.set(id, { x: blocker.x + overlap, width: blocker.width - overlap });
+        }
+        if (achievedRight === 0 && requestedDelta.right > 0) {
+          const nextCol = element.x + element.width;
+          if (nextCol >= this.width) {
+            blockedRight = true;
+          } else {
+            for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
+              const occ = array2[nextCol][row];
+              if (occ && occ !== element.instance) {
+                blockedRight = true;
+                break;
               }
             }
           }
@@ -17459,29 +17478,29 @@ ${colorConfig.map(([key, itemConfig]) => {
       if (achievedLeft < 0) {
         achievedLeft = Math.max(achievedLeft, -element.x);
         if (achievedLeft < 0) {
-          const blockerIds = /* @__PURE__ */ new Set();
           for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
             for (let col = element.x + achievedLeft; col < element.x && col >= 0; col++) {
               const occ = array2[col][row];
-              if (occ && occ !== element.instance) blockerIds.add(occ.id);
+              if (occ && occ !== element.instance) {
+                const blocker = this.getElementByInstanceId(occ.id);
+                if (blocker?.instance) {
+                  achievedLeft = Math.max(achievedLeft, Math.min(0, -(element.x - (blocker.x + blocker.width))));
+                  blockedLeft = true;
+                }
+              }
             }
           }
-          for (const id of blockerIds) {
-            const blocker = this.getElementByInstanceId(id);
-            if (!blocker?.instance) continue;
-            const blockerMinWidth = this.elementMinSize(blocker).width;
-            const maxShrink = blocker.width - blockerMinWidth;
-            const maxGrowth = blocker.x + blocker.width - element.x + maxShrink;
-            achievedLeft = Math.max(achievedLeft, Math.min(0, -maxGrowth));
-          }
-          if (achievedLeft < 0) {
-            const newLeftEdge = element.x + achievedLeft;
-            for (const id of blockerIds) {
-              const blocker = this.getElementByInstanceId(id);
-              if (!blocker?.instance) continue;
-              const overlap = blocker.x + blocker.width - newLeftEdge;
-              if (overlap > 0) {
-                neighborChanges.set(id, { x: blocker.x, width: blocker.width - overlap });
+        }
+        if (achievedLeft === 0 && requestedDelta.left < 0) {
+          const prevCol = element.x - 1;
+          if (prevCol < 0) {
+            blockedLeft = true;
+          } else {
+            for (let row = element.y; row < element.y + element.height && row < this.height; row++) {
+              const occ = array2[prevCol][row];
+              if (occ && occ !== element.instance) {
+                blockedLeft = true;
+                break;
               }
             }
           }
@@ -17491,16 +17510,16 @@ ${colorConfig.map(([key, itemConfig]) => {
       const elementMinWidth = this.elementMinSize(element).width;
       const newWidth = element.width - achievedLeft + achievedRight;
       if (newWidth < elementMinWidth) {
-        return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 } };
+        return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 }, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       }
       const achievedDelta = {
         top: clampedVert.top,
         left: achievedLeft,
-        bottom: clampedVert.bottom,
+        bottom: achievedBottom,
         right: achievedRight
       };
       if (achievedDelta.top === 0 && achievedDelta.left === 0 && achievedDelta.bottom === 0 && achievedDelta.right === 0) {
-        return { grid: this, achievedDelta };
+        return { grid: this, achievedDelta, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       }
       const newElements = this._nonEmptyElements.map((el) => {
         if (el.instance?.id === element.instance?.id) {
@@ -17512,24 +17531,27 @@ ${colorConfig.map(([key, itemConfig]) => {
             height: el.height - achievedDelta.top + achievedDelta.bottom
           };
         }
-        const change = neighborChanges.get(el.instance?.id ?? "");
-        if (change) {
-          return { ...el, x: change.x, width: change.width };
-        }
         return el;
       });
       try {
-        const newGrid = new _WidgetInstanceGrid(newElements, this._varHeights, this.width, this._fixedHeight);
-        return { grid: newGrid, achievedDelta };
+        let newFixedHeight = this._fixedHeight;
+        if (newFixedHeight !== "auto") {
+          const resizedElement = newElements.find((el) => el.instance?.id === element.instance?.id);
+          if (resizedElement && resizedElement.y + resizedElement.height > newFixedHeight) {
+            newFixedHeight = resizedElement.y + resizedElement.height;
+          }
+        }
+        const newGrid = new _WidgetInstanceGrid(newElements, this._varHeights, this.width, newFixedHeight);
+        return { grid: newGrid, achievedDelta, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       } catch {
         const clamped = this.clampElementResize(x, y, requestedDelta);
         if (clamped.top === 0 && clamped.left === 0 && clamped.bottom === 0 && clamped.right === 0) {
-          return { grid: this, achievedDelta: clamped };
+          return { grid: this, achievedDelta: clamped, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
         }
         try {
-          return { grid: this.withResizedElement(x, y, clamped), achievedDelta: clamped };
+          return { grid: this.withResizedElement(x, y, clamped), achievedDelta: clamped, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
         } catch {
-          return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 } };
+          return { grid: this, achievedDelta: { top: 0, left: 0, bottom: 0, right: 0 }, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
         }
       }
     }
@@ -18185,7 +18207,7 @@ ${colorConfig.map(([key, itemConfig]) => {
   function sortCollisionsAsc(_ref2, _ref22) {
     let {
       data: {
-        value: a10
+        value: a8
       }
     } = _ref2;
     let {
@@ -18193,12 +18215,12 @@ ${colorConfig.map(([key, itemConfig]) => {
         value: b
       }
     } = _ref22;
-    return a10 - b;
+    return a8 - b;
   }
   function sortCollisionsDesc(_ref3, _ref4) {
     let {
       data: {
-        value: a10
+        value: a8
       }
     } = _ref3;
     let {
@@ -18206,7 +18228,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         value: b
       }
     } = _ref4;
-    return b - a10;
+    return b - a8;
   }
   function cornersOfRectangle(_ref5) {
     let {
@@ -21187,8 +21209,13 @@ ${colorConfig.map(([key, itemConfig]) => {
     const [overVarHeightSlot, setOverVarHeightSlot] = (0, import_react32.useState)(null);
     const [activeWidgetId, setActiveInstanceId] = (0, import_react32.useState)(null);
     const [hoverElementSwap, setHoverElementSwap] = (0, import_react32.useState)(null);
-    const [activeElementInitialRect, setActiveElementInitialRect] = (0, import_react32.useState)(null);
+    const [hoverSwapBlocked, setHoverSwapBlocked] = (0, import_react32.useState)(null);
+    const [justSwappedActiveId, setJustSwappedActiveId] = (0, import_react32.useState)(null);
+    const [justSwappedPartnerId, setJustSwappedPartnerId] = (0, import_react32.useState)(null);
+    const [resizeBlocked, setResizeBlocked] = (0, import_react32.useState)({ top: false, left: false, right: false, bottom: false });
+    const [resizingInstanceId, setResizingInstanceId] = (0, import_react32.useState)(null);
     const gridContainerRef = (0, import_react32.useRef)(null);
+    const dropRectsRef = (0, import_react32.useRef)(/* @__PURE__ */ new Map());
     const context = import_react32.default.useContext(SwappableWidgetInstanceGridContext);
     const [windowLayoutEditing, setWindowLayoutEditing] = (0, import_react32.useState)(false);
     import_react32.default.useEffect(() => {
@@ -21197,7 +21224,22 @@ ${colorConfig.map(([key, itemConfig]) => {
       handler();
       return () => window.removeEventListener("layout-edit-change", handler);
     }, []);
+    const [windowSelectingForEdit, setWindowSelectingForEdit] = (0, import_react32.useState)(false);
+    import_react32.default.useEffect(() => {
+      const handler = () => setWindowSelectingForEdit(!!window.__selectingForEdit);
+      window.addEventListener("selecting-for-edit-change", handler);
+      handler();
+      return () => window.removeEventListener("selecting-for-edit-change", handler);
+    }, []);
     const effectiveIsEditing = context.isEditing || windowLayoutEditing;
+    (0, import_react32.useEffect)(() => {
+      const handler = () => {
+        setResizeBlocked({ top: false, left: false, right: false, bottom: false });
+        setResizingInstanceId(null);
+      };
+      window.addEventListener("mouseup", handler);
+      return () => window.removeEventListener("mouseup", handler);
+    }, []);
     const [isSingleColumnModeIfAuto, setMobileModeIfAuto] = (0, import_react32.useState)(false);
     module_default3(gridContainerRef, (entry) => {
       const shouldBeMobileMode = entry.contentRect.width < mobileModeCutoffWidth;
@@ -21298,6 +21340,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                             widgetInstance: instance,
                             activeWidgetId,
                             isEditing: effectiveIsEditing,
+                            selectingForEdit: windowSelectingForEdit,
                             isSingleColumnMode,
                             onDeleteWidget: async () => {
                               props.gridRef.set(props.gridRef.current.withRemovedVarHeight(instance.id));
@@ -21345,28 +21388,22 @@ ${colorConfig.map(([key, itemConfig]) => {
                 onDragStart: (event) => {
                   setActiveInstanceId(event.active.id);
                   setDraggingType("element");
-                  setActiveElementInitialRect(event.activatorEvent.target.getBoundingClientRect());
                 },
                 onDragAbort: () => {
                   setHoverElementSwap(null);
+                  setHoverSwapBlocked(null);
                   setActiveInstanceId(null);
                   setOverElementPosition(null);
                   setDraggingType(null);
-                  setActiveElementInitialRect(null);
                 },
                 onDragCancel: () => {
                   setHoverElementSwap(null);
+                  setHoverSwapBlocked(null);
                   setActiveInstanceId(null);
                   setOverElementPosition(null);
                   setDraggingType(null);
-                  setActiveElementInitialRect(null);
                 },
                 onDragEnd: (event) => {
-                  setHoverElementSwap(null);
-                  setActiveInstanceId(null);
-                  setOverElementPosition(null);
-                  setDraggingType(null);
-                  setActiveElementInitialRect(null);
                   const widgetId = event.active.id;
                   const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
                   if (!widgetElement) {
@@ -21374,15 +21411,33 @@ ${colorConfig.map(([key, itemConfig]) => {
                   }
                   if (event.over) {
                     const overCoordinates = JSON.parse(`${event.over.id}`);
+                    const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
                     const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]];
                     if (props.gridRef.current.canSwap(...swapArgs)) {
+                      const activeId = event.active.id;
+                      const partnerId = overElement.instance?.id ?? null;
+                      setJustSwappedActiveId(activeId);
+                      setJustSwappedPartnerId(partnerId);
+                      setTimeout(() => {
+                        setJustSwappedActiveId(null);
+                        setJustSwappedPartnerId(null);
+                      }, 300);
                       const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
+                      props.gridRef.set(newGrid);
+                      dispatchGridStateChange(newGrid);
+                    } else if (overElement.instance === null) {
+                      const newGrid = props.gridRef.current.withMovedElementTo(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
                       props.gridRef.set(newGrid);
                       dispatchGridStateChange(newGrid);
                     } else {
                       alert("Cannot swap elements; make sure the new locations are big enough for the widgets");
                     }
                   }
+                  setHoverElementSwap(null);
+                  setHoverSwapBlocked(null);
+                  setActiveInstanceId(null);
+                  setOverElementPosition(null);
+                  setDraggingType(null);
                 },
                 onDragOver: (event) => {
                   const widgetId = event.active.id;
@@ -21394,28 +21449,35 @@ ${colorConfig.map(([key, itemConfig]) => {
                     if (!event.active.rect.current.initial) {
                     } else {
                       const overCoordinates = JSON.parse(`${event.over.id}`);
+                      const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
+                      const overId = overElement.instance?.id;
                       if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
                         setOverElementPosition(overCoordinates);
+                        if (overId && overId !== widgetId) {
+                          setHoverElementSwap(overId);
+                          setHoverSwapBlocked(null);
+                        } else {
+                          setHoverElementSwap(null);
+                          setHoverSwapBlocked(null);
+                        }
+                      } else if (overElement.instance === null) {
+                        setOverElementPosition(overCoordinates);
+                        setHoverElementSwap(null);
+                        setHoverSwapBlocked(null);
                       } else {
                         setOverElementPosition(null);
-                      }
-                      const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
-                      if (overId && overId !== widgetId && activeElementInitialRect) {
-                        setHoverElementSwap([overId, [
-                          event.over.rect.left - activeElementInitialRect.left,
-                          event.over.rect.top - activeElementInitialRect.top,
-                          activeElementInitialRect.width,
-                          activeElementInitialRect.height,
-                          event.over.rect.width,
-                          event.over.rect.height
-                        ]]);
-                      } else {
                         setHoverElementSwap(null);
+                        if (overId && overId !== widgetId) {
+                          setHoverSwapBlocked(overId);
+                        } else {
+                          setHoverSwapBlocked(null);
+                        }
                       }
                     }
                   } else {
                     setOverElementPosition(null);
                     setHoverElementSwap(null);
+                    setHoverSwapBlocked(null);
                   }
                 },
                 collisionDetection: pointerWithin,
@@ -21428,6 +21490,8 @@ ${colorConfig.map(([key, itemConfig]) => {
                     ElementSlot,
                     {
                       isSingleColumnMode,
+                      instanceId: instance?.id,
+                      dropRectsRef,
                       isEmpty: !instance,
                       isEditing: effectiveIsEditing,
                       isOver: overElementPosition?.[0] === x && overElementPosition[1] === y,
@@ -21439,6 +21503,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                       gapPixels: effectiveGapPixels,
                       minHeight: instance && resizedElements.has(instance.id) ? height * effectiveUnitHeight : !instance && activeWidgetId !== null && y + height >= props.gridRef.current.height ? WidgetInstanceGrid.DEFAULT_ELEMENT_HEIGHT * effectiveUnitHeight : void 0,
                       isActive: instance?.id === activeWidgetId,
+                      skipFlip: instance?.id === justSwappedActiveId || instance?.id === justSwappedPartnerId,
                       onAddWidget: props.isStatic ? void 0 : () => {
                         window.dispatchEvent(new CustomEvent("widget-add-request", {
                           detail: { x, y, width, height }
@@ -21446,6 +21511,8 @@ ${colorConfig.map(([key, itemConfig]) => {
                       },
                       children: instance && (() => {
                         const elementFitContent = props.fitContent && !resizedElements.has(instance.id);
+                        const isHoverSwapped = hoverElementSwap === instance.id;
+                        const isSwapBlocked = hoverSwapBlocked === instance.id;
                         return /* @__PURE__ */ jsx(
                           Draggable,
                           {
@@ -21455,24 +21522,9 @@ ${colorConfig.map(([key, itemConfig]) => {
                             widgetInstance: instance,
                             activeWidgetId,
                             isEditing: effectiveIsEditing,
-                            style: (() => {
-                              if (!hoverElementSwap) return {};
-                              const [dx, dy, activeW, activeH, overW, overH] = hoverElementSwap[1];
-                              const isHoverSwap = hoverElementSwap[0] === instance.id;
-                              if (isHoverSwap) {
-                                return {
-                                  transform: `translate(${-dx}px, ${-dy}px) scale(${activeW / overW}, ${activeH / overH})`
-                                };
-                              }
-                              if (activeWidgetId === instance.id) {
-                                return {
-                                  alignSelf: "flex-start",
-                                  minWidth: `${Math.min(activeW, overW)}px`,
-                                  minHeight: `${Math.min(activeH, overH)}px`
-                                };
-                              }
-                              return {};
-                            })(),
+                            selectingForEdit: windowSelectingForEdit,
+                            resizeBlocked: resizingInstanceId === instance.id ? resizeBlocked : void 0,
+                            style: isSwapBlocked ? { opacity: 0.5, transform: "scale(0.95)", outline: "2px solid #ef4444", outlineOffset: "-2px", borderRadius: "8px" } : isHoverSwapped ? { opacity: 0.5, transform: "scale(0.95)" } : {},
                             isSingleColumnMode,
                             onDeleteWidget: async () => {
                               props.gridRef.set(props.gridRef.current.withRemovedElement(x, y));
@@ -21490,6 +21542,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                               (grid, state) => grid.withUpdatedElementState(x, y, state)
                             ),
                             onResize: (edges, visualHeight) => {
+                              setResizingInstanceId(instance.id);
                               let currentGrid = props.gridRef.current;
                               if (elementFitContent) {
                                 setResizedElements((prev) => new Set(prev).add(instance.id));
@@ -21507,9 +21560,10 @@ ${colorConfig.map(([key, itemConfig]) => {
                                   }
                                 }
                               }
-                              const { grid: newGrid, achievedDelta } = currentGrid.withResizedElementAndPush(x, y, edges);
+                              const { grid: newGrid, achievedDelta, blocked } = currentGrid.withResizedElementAndPush(x, y, edges);
                               props.gridRef.set(newGrid);
                               dispatchGridStateChange(newGrid);
+                              setResizeBlocked(blocked);
                               return achievedDelta;
                             },
                             x,
@@ -21609,9 +21663,14 @@ ${colorConfig.map(([key, itemConfig]) => {
         flipAnimRef.current = null;
       }
       const newRect = el.getBoundingClientRect();
-      if (!isActiveRef.current && prevRectRef.current) {
-        const dx = prevRectRef.current.left - newRect.left;
-        const dy = prevRectRef.current.top - newRect.top;
+      const dropRect = props.instanceId ? props.dropRectsRef?.current?.get(props.instanceId) : null;
+      if (dropRect && props.instanceId) {
+        props.dropRectsRef?.current?.delete(props.instanceId);
+      }
+      const fromRect = dropRect ?? prevRectRef.current;
+      if (fromRect && !props.isEmpty && !props.skipFlip) {
+        const dx = fromRect.left - newRect.left;
+        const dy = fromRect.top - newRect.top;
         if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
           flipAnimRef.current = el.animate(
             [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
@@ -21620,7 +21679,7 @@ ${colorConfig.map(([key, itemConfig]) => {
         }
       }
       prevRectRef.current = newRect;
-    }, [props.x, props.y, props.width, props.height]);
+    }, [props.x, props.y, props.width, props.height, props.instanceId, props.dropRectsRef, props.skipFlip]);
     const gap = props.gapPixels ?? gridGapPixels;
     const meetsMinSize = props.width >= WidgetInstanceGrid.MIN_ELEMENT_WIDTH && props.height >= WidgetInstanceGrid.MIN_ELEMENT_HEIGHT;
     const shouldRenderEmptyIndicator = props.isEmpty && props.isEditing && meetsMinSize;
@@ -21638,7 +21697,7 @@ ${colorConfig.map(([key, itemConfig]) => {
           gridColumn: `${props.x + 1} / span ${props.width}`,
           gridRow: `${2 * props.y + 2} / span ${2 * props.height - 1}`,
           margin: gap / 2,
-          minHeight: props.isSingleColumnMode ? mobileModeWidgetHeight : props.minHeight,
+          minHeight: props.minHeight,
           ...props.style
         },
         children: [
@@ -21652,7 +21711,7 @@ ${colorConfig.map(([key, itemConfig]) => {
           }
         }
     ` }),
-          shouldRenderEmptyIndicator && /* @__PURE__ */ jsx(Fragment9, { children: /* @__PURE__ */ jsx(
+          shouldRenderEmptyIndicator && /* @__PURE__ */ jsx(Fragment8, { children: /* @__PURE__ */ jsx(
             "div",
             {
               style: {
@@ -21718,8 +21777,13 @@ ${colorConfig.map(([key, itemConfig]) => {
     const [unsavedSettings, setUnsavedSettings] = (0, import_react34.useState)(props.settings);
     const [settingsClosingAnimationCounter, setSettingsClosingAnimationCounter] = (0, import_react34.useState)(0);
     const [isDeleting, setIsDeleting] = (0, import_react34.useState)(false);
+    const [confirmingDelete, setConfirmingDelete] = (0, import_react34.useState)(false);
     const [isEditingSubGrid, setIsEditingSubGrid] = (0, import_react34.useState)(false);
+    const [isHovered, setIsHovered] = (0, import_react34.useState)(false);
     const isEditing = props.isEditing && !isEditingSubGrid;
+    const selectingForEdit = !!props.selectingForEdit;
+    const showOverlay = isEditing;
+    const showHoverOverlay = selectingForEdit && isHovered;
     const [settingsOpenAnimationDetails, setSettingsOpenAnimationDetails] = (0, import_react34.useState)(null);
     const setIsSettingsOpen = (0, import_react34.useCallback)((value) => {
       if (value) {
@@ -21804,8 +21868,19 @@ ${colorConfig.map(([key, itemConfig]) => {
         cancelled = true;
       };
     }, [settingsOpenAnimationDetails]);
+    const triggerEdit = (0, import_react34.useCallback)(() => {
+      const settings = getSettings(props.widgetInstance);
+      const widgetLabel = settings && typeof settings === "object" && "text" in settings && typeof settings.text === "string" ? settings.text : props.widgetInstance.widget.id;
+      if (props.widgetInstance.widget.SettingsComponent) {
+        setIsSettingsOpen(true);
+      } else {
+        window.dispatchEvent(new CustomEvent("widget-edit-request", {
+          detail: { widgetId: props.widgetInstance.widget.id, widgetLabel }
+        }));
+      }
+    }, [props.widgetInstance, setIsSettingsOpen]);
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    return /* @__PURE__ */ jsxs(Fragment9, { children: [
+    return /* @__PURE__ */ jsxs(Fragment8, { children: [
       /* @__PURE__ */ jsx("style", { children: `
         /* note: Chrome and Safari have different behaviors when it comes to whether backface-visibility and/or transform-style is inherited by children, so we ensure it works with the style tag above + transformStyle */
         .stack-recursive-backface-hidden {
@@ -21821,6 +21896,10 @@ ${colorConfig.map(([key, itemConfig]) => {
         {
           ref: setNodeRef,
           className: "stack-recursive-backface-hidden",
+          onMouseEnter: () => {
+            if (selectingForEdit) setIsHovered(true);
+          },
+          onMouseLeave: () => setIsHovered(false),
           style: {
             position: "relative",
             minWidth: "100%",
@@ -21831,8 +21910,7 @@ ${colorConfig.map(([key, itemConfig]) => {
             transition: [
               "border-width 0.1s ease",
               "box-shadow 0.1s ease",
-              props.activeWidgetId !== props.widgetInstance.id && props.activeWidgetId !== null ? "transform 0.2s ease, min-width 0.2s ease, min-height 0.2s ease" : void 0,
-              props.activeWidgetId === props.widgetInstance.id ? "min-width 0.2s ease, min-height 0.2s ease" : void 0
+              props.activeWidgetId !== props.widgetInstance.id && props.activeWidgetId !== null ? "transform 0.2s ease, opacity 0.2s ease" : void 0
             ].filter(Boolean).join(", "),
             ...filterUndefined(props.style ?? {}),
             transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style?.transform ?? ""}`
@@ -21880,7 +21958,8 @@ ${colorConfig.map(([key, itemConfig]) => {
                     style: {
                       flexGrow: 1,
                       display: "flex",
-                      flexDirection: "row"
+                      flexDirection: "row",
+                      alignItems: "flex-start"
                     },
                     children: /* @__PURE__ */ jsx("div", { style: { flexGrow: 1, minWidth: 0, width: "100%", height: "100%" }, children: /* @__PURE__ */ jsx(SwappableWidgetInstanceGridContext.Provider, { value: { isEditing: isEditingSubGrid }, children: /* @__PURE__ */ jsx(GridErrorBoundary, { fallback: (error, reset) => /* @__PURE__ */ jsxs("div", { className: "text-red-500 text-sm p-2 bg-red-500/10 font-mono whitespace-pre-wrap", children: [
                       "A runtime error occured while rendering this widget.",
@@ -21913,7 +21992,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                     style: {
                       position: "absolute",
                       inset: 0,
-                      opacity: isEditing ? 1 : 0,
+                      opacity: showOverlay || showHoverOverlay ? 1 : 0,
                       transition: "opacity 0.2s ease",
                       backgroundImage: !isDeleting ? "radial-gradient(circle at top, #ffffff08, #ffffff02), radial-gradient(circle at top right,  #ffffff04, transparent, transparent)" : void 0,
                       borderRadius: "inherit",
@@ -21925,93 +22004,109 @@ ${colorConfig.map(([key, itemConfig]) => {
                   "div",
                   {
                     ...{ inert: "" },
-                    className: cn(isEditing && !isDragging && "bg-white/50 dark:bg-black/50"),
                     style: {
                       position: "absolute",
                       inset: 0,
-                      backdropFilter: isEditing && !isDragging ? "drop-shadow(0 0 2px) blur(4px)" : "none",
+                      backdropFilter: (showOverlay || showHoverOverlay) && !isDragging ? "blur(3px)" : "none",
                       borderRadius: "inherit",
                       pointerEvents: "none"
                     }
                   }
                 ),
-                !isDragging && /* @__PURE__ */ jsxs(
+                selectingForEdit && /* @__PURE__ */ jsx(
+                  "div",
+                  {
+                    onClick: () => triggerEdit(),
+                    style: {
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 2,
+                      cursor: "pointer"
+                    }
+                  }
+                ),
+                !isDragging && isEditing && !selectingForEdit && /* @__PURE__ */ jsxs(
                   "div",
                   {
                     style: {
-                      opacity: isEditing ? 1 : 0,
-                      pointerEvents: isEditing ? "auto" : "none",
+                      opacity: 1,
+                      pointerEvents: "auto",
                       transition: "opacity 0.2s ease"
                     },
-                    ...isEditing ? {} : { inert: "" },
                     children: [
-                      /* @__PURE__ */ jsxs(
+                      /* @__PURE__ */ jsx(
                         "div",
                         {
-                          className: "",
+                          ...listeners,
+                          ...attributes,
                           style: {
+                            cursor: "move",
                             position: "absolute",
                             inset: 0,
+                            touchAction: "none",
+                            zIndex: 1
+                          }
+                        }
+                      ),
+                      props.widgetInstance.widget.hasSubGrid && /* @__PURE__ */ jsx("div", { style: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2, pointerEvents: "none" }, children: /* @__PURE__ */ jsx(
+                        BigIconButton2,
+                        {
+                          icon: /* @__PURE__ */ jsx(s2, { size: isCompact ? 16 : 24 }),
+                          loadingStyle: "disabled",
+                          style: { pointerEvents: "auto", ...isCompact ? { height: 48, width: 48 } : {} },
+                          onClick: async () => {
+                            setIsEditingSubGrid(true);
+                          }
+                        }
+                      ) }),
+                      /* @__PURE__ */ jsx(
+                        "button",
+                        {
+                          onClick: (e15) => {
+                            e15.stopPropagation();
+                            if (!confirmingDelete) {
+                              setConfirmingDelete(true);
+                              return;
+                            }
+                            runAsynchronouslyWithAlert(async () => {
+                              setIsDeleting(true);
+                              setConfirmingDelete(false);
+                              try {
+                                await wait(300);
+                                await props.onDeleteWidget();
+                              } catch (err) {
+                                setIsDeleting(false);
+                                throw err;
+                              }
+                            });
+                          },
+                          onMouseLeave: () => setConfirmingDelete(false),
+                          style: {
+                            position: "absolute",
+                            top: 4,
+                            right: 4,
+                            zIndex: 101,
+                            width: confirmingDelete ? "auto" : 20,
+                            height: 20,
+                            padding: confirmingDelete ? "0 6px" : void 0,
+                            borderRadius: confirmingDelete ? "10px" : "50%",
                             display: "flex",
-                            flexDirection: "row",
                             alignItems: "center",
                             justifyContent: "center",
-                            gap: "16px",
-                            zIndex: 1
+                            gap: 4,
+                            background: confirmingDelete ? "#ef4444" : "rgba(0,0,0,0.5)",
+                            color: "white",
+                            border: "none",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            whiteSpace: "nowrap"
                           },
-                          children: [
-                            props.widgetInstance.widget.hasSubGrid && /* @__PURE__ */ jsx(
-                              BigIconButton2,
-                              {
-                                icon: /* @__PURE__ */ jsx(s2, { size: 24 }),
-                                loadingStyle: "disabled",
-                                onClick: async () => {
-                                  setIsEditingSubGrid(true);
-                                }
-                              }
-                            ),
-                            /* @__PURE__ */ jsx(
-                              "div",
-                              {
-                                ...listeners,
-                                ...attributes,
-                                style: {
-                                  cursor: isEditing ? "move" : void 0,
-                                  position: "absolute",
-                                  inset: 0,
-                                  touchAction: "none"
-                                }
-                              }
-                            ),
-                            /* @__PURE__ */ jsx(BigIconButton2, { icon: /* @__PURE__ */ jsx(a9, { size: 24 }), onClick: async () => {
-                              if (props.widgetInstance.widget.SettingsComponent) {
-                                setIsSettingsOpen(true);
-                              } else {
-                                const settings = getSettings(props.widgetInstance);
-                                const widgetLabel = settings && typeof settings === "object" && "text" in settings && typeof settings.text === "string" ? settings.text : props.widgetInstance.widget.id;
-                                window.dispatchEvent(new CustomEvent("widget-edit-request", {
-                                  detail: { widgetId: props.widgetInstance.widget.id, widgetLabel }
-                                }));
-                              }
-                            } }),
-                            /* @__PURE__ */ jsx(
-                              BigIconButton2,
-                              {
-                                icon: /* @__PURE__ */ jsx(n2, { size: 24 }),
-                                loadingStyle: "disabled",
-                                onClick: async () => {
-                                  setIsDeleting(true);
-                                  try {
-                                    await wait(300);
-                                    await props.onDeleteWidget();
-                                  } catch (e16) {
-                                    setIsDeleting(false);
-                                    throw e16;
-                                  }
-                                }
-                              }
-                            )
-                          ]
+                          children: confirmingDelete ? /* @__PURE__ */ jsxs(Fragment8, { children: [
+                            /* @__PURE__ */ jsx(n2, { size: 10, weight: "bold" }),
+                            "Delete?"
+                          ] }) : /* @__PURE__ */ jsx(n2, { size: 12, weight: "bold" })
                         }
                       ),
                       !props.isStatic && [-1, 0, 1].flatMap((x) => [-1, 0, 1].map((y) => (x !== 0 || y !== 0) && /* @__PURE__ */ jsx(
@@ -22024,7 +22119,71 @@ ${colorConfig.map(([key, itemConfig]) => {
                           calculateUnitSize: props.calculateUnitSize
                         },
                         `${x},${y}`
-                      )))
+                      ))),
+                      props.resizeBlocked?.top && /* @__PURE__ */ jsx(
+                        "div",
+                        {
+                          style: {
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: 3,
+                            backgroundColor: "#ef4444",
+                            borderRadius: "8px 8px 0 0",
+                            pointerEvents: "none",
+                            zIndex: 101
+                          }
+                        }
+                      ),
+                      props.resizeBlocked?.right && /* @__PURE__ */ jsx(
+                        "div",
+                        {
+                          style: {
+                            position: "absolute",
+                            top: 0,
+                            right: 0,
+                            bottom: 0,
+                            width: 3,
+                            backgroundColor: "#ef4444",
+                            borderRadius: "0 8px 8px 0",
+                            pointerEvents: "none",
+                            zIndex: 101
+                          }
+                        }
+                      ),
+                      props.resizeBlocked?.left && /* @__PURE__ */ jsx(
+                        "div",
+                        {
+                          style: {
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            bottom: 0,
+                            width: 3,
+                            backgroundColor: "#ef4444",
+                            borderRadius: "8px 0 0 8px",
+                            pointerEvents: "none",
+                            zIndex: 101
+                          }
+                        }
+                      ),
+                      props.resizeBlocked?.bottom && /* @__PURE__ */ jsx(
+                        "div",
+                        {
+                          style: {
+                            position: "absolute",
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            height: 3,
+                            backgroundColor: "#ef4444",
+                            borderRadius: "0 0 8px 8px",
+                            pointerEvents: "none",
+                            zIndex: 101
+                          }
+                        }
+                      )
                     ]
                   }
                 )
@@ -22058,7 +22217,7 @@ ${colorConfig.map(([key, itemConfig]) => {
             animation: "none"
           },
           ...isSettingsOpen ? {} : { inert: "" },
-          onInteractOutside: (e16) => e16.preventDefault(),
+          onInteractOutside: (e15) => e15.preventDefault(),
           className: "[&>button]:hidden stack-recursive-backface-hidden",
           children: [
             /* @__PURE__ */ jsx(DialogHeader, { children: /* @__PURE__ */ jsx(DialogTitle2, { className: "flex items-center", children: "Edit Widget" }) }),
@@ -22097,15 +22256,33 @@ ${colorConfig.map(([key, itemConfig]) => {
     id: "section-heading",
     MainComponent: ({ settings }) => {
       const Tag = settings.level ?? "h2";
-      return /* @__PURE__ */ jsx("div", { style: { width: "100%", height: "100%", display: "flex", alignItems: "flex-end", padding: "4px 8px 8px" }, children: /* @__PURE__ */ jsx(Tag, { style: {
-        margin: 0,
-        fontSize: "11px",
-        fontWeight: 600,
-        textTransform: "uppercase",
-        letterSpacing: "0.08em",
-        color: "hsl(var(--muted-foreground, 240 3.8% 46.1%))",
-        width: "100%"
-      }, children: settings.text }) });
+      return /* @__PURE__ */ jsxs(Fragment8, { children: [
+        /* @__PURE__ */ jsx("style", { children: `
+          .section-heading-card {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px 12px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.06);
+          }
+          .dark .section-heading-card {
+            background: transparent;
+            box-shadow: none;
+          }
+        ` }),
+        /* @__PURE__ */ jsx("div", { className: "section-heading-card", children: /* @__PURE__ */ jsx(Tag, { style: {
+          margin: 0,
+          fontSize: "11px",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "hsl(var(--muted-foreground, 240 3.8% 46.1%))",
+          width: "100%"
+        }, children: settings.text }) })
+      ] });
     },
     SettingsComponent: ({ settings, setSettings }) => {
       return /* @__PURE__ */ jsx("div", { style: { padding: "4px 0" }, children: /* @__PURE__ */ jsx(
@@ -22113,8 +22290,8 @@ ${colorConfig.map(([key, itemConfig]) => {
         {
           type: "text",
           value: settings.text,
-          onChange: (e16) => {
-            const newText = e16.target.value;
+          onChange: (e15) => {
+            const newText = e15.target.value;
             setSettings((s4) => ({ ...s4, text: newText }));
           },
           style: {

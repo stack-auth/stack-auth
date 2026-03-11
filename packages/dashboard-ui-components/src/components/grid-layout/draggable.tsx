@@ -7,7 +7,7 @@ import { runAsynchronously, runAsynchronouslyWithAlert, wait } from '@stackframe
 import { RefState } from '@stackframe/stack-shared/dist/utils/react';
 import { cn, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, SimpleTooltip } from '@stackframe/stack-ui';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GridFour, PencilSimple, Trash } from '@phosphor-icons/react';
+import { GridFour, X } from '@phosphor-icons/react';
 import { DesignButton } from '../button';
 import type { DesignButtonProps } from '../button';
 import { WidgetInstance, getSettings } from './types';
@@ -61,6 +61,7 @@ export function Draggable(props: {
   height: number,
   activeWidgetId: string | null,
   isEditing: boolean,
+  selectingForEdit?: boolean,
   isSingleColumnMode: boolean,
   onDeleteWidget: () => Promise<void>,
   settings: any,
@@ -68,6 +69,7 @@ export function Draggable(props: {
   stateRef: RefState<any>,
   onResize: (edges: { top: number, left: number, bottom: number, right: number }, visualHeight?: number) => { top: number, left: number, bottom: number, right: number },
   calculateUnitSize: () => { width: number, height: number },
+  resizeBlocked?: { top: boolean, left: boolean, right: boolean, bottom: boolean },
   isStatic: boolean,
   fitContent?: boolean,
 }) {
@@ -75,8 +77,13 @@ export function Draggable(props: {
   const [unsavedSettings, setUnsavedSettings] = useState(props.settings);
   const [settingsClosingAnimationCounter, setSettingsClosingAnimationCounter] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isEditingSubGrid, setIsEditingSubGrid] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const isEditing = props.isEditing && !isEditingSubGrid;
+  const selectingForEdit = !!props.selectingForEdit;
+  const showOverlay = isEditing;
+  const showHoverOverlay = selectingForEdit && isHovered;
   const [settingsOpenAnimationDetails, setSettingsOpenAnimationDetails] = useState<{
     translate: readonly [number, number],
     scale: readonly [number, number],
@@ -175,6 +182,20 @@ export function Draggable(props: {
     };
   }, [settingsOpenAnimationDetails]);
 
+  const triggerEdit = useCallback(() => {
+    const settings = getSettings(props.widgetInstance);
+    const widgetLabel = (settings && typeof settings === 'object' && 'text' in settings && typeof settings.text === 'string')
+      ? settings.text
+      : props.widgetInstance.widget.id;
+    if (props.widgetInstance.widget.SettingsComponent) {
+      setIsSettingsOpen(true);
+    } else {
+      window.dispatchEvent(new CustomEvent('widget-edit-request', {
+        detail: { widgetId: props.widgetInstance.widget.id, widgetLabel },
+      }));
+    }
+  }, [props.widgetInstance, setIsSettingsOpen]);
+
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 
@@ -193,6 +214,8 @@ export function Draggable(props: {
       <div
         ref={setNodeRef}
         className="stack-recursive-backface-hidden"
+        onMouseEnter={() => { if (selectingForEdit) setIsHovered(true); }}
+        onMouseLeave={() => setIsHovered(false)}
         style={{
           position: 'relative',
           minWidth: '100%',
@@ -204,8 +227,7 @@ export function Draggable(props: {
           transition: [
             'border-width 0.1s ease',
             'box-shadow 0.1s ease',
-            props.activeWidgetId !== props.widgetInstance.id && (props.activeWidgetId !== null) ? 'transform 0.2s ease, min-width 0.2s ease, min-height 0.2s ease' : undefined,
-            props.activeWidgetId === props.widgetInstance.id ? 'min-width 0.2s ease, min-height 0.2s ease' : undefined,
+            props.activeWidgetId !== props.widgetInstance.id && (props.activeWidgetId !== null) ? 'transform 0.2s ease, opacity 0.2s ease' : undefined,
           ].filter(Boolean).join(', '),
           ...filterUndefined(props.style ?? {}),
           transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) ${props.style?.transform ?? ''}`,
@@ -253,6 +275,7 @@ export function Draggable(props: {
               flexGrow: 1,
               display: "flex",
               flexDirection: "row",
+              alignItems: "flex-start",
             }}
           >
             <div style={{ flexGrow: 1, minWidth: 0, width: "100%", height: "100%" }}>
@@ -286,7 +309,7 @@ export function Draggable(props: {
             style={{
               position: 'absolute',
               inset: 0,
-              opacity: isEditing ? 1 : 0,
+              opacity: (showOverlay || showHoverOverlay) ? 1 : 0,
               transition: 'opacity 0.2s ease',
               backgroundImage: !isDeleting ? 'radial-gradient(circle at top, #ffffff08, #ffffff02), radial-gradient(circle at top right,  #ffffff04, transparent, transparent)' : undefined,
               borderRadius: 'inherit',
@@ -295,83 +318,104 @@ export function Draggable(props: {
           />
           <div
             {...{ inert: "" } as any}
-            className={cn(isEditing && !isDragging && "bg-white/50 dark:bg-black/50")}
             style={{
               position: 'absolute',
               inset: 0,
-              backdropFilter: isEditing && !isDragging ? 'drop-shadow(0 0 2px) blur(4px)' : 'none',
+              backdropFilter: (showOverlay || showHoverOverlay) && !isDragging ? 'blur(3px)' : 'none',
               borderRadius: 'inherit',
               pointerEvents: 'none',
             }}
           />
-          {!isDragging && (
+          {selectingForEdit && (
+            <div
+              onClick={() => triggerEdit()}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 2,
+                cursor: 'pointer',
+              }}
+            />
+          )}
+          {!isDragging && isEditing && !selectingForEdit && (
             <div
               style={{
-                opacity: isEditing ? 1 : 0,
-                pointerEvents: isEditing ? 'auto' : 'none',
+                opacity: 1,
+                pointerEvents: 'auto',
                 transition: 'opacity 0.2s ease',
               }}
-              {...(isEditing ? {} : { inert: "" }) as any}
             >
               <div
-                className=""
+                {...listeners}
+                {...attributes}
                 style={{
+                  cursor: 'move',
                   position: 'absolute',
                   inset: 0,
-
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '16px',
+                  touchAction: 'none',
                   zIndex: 1,
                 }}
-              >
-                {props.widgetInstance.widget.hasSubGrid && <BigIconButton
-                  icon={<GridFour size={24} />}
-                  loadingStyle="disabled"
-                  onClick={async () => {
-                    setIsEditingSubGrid(true);
-                  }}
-                />}
-                <div
-                  {...listeners}
-                  {...attributes}
-                  style={{
-                    cursor: isEditing ? 'move' : undefined,
-                    position: 'absolute',
-                    inset: 0,
-                    touchAction: 'none',
-                  }}
-                />
-                <BigIconButton icon={<PencilSimple size={24} />} onClick={async () => {
-                  if (props.widgetInstance.widget.SettingsComponent) {
-                    setIsSettingsOpen(true);
-                  } else {
-                    const settings = getSettings(props.widgetInstance);
-                    const widgetLabel = (settings && typeof settings === 'object' && 'text' in settings && typeof settings.text === 'string')
-                      ? settings.text
-                      : props.widgetInstance.widget.id;
-                    window.dispatchEvent(new CustomEvent('widget-edit-request', {
-                      detail: { widgetId: props.widgetInstance.widget.id, widgetLabel },
-                    }));
+              />
+              {props.widgetInstance.widget.hasSubGrid && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2, pointerEvents: 'none' }}>
+                  <BigIconButton
+                    icon={<GridFour size={isCompact ? 16 : 24} />}
+                    loadingStyle="disabled"
+                    style={{ pointerEvents: 'auto', ...(isCompact ? { height: 48, width: 48 } : {}) }}
+                    onClick={async () => {
+                      setIsEditingSubGrid(true);
+                    }}
+                  />
+                </div>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!confirmingDelete) {
+                    setConfirmingDelete(true);
+                    return;
                   }
-                }} />
-                <BigIconButton
-                  icon={<Trash size={24} />}
-                  loadingStyle="disabled"
-                  onClick={async () => {
+                  runAsynchronouslyWithAlert(async () => {
                     setIsDeleting(true);
+                    setConfirmingDelete(false);
                     try {
                       await wait(300);
                       await props.onDeleteWidget();
-                    } catch (e) {
+                    } catch (err) {
                       setIsDeleting(false);
-                      throw e;
+                      throw err;
                     }
-                  }}
-                />
-              </div>
+                  });
+                }}
+                onMouseLeave={() => setConfirmingDelete(false)}
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  zIndex: 101,
+                  width: confirmingDelete ? 'auto' : 20,
+                  height: 20,
+                  padding: confirmingDelete ? '0 6px' : undefined,
+                  borderRadius: confirmingDelete ? '10px' : '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  background: confirmingDelete ? '#ef4444' : 'rgba(0,0,0,0.5)',
+                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap' as const,
+                }}
+              >
+                {confirmingDelete ? <>
+                  <X size={10} weight="bold" />
+                  Delete?
+                </> : <X size={12} weight="bold" />}
+              </button>
               {!props.isStatic && [-1, 0, 1].flatMap(x => [-1, 0, 1].map(y => (x !== 0 || y !== 0) && (
                 <ResizeHandle
                   key={`${x},${y}`}
@@ -382,6 +426,66 @@ export function Draggable(props: {
                   calculateUnitSize={props.calculateUnitSize}
                 />
               )))}
+              {props.resizeBlocked?.top && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 3,
+                    backgroundColor: '#ef4444',
+                    borderRadius: '8px 8px 0 0',
+                    pointerEvents: 'none',
+                    zIndex: 101,
+                  }}
+                />
+              )}
+              {props.resizeBlocked?.right && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: 3,
+                    backgroundColor: '#ef4444',
+                    borderRadius: '0 8px 8px 0',
+                    pointerEvents: 'none',
+                    zIndex: 101,
+                  }}
+                />
+              )}
+              {props.resizeBlocked?.left && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    bottom: 0,
+                    width: 3,
+                    backgroundColor: '#ef4444',
+                    borderRadius: '8px 0 0 8px',
+                    pointerEvents: 'none',
+                    zIndex: 101,
+                  }}
+                />
+              )}
+              {props.resizeBlocked?.bottom && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 3,
+                    backgroundColor: '#ef4444',
+                    borderRadius: '0 0 8px 8px',
+                    pointerEvents: 'none',
+                    zIndex: 101,
+                  }}
+                />
+              )}
             </div>
           )}
         </div>

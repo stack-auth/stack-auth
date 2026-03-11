@@ -653,9 +653,10 @@ Example — a dashboard with free-form layout + draggable sections:
     const [error, setError] = React.useState(null);
     const [showControls] = React.useState(!!window.__showControls);
     const [chatOpen, setChatOpen] = React.useState(!!window.__chatOpen);
+    const [editPanelOpen, setEditPanelOpen] = React.useState(!!window.__editPanelOpen);
 
     React.useEffect(() => {
-      const handler = () => setChatOpen(!!window.__chatOpen);
+      const handler = () => { setChatOpen(!!window.__chatOpen); setEditPanelOpen(!!window.__editPanelOpen); };
       window.addEventListener('chat-state-change', handler);
       return () => window.removeEventListener('chat-state-change', handler);
     }, []);
@@ -669,10 +670,10 @@ Example — a dashboard with free-form layout + draggable sections:
     if (loading) return <div className="flex items-center justify-center min-h-[200px] text-muted-foreground">Loading...</div>;
     if (error) return <div className="p-6 text-red-500">{error}</div>;
 
-    return <DashboardContent users={users} showControls={showControls} chatOpen={chatOpen} />;
+    return <DashboardContent users={users} showControls={showControls} chatOpen={chatOpen} editPanelOpen={editPanelOpen} />;
   }
 
-  function DashboardContent({ users, showControls, chatOpen }) {
+  function DashboardContent({ users, showControls, chatOpen, editPanelOpen }) {
     const [isEditing, setIsEditing] = React.useState(false);
 
     // Listen for layout edit toggle from parent window
@@ -731,13 +732,15 @@ Example — a dashboard with free-form layout + draggable sections:
 
     return (
       <div className="p-6 space-y-8 max-w-7xl mx-auto">
-        {showControls && !chatOpen && (
+        {showControls && (
           <div className="flex items-center justify-between">
-            <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
-              ← Back
-            </DashboardUI.DesignButton>
+            {!chatOpen && (
+              <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+                ← Back
+              </DashboardUI.DesignButton>
+            )}
             <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => isEditing ? window.dashboardDoneEditing?.() : window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
-              {isEditing ? "Done" : "Edit ✎"}
+              {isEditing ? "Done" : editPanelOpen ? "Edit Layout ✎" : "Edit ✎"}
             </DashboardUI.DesignButton>
           </div>
         )}
@@ -792,7 +795,7 @@ IMPORTANT layout rules:
 - Widget positions are persisted automatically by the parent window — do NOT handle position persistence in your code
 - Always use the two-component pattern: Dashboard (fetches data) → DashboardContent (renders after data is ready)
 - Do NOT render your own "Edit Layout" button — edit mode is entered by the parent window via messages
-- The "Edit ✎" control button MUST change to "Done" when isEditing is true, and call window.dashboardDoneEditing?.() instead of window.dashboardEdit() — this lets the user exit layout editing by clicking the same button
+- The edit control button changes label based on state: "Edit ✎" when edit panel is closed, "Edit Layout ✎" when edit panel is open but not editing, "Done" when editing. It always calls isEditing ? window.dashboardDoneEditing?.() : window.dashboardEdit(). Use window.__editPanelOpen for the label.
 - Listen for layout edit changes: window.addEventListener('layout-edit-change', handler) and read window.__layoutEditing
 - Use isStatic={!isEditing} so drag only works when the parent activates edit mode
 - isSingleColumnMode="auto" auto-switches to single-column on narrow screens
@@ -872,7 +875,7 @@ CLICKABLE CARDS & NAVIGATION
 ────────────────────────────────────────
 BACK & EDIT CONTROLS (conditional)
 ────────────────────────────────────────
-The host sets window.__showControls (boolean) and window.__chatOpen (boolean) at runtime.
+The host sets window.__showControls (boolean), window.__chatOpen (boolean), and window.__editPanelOpen (boolean) at runtime.
 Only render Back/Edit buttons when __showControls is true (it is false in the cmd+K preview).
 Use DashboardUI.DesignButton with variant="ghost" and size="sm".
 
@@ -880,22 +883,25 @@ Implementation pattern:
 1. Create state variables:
    const [showControls] = React.useState(!!window.__showControls);
    const [chatOpen, setChatOpen] = React.useState(!!window.__chatOpen);
+   const [editPanelOpen, setEditPanelOpen] = React.useState(!!window.__editPanelOpen);
 
 2. Listen for chat state changes from the parent:
    React.useEffect(() => {
-     const handler = () => setChatOpen(!!window.__chatOpen);
+     const handler = () => { setChatOpen(!!window.__chatOpen); setEditPanelOpen(!!window.__editPanelOpen); };
      window.addEventListener('chat-state-change', handler);
      return () => window.removeEventListener('chat-state-change', handler);
    }, []);
 
 3. Render the buttons as the FIRST CHILD inside the outer <div> (normal flow, not sticky or fixed):
-   {showControls && !chatOpen && (
+   {showControls && (
      <div className="flex items-center justify-between">
-       <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
-         ← Back
-       </DashboardUI.DesignButton>
-       <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
-         Edit ✎
+       {!chatOpen && (
+         <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => window.dashboardBack()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+           ← Back
+         </DashboardUI.DesignButton>
+       )}
+       <DashboardUI.DesignButton variant="ghost" size="sm" onClick={() => isEditing ? window.dashboardDoneEditing?.() : window.dashboardEdit()} className="bg-background/70 dark:bg-background/50 backdrop-blur-xl shadow-lg ring-1 ring-foreground/[0.08] text-foreground/80 hover:text-foreground hover:bg-background/90 dark:hover:bg-background/70">
+         {isEditing ? "Done" : editPanelOpen ? "Edit Layout ✎" : "Edit ✎"}
        </DashboardUI.DesignButton>
      </div>
    )}

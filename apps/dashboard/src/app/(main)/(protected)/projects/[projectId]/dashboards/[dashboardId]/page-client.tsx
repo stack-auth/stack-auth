@@ -17,7 +17,6 @@ import {
   FloppyDiskIcon,
   PencilSimpleIcon,
   PlusIcon,
-  SquaresFourIcon,
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
@@ -168,38 +167,13 @@ function DashboardDetailContent({
   const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
   const [editingWidgetLabel, setEditingWidgetLabel] = useState<string | null>(null);
   const [addingWidgetPosition, setAddingWidgetPosition] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
-  const layoutEditingByKeyRef = useRef(false);
-
+  const [selectingForEdit, setSelectingForEdit] = useState(false);
   const { setNeedConfirm } = useRouterConfirm();
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
   }, [setNeedConfirm, hasUnsavedChanges]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Alt' && !layoutEditing) {
-        e.preventDefault();
-        setLayoutEditing(true);
-        setIsChatOpen(false);
-        layoutEditingByKeyRef.current = true;
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt' && layoutEditingByKeyRef.current) {
-        setLayoutEditing(false);
-        setIsChatOpen(true);
-        layoutEditingByKeyRef.current = false;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [layoutEditing]);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(displayName);
@@ -223,8 +197,12 @@ function DashboardDetailContent({
   const handleEditToggle = useCallback(() => {
     if (!currentHasSource) return;
     setIsChatOpen(prev => {
-      if (prev) setLayoutEditing(false);
-      return !prev;
+      if (prev) {
+        setLayoutEditing(true);
+        setSelectingForEdit(false);
+        return false;
+      }
+      return true;
     });
   }, [currentHasSource]);
 
@@ -241,6 +219,8 @@ function DashboardDetailContent({
     setEditingWidgetLabel(widgetLabel);
     setAddingWidgetPosition(null);
     setIsChatOpen(true);
+    setLayoutEditing(false);
+    setSelectingForEdit(false);
   }, []);
 
   const handleWidgetAddRequest = useCallback((x: number, y: number, width: number, height: number) => {
@@ -311,24 +291,13 @@ function DashboardDetailContent({
       savedGridState={gridState}
       isChatOpen={isChatOpen}
       layoutEditing={layoutEditing}
+      selectingForEdit={selectingForEdit}
       onDoneEditing={() => {
         setLayoutEditing(false);
         setIsChatOpen(true);
       }}
-      onAltKeyDown={() => {
-        if (!layoutEditing) {
-          setLayoutEditing(true);
-          setIsChatOpen(false);
-          layoutEditingByKeyRef.current = true;
-        }
-      }}
-      onAltKeyUp={() => {
-        if (layoutEditingByKeyRef.current) {
-          setLayoutEditing(false);
-          setIsChatOpen(true);
-          layoutEditingByKeyRef.current = false;
-        }
-      }}
+      onAltKeyDown={() => {}}
+      onAltKeyUp={() => {}}
     />
   ) : (
     <div className="flex h-full items-center justify-center">
@@ -352,33 +321,18 @@ function DashboardDetailContent({
           The chat panel animates its width; the dashboard panel adjusts via flex-1. */}
       <div data-full-bleed className="flex h-full">
         {/* Dashboard iframe panel */}
-        <div className={cn(
-          "flex-1 min-w-0 flex flex-col transition-all duration-300 ease-in-out",
-          "pl-6 pr-5 py-6",
-          !isChatOpen && "dark:p-0",
-        )}>
+        <div
+          className={cn(
+            "flex-1 min-w-0 flex flex-col transition-all duration-300 ease-in-out",
+            "pl-6 pr-5 py-6",
+            !isChatOpen && "dark:p-0",
+          )}
+        >
           <div className={cn(
             "relative flex-1 overflow-hidden transition-all duration-300 ease-in-out",
-            "bg-slate-50/90 rounded-2xl shadow-xl ring-1 ring-foreground/[0.06]",
             "dark:bg-transparent dark:rounded-none dark:shadow-none dark:ring-0",
           )}>
             {dashboardPreview}
-            {currentHasSource && isChatOpen && !layoutEditing && (
-              <div className="absolute top-3 right-3 z-10">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs shadow-md bg-white/80 dark:bg-black/40 backdrop-blur-md"
-                  onClick={() => {
-                    setLayoutEditing(true);
-                    setIsChatOpen(false);
-                  }}
-                >
-                  <SquaresFourIcon className="h-3.5 w-3.5" />
-                  Edit Layout
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -416,8 +370,40 @@ function DashboardDetailContent({
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : composerPlaceholder}
+                  hideMessageActions
                 />
               </div>
+              {selectingForEdit && (
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
+                  <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />
+                  <span className="text-xs text-primary truncate flex-1">
+                    Choose a component to edit
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-primary hover:text-primary/80"
+                    onClick={() => setSelectingForEdit(false)}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              {editingWidgetId == null && addingWidgetPosition == null && !selectingForEdit && currentHasSource && (
+                <div className="flex items-center gap-2 px-4 py-1.5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground w-full justify-start"
+                    onClick={() => {
+                      setSelectingForEdit(true);
+                    }}
+                  >
+                    <PencilSimpleIcon className="h-3 w-3" />
+                    Edit a component...
+                  </Button>
+                </div>
+              )}
               {editingWidgetId != null && (
                 <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
                   <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />

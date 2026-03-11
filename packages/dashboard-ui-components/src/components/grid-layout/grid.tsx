@@ -7,11 +7,11 @@ import { StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/uti
 import { deepPlainEquals } from '@stackframe/stack-shared/dist/utils/objects';
 import { RefState, mapRefState } from '@stackframe/stack-shared/dist/utils/react';
 import { TooltipProvider } from '@stackframe/stack-ui';
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
 import { DesignButton } from '../button';
 import type { DesignButtonProps } from '../button';
-import { WidgetInstance, Widget, getSettings, getState, gridGapPixels, gridUnitHeight, mobileModeWidgetHeight, mobileModeCutoffWidth } from './types';
+import { WidgetInstance, Widget, getSettings, getState, gridGapPixels, gridUnitHeight, mobileModeCutoffWidth } from './types';
 import { WidgetInstanceGrid } from './grid-logic';
 import { Draggable } from './draggable';
 
@@ -56,9 +56,14 @@ export function SwappableWidgetInstanceGrid(props: {
   const [overElementPosition, setOverElementPosition] = useState<[number, number] | null>(null);
   const [overVarHeightSlot, setOverVarHeightSlot] = useState<["before", string] | ["end-of", number] | null>(null);
   const [activeWidgetId, setActiveInstanceId] = useState<string | null>(null);
-  const [hoverElementSwap, setHoverElementSwap] = useState<[string, [number, number, number, number, number, number]] | null>(null);
-  const [activeElementInitialRect, setActiveElementInitialRect] = useState<{ left: number, top: number, width: number, height: number } | null>(null);
+  const [hoverElementSwap, setHoverElementSwap] = useState<string | null>(null);
+  const [hoverSwapBlocked, setHoverSwapBlocked] = useState<string | null>(null);
+  const [justSwappedActiveId, setJustSwappedActiveId] = useState<string | null>(null);
+  const [justSwappedPartnerId, setJustSwappedPartnerId] = useState<string | null>(null);
+  const [resizeBlocked, setResizeBlocked] = useState<{ top: boolean, left: boolean, right: boolean, bottom: boolean }>({ top: false, left: false, right: false, bottom: false });
+  const [resizingInstanceId, setResizingInstanceId] = useState<string | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
+  const dropRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const context = React.useContext(SwappableWidgetInstanceGridContext);
 
   // Built-in listener for window.__layoutEditing (set by iframe boilerplate).
@@ -72,7 +77,24 @@ export function SwappableWidgetInstanceGrid(props: {
     return () => window.removeEventListener('layout-edit-change', handler);
   }, []);
 
+  const [windowSelectingForEdit, setWindowSelectingForEdit] = useState(false);
+  React.useEffect(() => {
+    const handler = () => setWindowSelectingForEdit(!!(window as any).__selectingForEdit);
+    window.addEventListener('selecting-for-edit-change', handler);
+    handler();
+    return () => window.removeEventListener('selecting-for-edit-change', handler);
+  }, []);
+
   const effectiveIsEditing = context.isEditing || windowLayoutEditing;
+
+  useEffect(() => {
+    const handler = () => {
+      setResizeBlocked({ top: false, left: false, right: false, bottom: false });
+      setResizingInstanceId(null);
+    };
+    window.addEventListener('mouseup', handler);
+    return () => window.removeEventListener('mouseup', handler);
+  }, []);
 
   const [isSingleColumnModeIfAuto, setMobileModeIfAuto] = useState<boolean>(false);
 
@@ -188,6 +210,7 @@ export function SwappableWidgetInstanceGrid(props: {
                           widgetInstance={instance}
                           activeWidgetId={activeWidgetId}
                           isEditing={effectiveIsEditing}
+                          selectingForEdit={windowSelectingForEdit}
                           isSingleColumnMode={isSingleColumnMode}
                           onDeleteWidget={async () => {
                           props.gridRef.set(props.gridRef.current.withRemovedVarHeight(instance.id));
@@ -234,29 +257,22 @@ export function SwappableWidgetInstanceGrid(props: {
           onDragStart={(event) => {
             setActiveInstanceId(event.active.id as string);
             setDraggingType("element");
-            setActiveElementInitialRect((event.activatorEvent.target as any).getBoundingClientRect());
           }}
           onDragAbort={() => {
             setHoverElementSwap(null);
+            setHoverSwapBlocked(null);
             setActiveInstanceId(null);
             setOverElementPosition(null);
             setDraggingType(null);
-            setActiveElementInitialRect(null);
           }}
           onDragCancel={() => {
             setHoverElementSwap(null);
+            setHoverSwapBlocked(null);
             setActiveInstanceId(null);
             setOverElementPosition(null);
             setDraggingType(null);
-            setActiveElementInitialRect(null);
           }}
           onDragEnd={(event) => {
-            setHoverElementSwap(null);
-            setActiveInstanceId(null);
-            setOverElementPosition(null);
-            setDraggingType(null);
-            setActiveElementInitialRect(null);
-
             const widgetId = event.active.id;
             const widgetElement = [...props.gridRef.current.elements()].find(({ instance }) => instance?.id === widgetId);
             if (!widgetElement) {
@@ -264,15 +280,35 @@ export function SwappableWidgetInstanceGrid(props: {
             }
             if (event.over) {
               const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+              const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
               const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
               if (props.gridRef.current.canSwap(...swapArgs)) {
+                const activeId = event.active.id as string;
+                const partnerId = overElement.instance?.id ?? null;
+                setJustSwappedActiveId(activeId);
+                setJustSwappedPartnerId(partnerId);
+                setTimeout(() => {
+                  setJustSwappedActiveId(null);
+                  setJustSwappedPartnerId(null);
+                }, 300);
                 const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
+                props.gridRef.set(newGrid);
+                dispatchGridStateChange(newGrid);
+              } else if (overElement.instance === null) {
+                // Move to empty space keeping original size
+                const newGrid = props.gridRef.current.withMovedElementTo(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
                 props.gridRef.set(newGrid);
                 dispatchGridStateChange(newGrid);
               } else {
                 alert("Cannot swap elements; make sure the new locations are big enough for the widgets");
               }
             }
+
+            setHoverElementSwap(null);
+            setHoverSwapBlocked(null);
+            setActiveInstanceId(null);
+            setOverElementPosition(null);
+            setDraggingType(null);
           }}
           onDragOver={(event) => {
             const widgetId = event.active.id;
@@ -285,28 +321,36 @@ export function SwappableWidgetInstanceGrid(props: {
                 // not sure when this happens, if ever — skip silently
               } else {
                 const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
+                const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
+                const overId = overElement.instance?.id;
                 if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
                   setOverElementPosition(overCoordinates);
+                  if (overId && overId !== widgetId) {
+                    setHoverElementSwap(overId);
+                    setHoverSwapBlocked(null);
+                  } else {
+                    setHoverElementSwap(null);
+                    setHoverSwapBlocked(null);
+                  }
+                } else if (overElement.instance === null) {
+                  // Allow moving to empty space even if canSwap fails (we'll use withMovedElementTo)
+                  setOverElementPosition(overCoordinates);
+                  setHoverElementSwap(null);
+                  setHoverSwapBlocked(null);
                 } else {
                   setOverElementPosition(null);
-                }
-                const overId = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]).instance?.id;
-                if (overId && overId !== widgetId && activeElementInitialRect) {
-                  setHoverElementSwap([overId, [
-                    event.over.rect.left - activeElementInitialRect.left,
-                    event.over.rect.top - activeElementInitialRect.top,
-                    activeElementInitialRect.width,
-                    activeElementInitialRect.height,
-                    event.over.rect.width,
-                    event.over.rect.height,
-                  ]]);
-                } else {
                   setHoverElementSwap(null);
+                  if (overId && overId !== widgetId) {
+                    setHoverSwapBlocked(overId);
+                  } else {
+                    setHoverSwapBlocked(null);
+                  }
                 }
               }
             } else {
               setOverElementPosition(null);
               setHoverElementSwap(null);
+              setHoverSwapBlocked(null);
             }
           }}
           collisionDetection={pointerWithin}
@@ -321,6 +365,8 @@ export function SwappableWidgetInstanceGrid(props: {
               <ElementSlot
                 isSingleColumnMode={isSingleColumnMode}
                 key={instance?.id ?? JSON.stringify({ x, y })}
+                instanceId={instance?.id}
+                dropRectsRef={dropRectsRef}
                 isEmpty={!instance}
                 isEditing={effectiveIsEditing}
                 isOver={overElementPosition?.[0] === x && overElementPosition[1] === y}
@@ -338,6 +384,7 @@ export function SwappableWidgetInstanceGrid(props: {
                       : undefined
                 }
                 isActive={instance?.id === activeWidgetId}
+                skipFlip={instance?.id === justSwappedActiveId || instance?.id === justSwappedPartnerId}
                 onAddWidget={props.isStatic ? undefined : () => {
                   window.dispatchEvent(new CustomEvent('widget-add-request', {
                     detail: { x, y, width, height }
@@ -346,6 +393,8 @@ export function SwappableWidgetInstanceGrid(props: {
               >
                 {instance && (() => {
                   const elementFitContent = props.fitContent && !resizedElements.has(instance.id);
+                  const isHoverSwapped = hoverElementSwap === instance.id;
+                  const isSwapBlocked = hoverSwapBlocked === instance.id;
                   return (
                     <Draggable
                       isStatic={props.isStatic}
@@ -354,24 +403,9 @@ export function SwappableWidgetInstanceGrid(props: {
                       widgetInstance={instance}
                       activeWidgetId={activeWidgetId}
                       isEditing={effectiveIsEditing}
-                      style={(() => {
-                        if (!hoverElementSwap) return {};
-                        const [dx, dy, activeW, activeH, overW, overH] = hoverElementSwap[1];
-                        const isHoverSwap = hoverElementSwap[0] === instance.id;
-                        if (isHoverSwap) {
-                          return {
-                            transform: `translate(${-dx}px, ${-dy}px) scale(${activeW / overW}, ${activeH / overH})`,
-                          };
-                        }
-                        if (activeWidgetId === instance.id) {
-                          return {
-                            alignSelf: 'flex-start' as const,
-                            minWidth: `${Math.min(activeW, overW)}px`,
-                            minHeight: `${Math.min(activeH, overH)}px`,
-                          };
-                        }
-                        return {};
-                      })()}
+                      selectingForEdit={windowSelectingForEdit}
+                      resizeBlocked={resizingInstanceId === instance.id ? resizeBlocked : undefined}
+                      style={isSwapBlocked ? { opacity: 0.5, transform: 'scale(0.95)', outline: '2px solid #ef4444', outlineOffset: '-2px', borderRadius: '8px' } : isHoverSwapped ? { opacity: 0.5, transform: 'scale(0.95)' } : {}}
                       isSingleColumnMode={isSingleColumnMode}
                       onDeleteWidget={async () => {
                     props.gridRef.set(props.gridRef.current.withRemovedElement(x, y));
@@ -389,6 +423,7 @@ export function SwappableWidgetInstanceGrid(props: {
                     (grid, state) => grid.withUpdatedElementState(x, y, state),
                   )}
                       onResize={(edges, visualHeight) => {
+                        setResizingInstanceId(instance.id);
                         let currentGrid = props.gridRef.current;
                         if (elementFitContent) {
                           setResizedElements(prev => new Set(prev).add(instance.id));
@@ -406,9 +441,10 @@ export function SwappableWidgetInstanceGrid(props: {
                             }
                           }
                         }
-                        const { grid: newGrid, achievedDelta } = currentGrid.withResizedElementAndPush(x, y, edges);
+                        const { grid: newGrid, achievedDelta, blocked } = currentGrid.withResizedElementAndPush(x, y, edges);
                         props.gridRef.set(newGrid);
                         dispatchGridStateChange(newGrid);
+                        setResizeBlocked(blocked);
                         return achievedDelta;
                       }}
                       x={x}
@@ -483,7 +519,7 @@ export function VarHeightSlot(props: { isOver: boolean, location: readonly ["bef
   );
 }
 
-export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolean, isEditing?: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, gapPixels?: number, minHeight?: number, onAddWidget?: () => void, isActive?: boolean }) {
+export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolean, isEditing?: boolean, children: React.ReactNode, style?: React.CSSProperties, x: number, y: number, width: number, height: number, isEmpty: boolean, grid: WidgetInstanceGrid, gapPixels?: number, minHeight?: number, onAddWidget?: () => void, isActive?: boolean, instanceId?: string, dropRectsRef?: React.RefObject<Map<string, DOMRect>>, skipFlip?: boolean }) {
   const { setNodeRef } = useDroppable({
     id: JSON.stringify([props.x, props.y]),
   });
@@ -513,9 +549,17 @@ export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolea
 
     const newRect = el.getBoundingClientRect();
 
-    if (!isActiveRef.current && prevRectRef.current) {
-      const dx = prevRectRef.current.left - newRect.left;
-      const dy = prevRectRef.current.top - newRect.top;
+    // Check for a pending drop rect (just-dropped or just-swapped element)
+    const dropRect = props.instanceId ? props.dropRectsRef?.current?.get(props.instanceId) : null;
+    if (dropRect && props.instanceId) {
+      props.dropRectsRef?.current?.delete(props.instanceId);
+    }
+
+    const fromRect = dropRect ?? prevRectRef.current;
+
+    if (fromRect && !props.isEmpty && !props.skipFlip) {
+      const dx = fromRect.left - newRect.left;
+      const dy = fromRect.top - newRect.top;
 
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
         flipAnimRef.current = el.animate(
@@ -526,7 +570,7 @@ export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolea
     }
 
     prevRectRef.current = newRect;
-  }, [props.x, props.y, props.width, props.height]);
+  }, [props.x, props.y, props.width, props.height, props.instanceId, props.dropRectsRef, props.skipFlip]);
 
   const gap = props.gapPixels ?? gridGapPixels;
   const meetsMinSize = props.width >= WidgetInstanceGrid.MIN_ELEMENT_WIDTH && props.height >= WidgetInstanceGrid.MIN_ELEMENT_HEIGHT;
@@ -545,7 +589,7 @@ export function ElementSlot(props: { isSingleColumnMode: boolean, isOver: boolea
         gridColumn: `${props.x + 1} / span ${props.width}`,
         gridRow: `${2 * props.y + 2} / span ${2 * props.height - 1}`,
         margin: gap / 2,
-        minHeight: props.isSingleColumnMode ? mobileModeWidgetHeight : props.minHeight,
+        minHeight: props.minHeight,
         ...props.style,
       }}
     >

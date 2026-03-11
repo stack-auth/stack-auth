@@ -11,19 +11,37 @@ export const sectionHeadingWidget: Widget<HeadingSettings, Record<string, never>
   MainComponent: ({ settings }) => {
     const Tag = (settings.level ?? 'h2') as 'h2' | 'h3';
     return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', padding: '4px 8px 8px' }}>
-        <Tag style={{
-          margin: 0,
-          fontSize: '11px',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          color: 'hsl(var(--muted-foreground, 240 3.8% 46.1%))',
-          width: '100%',
-        }}>
-          {settings.text}
-        </Tag>
-      </div>
+      <>
+        <style>{`
+          .section-heading-card {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px 12px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 0 0 1px rgb(0 0 0 / 0.06);
+          }
+          .dark .section-heading-card {
+            background: transparent;
+            box-shadow: none;
+          }
+        `}</style>
+        <div className="section-heading-card">
+          <Tag style={{
+            margin: 0,
+            fontSize: '11px',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: 'hsl(var(--muted-foreground, 240 3.8% 46.1%))',
+            width: '100%',
+          }}>
+            {settings.text}
+          </Tag>
+        </div>
+      </>
     );
   },
   SettingsComponent: ({ settings, setSettings }) => {

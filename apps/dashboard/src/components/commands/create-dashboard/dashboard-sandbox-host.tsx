@@ -228,8 +228,10 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
 
       // Controls visibility flag — only true in the full dashboard viewer (not cmd+K preview)
       window.__showControls = ${showControls};
-      window.__chatOpen = ${initialChatOpen};
+      window.__chatOpen = false;
+      window.__editPanelOpen = false;
       window.__layoutEditing = false;
+      window.__selectingForEdit = false;
       window.__savedGridState = ${savedGridState != null ? JSON.stringify(savedGridState) : 'null'};
 
       // Theme syncing, chat state, and layout edit from parent window
@@ -244,13 +246,37 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         }
         if (event.data?.type === 'dashboard-controls-update') {
           window.__chatOpen = !!event.data.chatOpen;
+          window.__editPanelOpen = !!event.data.editPanelOpen;
           window.dispatchEvent(new Event('chat-state-change'));
         }
         if (event.data?.type === 'dashboard-layout-edit-update') {
           window.__layoutEditing = !!event.data.editing;
           window.dispatchEvent(new Event('layout-edit-change'));
         }
+        if (event.data?.type === 'dashboard-selecting-for-edit-update') {
+          window.__selectingForEdit = !!event.data.selecting;
+          window.dispatchEvent(new Event('selecting-for-edit-change'));
+        }
       });
+
+      // Auto-update Edit button label based on editPanelOpen state
+      // This works for ALL dashboards (old and new) by directly finding and patching the button text
+      function patchEditButtonLabel() {
+        // Find buttons that contain "Edit" text (the edit/done button)
+        var buttons = document.querySelectorAll('button');
+        for (var i = 0; i < buttons.length; i++) {
+          var btn = buttons[i];
+          var text = btn.textContent.trim();
+          if (text === 'Edit ✎' && window.__editPanelOpen) {
+            btn.textContent = 'Edit Layout ✎';
+          } else if (text === 'Edit Layout ✎' && !window.__editPanelOpen) {
+            btn.textContent = 'Edit ✎';
+          }
+        }
+      }
+      window.addEventListener('chat-state-change', patchEditButtonLabel);
+      // Also run periodically to catch React re-renders that reset the text
+      setInterval(patchEditButtonLabel, 200);
 
       // Forward widget edit requests from DashboardUI components to parent
       window.addEventListener('widget-edit-request', function(e) {
@@ -499,6 +525,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   savedGridState,
   isChatOpen,
   layoutEditing,
+  selectingForEdit,
 }: {
   artifact: DashboardArtifact,
   onBack?: () => void,
@@ -513,6 +540,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   savedGridState?: unknown,
   isChatOpen?: boolean,
   layoutEditing?: boolean,
+  selectingForEdit?: boolean,
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const onBackRef = useRef(onBack);
@@ -566,7 +594,8 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage({
         type: 'dashboard-controls-update',
-        chatOpen: !!isChatOpen,
+        chatOpen: false,
+        editPanelOpen: !!isChatOpen,
       }, '*');
     }
   }, [isChatOpen]);
@@ -579,6 +608,15 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       }, '*');
     }
   }, [layoutEditing]);
+
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'dashboard-selecting-for-edit-update',
+        selecting: !!selectingForEdit,
+      }, '*');
+    }
+  }, [selectingForEdit]);
 
   useEffect(() => {
     if (iframeRef.current?.contentWindow && savedGridState) {
