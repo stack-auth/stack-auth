@@ -1,5 +1,6 @@
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { evaluate } from "cel-js";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";
@@ -34,7 +35,7 @@ export type SignUpRuleContext = {
   /** Best-effort ISO 3166-1 alpha-2 country code derived from request geo headers */
   countryCode: string,
   /** Authentication method: "password", "otp", "oauth", "passkey" */
-  authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
+  authMethod: SignUpAuthMethod,
   /** OAuth provider ID if authMethod is "oauth", empty string otherwise */
   oauthProvider: string,
   riskScores: SignUpRiskScores,
@@ -165,7 +166,7 @@ export function evaluateCelExpression(
 export function createSignUpRuleContext(params: {
   email: string | null,
   countryCode: string | null,
-  authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
+  authMethod: SignUpAuthMethod,
   oauthProvider: string | null,
   riskScores: SignUpRiskScoresCrud,
 }): SignUpRuleContext {

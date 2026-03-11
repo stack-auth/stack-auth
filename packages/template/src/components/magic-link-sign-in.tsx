@@ -3,13 +3,13 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "../lib/hooks";
-import { getTurnstileSiteKey, useTurnstile } from "../lib/turnstile";
+import { useStagedTurnstile } from "../lib/turnstile";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -79,9 +79,19 @@ function OTP(props: {
 export function MagicLinkSignIn() {
   const { t } = useTranslation();
   const app = useStackApp();
-  const { executeTurnstile, turnstileWidget } = useTurnstile({
-    siteKey: getTurnstileSiteKey(app),
+  const {
+    challengeRequiredResult,
+    visibleTurnstileToken,
+    challengeError,
+    invisibleTurnstileWidget,
+    visibleTurnstileWidget,
+    clearChallengeError,
+    getTurnstileFlowOptions,
+    handleChallengeRequired,
+  } = useStagedTurnstile(app, {
     action: "send_magic_link_email",
+    missingVisibleChallengeMessage: t('Please solve the captcha before sending the email'),
+    challengeRequiredMessage: t('Complete the captcha to continue'),
   });
   const [loading, setLoading] = useState(false);
   const [nonce, setNonce] = useState<string | null>(null);
@@ -93,17 +103,25 @@ export function MagicLinkSignIn() {
   const { register, handleSubmit, setError, formState: { errors } } = useForm({
     resolver: yupResolver(schema)
   });
+  const registerEmail = register('email');
 
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
     setLoading(true);
     try {
       const { email } = data;
-      const turnstileToken = await executeTurnstile();
+      const turnstileOptions = await getTurnstileFlowOptions();
+      if (turnstileOptions == null) {
+        return;
+      }
       const result = await app.sendMagicLinkEmail(email, {
-        ...(turnstileToken ? { turnstileToken } : {}),
+        ...turnstileOptions,
       });
       if (result.status === 'error') {
-        setError('email', { type: 'manual', message: result.error.message });
+        if (KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
+          handleChallengeRequired(result.error);
+        } else {
+          setError('email', { type: 'manual', message: result.error.message });
+        }
         return;
       } else {
         setNonce(result.data.nonce);
@@ -133,14 +151,20 @@ export function MagicLinkSignIn() {
           id="email"
           type="email"
           autoComplete="email"
-          {...register('email')}
+          {...registerEmail}
+          onChange={(e) => {
+            clearChallengeError();
+            runAsynchronously(registerEmail.onChange(e));
+          }}
         />
         <FormWarningText text={errors.email?.message?.toString()} />
 
-        <Button type="submit" className="mt-6" loading={loading}>
+        <Button type="submit" className="mt-6" loading={loading} disabled={challengeRequiredResult != null && visibleTurnstileToken == null}>
           {t('Send email')}
         </Button>
-        {turnstileWidget}
+        <FormWarningText text={challengeError ?? undefined} />
+        {visibleTurnstileWidget}
+        {invisibleTurnstileWidget}
       </form>
     );
   }

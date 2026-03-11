@@ -1,4 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
@@ -321,6 +322,7 @@ const handler = createSmartRouteHandler({
                   }
                 }
 
+                const requestContext = await getBestEffortEndUserRequestContext();
                 const { projectUserId: newUserId, oauthAccountId } = await createOAuthUserAndAccount(
                   prisma,
                   tenancy,
@@ -336,14 +338,13 @@ const handler = createSmartRouteHandler({
                     signUpRuleOptions: {
                       authMethod: 'oauth',
                       oauthProvider: provider.id,
-                      ipAddress: null,
-                      ipTrusted: null,
-                      countryCode: null,
+                      ipAddress: requestContext.ipAddress,
+                      ipTrusted: requestContext.ipTrusted,
+                      countryCode: requestContext.location?.countryCode ?? null,
                       turnstileAssessment: {
                         status: outerInfo.turnstileResult,
+                        visibleChallengeResult: outerInfo.turnstileVisibleChallengeResult,
                       },
-                      // Note: Request context not easily available in OAuth callback
-                      // TODO: Pass IP and user agent from stored OAuth state if needed
                     },
                   }
                 );

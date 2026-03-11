@@ -48,30 +48,51 @@ export type ClientInterfaceOptions = {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
-function getRequiredTurnstileToken(token: string | undefined, context: string): string {
+function getOptionalTurnstileToken(token: string | undefined): string | undefined {
   const trimmedToken = token?.trim();
   if (trimmedToken) {
     return trimmedToken;
   }
 
-  throw new StackAssertionError(`${context} requires a Turnstile token.`);
+  return undefined;
 }
 
-function getCredentialSignUpTurnstilePayload(turnstile: {
+function getTurnstileRequestFields(turnstile: {
   token?: string,
   phase?: "invisible" | "visible",
   previousResult?: TurnstileRetryResult,
-} | undefined) {
-  const turnstileToken = getRequiredTurnstileToken(turnstile?.token, "Credential sign-up");
+} | undefined, context: string) {
+  const turnstileToken = getOptionalTurnstileToken(turnstile?.token);
   if (turnstile?.phase === "visible") {
+    if (turnstileToken == null) {
+      throw new StackAssertionError(`${context} visible Turnstile retries require a token.`);
+    }
     if (turnstile.previousResult == null) {
-      throw new StackAssertionError("Credential sign-up visible Turnstile retries require previousResult.");
+      throw new StackAssertionError(`${context} visible Turnstile retries require previousResult.`);
     }
 
     return {
       turnstile_token: turnstileToken,
       turnstile_phase: "visible" as const,
       turnstile_previous_result: turnstile.previousResult,
+    };
+  }
+
+  if (turnstile?.previousResult != null) {
+    throw new StackAssertionError(`${context} previousResult is only allowed for visible Turnstile retries.`);
+  }
+
+  if (turnstileToken == null) {
+    if (turnstile?.phase != null) {
+      throw new StackAssertionError(`${context} Turnstile phase options require a token.`);
+    }
+
+    return {};
+  }
+
+  if (turnstile?.phase == null) {
+    return {
+      turnstile_token: turnstileToken,
     };
   }
 
@@ -624,8 +645,12 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
-    turnstileToken?: string,
-  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+    turnstile?: {
+      token?: string,
+      phase?: "invisible" | "visible",
+      previousResult?: TurnstileRetryResult,
+    },
+  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
       {
@@ -636,11 +661,11 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
-          turnstile_token: getRequiredTurnstileToken(turnstileToken, "Magic link sign-in"),
+          ...getTurnstileRequestFields(turnstile, "Magic link sign-in"),
         }),
       },
       null,
-      [KnownErrors.RedirectUrlNotWhitelisted]
+      [KnownErrors.RedirectUrlNotWhitelisted, KnownErrors.TurnstileChallengeRequired]
     );
 
     if (res.status === "error") {
@@ -959,7 +984,7 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
-          ...getCredentialSignUpTurnstilePayload(turnstile),
+          ...getTurnstileRequestFields(turnstile, "Credential sign-up"),
         }),
       },
       session,
@@ -1091,7 +1116,11 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
-      turnstileToken?: string,
+      turnstile?: {
+        token?: string,
+        phase?: "invisible" | "visible",
+        previousResult?: TurnstileRetryResult,
+      },
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1134,9 +1163,74 @@ export class StackClientInterface {
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
     }
-    url.searchParams.set("turnstile_token", getRequiredTurnstileToken(options.turnstileToken, `OAuth ${options.type}`));
+    for (const [key, value] of Object.entries(getTurnstileRequestFields(options.turnstile, `OAuth ${options.type}`))) {
+      url.searchParams.set(key, value);
+    }
 
     return url.toString();
+  }
+
+  async authorizeOAuth(options: {
+    provider: string,
+    redirectUrl: string,
+    errorRedirectUrl: string,
+    afterCallbackRedirectUrl?: string,
+    codeChallenge: string,
+    state: string,
+    type: "authenticate" | "link",
+    providerScope?: string,
+    turnstile?: {
+      token?: string,
+      phase?: "invisible" | "visible",
+      previousResult?: TurnstileRetryResult,
+    },
+    session: InternalSession,
+  }): Promise<Result<string, KnownErrors["TurnstileChallengeRequired"]>> {
+    if (typeof window === "undefined") {
+      throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
+    }
+
+    await this.options.prepareRequest?.();
+
+    const url = new URL(await this.getOAuthUrl(options));
+    url.searchParams.set("stack_oauth_response_format", "json");
+
+    let rawRes;
+    try {
+      rawRes = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw await this._createNetworkError(error, options.session, "client");
+      }
+      throw error;
+    }
+
+    const processedResponse = await this._processResponse(rawRes);
+    if (processedResponse.status === "error") {
+      if (KnownErrors.TurnstileChallengeRequired.isInstance(processedResponse.error)) {
+        return Result.error(processedResponse.error);
+      }
+      throw processedResponse.error;
+    }
+
+    if (processedResponse.data.status !== 200) {
+      throw new StackAssertionError(`OAuth authorize returned an unexpected status: ${processedResponse.data.status}`);
+    }
+
+    const body = await processedResponse.data.json();
+    if (body == null || typeof body !== "object" || Array.isArray(body)) {
+      throw new StackAssertionError("OAuth authorize response body must be an object", { body });
+    }
+
+    const location = body.location;
+    if (typeof location !== "string") {
+      throw new StackAssertionError("OAuth authorize response is missing a redirect location", { body });
+    }
+
+    return Result.ok(location);
   }
 
   async callOAuthCallback(options: {

@@ -2,14 +2,13 @@
 
 import { UserAvatar, useStackApp, useUser } from '@stackframe/stack';
 import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typography } from '@stackframe/stack-ui';
+import { turnstileDevelopmentKeys } from '@stackframe/stack-shared/dist/utils/turnstile';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-const developmentVisibleTurnstileSiteKey = "1x00000000000000000000AA";
-const developmentInvisibleTurnstileSiteKey = "1x00000000000000000000BB";
-const turnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || developmentVisibleTurnstileSiteKey;
-const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || developmentInvisibleTurnstileSiteKey;
+const turnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || turnstileDevelopmentKeys.visibleSiteKey;
+const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || turnstileDevelopmentKeys.invisibleSiteKey;
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });

@@ -1,9 +1,10 @@
 'use client';
 
 import { useStackApp } from "../lib/hooks";
-import { getTurnstileSiteKey, useTurnstile } from "../lib/turnstile";
+import { useStagedTurnstile } from "../lib/turnstile";
+import { useTranslation } from "../lib/translations";
 import { OAuthButton } from "./oauth-button";
-
+import { FormWarningText } from "./elements/form-warning";
 export function OAuthButtonGroup({
   type,
   mockProject,
@@ -17,10 +18,21 @@ export function OAuthButtonGroup({
     },
   },
 }) {
+  const { t } = useTranslation();
   const stackApp = useStackApp();
-  const { executeTurnstile, turnstileWidget } = useTurnstile({
-    siteKey: getTurnstileSiteKey(stackApp),
+  const {
+    challengeRequiredResult,
+    visibleTurnstileToken,
+    challengeError,
+    invisibleTurnstileWidget,
+    visibleTurnstileWidget,
+    clearChallengeError,
+    getTurnstileFlowOptions,
+    handleChallengeRequired,
+  } = useStagedTurnstile(stackApp, {
     action: "oauth_authenticate",
+    missingVisibleChallengeMessage: t('Please solve the captcha before continuing'),
+    challengeRequiredMessage: t('Complete the captcha to continue'),
   });
   const project = mockProject || stackApp.useProject();
   return (
@@ -28,10 +40,15 @@ export function OAuthButtonGroup({
       {project.config.oauthProviders.map(p => (
         <OAuthButton key={p.id} provider={p.id} type={type}
           isMock={!!mockProject}
-          getTurnstileToken={!mockProject ? executeTurnstile : undefined}
+          disabled={!mockProject && challengeRequiredResult != null && visibleTurnstileToken == null}
+          getTurnstileFlowOptions={!mockProject ? getTurnstileFlowOptions : undefined}
+          onTurnstileChallengeRequired={!mockProject ? handleChallengeRequired : undefined}
+          clearTurnstileError={!mockProject ? clearChallengeError : undefined}
         />
       ))}
-      {!mockProject ? turnstileWidget : null}
+      {!mockProject ? <FormWarningText text={challengeError ?? undefined} /> : null}
+      {!mockProject ? visibleTurnstileWidget : null}
+      {!mockProject ? invisibleTurnstileWidget : null}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { StackAssertionError, StatusError, throwErr } from "./utils/errors";
 import { identityArgs } from "./utils/functions";
 import { Json } from "./utils/json";
 import { deindent } from "./utils/strings";
+import type { TurnstileRetryResult } from "./utils/turnstile";
 
 export type KnownErrorJson = {
   code: string,
@@ -755,7 +756,7 @@ const SignUpRejected = createKnownErrorConstructor(
 const TurnstileChallengeRequired = createKnownErrorConstructor(
   KnownError,
   "TURNSTILE_CHALLENGE_REQUIRED",
-  (invisibleResult: "invalid" | "error") => [
+  (invisibleResult: TurnstileRetryResult) => [
     409,
     "An additional Turnstile challenge is required before sign-up can continue.",
     {

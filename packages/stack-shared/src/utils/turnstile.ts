@@ -6,6 +6,13 @@ export const turnstileActionValues = [
 
 export type TurnstileAction = typeof turnstileActionValues[number];
 
+export const turnstilePhaseValues = [
+  "invisible",
+  "visible",
+] as const;
+
+export type TurnstilePhase = typeof turnstilePhaseValues[number];
+
 export const turnstileResultValues = [
   "ok",
   "invalid",

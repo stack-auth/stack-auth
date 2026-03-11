@@ -1,88 +1,12 @@
+import { KnownErrors } from "@stackframe/stack-shared";
+import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
 import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { getTurnstileApi, loadTurnstileScript } from "@stackframe/stack-shared/dist/utils/turnstile-browser";
+import type { TurnstileAppearance, TurnstileExecution, TurnstileSize, TurnstileWidgetId } from "@stackframe/stack-shared/dist/utils/turnstile-browser";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StackClientApp, stackAppInternalsSymbol } from "./stack-app";
-
-type TurnstileWidgetId = string;
-const developmentVisibleTurnstileSiteKey = "1x00000000000000000000AA";
-const developmentInvisibleTurnstileSiteKey = "1x00000000000000000000BB";
-type TurnstileAppearance = "always" | "interaction-only";
-type TurnstileExecution = "render" | "execute";
-type TurnstileSize = "invisible" | "flexible" | "normal" | "compact";
-
-type TurnstileConfig = {
-  sitekey: string,
-  action: TurnstileAction,
-  appearance?: TurnstileAppearance,
-  execution?: TurnstileExecution,
-  size?: TurnstileSize,
-  callback: (token: string) => void,
-  "error-callback": () => void,
-  "expired-callback": () => void,
-  "timeout-callback"?: () => void,
-};
-
-type TurnstileApi = {
-  render: (container: HTMLElement, config: TurnstileConfig) => TurnstileWidgetId,
-  execute: (widgetId: TurnstileWidgetId) => void,
-  remove: (widgetId: TurnstileWidgetId) => void,
-  reset?: (widgetId: TurnstileWidgetId) => void,
-};
-
-function isTurnstileApi(value: unknown): value is TurnstileApi {
-  return typeof value === "object"
-    && value !== null
-    && "render" in value
-    && "execute" in value
-    && "remove" in value;
-}
-
-function getTurnstileApi(): TurnstileApi | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const maybeTurnstile = Reflect.get(window, "turnstile");
-  return isTurnstileApi(maybeTurnstile) ? maybeTurnstile : undefined;
-}
-
-let turnstileScriptPromise: Promise<void> | null = null;
-
-function loadTurnstileScript(): Promise<void> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new StackAssertionError("Turnstile can only be loaded in the browser"));
-  }
-
-  if (getTurnstileApi()) {
-    return Promise.resolve();
-  }
-
-  turnstileScriptPromise ??= new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>('script[src^="https://challenges.cloudflare.com/turnstile/v0/api.js"]');
-    if (existingScript) {
-      if (existingScript.dataset.loaded === "true") {
-        resolve();
-        return;
-      }
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      script.dataset.loaded = "true";
-      resolve();
-    };
-    script.onerror = () => reject(new Error("Failed to load Turnstile"));
-    document.head.append(script);
-  });
-
-  return turnstileScriptPromise;
-}
 
 function isDevelopmentLikeEnvironment() {
   return process.env.NODE_ENV !== "production";
@@ -95,7 +19,7 @@ export function getTurnstileSiteKey(app: StackClientApp): string {
     return configuredSiteKey;
   }
   if (isDevelopmentLikeEnvironment()) {
-    return developmentVisibleTurnstileSiteKey;
+    return turnstileDevelopmentKeys.visibleSiteKey;
   }
   return throwErr("Turnstile site key is not configured");
 }
@@ -103,7 +27,7 @@ export function getTurnstileSiteKey(app: StackClientApp): string {
 export function getTurnstileInvisibleSiteKey(app: StackClientApp): string {
   return app[stackAppInternalsSymbol].getConstructorOptions().fraudProtection?.turnstileInvisibleSiteKey
     ?? process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY
-    ?? (isDevelopmentLikeEnvironment() ? developmentInvisibleTurnstileSiteKey : getTurnstileSiteKey(app));
+    ?? (isDevelopmentLikeEnvironment() ? turnstileDevelopmentKeys.invisibleSiteKey : getTurnstileSiteKey(app));
 }
 
 export function useTurnstile(options: {
@@ -216,7 +140,7 @@ export function useTurnstile(options: {
 
     const widgetId = widgetIdRef.current;
     const turnstileApi = getTurnstileApi();
-    if (!widgetId || !turnstileApi) {
+    if (!widgetId || !turnstileApi || typeof turnstileApi.execute !== "function") {
       throw new StackAssertionError("Turnstile widget is not available");
     }
 
@@ -239,7 +163,13 @@ export function useTurnstile(options: {
       promise,
     };
 
-    turnstileApi.execute(widgetId);
+    try {
+      turnstileApi.execute(widgetId);
+    } catch (error) {
+      pendingPromiseRef.current = null;
+      onTokenChange(null);
+      throw error;
+    }
     return await promise;
   }
 
@@ -259,5 +189,80 @@ export function useTurnstile(options: {
     executeTurnstile,
     resetTurnstile,
     turnstileWidget: <div ref={containerRef} className="stack-scope mt-3 min-h-0" />,
+  };
+}
+
+export function useStagedTurnstile(app: StackClientApp, options: {
+  action: TurnstileAction,
+  missingVisibleChallengeMessage: string,
+  challengeRequiredMessage: string,
+}) {
+  const visibleTurnstileSiteKey = getTurnstileSiteKey(app);
+  const invisibleTurnstileSiteKey = getTurnstileInvisibleSiteKey(app);
+  const usesDedicatedInvisibleTurnstileSiteKey = invisibleTurnstileSiteKey !== visibleTurnstileSiteKey;
+  const [challengeRequiredResult, setChallengeRequiredResult] = useState<TurnstileRetryResult | null>(null);
+  const [visibleTurnstileToken, setVisibleTurnstileToken] = useState<string | null>(null);
+  const [challengeError, setChallengeError] = useState<string | null>(null);
+  const { executeTurnstile: executeInvisibleTurnstile, turnstileWidget: invisibleTurnstileWidget } = useTurnstile({
+    siteKey: invisibleTurnstileSiteKey,
+    action: options.action,
+    appearance: "interaction-only",
+    execution: "execute",
+    size: usesDedicatedInvisibleTurnstileSiteKey ? "invisible" : undefined,
+  });
+  const {
+    resetTurnstile: resetVisibleTurnstile,
+    turnstileWidget: visibleTurnstileWidget,
+  } = useTurnstile({
+    siteKey: visibleTurnstileSiteKey,
+    action: options.action,
+    appearance: "always",
+    execution: "render",
+    size: "flexible",
+    enabled: challengeRequiredResult != null,
+    onTokenChange: (token) => {
+      setVisibleTurnstileToken(token);
+      if (token != null) {
+        setChallengeError(null);
+      }
+    },
+    onError: (message) => {
+      setChallengeError(message);
+    },
+  });
+
+  return {
+    challengeRequiredResult,
+    visibleTurnstileToken,
+    challengeError,
+    invisibleTurnstileWidget,
+    visibleTurnstileWidget: challengeRequiredResult != null ? visibleTurnstileWidget : null,
+    clearChallengeError: () => setChallengeError(null),
+    async getTurnstileFlowOptions() {
+      if (challengeRequiredResult == null) {
+        return {
+          turnstileToken: await executeInvisibleTurnstile(),
+          turnstilePhase: "invisible" as const,
+        };
+      }
+
+      if (visibleTurnstileToken == null) {
+        setChallengeError(options.missingVisibleChallengeMessage);
+        return null;
+      }
+
+      return {
+        turnstileToken: visibleTurnstileToken,
+        turnstilePhase: "visible" as const,
+        previousTurnstileResult: challengeRequiredResult,
+      };
+    },
+    handleChallengeRequired(error: InstanceType<typeof KnownErrors.TurnstileChallengeRequired>) {
+      const [invisibleResult] = error.constructorArgs;
+      setChallengeRequiredResult(invisibleResult);
+      setVisibleTurnstileToken(null);
+      resetVisibleTurnstile();
+      setChallengeError(options.challengeRequiredMessage);
+    },
   };
 }

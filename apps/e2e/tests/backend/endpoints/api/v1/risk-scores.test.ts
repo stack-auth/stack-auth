@@ -281,6 +281,97 @@ describe("risk scores", () => {
         },
       });
     });
+
+    it("should allow OTP signup on the first invisible Turnstile attempt when the token is valid", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { magic_link_enabled: true },
+      });
+
+      const sendResult = await Auth.Otp.sendSignInCode({
+        turnstileToken: mockTurnstileTokens.magicLinkOk,
+        turnstilePhase: "invisible",
+      });
+      const signInResult = await Auth.Otp.signInWithCode(
+        await Auth.Otp.getSignInCodeFromMailbox(sendResult.sendSignInCodeResponse.body.nonce)
+      );
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${signInResult.userId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
+      });
+    });
+
+    it("should require a visible challenge for OTP signup after an invisible Turnstile failure and persist the recovered score", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { magic_link_enabled: true },
+      });
+
+      const firstResponse = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: backendContext.value.mailbox.emailAddress,
+          callback_url: "http://localhost:12345/some-callback-url",
+          turnstile_token: mockTurnstileTokens.invalid,
+          turnstile_phase: "invisible",
+        },
+      });
+      expect(firstResponse.status).toBe(409);
+      expect(firstResponse.body).toMatchObject({
+        code: "TURNSTILE_CHALLENGE_REQUIRED",
+        details: {
+          invisible_result: "invalid",
+        },
+      });
+
+      const sendResult = await Auth.Otp.sendSignInCode({
+        turnstileToken: mockTurnstileTokens.visibleMagicLinkOk,
+        turnstilePhase: "visible",
+        previousTurnstileResult: "invalid",
+      });
+      const signInResult = await Auth.Otp.signInWithCode(
+        await Auth.Otp.getSignInCodeFromMailbox(sendResult.sendSignInCodeResponse.body.nonce)
+      );
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${signInResult.userId}`, {
+        method: "GET",
+        accessType: "server",
+      });
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 40,
+          free_trial_abuse: 20,
+        },
+      });
+    });
+
+    it("should reject OTP visible Turnstile retries that omit the previous invisible result", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { magic_link_enabled: true },
+      });
+
+      const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: backendContext.value.mailbox.emailAddress,
+          callback_url: "http://localhost:12345/some-callback-url",
+          turnstile_token: mockTurnstileTokens.visibleMagicLinkOk,
+          turnstile_phase: "visible",
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe("SCHEMA_ERROR");
+    });
   });
 
   describe("persistence on OAuth signup", () => {
@@ -331,6 +422,98 @@ describe("risk scores", () => {
           free_trial_abuse: 40,
         },
       });
+    });
+
+    it("should allow OAuth signup on the first invisible Turnstile attempt when the token is valid", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          oauth_providers: [{ id: "spotify", type: "shared" }],
+        },
+      });
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const response = await Auth.OAuth.signIn({
+        turnstileToken: mockTurnstileTokens.oauthOk,
+        turnstilePhase: "invisible",
+      });
+      expect(response.tokenResponse.status).toBe(200);
+
+      const meResponse = await niceBackendFetch("/api/v1/users/me", {
+        accessType: "server",
+      });
+      expect(meResponse.status).toBe(200);
+      expect(meResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
+      });
+    });
+
+    it("should require a visible challenge for OAuth signup after an invisible Turnstile failure and persist the recovered score", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          oauth_providers: [{ id: "spotify", type: "shared" }],
+        },
+      });
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const challengeResponse = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+        redirect: "manual",
+        query: {
+          ...await Auth.OAuth.getAuthorizeQuery({
+            turnstileToken: mockTurnstileTokens.invalid,
+            turnstilePhase: "invisible",
+          }),
+        },
+      });
+      expect(challengeResponse.status).toBe(409);
+      expect(challengeResponse.body).toMatchObject({
+        code: "TURNSTILE_CHALLENGE_REQUIRED",
+        details: {
+          invisible_result: "invalid",
+        },
+      });
+
+      const response = await Auth.OAuth.signIn({
+        turnstileToken: mockTurnstileTokens.visibleOAuthOk,
+        turnstilePhase: "visible",
+        previousTurnstileResult: "invalid",
+      });
+      expect(response.tokenResponse.status).toBe(200);
+
+      const meResponse = await niceBackendFetch("/api/v1/users/me", {
+        accessType: "server",
+      });
+      expect(meResponse.status).toBe(200);
+      expect(meResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 40,
+          free_trial_abuse: 20,
+        },
+      });
+    });
+
+    it("should reject OAuth visible Turnstile retries that omit the previous invisible result", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: {
+          oauth_providers: [{ id: "spotify", type: "shared" }],
+        },
+      });
+      await InternalApiKey.createAndSetProjectKeys();
+
+      const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+        redirect: "manual",
+        query: {
+          ...await Auth.OAuth.getAuthorizeQuery({
+            turnstileToken: mockTurnstileTokens.visibleOAuthOk,
+            turnstilePhase: "visible",
+          }),
+        },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe("SCHEMA_ERROR");
     });
   });
 

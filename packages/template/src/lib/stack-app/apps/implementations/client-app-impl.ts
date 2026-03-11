@@ -38,12 +38,12 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
+import { addNewOAuthProviderOrScope, callOAuthCallback, sendMagicLinkEmailWithTurnstileFlow, signInWithOAuth } from "../../../auth";
 import type { OAuthAuthenticateOptions } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
-import type { CredentialSignUpTurnstileOptions } from "../interfaces/client-app";
+import type { CredentialSignUpTurnstileOptions, TurnstileFlowOptions } from "../interfaces/client-app";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -79,6 +79,33 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
+
+function getTurnstileRequestOptions(turnstile: TurnstileFlowOptions | undefined) {
+  return {
+    token: turnstile?.turnstileToken,
+    phase: turnstile?.turnstilePhase,
+    previousResult: turnstile?.previousTurnstileResult,
+  };
+}
+
+function normalizeTurnstileFlowOptions(turnstile: TurnstileFlowOptions | undefined): TurnstileFlowOptions {
+  if (turnstile?.turnstileToken == null) {
+    return {};
+  }
+
+  if (turnstile.turnstilePhase === "visible") {
+    return {
+      turnstileToken: turnstile.turnstileToken,
+      turnstilePhase: "visible",
+      previousTurnstileResult: turnstile.previousTurnstileResult,
+    };
+  }
+
+  return {
+    turnstileToken: turnstile.turnstileToken,
+    turnstilePhase: turnstile.turnstilePhase,
+  };
+}
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
@@ -2246,12 +2273,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
-  async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string, turnstileToken?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    return await this._interface.sendMagicLinkEmail(
+  async sendMagicLinkEmail(email: string, options?: {
+    callbackUrl?: string,
+  } & TurnstileFlowOptions): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
+    return await sendMagicLinkEmailWithTurnstileFlow(this._interface, {
       email,
-      options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"),
-      options?.turnstileToken,
-    );
+      callbackUrl: options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"),
+      ...normalizeTurnstileFlowOptions(options),
+    });
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2510,7 +2539,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string, turnstileToken?: string }) {
+  async signInWithOAuth(provider: ProviderType, options?: {
+    returnTo?: string,
+  } & TurnstileFlowOptions) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
@@ -2522,7 +2553,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
       errorRedirectUrl: this.urls.error,
       providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-      turnstileToken: options?.turnstileToken,
+      ...normalizeTurnstileFlowOptions(options),
     };
     await signInWithOAuth(
       this._interface,
@@ -2610,11 +2641,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       options.password,
       emailVerificationRedirectUrl,
       session,
-      {
-        token: options.turnstileToken,
-        phase: options.turnstilePhase,
-        previousResult: options.previousTurnstileResult,
-      },
+      getTurnstileRequestOptions(options),
     );
 
     // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
@@ -2630,11 +2657,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         options.password,
         undefined, // No email verification
         session,
-        {
-          token: options.turnstileToken,
-          phase: options.turnstilePhase,
-          previousResult: options.previousTurnstileResult,
-        },
+        getTurnstileRequestOptions(options),
       );
     }
 

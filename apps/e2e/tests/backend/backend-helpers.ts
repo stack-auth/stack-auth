@@ -95,6 +95,8 @@ export const mockTurnstileTokens = Object.freeze({
   invalid: "mock-turnstile-invalid",
   error: "mock-turnstile-error",
   visibleSignUpOk: "mock-turnstile-visible-ok:sign_up_with_credential",
+  visibleMagicLinkOk: "mock-turnstile-visible-ok:send_magic_link_email",
+  visibleOAuthOk: "mock-turnstile-visible-ok:oauth_authenticate",
 });
 
 function expectSnakeCase(obj: unknown, path: string): void {
@@ -440,7 +442,11 @@ export namespace Auth {
   }
 
   export namespace Otp {
-    export async function sendSignInCode(options: { turnstileToken?: string } = {}) {
+    export async function sendSignInCode(options: {
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       const mailbox = backendContext.value.mailbox;
       const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
         method: "POST",
@@ -449,6 +455,8 @@ export namespace Auth {
           email: mailbox.emailAddress,
           callback_url: "http://localhost:12345/some-callback-url",
           turnstile_token: options.turnstileToken ?? mockTurnstileTokens.magicLinkOk,
+          turnstile_phase: options.turnstilePhase,
+          turnstile_previous_result: options.previousTurnstileResult,
         }),
       });
       expect(response).toMatchInlineSnapshot(`
@@ -718,7 +726,13 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery(options: { forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
+    export async function getAuthorizeQuery(options: {
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
@@ -740,10 +754,20 @@ export namespace Auth {
         code_challenge_method: "plain",
         token: userAuth?.accessToken ?? undefined,
         turnstile_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
+        turnstile_phase: options.turnstilePhase,
+        turnstile_previous_result: options.previousTurnstileResult,
       });
     }
 
-    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
+    export async function authorize(options: {
+      redirectUrl?: string,
+      errorRedirectUrl?: string,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
@@ -769,7 +793,14 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
+    export async function getInnerCallbackUrl(options: {
+      authorizeResponse?: NiceResponse,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
       const authLocation = new URL(authorizeResponse.headers.get("location")!);
@@ -850,7 +881,15 @@ export namespace Auth {
       };
     }
 
-    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: {
+      innerCallbackUrl?: URL,
+      authorizeResponse?: NiceResponse,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -874,7 +913,15 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
+    export async function getAuthorizationCode(options: {
+      innerCallbackUrl?: URL,
+      authorizeResponse?: NiceResponse,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
@@ -896,7 +943,13 @@ export namespace Auth {
       };
     }
 
-    export async function signIn(options: { forceBranchId?: string, includeClientSecret?: boolean, turnstileToken?: string } = {}) {
+    export async function signIn(options: {
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+      turnstileToken?: string,
+      turnstilePhase?: "invisible" | "visible",
+      previousTurnstileResult?: "invalid" | "error",
+    } = {}) {
       const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode(options);
 
       const projectKeys = backendContext.value.projectKeys;

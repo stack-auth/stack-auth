@@ -1,15 +1,27 @@
+import { KnownErrors } from "@stackframe/stack-shared";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { TurnstileAction, TurnstileResult } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { TurnstileAction, TurnstilePhase, TurnstileResult, TurnstileRetryResult, turnstileDevelopmentKeys, turnstilePhaseValues, turnstileRetryResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
 
 export type SignUpTurnstileAssessment = {
   status: TurnstileResult,
   visibleChallengeResult?: TurnstileResult,
 };
 
-const developmentVisibleTurnstileSiteKey = "1x00000000000000000000AA";
-const developmentTurnstileSecretKey = "1x0000000000000000000000000000000AA";
+export type TurnstileFlowRequest = {
+  turnstile_token?: string,
+  turnstile_phase?: TurnstilePhase,
+  turnstile_previous_result?: TurnstileRetryResult,
+};
+
+export const turnstileFlowRequestSchemaFields = {
+  turnstile_token: yupString().optional(),
+  turnstile_phase: yupString().oneOf(turnstilePhaseValues).optional(),
+  turnstile_previous_result: yupString().oneOf(turnstileRetryResultValues).optional(),
+} as const;
 
 type TurnstileSiteverifyResponse = {
   success: boolean,
@@ -28,8 +40,8 @@ function getTurnstileConfig(options?: {
 }) {
   const isDevelopmentLike = ["development", "test"].includes(getNodeEnvironment());
   return {
-    siteKey: options?.siteKey ?? getEnvVariable("NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", isDevelopmentLike ? developmentVisibleTurnstileSiteKey : ""),
-    secretKey: options?.secretKey ?? getEnvVariable("STACK_TURNSTILE_SECRET_KEY", isDevelopmentLike ? developmentTurnstileSecretKey : ""),
+    siteKey: options?.siteKey ?? getEnvVariable("NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", isDevelopmentLike ? turnstileDevelopmentKeys.visibleSiteKey : ""),
+    secretKey: options?.secretKey ?? getEnvVariable("STACK_TURNSTILE_SECRET_KEY", isDevelopmentLike ? turnstileDevelopmentKeys.secretKey : ""),
   };
 }
 
@@ -119,6 +131,72 @@ export async function verifyTurnstileToken(params: {
   }
 
   return { status: "ok" };
+}
+
+export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
+  token: string | undefined,
+  remoteIp: string | null,
+  expectedAction: TurnstileAction,
+  phase?: "invisible" | "visible",
+  previousResult?: TurnstileRetryResult,
+  siteKey?: string,
+  secretKey?: string,
+  fetchImpl?: typeof fetch,
+}): Promise<SignUpTurnstileAssessment> {
+  const assessment = await verifyTurnstileToken(params);
+
+  if (params.phase == null) {
+    if (params.previousResult != null) {
+      throw new KnownErrors.SchemaError("turnstile_previous_result requires turnstile_phase");
+    }
+    return assessment;
+  }
+
+  if (params.phase === "visible") {
+    if (params.previousResult == null) {
+      throw new KnownErrors.SchemaError("turnstile_previous_result is required when turnstile_phase is visible");
+    }
+
+    if (assessment.status !== "ok") {
+      throw new KnownErrors.TurnstileChallengeRequired(params.previousResult);
+    }
+
+    return {
+      status: params.previousResult,
+      visibleChallengeResult: "ok",
+    };
+  }
+
+  if (params.previousResult != null) {
+    throw new KnownErrors.SchemaError("turnstile_previous_result is only allowed when turnstile_phase is visible");
+  }
+
+  if (assessment.status !== "ok") {
+    throw new KnownErrors.TurnstileChallengeRequired(assessment.status);
+  }
+
+  return assessment;
+}
+
+export async function getRequestContextAndTurnstileAssessment(
+  turnstile: TurnstileFlowRequest,
+  expectedAction: TurnstileAction,
+): Promise<{
+  requestContext: BestEffortEndUserRequestContext,
+  turnstileAssessment: SignUpTurnstileAssessment,
+}> {
+  const requestContext = await getBestEffortEndUserRequestContext();
+  const turnstileAssessment = await verifyTurnstileTokenWithOptionalVisibleChallenge({
+    token: turnstile.turnstile_token,
+    remoteIp: requestContext.ipAddress,
+    expectedAction,
+    phase: turnstile.turnstile_phase,
+    previousResult: turnstile.turnstile_previous_result,
+  });
+  return {
+    requestContext,
+    turnstileAssessment,
+  };
 }
 
 import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
@@ -227,6 +305,56 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
       Reflect.set(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", originalSiteKey);
     }
 
-    expect(postedSecret).toBe(developmentTurnstileSecretKey);
+    expect(postedSecret).toBe(turnstileDevelopmentKeys.secretKey);
+  });
+});
+
+import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(...)", () => {
+  import.meta.vitest?.test("preserves legacy behavior when no phase is provided", async ({ expect }) => {
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      token: undefined,
+      remoteIp: null,
+      expectedAction: "send_magic_link_email",
+      siteKey: "site-key",
+      secretKey: "secret-key",
+    })).resolves.toEqual({ status: "invalid" });
+  });
+
+  import.meta.vitest?.test("throws a challenge-required error for invisible failures", async ({ expect }) => {
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      token: "invalid-token",
+      remoteIp: null,
+      expectedAction: "send_magic_link_email",
+      phase: "invisible",
+      siteKey: "site-key",
+      secretKey: "secret-key",
+      fetchImpl: async () => new Response(JSON.stringify({ success: false }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    })).rejects.toThrowError("An additional Turnstile challenge is required before sign-up can continue.");
+  });
+
+  import.meta.vitest?.test("returns a recovered assessment after a successful visible retry", async ({ expect }) => {
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      token: "visible-token",
+      remoteIp: null,
+      expectedAction: "send_magic_link_email",
+      phase: "visible",
+      previousResult: "invalid",
+      siteKey: "site-key",
+      secretKey: "secret-key",
+      fetchImpl: async () => new Response(JSON.stringify({ success: true, action: "send_magic_link_email" }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    })).resolves.toEqual({
+      status: "invalid",
+      visibleChallengeResult: "ok",
+    });
   });
 });

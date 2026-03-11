@@ -1,6 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
@@ -61,8 +62,10 @@ export type CredentialSignUpTurnstileOptions =
   | {
     turnstileToken: string,
     turnstilePhase: "visible",
-    previousTurnstileResult: "invalid" | "error",
+    previousTurnstileResult: TurnstileRetryResult,
   };
+
+export type TurnstileFlowOptions = CredentialSignUpTurnstileOptions;
 
 export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & {
@@ -75,7 +78,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
 
     readonly urls: Readonly<HandlerUrls>,
 
-    signInWithOAuth(provider: string, options?: { returnTo?: string, turnstileToken?: string }): Promise<void>,
+    signInWithOAuth(provider: string, options?: { returnTo?: string } & TurnstileFlowOptions): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
     signUpWithCredential(options: {
       email: string,
@@ -86,7 +89,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     callOAuthCallback(): Promise<boolean>,
     promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
-    sendMagicLinkEmail(email: string, options?: { callbackUrl?: string, turnstileToken?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>,
+    sendMagicLinkEmail(email: string, options?: { callbackUrl?: string } & TurnstileFlowOptions): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyPasswordResetCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
     verifyTeamInvitationCode(code: string): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,

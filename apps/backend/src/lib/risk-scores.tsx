@@ -2,6 +2,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
@@ -30,7 +31,7 @@ export type SignUpRiskScores = SignUpRiskScoresCrud;
 export type SignUpRiskScoreContext = {
   primaryEmail: string | null,
   primaryEmailVerified: boolean,
-  authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
+  authMethod: SignUpAuthMethod,
   oauthProvider: string | null,
   ipAddress: string | null,
   ipTrusted: boolean | null,

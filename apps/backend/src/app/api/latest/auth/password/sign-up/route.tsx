@@ -1,14 +1,12 @@
-import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createAuthTokens } from "@/lib/tokens";
-import { verifyTurnstileToken } from "@/lib/turnstile";
+import { getRequestContextAndTurnstileAssessment, turnstileFlowRequestSchemaFields } from "@/lib/turnstile";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailVerificationCallbackUrlSchema, passwordSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { turnstileRetryResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { contactChannelVerificationCodeHandler } from "../../../contact-channels/verify/verification-code-handler";
 import { createMfaRequiredError } from "../../mfa/sign-in/verification-code-handler";
 
@@ -28,9 +26,7 @@ export const POST = createSmartRouteHandler({
       email: signInEmailSchema.defined(),
       password: passwordSchema.defined(),
       verification_callback_url: emailVerificationCallbackUrlSchema.optional(),
-      turnstile_token: yupString().optional(),
-      turnstile_phase: yupString().oneOf(["invisible", "visible"]).optional(),
-      turnstile_previous_result: yupString().oneOf(turnstileRetryResultValues).optional(),
+      ...turnstileFlowRequestSchemaFields,
     }).defined(),
   }),
   response: yupObject({
@@ -42,7 +38,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, turnstile_token: turnstileToken, turnstile_phase: turnstilePhase, turnstile_previous_result: turnstilePreviousResult } }) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, ...turnstile } }) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -60,35 +56,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    const requestContext = await getBestEffortEndUserRequestContext();
-    const turnstileAssessment = await verifyTurnstileToken({
-      token: turnstileToken,
-      remoteIp: requestContext.ipAddress,
-      expectedAction: "sign_up_with_credential",
-    });
-
-    if (turnstilePhase === "visible") {
-      if (turnstilePreviousResult == null) {
-        throw new KnownErrors.SchemaError("turnstile_previous_result is required when turnstile_phase is visible");
-      }
-
-      if (turnstileAssessment.status !== "ok") {
-        throw new KnownErrors.TurnstileChallengeRequired(turnstilePreviousResult);
-      }
-    } else if (turnstilePhase === "invisible" && turnstileAssessment.status !== "ok") {
-      throw new KnownErrors.TurnstileChallengeRequired(turnstileAssessment.status);
-    }
-
-    let persistedTurnstileAssessment = turnstileAssessment;
-    if (turnstilePhase === "visible") {
-      if (turnstilePreviousResult == null) {
-        throw new KnownErrors.SchemaError("turnstile_previous_result must exist for visible phase");
-      }
-      persistedTurnstileAssessment = {
-        status: turnstilePreviousResult,
-        visibleChallengeResult: "ok",
-      };
-    }
+    const { requestContext, turnstileAssessment } = await getRequestContextAndTurnstileAssessment(turnstile, "sign_up_with_credential");
 
     const createdUser = await createOrUpgradeAnonymousUserWithRules(
       tenancy,
@@ -106,7 +74,7 @@ export const POST = createSmartRouteHandler({
         ipAddress: requestContext.ipAddress,
         ipTrusted: requestContext.ipTrusted,
         countryCode: requestContext.location?.countryCode ?? null,
-        turnstileAssessment: persistedTurnstileAssessment,
+        turnstileAssessment,
       }
     );
 

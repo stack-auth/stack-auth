@@ -10,7 +10,7 @@ import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { useStackApp } from "../lib/hooks";
-import { getTurnstileInvisibleSiteKey, getTurnstileSiteKey, useTurnstile } from "../lib/turnstile";
+import { useStagedTurnstile } from "../lib/turnstile";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -39,38 +39,19 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     resolver: yupResolver(schema)
   });
   const app = useStackApp();
-  const visibleTurnstileSiteKey = getTurnstileSiteKey(app);
-  const invisibleTurnstileSiteKey = getTurnstileInvisibleSiteKey(app);
-  const usesDedicatedInvisibleTurnstileSiteKey = invisibleTurnstileSiteKey !== visibleTurnstileSiteKey;
-  const [challengeRequiredResult, setChallengeRequiredResult] = useState<"invalid" | "error" | null>(null);
-  const [visibleTurnstileToken, setVisibleTurnstileToken] = useState<string | null>(null);
-  const [challengeError, setChallengeError] = useState<string | null>(null);
-  const { executeTurnstile: executeInvisibleTurnstile, turnstileWidget: invisibleTurnstileWidget } = useTurnstile({
-    siteKey: invisibleTurnstileSiteKey,
-    action: "sign_up_with_credential",
-    appearance: "interaction-only",
-    execution: "execute",
-    size: usesDedicatedInvisibleTurnstileSiteKey ? "invisible" : undefined,
-  });
   const {
-    resetTurnstile: resetVisibleTurnstile,
-    turnstileWidget: visibleTurnstileWidget,
-  } = useTurnstile({
-    siteKey: visibleTurnstileSiteKey,
+    challengeRequiredResult,
+    visibleTurnstileToken,
+    challengeError,
+    invisibleTurnstileWidget,
+    visibleTurnstileWidget,
+    clearChallengeError,
+    getTurnstileFlowOptions,
+    handleChallengeRequired,
+  } = useStagedTurnstile(app, {
     action: "sign_up_with_credential",
-    appearance: "always",
-    execution: "render",
-    size: "flexible",
-    enabled: challengeRequiredResult != null,
-    onTokenChange: (token) => {
-      setVisibleTurnstileToken(token);
-      if (token != null) {
-        setChallengeError(null);
-      }
-    },
-    onError: (message) => {
-      setChallengeError(message);
-    },
+    missingVisibleChallengeMessage: t('Please solve the captcha before signing up'),
+    challengeRequiredMessage: t('Complete the captcha to finish signing up'),
   });
   const [loading, setLoading] = useState(false);
 
@@ -78,39 +59,18 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     setLoading(true);
     try {
       const { email, password } = data;
-      const visibleChallengeToken = visibleTurnstileToken;
-      if (challengeRequiredResult != null && visibleChallengeToken == null) {
-        setChallengeError(t('Please solve the captcha before signing up'));
+      const turnstileOptions = await getTurnstileFlowOptions();
+      if (turnstileOptions == null) {
         return;
       }
-      let result;
-      if (challengeRequiredResult == null) {
-        result = await app.signUpWithCredential({
-          email,
-          password,
-          turnstileToken: await executeInvisibleTurnstile(),
-          turnstilePhase: "invisible",
-        });
-      } else {
-        const requiredVisibleChallengeToken = visibleChallengeToken;
-        if (requiredVisibleChallengeToken == null) {
-          throw new Error("Visible Turnstile token was cleared before sign-up could continue.");
-        }
-        result = await app.signUpWithCredential({
-          email,
-          password,
-          turnstileToken: requiredVisibleChallengeToken,
-          turnstilePhase: "visible",
-          previousTurnstileResult: challengeRequiredResult,
-        });
-      }
+      const result = await app.signUpWithCredential({
+        email,
+        password,
+        ...turnstileOptions,
+      });
       if (result.status === 'error') {
         if (KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-          const [invisibleResult] = result.error.constructorArgs;
-          setChallengeRequiredResult(invisibleResult);
-          setVisibleTurnstileToken(null);
-          resetVisibleTurnstile();
-          setChallengeError(t('Complete the captcha to finish signing up'));
+          handleChallengeRequired(result.error);
         } else {
           setError('email', { type: 'manual', message: result.error.message });
         }
@@ -137,7 +97,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         autoComplete="email"
         {...registerEmail}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          setChallengeError(null);
+          clearChallengeError();
           runAsynchronously(registerEmail.onChange(e));
         }}
       />
@@ -151,7 +111,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           clearErrors('password');
           clearErrors('passwordRepeat');
-          setChallengeError(null);
+          clearChallengeError();
           runAsynchronously(registerPassword.onChange(e));
         }}
       />
@@ -166,7 +126,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               clearErrors('password');
               clearErrors('passwordRepeat');
-              setChallengeError(null);
+              clearChallengeError();
               runAsynchronously(registerPasswordRepeat.onChange(e));
               }}
             />
@@ -179,7 +139,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
         {t('Sign Up')}
       </Button>
       <FormWarningText text={challengeError ?? undefined} />
-      {challengeRequiredResult != null ? visibleTurnstileWidget : null}
+      {visibleTurnstileWidget}
       {invisibleTurnstileWidget}
     </form>
   );

@@ -48,6 +48,42 @@ it("should redirect the user to the OAuth provider with the right arguments even
   expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
 });
 
+it("should return the OAuth location as JSON when requested by the SDK flow", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      stack_oauth_response_format: "json",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent" },
+      "headers": Headers {
+        "set-cookie": <setting cookie "stack-oauth-inner-<stripped cookie name key>" at path "/" to "true">,
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should return credentialed CORS headers for versioned OAuth authorize requests", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    headers: {
+      origin: localhostUrl("01"),
+    },
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      stack_oauth_response_format: "json",
+    },
+  });
+
+  expect(response.headers.get("access-control-allow-origin")).toBe(localhostUrl("01"));
+  expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+});
+
 it("should not redirect the user to the OAuth provider with the right arguments when forcing a branch id that does not exist", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",

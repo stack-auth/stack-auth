@@ -3,6 +3,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
+import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { getBestEffortEndUserRequestContext } from "./end-users";
@@ -15,7 +16,7 @@ import { SignUpTurnstileAssessment } from "./turnstile";
  * Options for sign-up rule evaluation context.
  */
 export type SignUpRuleOptions = {
-  authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
+  authMethod: SignUpAuthMethod,
   oauthProvider: string | null,
   ipAddress: string | null,
   ipTrusted: boolean | null,

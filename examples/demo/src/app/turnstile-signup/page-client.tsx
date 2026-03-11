@@ -1,18 +1,17 @@
 'use client';
 
 import { KnownErrors } from "@stackframe/stack-shared";
+import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { useStackApp, useUser } from "@stackframe/stack";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@stackframe/stack-ui";
 import Link from "next/link";
 import { useState } from "react";
 import { TurnstileVisibleWidget } from "src/components/turnstile-visible-widget";
 
-const developmentVisibleTurnstileSiteKey = "1x00000000000000000000AA";
-const developmentInvisibleTurnstileSiteKey = "1x00000000000000000000BB";
-const developmentForcedChallengeSiteKey = "3x00000000000000000000FF";
-const forcedChallengeSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY || developmentForcedChallengeSiteKey;
-const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || developmentInvisibleTurnstileSiteKey;
-const sharedTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || developmentVisibleTurnstileSiteKey;
+const forcedChallengeSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY || turnstileDevelopmentKeys.forcedChallengeSiteKey;
+const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || turnstileDevelopmentKeys.invisibleSiteKey;
+const sharedTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || turnstileDevelopmentKeys.visibleSiteKey;
 const forcedChallengeSiteKeySource = process.env.NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY
   ? "NEXT_PUBLIC_STACK_TURNSTILE_ALWAYS_CHALLENGE_SITE_KEY"
   : "built-in Cloudflare interactive test key";
@@ -27,7 +26,7 @@ const demoInvisibleTokens = {
   invalid: "mock-turnstile-invalid",
 } as const;
 
-type SubmissionFlow = "invisible-ok" | "invisible-invalid" | "visible-retry";
+type SubmissionFlow = "invisible-ok" | "invisible-invalid" | "visible-retry" | "visible-fail" | "no-token";
 
 type SubmissionResult = {
   flow: SubmissionFlow,
@@ -36,7 +35,7 @@ type SubmissionResult = {
 };
 
 type VisibleFallbackState = {
-  previousTurnstileResult: "invalid" | "error",
+  previousTurnstileResult: TurnstileRetryResult,
 };
 
 export default function TurnstileSignupPageClient() {
@@ -184,6 +183,79 @@ export default function TurnstileSignupPageClient() {
         flow: "visible-retry",
         status: "success",
         message: "Signup succeeded after the visible fallback challenge. The backend should persist the softened recovered Turnstile risk score for this signup.",
+      });
+    } finally {
+      setLoadingFlow(null);
+    }
+  }
+
+  async function submitVisibleFailAttempt() {
+    setLoadingFlow("visible-fail");
+    setSubmissionResult(null);
+    setVisibleFallbackState(null);
+    setVisibleTurnstileToken(null);
+    setVisibleTurnstileError(null);
+    setChallengeWidgetKey((current) => current + 1);
+
+    try {
+      const result = await app.signUpWithCredential({
+        email,
+        password,
+        noRedirect: true,
+        noVerificationCallback: true,
+        turnstileToken: demoInvisibleTokens.invalid,
+        turnstilePhase: "visible",
+        previousTurnstileResult: "invalid",
+      });
+
+      if (result.status === "error") {
+        setSubmissionResult({
+          flow: "visible-fail",
+          status: "error",
+          message: result.error.message,
+        });
+        return;
+      }
+
+      setSubmissionResult({
+        flow: "visible-fail",
+        status: "success",
+        message: "Signup unexpectedly succeeded even though both Turnstile stages sent invalid tokens.",
+      });
+    } finally {
+      setLoadingFlow(null);
+    }
+  }
+
+  async function submitNoTokenAttempt() {
+    setLoadingFlow("no-token");
+    setSubmissionResult(null);
+    setVisibleFallbackState(null);
+    setVisibleTurnstileToken(null);
+    setVisibleTurnstileError(null);
+    setChallengeWidgetKey((current) => current + 1);
+
+    try {
+      const result = await app.signUpWithCredential({
+        email,
+        password,
+        noRedirect: true,
+        noVerificationCallback: true,
+      });
+
+      if (result.status === "error") {
+        setSubmissionResult({
+          flow: "no-token",
+          status: "error",
+          message: result.error.message,
+        });
+        return;
+      }
+
+      setSubmissionResult({
+        flow: "no-token",
+        status: "success",
+        message: "Signup succeeded without any Turnstile token. The backend accepted the request for backwards compatibility.",
       });
     } finally {
       setLoadingFlow(null);
@@ -353,6 +425,52 @@ export default function TurnstileSignupPageClient() {
                 onClick={async () => await completeVisibleFallbackSignup()}
               >
                 Complete visible fallback
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <Typography type="h3">Visible captcha also fails</Typography>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Typography>
+                Sends <span className="font-mono">{demoInvisibleTokens.invalid}</span> with <span className="font-mono">turnstilePhase: &quot;visible&quot;</span> and <span className="font-mono">previousTurnstileResult: &quot;invalid&quot;</span>.
+              </Typography>
+              <Typography className="text-sm text-gray-600 dark:text-gray-300">
+                Simulates the worst case: the invisible attempt failed, then the visible fallback token also fails server-side validation. The backend should reject the signup.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                loading={loadingFlow === "visible-fail"}
+                onClick={async () => await submitVisibleFailAttempt()}
+              >
+                Run both-fail flow
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <Typography type="h3">No token (backwards compatibility)</Typography>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Typography>
+                Calls <span className="font-mono">signUpWithCredential</span> without passing any Turnstile token or phase.
+              </Typography>
+              <Typography className="text-sm text-gray-600 dark:text-gray-300">
+                Simulates an older SDK client that does not support Turnstile yet. The backend should still accept the request and apply a default risk penalty for the missing token.
+              </Typography>
+            </CardContent>
+            <CardFooter>
+              <Button
+                loading={loadingFlow === "no-token"}
+                onClick={async () => await submitNoTokenAttempt()}
+              >
+                Run no-token signup
               </Button>
             </CardFooter>
           </Card>

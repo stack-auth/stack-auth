@@ -1,4 +1,5 @@
 import { KnownError, StackClientInterface } from "@stackframe/stack-shared";
+import { KnownErrors } from "@stackframe/stack-shared";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { neverResolve } from "@stackframe/stack-shared/dist/utils/promises";
@@ -6,14 +7,28 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
+import type { TurnstileFlowOptions } from "./stack-app/apps/interfaces/client-app";
 
 export type OAuthAuthenticateOptions = {
   provider: string,
   redirectUrl: string,
   errorRedirectUrl: string,
   providerScope?: string,
-  turnstileToken?: string,
-};
+} & TurnstileFlowOptions;
+
+export async function sendMagicLinkEmailWithTurnstileFlow(
+  iface: StackClientInterface,
+  options: {
+    email: string,
+    callbackUrl: string,
+  } & TurnstileFlowOptions,
+): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
+  return await iface.sendMagicLinkEmail(options.email, options.callbackUrl, {
+    token: options.turnstileToken,
+    phase: options.turnstilePhase,
+    previousResult: options.previousTurnstileResult,
+  });
+}
 
 export async function signInWithOAuth(
   iface: StackClientInterface,
@@ -21,17 +36,22 @@ export async function signInWithOAuth(
   session: InternalSession,
 ) {
   const { codeChallenge, state } = await saveVerifierAndState();
-  const location = await iface.getOAuthUrl({
+  const authorizeResult = await iface.authorizeOAuth({
     provider: options.provider,
     redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
     errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    codeChallenge,
-    state,
     type: "authenticate",
     providerScope: options.providerScope,
-    turnstileToken: options.turnstileToken,
+    codeChallenge,
+    state,
+    turnstile: {
+      token: options.turnstileToken,
+      phase: options.turnstilePhase,
+      previousResult: options.previousTurnstileResult,
+    },
     session,
   });
+  const location = Result.orThrow(authorizeResult);
   window.location.assign(location);
   await neverResolve();
 }

@@ -4,6 +4,7 @@
 
 import React, { act } from "react";
 import { KnownErrors } from "@stackframe/stack-shared";
+import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { createRoot, type Root } from "../test-utils/react-dom-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -118,6 +119,52 @@ vi.mock("../lib/turnstile", () => ({
       executeTurnstile: executeInvisibleTurnstile,
       resetTurnstile: vi.fn(),
       turnstileWidget: React.createElement("div", { "data-testid": "invisible-turnstile-widget" }),
+    };
+  },
+  useStagedTurnstile: (_app: unknown, options: {
+    missingVisibleChallengeMessage: string,
+    challengeRequiredMessage: string,
+  }) => {
+    const [challengeRequiredResult, setChallengeRequiredResult] = React.useState<TurnstileRetryResult | null>(null);
+    const [visibleTurnstileToken, setVisibleTurnstileToken] = React.useState<string | null>(null);
+    const [challengeError, setChallengeError] = React.useState<string | null>(null);
+    visibleTurnstileTokenChange = (token) => {
+      setVisibleTurnstileToken(token);
+      if (token != null) {
+        setChallengeError(null);
+      }
+    };
+    return {
+      challengeRequiredResult,
+      visibleTurnstileToken,
+      challengeError,
+      invisibleTurnstileWidget: React.createElement("div", { "data-testid": "invisible-turnstile-widget" }),
+      visibleTurnstileWidget: challengeRequiredResult == null ? null : React.createElement("div", { "data-testid": "visible-turnstile-widget" }),
+      clearChallengeError: () => setChallengeError(null),
+      getTurnstileFlowOptions: async () => {
+        if (challengeRequiredResult == null) {
+          return {
+            turnstileToken: await executeInvisibleTurnstile(),
+            turnstilePhase: "invisible" as const,
+          };
+        }
+        if (visibleTurnstileToken == null) {
+          setChallengeError(options.missingVisibleChallengeMessage);
+          return null;
+        }
+        return {
+          turnstileToken: visibleTurnstileToken,
+          turnstilePhase: "visible" as const,
+          previousTurnstileResult: challengeRequiredResult,
+        };
+      },
+      handleChallengeRequired: (error: InstanceType<typeof KnownErrors.TurnstileChallengeRequired>) => {
+        const [invisibleResult] = error.constructorArgs;
+        setChallengeRequiredResult(invisibleResult);
+        setVisibleTurnstileToken(null);
+        resetVisibleTurnstile();
+        setChallengeError(options.challengeRequiredMessage);
+      },
     };
   },
 }));
@@ -245,6 +292,7 @@ describe("hosted auth Turnstile integration", () => {
 
     await waitForAssertion(() => {
       expect(mockApp.sendMagicLinkEmail).toHaveBeenCalledWith("user@example.com", {
+        turnstilePhase: "invisible",
         turnstileToken: "mock-turnstile-token",
       });
     });
@@ -262,6 +310,7 @@ describe("hosted auth Turnstile integration", () => {
 
     await waitForAssertion(() => {
       expect(mockApp.signInWithOAuth).toHaveBeenCalledWith("google", {
+        turnstilePhase: "invisible",
         turnstileToken: "mock-turnstile-token",
       });
     });
@@ -310,6 +359,93 @@ describe("hosted auth Turnstile integration", () => {
       expect(mockApp.signUpWithCredential).toHaveBeenNthCalledWith(2, {
         email: "user@example.com",
         password: "password123",
+        previousTurnstileResult: "invalid",
+        turnstilePhase: "visible",
+        turnstileToken: "mock-visible-turnstile-token",
+      });
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("retries magic link send with a visible Turnstile challenge after an invisible failure", async () => {
+    const { MagicLinkSignIn } = await loadComponents();
+    mockApp.sendMagicLinkEmail
+      .mockResolvedValueOnce({ status: "error", error: new KnownErrors.TurnstileChallengeRequired("invalid") })
+      .mockResolvedValueOnce({ status: "ok", data: { nonce: "nonce" } });
+
+    const { container, root } = await renderElement(React.createElement(MagicLinkSignIn));
+
+    await changeValue(container.querySelector("#email"), "user@example.com");
+    await submitForm(container.querySelector("form"));
+
+    await waitForAssertion(() => {
+      expect(mockApp.sendMagicLinkEmail).toHaveBeenNthCalledWith(1, "user@example.com", {
+        turnstilePhase: "invisible",
+        turnstileToken: "mock-turnstile-token",
+      });
+    });
+
+    const submitButton = container.querySelector("button");
+    if (!(submitButton instanceof HTMLButtonElement)) {
+      throw new Error("Expected submit button");
+    }
+    expect(submitButton.disabled).toBe(true);
+
+    await act(async () => {
+      visibleTurnstileTokenChange?.("mock-visible-turnstile-token");
+    });
+    expect(submitButton.disabled).toBe(false);
+
+    await submitForm(container.querySelector("form"));
+
+    await waitForAssertion(() => {
+      expect(mockApp.sendMagicLinkEmail).toHaveBeenNthCalledWith(2, "user@example.com", {
+        previousTurnstileResult: "invalid",
+        turnstilePhase: "visible",
+        turnstileToken: "mock-visible-turnstile-token",
+      });
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("retries OAuth authenticate with a visible Turnstile challenge after an invisible failure", async () => {
+    const { OAuthButtonGroup } = await loadComponents();
+    mockApp.signInWithOAuth
+      .mockRejectedValueOnce(new KnownErrors.TurnstileChallengeRequired("invalid"))
+      .mockResolvedValueOnce(undefined);
+
+    const { container, root } = await renderElement(React.createElement(OAuthButtonGroup, { type: "sign-in" }));
+
+    await click(Array.from(container.querySelectorAll("button")).find((button) => button.textContent.includes("Sign in with Google")) ?? null);
+
+    await waitForAssertion(() => {
+      expect(mockApp.signInWithOAuth).toHaveBeenNthCalledWith(1, "google", {
+        turnstilePhase: "invisible",
+        turnstileToken: "mock-turnstile-token",
+      });
+    });
+
+    const signInButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent.includes("Sign in with Google"));
+    if (!(signInButton instanceof HTMLButtonElement)) {
+      throw new Error("Expected Google sign-in button");
+    }
+    expect(signInButton.disabled).toBe(true);
+
+    await act(async () => {
+      visibleTurnstileTokenChange?.("mock-visible-turnstile-token");
+    });
+    expect(signInButton.disabled).toBe(false);
+
+    await click(signInButton);
+
+    await waitForAssertion(() => {
+      expect(mockApp.signInWithOAuth).toHaveBeenNthCalledWith(2, "google", {
         previousTurnstileResult: "invalid",
         turnstilePhase: "visible",
         turnstileToken: "mock-visible-turnstile-token",

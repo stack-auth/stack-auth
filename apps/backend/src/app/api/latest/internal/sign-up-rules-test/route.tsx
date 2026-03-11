@@ -5,11 +5,11 @@ import { evaluateSignUpRulesWithTrace } from "@/lib/sign-up-rules";
 import { getDerivedSignUpCountryCode } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { riskScoreFieldSchema } from "@stackframe/stack-shared/dist/interface/crud/users";
+import { signUpAuthMethodValues } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import type { TurnstileResult } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { turnstileResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { adaptSchema, adminAuthTypeSchema, countryCodeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
-const AUTH_METHODS = ['password', 'otp', 'oauth', 'passkey'] as const;
 const ACTION_TYPES = ['allow', 'reject', 'restrict', 'log'] as const;
 const DECISION_TYPES = ['allow', 'reject', 'default-allow', 'default-reject'] as const;
 const STATUS_TYPES = ['matched', 'not_matched', 'disabled', 'missing_condition', 'error'] as const;
@@ -25,7 +25,7 @@ export const POST = createSmartRouteHandler({
     }),
     body: yupObject({
       email: yupString().nullable().defined(),
-      auth_method: yupString().oneOf(AUTH_METHODS).defined(),
+      auth_method: yupString().oneOf(signUpAuthMethodValues).defined(),
       oauth_provider: yupString().nullable().defined(),
       country_code: countryCodeSchema.nullable().defined(),
       turnstile_result: yupString().oneOf(["ok", "invalid", "error"]).optional(),
@@ -43,7 +43,7 @@ export const POST = createSmartRouteHandler({
         email: yupString().defined(),
         email_domain: yupString().defined(),
         country_code: yupString().defined(),
-        auth_method: yupString().oneOf(AUTH_METHODS).defined(),
+        auth_method: yupString().oneOf(signUpAuthMethodValues).defined(),
         oauth_provider: yupString().defined(),
         turnstile_result: yupString().oneOf(turnstileResultValues).defined(),
         risk_scores: yupObject({

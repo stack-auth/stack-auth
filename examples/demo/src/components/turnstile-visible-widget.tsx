@@ -1,87 +1,9 @@
 'use client';
 
 import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getTurnstileApi, loadTurnstileScript } from "@stackframe/stack-shared/dist/utils/turnstile-browser";
+import type { TurnstileWidgetId } from "@stackframe/stack-shared/dist/utils/turnstile-browser";
 import { useEffect, useRef } from "react";
-
-type TurnstileWidgetId = string;
-
-type TurnstileTheme = "auto" | "light" | "dark";
-type TurnstileSize = "normal" | "flexible" | "compact";
-type TurnstileAppearance = "always" | "execute" | "interaction-only";
-type TurnstileExecution = "render" | "execute";
-
-type TurnstileConfig = {
-  sitekey: string,
-  action: TurnstileAction,
-  theme?: TurnstileTheme,
-  size?: TurnstileSize,
-  appearance?: TurnstileAppearance,
-  execution?: TurnstileExecution,
-  callback: (token: string) => void,
-  "error-callback": (errorCode?: string) => void,
-  "expired-callback": () => void,
-  "timeout-callback": () => void,
-};
-
-type TurnstileApi = {
-  render: (container: HTMLElement, config: TurnstileConfig) => TurnstileWidgetId,
-  remove: (widgetId: TurnstileWidgetId) => void,
-};
-
-function isTurnstileApi(value: unknown): value is TurnstileApi {
-  return typeof value === "object"
-    && value !== null
-    && "render" in value
-    && "remove" in value;
-}
-
-function getTurnstileApi(): TurnstileApi | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const maybeTurnstile = Reflect.get(window, "turnstile");
-  return isTurnstileApi(maybeTurnstile) ? maybeTurnstile : undefined;
-}
-
-let turnstileScriptPromise: Promise<void> | null = null;
-
-function loadTurnstileScript(): Promise<void> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new StackAssertionError("Turnstile can only be loaded in the browser"));
-  }
-
-  if (getTurnstileApi()) {
-    return Promise.resolve();
-  }
-
-  turnstileScriptPromise ??= new Promise<void>((resolve, reject) => {
-    const existingScript = document.querySelector<HTMLScriptElement>('script[src^="https://challenges.cloudflare.com/turnstile/v0/api.js"]');
-    if (existingScript) {
-      if (existingScript.dataset.loaded === "true") {
-        resolve();
-        return;
-      }
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Failed to load Turnstile")), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      script.dataset.loaded = "true";
-      resolve();
-    };
-    script.onerror = () => reject(new Error("Failed to load Turnstile"));
-    document.head.append(script);
-  });
-
-  return turnstileScriptPromise;
-}
 
 export function TurnstileVisibleWidget(props: {
   siteKey: string,
@@ -89,12 +11,19 @@ export function TurnstileVisibleWidget(props: {
   onTokenChange: (token: string | null) => void,
   onError?: (message: string) => void,
 }) {
-  const { action, onError, onTokenChange, siteKey } = props;
+  const { action, siteKey } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<TurnstileWidgetId | null>(null);
+  const onTokenChangeRef = useRef(props.onTokenChange);
+  const onErrorRef = useRef(props.onError);
 
   useEffect(() => {
-    onTokenChange(null);
+    onTokenChangeRef.current = props.onTokenChange;
+    onErrorRef.current = props.onError;
+  }, [props.onTokenChange, props.onError]);
+
+  useEffect(() => {
+    onTokenChangeRef.current(null);
 
     const container = containerRef.current;
     if (container == null) {
@@ -105,7 +34,7 @@ export function TurnstileVisibleWidget(props: {
       cancelled: false,
     };
 
-    void (async () => {
+    const loadPromise = (async () => {
       await loadTurnstileScript();
       const turnstileApi = getTurnstileApi();
       if (state.cancelled || !turnstileApi) {
@@ -120,36 +49,38 @@ export function TurnstileVisibleWidget(props: {
         theme: "auto",
         size: "flexible",
         callback: (token) => {
-          onTokenChange(token);
+          onTokenChangeRef.current(token);
         },
         "error-callback": (errorCode) => {
-          onTokenChange(null);
-          onError?.(errorCode ? `Turnstile error: ${errorCode}` : "Turnstile verification failed");
+          onTokenChangeRef.current(null);
+          onErrorRef.current?.(errorCode ? `Turnstile error: ${errorCode}` : "Turnstile verification failed");
         },
         "expired-callback": () => {
-          onTokenChange(null);
-          onError?.("Turnstile token expired. Solve the challenge again.");
+          onTokenChangeRef.current(null);
+          onErrorRef.current?.("Turnstile token expired. Solve the challenge again.");
         },
         "timeout-callback": () => {
-          onTokenChange(null);
-          onError?.("Turnstile challenge timed out. Solve it again.");
+          onTokenChangeRef.current(null);
+          onErrorRef.current?.("Turnstile challenge timed out. Solve it again.");
         },
       });
-    })().catch((error: unknown) => {
-      onTokenChange(null);
-      onError?.(error instanceof Error ? error.message : "Failed to load Turnstile");
+    })();
+
+    loadPromise.catch((error: unknown) => {
+      onTokenChangeRef.current(null);
+      onErrorRef.current?.(error instanceof Error ? error.message : "Failed to load Turnstile");
     });
 
     return () => {
       state.cancelled = true;
-      onTokenChange(null);
+      onTokenChangeRef.current(null);
       const turnstileApi = getTurnstileApi();
       if (widgetIdRef.current != null && turnstileApi) {
         turnstileApi.remove(widgetIdRef.current);
       }
       widgetIdRef.current = null;
     };
-  }, [action, onError, onTokenChange, siteKey]);
+  }, [action, siteKey]);
 
   return <div ref={containerRef} className="w-full min-h-16" />;
 }
