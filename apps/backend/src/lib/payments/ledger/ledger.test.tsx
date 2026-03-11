@@ -5,9 +5,22 @@ import { productToInlineProduct } from '@/lib/payments/index';
 import { getAllTransactionsForCustomer, getItemQuantityForCustomer, getOwnedProductsForCustomer } from './index';
 
 let _currentMockPrisma: any = null;
+let _transactionsOverride: any[] | null = null;
 vi.mock('@/prisma-client', () => ({
   getPrismaClientForTenancy: async () => _currentMockPrisma,
 }));
+vi.mock('./transactions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./transactions')>();
+  return {
+    ...actual,
+    getTransactions: async (...args: Parameters<typeof actual.getTransactions>) =>
+      await (_transactionsOverride ?? actual.getTransactions(...args)),
+  };
+});
+
+beforeEach(() => {
+  _transactionsOverride = null;
+});
 
 function createMockTenancy(config: Partial<Tenancy['config']['payments']> = {}, id: string = 'tenancy-1'): Tenancy {
   return {
@@ -517,6 +530,170 @@ describe('getItemQuantityForCustomer - combined sources', () => {
     });
     // subscription-start: +100, purchase-refund doesn't expire (expires != when-purchase-expires) => 100
     expect(qty).toBe(100);
+    vi.useRealTimers();
+  });
+
+  it('uses adjusted entry index to resolve product-revocation for multi-grant transactions', async () => {
+    vi.setSystemTime(new Date('2025-02-15'));
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-1',
+        tenancyId: 'tenancy-1',
+        snapshot: {
+          'free-plan': {
+            display_name: 'Free Plan',
+            customer_type: 'custom',
+            product_line_id: 'plans',
+            included_items: { seats: { quantity: 1 } },
+            prices: {},
+            server_only: false,
+            stackable: false,
+            client_metadata: null,
+            client_read_only_metadata: null,
+            server_metadata: null,
+          },
+        },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        'free-plan': { displayName: 'Free Plan', customerType: 'custom', productLineId: 'plans', includedItems: { seats: { quantity: 1 } }, prices: 'include-by-default', isAddOnTo: false } as any,
+      },
+      productLines: {
+        plans: { displayName: 'Plans', customerType: 'custom' },
+        extras: { displayName: 'Extras', customerType: 'custom' },
+      },
+    });
+
+    _transactionsOverride = [
+      {
+        id: 'tx-default-change',
+        type: 'default-products-change',
+        created_at_millis: new Date('2025-01-01').getTime(),
+        effective_at_millis: new Date('2025-01-01').getTime(),
+        entries: [{
+          type: 'default-products-change',
+          snapshot: {
+            'free-plan': {
+              display_name: 'Free Plan',
+              customer_type: 'custom',
+              product_line_id: 'plans',
+              included_items: { seats: { quantity: 1 } },
+              prices: {},
+              server_only: false,
+              stackable: false,
+              client_metadata: null,
+              client_read_only_metadata: null,
+              server_metadata: null,
+            },
+          },
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      {
+        id: 'tx-default-grant',
+        type: 'default-product-item-grant-repeat',
+        created_at_millis: new Date('2025-01-01T01:00:00Z').getTime(),
+        effective_at_millis: new Date('2025-01-01T01:00:00Z').getTime(),
+        entries: [{
+          type: 'default-product-item-grant',
+          adjusted_transaction_id: null,
+          adjusted_entry_index: null,
+          product_id: 'free-plan',
+          item_id: 'seats',
+          quantity: 1,
+          expires_when_repeated: false,
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      {
+        id: 'tx-multi-grant',
+        type: 'subscription-start',
+        created_at_millis: new Date('2025-01-02').getTime(),
+        effective_at_millis: new Date('2025-01-02').getTime(),
+        entries: [
+          {
+            type: 'product-grant',
+            adjusted_transaction_id: null,
+            adjusted_entry_index: null,
+            customer_type: 'custom',
+            customer_id: 'custom-1',
+            product_id: 'paid-plans',
+            product: {
+              display_name: 'Paid Plans',
+              customer_type: 'custom',
+              product_line_id: 'plans',
+              included_items: {},
+              prices: {},
+              server_only: false,
+              stackable: false,
+              client_metadata: null,
+              client_read_only_metadata: null,
+              server_metadata: null,
+            },
+            price_id: null,
+            quantity: 1,
+            cycle_anchor: new Date('2025-01-02').getTime(),
+            subscription_id: 'sub-plans',
+          },
+          {
+            type: 'product-grant',
+            adjusted_transaction_id: null,
+            adjusted_entry_index: null,
+            customer_type: 'custom',
+            customer_id: 'custom-1',
+            product_id: 'paid-extras',
+            product: {
+              display_name: 'Paid Extras',
+              customer_type: 'custom',
+              product_line_id: 'extras',
+              included_items: {},
+              prices: {},
+              server_only: false,
+              stackable: false,
+              client_metadata: null,
+              client_read_only_metadata: null,
+              server_metadata: null,
+            },
+            price_id: null,
+            quantity: 1,
+            cycle_anchor: new Date('2025-01-02').getTime(),
+            subscription_id: 'sub-extras',
+          },
+        ],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      {
+        id: 'tx-revoke-plans',
+        type: 'subscription-end',
+        created_at_millis: new Date('2025-01-03').getTime(),
+        effective_at_millis: new Date('2025-01-03').getTime(),
+        entries: [{
+          type: 'product-revocation',
+          adjusted_transaction_id: 'tx-multi-grant',
+          adjusted_entry_index: 0,
+          customer_type: 'custom',
+          customer_id: 'custom-1',
+          quantity: 1,
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+    ];
+
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma,
+      tenancy,
+      itemId: 'seats',
+      customerId: 'custom-1',
+      customerType: 'custom',
+    });
+    // Default seats are suppressed by paid 'plans' grant, then restored when that exact grant is revoked.
+    expect(qty).toBe(1);
     vi.useRealTimers();
   });
 });

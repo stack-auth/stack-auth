@@ -236,7 +236,7 @@ export async function getItemQuantityForCustomer(options: {
   const ledgerItemGrantMapByTxIdAndEntryIndex = new Map<string, Map<number, LedgerTransaction>>();
 
 
-  const paidGrantsByTx = new Map<string, { productId: string | null, product: any, quantity: number }>();
+  const paidGrantsByTxAndEntry = new Map<string, { productId: string | null, product: any, quantity: number }>();
   const activePaidQuantityByProductId = new Map<string, number>();
   const activePaidQuantityByProductLine = new Map<string, number>();
   const activeDefaultLedgerGrantsByProductId = new Map<string, LedgerTransaction[]>();
@@ -302,44 +302,47 @@ export async function getItemQuantityForCustomer(options: {
     const tx = transactions[ti];
     for (let ei = 0; ei < tx.entries.length; ei++) {
       const entry = tx.entries[ei];
-      const typedEntry = entry as any;
-      if (typedEntry.type === "product-grant") {
-        paidGrantsByTx.set(tx.id, { productId: typedEntry.product_id ?? null, product: typedEntry.product, quantity: typedEntry.quantity });
-        if (typedEntry.product_id) {
-          activePaidQuantityByProductId.set(typedEntry.product_id, (activePaidQuantityByProductId.get(typedEntry.product_id) ?? 0) + typedEntry.quantity);
+      if (entry.type === "product-grant") {
+        paidGrantsByTxAndEntry.set(`${tx.id}:${ei}`, {
+          productId: entry.product_id ?? null,
+          product: entry.product,
+          quantity: entry.quantity,
+        });
+        if (entry.product_id) {
+          activePaidQuantityByProductId.set(entry.product_id, (activePaidQuantityByProductId.get(entry.product_id) ?? 0) + entry.quantity);
         }
-        const productLineId = getProductLineId(typedEntry.product);
+        const productLineId = getProductLineId(entry.product);
         if (typeof productLineId === "string") {
           const previous = activePaidQuantityByProductLine.get(productLineId) ?? 0;
-          const next = previous + typedEntry.quantity;
+          const next = previous + entry.quantity;
           activePaidQuantityByProductLine.set(productLineId, next);
           if (previous <= 0 && next > 0) {
             suppressDefaultGrantsForLine(productLineId, tx.effective_at_millis);
           }
         }
-      } else if (typedEntry.type === "product-revocation") {
-        const adjusted = paidGrantsByTx.get(typedEntry.adjusted_transaction_id);
+      } else if (entry.type === "product-revocation") {
+        const adjusted = paidGrantsByTxAndEntry.get(`${entry.adjusted_transaction_id}:${entry.adjusted_entry_index}`);
         if (!adjusted) continue;
         const productId = adjusted.productId;
         if (typeof productId === "string") {
-          activePaidQuantityByProductId.set(productId, (activePaidQuantityByProductId.get(productId) ?? 0) - typedEntry.quantity);
+          activePaidQuantityByProductId.set(productId, (activePaidQuantityByProductId.get(productId) ?? 0) - entry.quantity);
         }
         const productLineId = getProductLineId(adjusted.product);
         if (typeof productLineId === "string") {
           const previous = activePaidQuantityByProductLine.get(productLineId) ?? 0;
-          const next = previous - typedEntry.quantity;
+          const next = previous - entry.quantity;
           activePaidQuantityByProductLine.set(productLineId, next);
           if (previous > 0 && next <= 0) {
             restoreDefaultGrantsForLine(productLineId, tx.effective_at_millis);
           }
         }
-      } else if (typedEntry.type === "default-products-change") {
-        defaultSnapshot = normalizeDefaultSnapshot(typedEntry.snapshot as Record<string, any>);
-      } else if (typedEntry.type === "item-quantity-change") {
-        if (typedEntry.item_id !== options.itemId) continue;
-        const expiresAtMillis: number | null | undefined = typedEntry.expires_at_millis;
+      } else if (entry.type === "default-products-change") {
+        defaultSnapshot = normalizeDefaultSnapshot(entry.snapshot);
+      } else if (entry.type === "item-quantity-change") {
+        if (entry.item_id !== options.itemId) continue;
+        const expiresAtMillis: number | null | undefined = entry.expires_at_millis;
         const ledgerTransaction = {
-          amount: typedEntry.quantity,
+          amount: entry.quantity,
           grantTime: new Date(tx.effective_at_millis),
           expirationTime: expiresAtMillis ? new Date(expiresAtMillis) : new Date(8640000000000000),
         };
@@ -347,38 +350,38 @@ export async function getItemQuantityForCustomer(options: {
         const ledgerTransactionMap = ledgerItemGrantMapByTxIdAndEntryIndex.get(tx.id) ?? new Map<number, LedgerTransaction>();
         ledgerTransactionMap.set(ei, ledgerTransaction);
         ledgerItemGrantMapByTxIdAndEntryIndex.set(tx.id, ledgerTransactionMap);
-      } else if (typedEntry.type === "default-product-item-grant" || typedEntry.type === "default-product-item-change") {
-        if (typedEntry.item_id !== options.itemId) continue;
-        if (!isDefaultProductOwnedAtThisPoint(typedEntry.product_id)) continue;
+      } else if (entry.type === "default-product-item-grant" || entry.type === "default-product-item-change") {
+        if (entry.item_id !== options.itemId) continue;
+        if (!isDefaultProductOwnedAtThisPoint(entry.product_id)) continue;
         const ledgerTransaction = {
-          amount: typedEntry.quantity,
+          amount: entry.quantity,
           grantTime: new Date(tx.effective_at_millis),
           expirationTime: new Date(8640000000000000),
         };
         ledgerTransactions.push(ledgerTransaction);
-        const grants = activeDefaultLedgerGrantsByProductId.get(typedEntry.product_id) ?? [];
+        const grants = activeDefaultLedgerGrantsByProductId.get(entry.product_id) ?? [];
         grants.push(ledgerTransaction);
-        activeDefaultLedgerGrantsByProductId.set(typedEntry.product_id, grants);
+        activeDefaultLedgerGrantsByProductId.set(entry.product_id, grants);
         const ledgerTransactionMap = ledgerItemGrantMapByTxIdAndEntryIndex.get(tx.id) ?? new Map<number, LedgerTransaction>();
         ledgerTransactionMap.set(ei, ledgerTransaction);
         ledgerItemGrantMapByTxIdAndEntryIndex.set(tx.id, ledgerTransactionMap);
-      } else if (typedEntry.type === "item-quantity-expire" || typedEntry.type === "default-product-item-expire") {
-        if (typedEntry.item_id !== options.itemId) continue;
-        const adjustedLedgerTransaction = typedEntry.adjusted_transaction_id && typedEntry.adjusted_entry_index != null ? ledgerItemGrantMapByTxIdAndEntryIndex.get(typedEntry.adjusted_transaction_id)?.get(typedEntry.adjusted_entry_index) : null;
+      } else if (entry.type === "item-quantity-expire" || entry.type === "default-product-item-expire") {
+        if (entry.item_id !== options.itemId) continue;
+        const adjustedLedgerTransaction = entry.adjusted_transaction_id && entry.adjusted_entry_index != null ? ledgerItemGrantMapByTxIdAndEntryIndex.get(entry.adjusted_transaction_id)?.get(entry.adjusted_entry_index) : null;
         if (!adjustedLedgerTransaction) {
           // Default-product grants can be filtered out while a paid product in the same
           // line is active. Their matching expiry should then be ignored too.
-          if (typedEntry.type === "default-product-item-expire") continue;
+          if (entry.type === "default-product-item-expire") continue;
           throw new StackAssertionError("Ledger item grant not found for item-quantity-expire", { tx, entry, ledgerChangeTransactionMapByTxIdAndEntryIndex: ledgerItemGrantMapByTxIdAndEntryIndex, options });
         }
-        if (typedEntry.type === "default-product-item-expire" && adjustedLedgerTransaction.amount < typedEntry.quantity) {
+        if (entry.type === "default-product-item-expire" && adjustedLedgerTransaction.amount < entry.quantity) {
           // A conflicting paid product may have already suppressed this default grant.
           continue;
         }
-        adjustedLedgerTransaction.amount -= typedEntry.quantity;
+        adjustedLedgerTransaction.amount -= entry.quantity;
         if (adjustedLedgerTransaction.amount < 0) throw new StackAssertionError("item-quantity-expire amount is higher than the ledger item grant amount", { entry, options });
         ledgerTransactions.push({
-          amount: typedEntry.quantity,
+          amount: entry.quantity,
           grantTime: adjustedLedgerTransaction.grantTime,
           expirationTime: new Date(Math.min(tx.effective_at_millis, adjustedLedgerTransaction.expirationTime.getTime())),
         });
