@@ -1,6 +1,7 @@
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
+import { unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
 import { evaluate } from "cel-js";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";
@@ -26,19 +27,23 @@ export class CelEvaluationError extends Error {
 
 /**
  * Context variables available for sign-up rule CEL expressions.
+ * Risk scores use snake_case to match the DB/CRUD representation.
  */
 export type SignUpRuleContext = {
   /** User's email address */
   email: string,
   /** Domain part of email (after @) */
   emailDomain: string,
-  /** Best-effort ISO 3166-1 alpha-2 country code derived from request geo headers */
+  /** Best-effort ISO 3166-1 alpha-2 country code derived from request geo headers. Empty string when unavailable (never null/undefined). */
   countryCode: string,
   /** Authentication method: "password", "otp", "oauth", "passkey" */
   authMethod: SignUpAuthMethod,
   /** OAuth provider ID if authMethod is "oauth", empty string otherwise */
   oauthProvider: string,
-  riskScores: SignUpRiskScores,
+  riskScores: {
+    bot: number,
+    free_trial_abuse: number,
+  },
 };
 
 /**
@@ -53,10 +58,6 @@ export type SignUpRuleContext = {
  * Since cel-js doesn't support method calls, we pre-compute these values
  * and add them to the context with unique keys to avoid collisions.
  */
-function unescapeCelString(escaped: string): string {
-  return escaped.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
-}
-
 function preprocessExpression(
   expression: string,
   context: SignUpRuleContext
@@ -182,6 +183,8 @@ export function createSignUpRuleContext(params: {
     emailDomain = email.includes('@') ? (email.split('@').pop() ?? '') : '';
   }
 
+  // Coerce null to empty string so CEL expressions see a plain string (never null/undefined).
+  // This means countryCode == "US" → false when unknown, and countryCode == "" → true.
   const countryCode = params.countryCode === null ? '' : normalizeCountryCode(params.countryCode);
 
   return {
@@ -217,7 +220,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: '',
     riskScores: {
       bot: 17,
-      freeTrialAbuse: 23,
+      free_trial_abuse: 23,
     },
   });
 
@@ -239,7 +242,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: 'discord',
     riskScores: {
       bot: 1,
-      freeTrialAbuse: 2,
+      free_trial_abuse: 2,
     },
   });
 
@@ -261,7 +264,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: 'twitter',
     riskScores: {
       bot: 10,
-      freeTrialAbuse: 20,
+      free_trial_abuse: 20,
     },
   });
 
@@ -283,7 +286,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: 'google',
     riskScores: {
       bot: 8,
-      freeTrialAbuse: 9,
+      free_trial_abuse: 9,
     },
   });
 
@@ -304,7 +307,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: '',
     riskScores: {
       bot: 3,
-      freeTrialAbuse: 4,
+      free_trial_abuse: 4,
     },
   });
 });
@@ -331,8 +334,8 @@ import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ ex
   expect(evaluateCelExpression('authMethod == "oauth"', context)).toBe(true);
   expect(evaluateCelExpression('oauthProvider == "discord"', context)).toBe(true);
   expect(evaluateCelExpression('riskScores.bot == 33', context)).toBe(true);
-  expect(evaluateCelExpression('riskScores.freeTrialAbuse == 44', context)).toBe(true);
-  expect(evaluateCelExpression('riskScores.bot > 10 && riskScores.freeTrialAbuse < 90', context)).toBe(true);
+  expect(evaluateCelExpression('riskScores.free_trial_abuse == 44', context)).toBe(true);
+  expect(evaluateCelExpression('riskScores.bot > 10 && riskScores.free_trial_abuse < 90', context)).toBe(true);
 
   // Empty email should match empty string
   expect(evaluateCelExpression('email == ""', context)).toBe(true);

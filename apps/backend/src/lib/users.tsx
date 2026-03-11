@@ -1,5 +1,5 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
@@ -34,22 +34,19 @@ async function persistSignUpHeuristicFacts(params: {
   signUpEmailBase: string | null,
 }) {
   const prisma = await getPrismaClientForTenancy(params.tenancy);
-  await prisma.projectUser.update({
-    where: {
-      tenancyId_projectUserId: {
-        tenancyId: params.tenancy.id,
-        projectUserId: params.userId,
-      },
-    },
-    data: {
-      signUpAt: params.signUpAt,
-      signUpIp: params.signUpIp,
-      signUpIpTrusted: params.signUpIpTrusted,
-      signUpEmailNormalized: params.signUpEmailNormalized,
-      signUpEmailBase: params.signUpEmailBase,
-      shouldUpdateSequenceId: true,
-    },
-  });
+  const schema = await getPrismaSchemaForTenancy(params.tenancy);
+  await prisma.$executeRaw`
+    UPDATE ${sqlQuoteIdent(schema)}."ProjectUser"
+    SET
+      "signUpAt" = ${params.signUpAt},
+      "signUpIp" = ${params.signUpIp},
+      "signUpIpTrusted" = ${params.signUpIpTrusted},
+      "signUpEmailNormalized" = ${params.signUpEmailNormalized},
+      "signUpEmailBase" = ${params.signUpEmailBase},
+      "shouldUpdateSequenceId" = true
+    WHERE "tenancyId" = ${params.tenancy.id}::UUID
+      AND "projectUserId" = ${params.userId}::UUID
+  `;
 }
 
 export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
@@ -124,6 +121,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
     : await getBestEffortEndUserRequestContext();
   const requestIpAddress = signUpRuleOptions.ipAddress ?? endUserRequestContext?.ipAddress ?? null;
   const requestIpTrusted = signUpRuleOptions.ipTrusted ?? endUserRequestContext?.ipTrusted ?? null;
+  // EndUserLocation.countryCode is string | undefined; coerce to string | null for downstream consumers
   const requestCountryCode = signUpRuleOptions.countryCode ?? endUserRequestContext?.location?.countryCode ?? null;
   const countryCode = signUpRuleOptions.countryCode !== null
     ? signUpRuleOptions.countryCode
@@ -188,25 +186,17 @@ export async function createOrUpgradeAnonymousUserWithRules(
     signUpEmailBase: riskAssessment.heuristicFacts.signUpEmailBase,
   } as const;
 
-  if (currentUser?.is_anonymous) {
-    await persistSignUpHeuristicFacts({
-      ...signUpHeuristicFactsToPersist,
-      userId: currentUser.id,
-    });
-  }
-
   const user = await createOrUpgradeAnonymousUserWithoutRules(
     tenancy,
     currentUser,
     enrichedCreateOrUpdate as KeyIntersect<UsersCrud["Admin"]["Create"], UsersCrud["Admin"]["Update"]>,
     allowedErrorTypes,
   );
-  if (!currentUser?.is_anonymous) {
-    await persistSignUpHeuristicFacts({
-      ...signUpHeuristicFactsToPersist,
-      userId: user.id,
-    });
-  }
+
+  await persistSignUpHeuristicFacts({
+    ...signUpHeuristicFactsToPersist,
+    userId: user.id,
+  });
 
   return user;
 }

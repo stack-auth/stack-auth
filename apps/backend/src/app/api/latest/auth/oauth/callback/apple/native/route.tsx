@@ -1,5 +1,6 @@
 import { createOAuthUserAndAccount, findExistingOAuthAccount, getProjectUserIdFromOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -130,15 +131,13 @@ export const POST = createSmartRouteHandler({
           currentUser: null,
           displayName: null,
           profileImageUrl: null,
-          signUpRuleOptions: {
+          signUpRuleOptions: buildSignUpRuleOptions({
             authMethod: 'oauth',
             oauthProvider: 'apple',
-            ipAddress: requestContext.ipAddress,
-            ipTrusted: requestContext.ipTrusted,
-            countryCode: requestContext.location?.countryCode ?? null,
+            requestContext,
             turnstileAssessment: { status: "invalid" },
             // TODO: Apple native OAuth doesn't pass a turnstile token yet
-          },
+          }),
         });
         projectUserId = result.projectUserId;
         isNewUser = true;

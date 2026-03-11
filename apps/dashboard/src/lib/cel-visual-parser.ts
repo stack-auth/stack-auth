@@ -12,36 +12,13 @@
  * - emailDomain == "domain.com" / emailDomain in ["d1", "d2"]
  * - authMethod == "password" / authMethod in ["password", "otp"]
  * - oauthProvider == "google" / oauthProvider in ["google", "github"]
- * - riskScores.bot > 80 / riskScores.freeTrialAbuse >= 60
+ * - riskScores.bot > 80 / riskScores.free_trial_abuse >= 60
  */
 
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { type ConditionField, type ConditionOperator, escapeCelString, isNumericField, unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
-export type ConditionOperator =
-  | 'equals'
-  | 'not_equals'
-  | 'greater_than'
-  | 'greater_or_equal'
-  | 'less_than'
-  | 'less_or_equal'
-  | 'matches'  // regex
-  | 'ends_with'
-  | 'starts_with'
-  | 'contains'
-  | 'in_list';
-
-export type ConditionField =
-  | 'email'
-  | 'countryCode'
-  | 'emailDomain'
-  | 'authMethod'
-  | 'oauthProvider'
-  | 'riskScores.bot'
-  | 'riskScores.freeTrialAbuse';
-
-function isNumericField(field: ConditionField): boolean {
-  return field === 'riskScores.bot' || field === 'riskScores.freeTrialAbuse';
-}
+export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
 export type ConditionNode = {
   type: 'condition',
@@ -76,18 +53,6 @@ export function visualTreeToCel(node: RuleNode): string {
   } else {
     return groupToCel(node);
   }
-}
-
-/**
- * Escapes special characters in string values for use in CEL expressions.
- * Backslashes must be escaped first to avoid double-escaping.
- */
-function escapeCelString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function unescapeCelString(value: string): string {
-  return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
 }
 
 function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {

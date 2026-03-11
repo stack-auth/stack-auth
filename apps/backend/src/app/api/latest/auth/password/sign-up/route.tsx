@@ -1,4 +1,5 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
 import { createAuthTokens } from "@/lib/tokens";
 import { getRequestContextAndTurnstileAssessment, turnstileFlowRequestSchemaFields } from "@/lib/turnstile";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
@@ -68,14 +69,12 @@ export const POST = createSmartRouteHandler({
         password,
       },
       [KnownErrors.UserWithEmailAlreadyExists],
-      {
+      buildSignUpRuleOptions({
         authMethod: 'password',
         oauthProvider: null,
-        ipAddress: requestContext.ipAddress,
-        ipTrusted: requestContext.ipTrusted,
-        countryCode: requestContext.location?.countryCode ?? null,
+        requestContext,
         turnstileAssessment,
-      }
+      })
     );
 
     if (verificationCallbackUrl) {

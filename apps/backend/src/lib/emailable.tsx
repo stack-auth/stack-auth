@@ -5,6 +5,9 @@ import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 
 export const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
 
+const EMAILABLE_RETRY_BACKOFF_BASE_MS = 4000;
+
+
 const VERIFY_STATES = ["deliverable", "undeliverable", "risky", "unknown"] as const;
 type EmailableVerifyResponse = ReturnType<typeof validateVerifyResponse>;
 export type EmailableCheckResult =
@@ -87,7 +90,7 @@ export async function checkEmailWithEmailable(
 ): Promise<EmailableCheckResult> {
   const apiKey = options?.apiKey ?? getEnvVariable("STACK_EMAILABLE_API_KEY", "");
   const onError = options?.onError ?? "return-error";
-  const retryDelayBase = options?.retryExponentialDelayBaseMs ?? 4000;
+  const retryDelayBase = options?.retryExponentialDelayBaseMs ?? EMAILABLE_RETRY_BACKOFF_BASE_MS;
 
   if (!apiKey) {
     const emailDomain = email.split("@")[1]?.toLowerCase();

@@ -1,4 +1,4 @@
-import { getPrismaClientForTenancy } from "@/prisma-client";
+import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
@@ -79,43 +79,39 @@ type RecentSignUpStats = {
 
 async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuristicFacts): Promise<RecentSignUpStats> {
   const prisma = await getPrismaClientForTenancy(tenancy);
+  const schema = await getPrismaSchemaForTenancy(tenancy);
   const windowStart = new Date(facts.signUpAt.getTime() - riskScoreThresholds.recentWindowHours * 60 * 60 * 1000);
 
-  const [sameIpCount, similarEmailCount] = await Promise.all([
+  const [sameIpRows, similarEmailRows] = await Promise.all([
     facts.signUpIp == null
-      ? 0
-      : prisma.projectUser
-        .findMany({
-          where: {
-            tenancyId: tenancy.id,
-            signUpAt: { gte: windowStart },
-            signUpIp: facts.signUpIp,
-          },
-          select: { projectUserId: true },
-          take: riskScoreThresholds.sameIpMinMatches,
-        })
-        .then((rows) => rows.length),
+      ? []
+      : prisma.$replica().$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*)::bigint AS "count"
+          FROM ${sqlQuoteIdent(schema)}."ProjectUser"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "signUpAt" >= ${windowStart}
+            AND "signUpIp" = ${facts.signUpIp}
+          LIMIT ${riskScoreThresholds.sameIpMinMatches}
+        `,
 
     facts.signUpEmailBase == null || facts.signUpEmailNormalized == null
-      ? 0
-      : prisma.projectUser
-        .findMany({
-          where: {
-            tenancyId: tenancy.id,
-            signUpAt: { gte: windowStart },
-            signUpEmailBase: facts.signUpEmailBase,
-            AND: [
-              { signUpEmailNormalized: { not: null } },
-              { signUpEmailNormalized: { not: facts.signUpEmailNormalized } },
-            ],
-          },
-          select: { projectUserId: true },
-          take: riskScoreThresholds.similarEmailMinMatches,
-        })
-        .then((rows) => rows.length),
+      ? []
+      : prisma.$replica().$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*)::bigint AS "count"
+          FROM ${sqlQuoteIdent(schema)}."ProjectUser"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "signUpAt" >= ${windowStart}
+            AND "signUpEmailBase" = ${facts.signUpEmailBase}
+            AND "signUpEmailNormalized" IS NOT NULL
+            AND "signUpEmailNormalized" != ${facts.signUpEmailNormalized}
+          LIMIT ${riskScoreThresholds.similarEmailMinMatches}
+        `,
   ]);
 
-  return { sameIpCount, similarEmailCount };
+  return {
+    sameIpCount: sameIpRows.length > 0 ? Number(sameIpRows[0].count) : 0,
+    similarEmailCount: similarEmailRows.length > 0 ? Number(similarEmailRows[0].count) : 0,
+  };
 }
 
 

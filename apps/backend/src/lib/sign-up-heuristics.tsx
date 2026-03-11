@@ -88,11 +88,16 @@ export function getBaseEmailForSignUpHeuristics(primaryEmail: string | null): st
 
   const canonicalDomain = emailProviderRules.get(parts.domain)?.canonicalDomain ?? parts.domain;
 
-  let templateLocalPart = parts.localPart.replace(/[._-]+/g, "-");
-  templateLocalPart = templateLocalPart.replace(/\+\d+$/g, "");
-  templateLocalPart = templateLocalPart.replace(/-\d+$/g, "");
-  templateLocalPart = templateLocalPart.replace(/\d+$/g, "");
-  templateLocalPart = templateLocalPart.replace(/-+/g, "-").replace(/^-|-$/g, "");
+  // Reduce the local part to a "base" form by:
+  // 1. Normalizing separators (._-) to a single dash
+  // 2. Stripping numeric suffixes (+N, -N, trailing digits)
+  // 3. Cleaning up leftover dashes
+  let templateLocalPart = parts.localPart
+    .replace(/[._-]+/g, "-")       // normalize separators
+    .replace(/[+-]\d+$/g, "")      // strip +N or -N suffix
+    .replace(/\d+$/g, "")          // strip remaining trailing digits
+    .replace(/-+/g, "-")           // collapse consecutive dashes
+    .replace(/^-|-$/g, "");        // trim leading/trailing dashes
 
   if (templateLocalPart === "") {
     templateLocalPart = parts.localPart;

@@ -1,5 +1,6 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
@@ -335,17 +336,15 @@ const handler = createSmartRouteHandler({
                     currentUser,
                     displayName: userInfo.displayName ?? null,
                     profileImageUrl: userInfo.profileImageUrl ?? null,
-                    signUpRuleOptions: {
+                    signUpRuleOptions: buildSignUpRuleOptions({
                       authMethod: 'oauth',
                       oauthProvider: provider.id,
-                      ipAddress: requestContext.ipAddress,
-                      ipTrusted: requestContext.ipTrusted,
-                      countryCode: requestContext.location?.countryCode ?? null,
-                      turnstileAssessment: {
-                        status: outerInfo.turnstileResult,
-                        visibleChallengeResult: outerInfo.turnstileVisibleChallengeResult,
-                      },
-                    },
+                      requestContext,
+                      turnstileAssessment: reconstructTurnstileAssessment(
+                        outerInfo.turnstileResult,
+                        outerInfo.turnstileVisibleChallengeResult,
+                      ),
+                    }),
                   }
                 );
 

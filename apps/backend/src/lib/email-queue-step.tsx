@@ -24,6 +24,12 @@ const MAX_SEND_ATTEMPTS = 5;
 
 const SEND_RETRY_BACKOFF_BASE_MS = 2000;
 
+/** Warn if the time between consecutive email queue steps exceeds this many seconds. */
+const DELTA_WARNING_THRESHOLD_SECONDS = 30;
+
+/** Consider an email stuck in rendering/sending if it started more than this many ms ago. */
+const STUCK_EMAIL_TIMEOUT_MS = 20 * 60 * 1000;
+
 const calculateRetryBackoffMs = (attemptCount: number): number => {
   return (Math.random() + 0.5) * SEND_RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
 };
@@ -111,7 +117,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
   const res = await globalPrismaClient.emailOutbox.updateManyAndReturn({
     where: {
       startedRenderingAt: {
-        lte: new Date(Date.now() - 1000 * 60 * 20),
+        lte: new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS),
       },
       finishedRenderingAt: null,
       skippedReason: null,
@@ -133,7 +139,7 @@ async function logEmailsStuckInSending(): Promise<void> {
   const res = await globalPrismaClient.emailOutbox.findMany({
     where: {
       startedSendingAt: {
-        lte: new Date(Date.now() - 1000 * 60 * 20),
+        lte: new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS),
       },
       finishedSendingAt: null,
       skippedReason: null,
@@ -209,7 +215,7 @@ async function updateLastExecutionTime(): Promise<number> {
     return 0;
   }
 
-  if (delta > 30) {
+  if (delta > DELTA_WARNING_THRESHOLD_SECONDS) {
     const isFirstRun = !(globalThis as any)[emailQueueFirstRunKey];
     if (isFirstRun && getNodeEnvironment() === "development") {
       // In development, the first run after server start often has a large delta because the server wasn't running

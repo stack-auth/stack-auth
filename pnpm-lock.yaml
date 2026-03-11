@@ -1728,6 +1728,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.3
         version: 13.0.3
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.1
       autoprefixer:
         specifier: ^10.4.17
         version: 10.4.20(postcss@8.5.2)
@@ -1800,9 +1803,6 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
-      '@types/react-dom':
-        specifier: ^18.2.0
-        version: 18.3.1
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -1864,6 +1864,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.3
         version: 13.0.3
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.1
       autoprefixer:
         specifier: ^10.4.17
         version: 10.4.19(postcss@8.4.47)
@@ -2240,9 +2243,6 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
-      '@types/react-dom':
-        specifier: ^18.2.0
-        version: 18.3.1
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -2304,6 +2304,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.3
         version: 13.0.3
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.1
       autoprefixer:
         specifier: ^10.4.17
         version: 10.4.20(postcss@8.4.47)
@@ -28102,25 +28105,6 @@ snapshots:
       is-glob: 4.0.3
     optionalDependencies:
       eslint-plugin-import: 2.31.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
-    transitivePeerDependencies:
-      - '@typescript-eslint/parser'
-      - eslint-import-resolver-node
-      - eslint-import-resolver-webpack
-      - supports-color
-
-  eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1):
-    dependencies:
-      '@nolyfill/is-core-module': 1.0.39
-      debug: 4.4.3
-      enhanced-resolve: 5.17.1
-      eslint: 8.57.1
-      eslint-module-utils: 2.12.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
-      fast-glob: 3.3.3
-      get-tsconfig: 4.8.1
-      is-bun-module: 1.2.1
-      is-glob: 4.0.3
-    optionalDependencies:
-      eslint-plugin-import: 2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
     transitivePeerDependencies:
       - '@typescript-eslint/parser'
       - eslint-import-resolver-node

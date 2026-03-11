@@ -136,13 +136,13 @@ describe('cel-visual-parser', () => {
       });
       const lessOrEqual = visualTreeToCel({
         ...createEmptyCondition(),
-        field: 'riskScores.freeTrialAbuse' as const,
+        field: 'riskScores.free_trial_abuse' as const,
         operator: 'less_or_equal' as const,
         value: 40,
       });
 
       expect(greaterThan).toBe('riskScores.bot > 80');
-      expect(lessOrEqual).toBe('riskScores.freeTrialAbuse <= 40');
+      expect(lessOrEqual).toBe('riskScores.free_trial_abuse <= 40');
     });
 
     it('should normalize country code values to uppercase', () => {

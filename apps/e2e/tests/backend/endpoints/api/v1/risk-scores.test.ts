@@ -1319,7 +1319,7 @@ describe("risk scores", () => {
           enabled: true,
           displayName: 'Reject high risk',
           priority: 0,
-          condition: 'riskScores.bot >= 80 && riskScores.freeTrialAbuse >= 80',
+          condition: 'riskScores.bot >= 80 && riskScores.free_trial_abuse >= 80',
           action: { type: 'reject' },
         },
         'auth.signUpRulesDefaultAction': 'allow',

@@ -12,7 +12,7 @@ import { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCod
 import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
-export { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCode, validCountryCodeSet } from "./utils/country-codes";
+export { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCode, validateCountryCode, validCountryCodeSet } from "./utils/country-codes";
 
 const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
 

@@ -5,7 +5,7 @@
 import React, { act } from "react";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { TurnstileRetryResult } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { createRoot, type Root } from "../test-utils/react-dom-client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

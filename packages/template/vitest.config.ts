@@ -3,5 +3,13 @@ import sharedConfig from '../../vitest.shared'
 
 export default mergeConfig(
   sharedConfig,
-  defineConfig({}),
+  defineConfig({
+    test: {
+      server: {
+        deps: {
+          inline: ['react-dom'],
+        },
+      },
+    },
+  }),
 )

@@ -154,7 +154,7 @@ describe("StackClientInterface Turnstile compatibility", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push([input, init]);
       return createJsonResponse({
-      location: "https://accounts.example.com/oauth/authorize",
+        location: "https://accounts.example.com/oauth/authorize",
       });
     });
     vi.stubGlobal("fetch", fetchMock);

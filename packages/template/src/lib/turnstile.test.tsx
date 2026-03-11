@@ -4,7 +4,7 @@
 
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRoot, type Root } from "../test-utils/react-dom-client";
+import { createRoot, type Root } from "react-dom/client";
 import { useTurnstile } from "./turnstile";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

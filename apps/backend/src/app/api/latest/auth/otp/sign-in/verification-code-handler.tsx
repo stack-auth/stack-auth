@@ -3,6 +3,7 @@ import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-chann
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
+import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -121,18 +122,16 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           otp_auth_enabled: true,
         },
         [],
-        {
+        buildSignUpRuleOptions({
           authMethod: 'otp',
           oauthProvider: null,
-          ipAddress: null,
-          ipTrusted: null,
-          countryCode: null,
-          turnstileAssessment: {
-            status: data.turnstile_result,
-            visibleChallengeResult: data.turnstile_visible_challenge_result,
-          },
+          requestContext: null,
+          turnstileAssessment: reconstructTurnstileAssessment(
+            data.turnstile_result,
+            data.turnstile_visible_challenge_result,
+          ),
           // TODO: Pass request context when available in verification code handler
-        }
+        })
       );
       isNewUser = true;
     }

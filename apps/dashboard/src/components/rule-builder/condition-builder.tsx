@@ -2,9 +2,7 @@
 
 import { Button, cn, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui";
 import {
-  type ConditionField,
   type ConditionNode,
-  type ConditionOperator,
   createEmptyCondition,
   createEmptyGroup,
   type GroupNode,
@@ -12,8 +10,9 @@ import {
 } from "@/lib/cel-visual-parser";
 import { MinusIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { CountryCodeSelect } from "@/components/country-code-select";
-import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { validateCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
+import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField } from "@stackframe/stack-shared/dist/utils/cel-fields";
 import React from "react";
 
 /**
@@ -35,15 +34,7 @@ function validateRegex(pattern: string): string | null {
   }
 }
 
-function validateCountryCodeValue(value: string | string[]): string | null {
-  const values = Array.isArray(value) ? value : [value];
-  if (values.length === 0) {
-    return "At least one country code is required";
-  }
-  return values.every((item) => isValidCountryCode(item))
-    ? null
-    : "Country code must be a valid ISO 3166-1 alpha-2 code";
-}
+const validateCountryCodeValue = validateCountryCode;
 
 /**
  * Recursively checks if a RuleNode tree has any validation errors.
@@ -75,54 +66,25 @@ export function isConditionTreeValid(node: RuleNode): boolean {
   return node.children.every(child => isConditionTreeValid(child));
 }
 
-// Field options with labels
-const FIELD_OPTIONS: { value: ConditionField, label: string }[] = [
-  { value: 'email', label: 'Email' },
-  { value: 'countryCode', label: 'Country Code' },
-  { value: 'emailDomain', label: 'Email Domain' },
-  { value: 'authMethod', label: 'Auth Method' },
-  { value: 'oauthProvider', label: 'OAuth Provider' },
-  { value: 'riskScores.bot', label: 'Risk Score: Bot' },
-  { value: 'riskScores.freeTrialAbuse', label: 'Risk Score: Free Trial Abuse' },
-];
+// Field options derived from shared metadata
+const FIELD_OPTIONS: { value: ConditionField, label: string }[] = conditionFields.map(f => ({
+  value: f,
+  label: fieldMetadata[f].label,
+}));
 
-// Operator options with labels
-const OPERATOR_OPTIONS: { value: ConditionOperator, label: string }[] = [
-  { value: 'equals', label: 'equals' },
-  { value: 'not_equals', label: 'does not equal' },
-  { value: 'greater_than', label: 'is greater than' },
-  { value: 'greater_or_equal', label: 'is greater than or equal' },
-  { value: 'less_than', label: 'is less than' },
-  { value: 'less_or_equal', label: 'is less than or equal' },
-  { value: 'contains', label: 'contains' },
-  { value: 'starts_with', label: 'starts with' },
-  { value: 'ends_with', label: 'ends with' },
-  { value: 'matches', label: 'matches regex' },
-  { value: 'in_list', label: 'is one of' },
-];
-
-function isNumericField(field: ConditionField): boolean {
-  return field === 'riskScores.bot' || field === 'riskScores.freeTrialAbuse';
-}
-
-// Get available operators for a field
-function getOperatorsForField(field: ConditionField): ConditionOperator[] {
-  if (isNumericField(field)) {
-    return ['equals', 'not_equals', 'greater_than', 'greater_or_equal', 'less_than', 'less_or_equal'];
-  }
-  if (field === 'countryCode') {
-    return ['equals', 'not_equals', 'in_list'];
-  }
-  if (field === 'authMethod' || field === 'oauthProvider') {
-    return ['equals', 'not_equals', 'in_list'];
-  }
-  return ['equals', 'not_equals', 'contains', 'starts_with', 'ends_with', 'matches', 'in_list'];
-}
-
-// Predefined options for certain fields
-const PREDEFINED_VALUES: Partial<Record<ConditionField, string[]>> = {
-  authMethod: ['password', 'otp', 'oauth', 'passkey'],
-  oauthProvider: Array.from(standardProviders),
+// Operator labels for display
+const OPERATOR_LABELS: Record<ConditionOperator, string> = {
+  equals: 'equals',
+  not_equals: 'does not equal',
+  greater_than: 'is greater than',
+  greater_or_equal: 'is greater than or equal',
+  less_than: 'is less than',
+  less_or_equal: 'is less than or equal',
+  contains: 'contains',
+  starts_with: 'starts with',
+  ends_with: 'ends with',
+  matches: 'matches regex',
+  in_list: 'is one of',
 };
 
 // Single condition row component
@@ -138,7 +100,7 @@ function ConditionRow({
   showRemove: boolean,
 }) {
   const availableOperators = getOperatorsForField(condition.field);
-  const predefinedValues = PREDEFINED_VALUES[condition.field];
+  const predefinedValues = fieldMetadata[condition.field].predefinedValues;
   const isCountryCodeField = condition.field === 'countryCode';
   const isCountryCodeListOperator = isCountryCodeField && condition.operator === 'in_list';
   const countryCodeListValues = isCountryCodeListOperator
@@ -233,8 +195,8 @@ function ConditionRow({
         onChange={(e) => handleOperatorChange(e.target.value as ConditionOperator)}
         className="h-8 px-2 text-sm bg-background/60 border border-border/50 rounded-md min-w-[120px]"
       >
-        {OPERATOR_OPTIONS.filter(opt => availableOperators.includes(opt.value)).map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        {availableOperators.map((op) => (
+          <option key={op} value={op}>{OPERATOR_LABELS[op]}</option>
         ))}
       </select>
 

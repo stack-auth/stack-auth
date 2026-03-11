@@ -38,10 +38,30 @@ export function isValidCountryCode(countryCode: string): boolean {
   return validCountryCodeSet.has(normalizeCountryCode(countryCode));
 }
 
+/**
+ * Validates and normalizes a country code value (single string or array).
+ * Returns null if valid, or an error message string if invalid.
+ */
+export function validateCountryCode(value: string | string[]): string | null {
+  const values = Array.isArray(value) ? value : [value];
+  if (values.length === 0) {
+    return "At least one country code is required";
+  }
+  return values.every(v => isValidCountryCode(v))
+    ? null
+    : "Country code must be a valid ISO 3166-1 alpha-2 code";
+}
+
 import.meta.vitest?.test("country codes", ({ expect }) => {
   expect(ISO_3166_ALPHA_2_COUNTRY_CODES).toHaveLength(249);
   expect(normalizeCountryCode(" us ")).toBe("US");
   expect(isValidCountryCode("us")).toBe(true);
   expect(isValidCountryCode("zz")).toBe(false);
   expect(isValidCountryCode("usa")).toBe(false);
+
+  expect(validateCountryCode("US")).toBeNull();
+  expect(validateCountryCode("zz")).toBe("Country code must be a valid ISO 3166-1 alpha-2 code");
+  expect(validateCountryCode(["US", "CA"])).toBeNull();
+  expect(validateCountryCode([])).toBe("At least one country code is required");
+  expect(validateCountryCode(["US", "ZZ"])).toBe("Country code must be a valid ISO 3166-1 alpha-2 code");
 });
