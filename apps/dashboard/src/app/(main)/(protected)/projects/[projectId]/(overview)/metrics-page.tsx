@@ -21,6 +21,7 @@ import {
   ChartCard,
   ComposedAnalyticsChart,
   ComposedDataPoint,
+  CustomDateRange,
   DataPoint,
   DonutChartDisplay,
   EmailStackedBarChartDisplay,
@@ -65,8 +66,8 @@ function formatSeconds(seconds: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-function sumRange(points: DataPoint[], range: TimeRange): number {
-  return filterDatapointsByTimeRange(points, range).reduce((s, p) => s + p.activity, 0);
+function sumRange(points: DataPoint[], range: TimeRange, customDateRange: CustomDateRange | null): number {
+  return filterDatapointsByTimeRange(points, range, customDateRange).reduce((s, p) => s + p.activity, 0);
 }
 
 function formatCompact(n: number): string {
@@ -272,7 +273,10 @@ function HeroAnalyticsWidget({
   return (
     <div className="flex flex-col gap-3 h-full">
       {/* Outer stat cards row */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className={cn(
+        "grid gap-3",
+        outerStats.length > 3 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3",
+      )}>
         {outerStats.map((stat) => (
           <StatCard key={stat.label} stat={stat} compact={compact} />
         ))}
@@ -427,15 +431,17 @@ function TabbedEmailsCard({
   stackedChartData,
   recentEmails,
   timeRange,
+  customDateRange = null,
   compact = false,
 }: {
   stackedChartData: EmailStackedDataPoint[],
   recentEmails: Array<{ id: string, subject: string, status: string }>,
   timeRange: TimeRange,
+  customDateRange?: CustomDateRange | null,
   compact?: boolean,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
-  const filteredDatapoints = filterStackedDatapointsByTimeRange(stackedChartData, timeRange);
+  const filteredDatapoints = filterStackedDatapointsByTimeRange(stackedChartData, timeRange, customDateRange);
 
   const activeTabColor = "bg-orange-500 dark:bg-[hsl(240,71%,70%)]";
 
@@ -692,6 +698,7 @@ function QuickAccessApps({ projectId, installedApps }: { projectId: string, inst
 export default function MetricsPage(props: { toSetup: () => void }) {
   const includeAnonymous = false;
   const [timeRange, setTimeRange] = useState<TimeRange>("7d");
+  const [customDateRange, setCustomDateRange] = useState<CustomDateRange | null>(null);
   const user = useUser();
 
   const displayName = user?.displayName || user?.primaryEmail || "User";
@@ -702,13 +709,18 @@ export default function MetricsPage(props: { toSetup: () => void }) {
       title={`Welcome back, ${truncatedName}!`}
       actions={
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          <TimeRangeToggle timeRange={timeRange} onTimeRangeChange={setTimeRange} />
+          <TimeRangeToggle
+            timeRange={timeRange}
+            onTimeRangeChange={setTimeRange}
+            customDateRange={customDateRange}
+            onCustomDateRangeChange={setCustomDateRange}
+          />
         </div>
       }
       fillWidth
     >
       <Suspense fallback={<MetricsLoadingFallback />}>
-        <MetricsContent includeAnonymous={includeAnonymous} timeRange={timeRange} />
+        <MetricsContent includeAnonymous={includeAnonymous} timeRange={timeRange} customDateRange={customDateRange} />
       </Suspense>
     </PageLayout>
   );
@@ -716,7 +728,15 @@ export default function MetricsPage(props: { toSetup: () => void }) {
 
 // ── Metrics content ──────────────────────────────────────────────────────────
 
-function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boolean, timeRange: TimeRange }) {
+function MetricsContent({
+  includeAnonymous,
+  timeRange,
+  customDateRange,
+}: {
+  includeAnonymous: boolean,
+  timeRange: TimeRange,
+  customDateRange: CustomDateRange | null,
+}) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
@@ -738,7 +758,7 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
   const recentEmails = (email.recent_emails ?? []) as Array<{ id: string, subject: string, status: string }>;
   const topReferrers = (analytics.top_referrers ?? []) as Array<{ referrer: string, visitors: number }>;
 
-  const signUpsInRange = sumRange(data.daily_users ?? [], timeRange);
+  const signUpsInRange = sumRange(data.daily_users ?? [], timeRange, customDateRange);
 
   // ── DAU split stacked data for sign-ups chart ─────────────────────────────
   const dauSplit = (auth.daily_active_users_split ?? {}) as {
@@ -792,10 +812,8 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
       refund_cents: revenueMap.get(date)?.refund_cents ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
-    if (timeRange === '7d') return points.slice(-7);
-    if (timeRange === '30d') return points.slice(-30);
-    return points;
-  }, [data.analytics_overview, timeRange]);
+    return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
+  }, [data.analytics_overview, timeRange, customDateRange]);
 
   // ── Visitors hover chart data (page views + clicks) ───────────────────────
   const visitorsHoverData = useMemo<VisitorsHoverDataPoint[]>(() => {
@@ -817,10 +835,8 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
       clicks: clMap.get(date) ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
-    if (timeRange === '7d') return points.slice(-7);
-    if (timeRange === '30d') return points.slice(-30);
-    return points;
-  }, [data.analytics_overview, timeRange]);
+    return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
+  }, [data.analytics_overview, timeRange, customDateRange]);
 
   // ── Revenue hover chart data (new_cents + refund_cents) ───────────────────
   const revenueHoverData = useMemo<RevenueHoverDataPoint[]>(() => {
@@ -833,10 +849,8 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
       refund_cents: d.refund_cents,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
-    if (timeRange === '7d') return points.slice(-7);
-    if (timeRange === '30d') return points.slice(-30);
-    return points;
-  }, [data.analytics_overview, timeRange]);
+    return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
+  }, [data.analytics_overview, timeRange, customDateRange]);
 
   // ── Hero outer stats: MAUs, Total Emails sent, Session time ───────────────
   const heroOuterStats = useMemo<AnalyticsStatPill[]>(() => {
@@ -864,24 +878,37 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
   // ── In-chart pill values: Visitors and Revenue ────────────────────────────
   const inChartPillValues = useMemo(() => {
     const analyticsObj = data.analytics_overview ?? {};
-    const paymentsObj = data.payments_overview ?? {};
     const deltasObj = (analyticsObj.deltas ?? {}) as Record<string, number>;
-    const totalRevenueCents = (analyticsObj.total_revenue_cents ?? paymentsObj.revenue_cents ?? 0) as number;
+    const visitorsTotalInRange = composedData.reduce((sum, row) => sum + row.visitors, 0);
+    const totalRevenueCentsInRange = composedData.reduce((sum, row) => sum + row.new_cents, 0);
     return {
-      visitorsTotal: formatCompact(analyticsObj.visitors ?? 0),
+      visitorsTotal: formatCompact(visitorsTotalInRange),
       visitorsLabel: "Visitors",
       visitorsDelta: deltasObj.visitors as number | undefined,
-      revenueTotal: formatUsdFromCents(totalRevenueCents),
+      revenueTotal: formatUsdFromCents(totalRevenueCentsInRange),
       revenueLabel: "Revenue",
       revenueDelta: deltasObj.revenue as number | undefined,
     };
-  }, [data.analytics_overview, data.payments_overview]);
+  }, [composedData, data.analytics_overview]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridContainerWidth, setGridContainerWidth] = useState(0);
+  const [isLgViewport, setIsLgViewport] = useState(false);
   useLayoutEffect(() => {
     setGridContainerWidth(gridContainerRef.current?.getBoundingClientRect().width ?? 0);
+  }, []);
+  useLayoutEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const updateViewportMatch = () => {
+      setIsLgViewport(mediaQuery.matches);
+    };
+
+    updateViewportMatch();
+    mediaQuery.addEventListener("change", updateViewportMatch);
+    return () => {
+      mediaQuery.removeEventListener("change", updateViewportMatch);
+    };
   }, []);
   useResizeObserver(gridContainerRef, (entry) => setGridContainerWidth(entry.contentRect.width));
 
@@ -893,7 +920,20 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
     const availableWidth = gridContainerWidth - gap * 11;
     return (availableWidth / 12) * 5 + gap * 4;
   })();
-  const shouldShowGlobe = globeColumnWidth >= GLOBE_MIN_WIDTH;
+  const shouldShowGlobe = isLgViewport && globeColumnWidth >= GLOBE_MIN_WIDTH;
+  const heroOuterStatsForLayout = useMemo<AnalyticsStatPill[]>(() => {
+    if (shouldShowGlobe) {
+      return heroOuterStats;
+    }
+
+    return [
+      {
+        label: "Total Users",
+        value: formatCompact(data.total_users ?? 0),
+      },
+      ...heroOuterStats,
+    ];
+  }, [shouldShowGlobe, heroOuterStats, data.total_users]);
 
   return (
     <div className="pb-6 flex flex-col gap-5">
@@ -907,7 +947,7 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
           "grid gap-4 sm:gap-5 grid-cols-1 lg:grid-cols-12",
         )}
         style={shouldShowGlobe
-          ? { height: Math.max(400, Math.round(globeColumnWidth)) }
+          ? { minHeight: Math.max(400, Math.round(globeColumnWidth)) }
           : { minHeight: 400 }}
       >
         {shouldShowGlobe && (
@@ -939,7 +979,7 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
             composedData={composedData}
             visitorsData={visitorsHoverData}
             revenueData={revenueHoverData}
-            outerStats={heroOuterStats}
+            outerStats={heroOuterStatsForLayout}
             visitorsLabel={inChartPillValues.visitorsLabel}
             revenueLabel={inChartPillValues.revenueLabel}
             visitorsTotal={inChartPillValues.visitorsTotal}
@@ -951,13 +991,6 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
         </div>
       </div>
 
-      {/* Mobile total users */}
-      {!shouldShowGlobe && (
-        <div className="lg:hidden">
-          <DualStatCard label="Total Users" value={data.total_users ?? 0} subLabel={`Sign-ups (${timeRange})`} subValue={signUpsInRange} gradientColor="blue" />
-        </div>
-      )}
-
       {/* ──────────────────────────────────────────────────────────────────────
           QUICK ACCESS — App shortcuts
          ────────────────────────────────────────────────────────────────────── */}
@@ -966,25 +999,31 @@ function MetricsContent({ includeAnonymous, timeRange }: { includeAnonymous: boo
       {/* ──────────────────────────────────────────────────────────────────────
           ROW 2 — Daily Sign-ups + Emails trend
          ────────────────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[340px] min-h-0">
-        <TabbedMetricsCard
-          config={dailySignUpsConfig}
-          chartData={data.daily_users ?? []}
-          stackedChartData={dauStackedData}
-          listData={data.recently_registered ?? []}
-          listTitle="Recent Sign-Ups"
-          projectId={projectId}
-          router={router}
-          compact
-          gradientColor="blue"
-          timeRange={timeRange}
-        />
-        <TabbedEmailsCard
-          stackedChartData={emailStackedData}
-          recentEmails={recentEmails}
-          timeRange={timeRange}
-          compact
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 lg:h-[340px]">
+        <div className="min-h-[340px] lg:min-h-0 lg:h-full">
+          <TabbedMetricsCard
+            config={dailySignUpsConfig}
+            chartData={data.daily_users ?? []}
+            stackedChartData={dauStackedData}
+            listData={data.recently_registered ?? []}
+            listTitle="Recent Sign-Ups"
+            projectId={projectId}
+            router={router}
+            compact
+            gradientColor="blue"
+            timeRange={timeRange}
+            customDateRange={customDateRange}
+          />
+        </div>
+        <div className="min-h-[340px] lg:min-h-0 lg:h-full">
+          <TabbedEmailsCard
+            stackedChartData={emailStackedData}
+            recentEmails={recentEmails}
+            timeRange={timeRange}
+            customDateRange={customDateRange}
+            compact
+          />
+        </div>
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────────

@@ -93,3 +93,21 @@ A: In `metrics-page.tsx`, maintain `chartMode` (the hover intent) and `displayMo
 
 Q: How do you add a MAU (monthly active users) metric sourced from ClickHouse to the backend metrics endpoint?
 A: Add a `loadMonthlyActiveUsers` function in `route.tsx` that runs `uniqExact(user_id)` over `$token-refresh` events in the last 30 days on `analytics_internal.events`. Wrap the ClickHouse call in try/catch and return 0 on error. Add the result to `loadAuthOverview`'s return as `mau`, and in the dev fallback block set `mau: totalUsers * 0.3` when `mau === 0` to ensure the dashboard is usable in development.
+
+Q: How should overview dashboard charts support both preset ranges and calendar-picked custom ranges?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, expand `TimeRange` to include presets (`7d`, `14d`, `30d`, `90d`, `all`) plus `custom`, add a `CustomDateRange` type, and route all date-series filtering through shared helpers (`filterDatapointsByTimeRange` and `filterStackedDatapointsByTimeRange`) that accept the optional custom range. Then pass `customDateRange` through `TimeRangeToggle`, `TabbedMetricsCard`, and metrics-page data derivations so charts and range-dependent totals stay synchronized when the user changes either preset pills or the calendar range.
+
+Q: How should the overview custom date picker behave to avoid runtime errors when `custom` is selected?
+A: Keep custom-range interaction inside the `Custom` pill flow in `TimeRangeToggle` (no separate "Pick date range" action button), seed a default range when none exists before switching to `custom`, and make range filters tolerate a temporarily missing custom range by returning unfiltered data instead of throwing.
+
+Q: How can a custom date-range panel anchored to a pill toggle stay visually consistent with dashboard design standards?
+A: Use shadcn primitives (`Popover`, `PopoverAnchor`, `PopoverContent`, `Calendar`) and style the content as a glassmorphic control surface (`rounded-2xl`, subtle border/ring, backdrop blur, compact spacing rhythm, muted header text), with customized `Calendar` classNames for range states so selection/readability stay balanced in dark mode.
+
+Q: How should overview charts parse `YYYY-MM-DD` analytics dates without shifting a day in some timezones?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, do not use `new Date("YYYY-MM-DD")` for chart labels/tooltips because browsers interpret date-only strings as UTC. Parse those keys into local dates with `new Date(year, month - 1, day)` via a shared helper (for example `parseChartDate`) before formatting or weekend checks.
+
+Q: How should the overview custom date picker prevent invalid future selections?
+A: Normalize picker dates to local midnight and pass `disabled={{ after: latestSelectableDate }}` to the dashboard `Calendar` so users cannot select dates after today, while keeping the default seeded custom range capped at today as well.
+
+Q: How should overview dashboard rows handle fixed chart heights across breakpoints?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx`, only apply fixed row heights like `h-[340px]` at the desktop layout breakpoint (`lg:`). When a two-column chart row collapses to one column, wrap each card in a `min-h-[340px]` container so stacked charts keep a usable height instead of being squeezed into the old shared row height.

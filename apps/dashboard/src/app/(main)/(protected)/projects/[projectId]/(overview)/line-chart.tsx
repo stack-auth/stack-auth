@@ -3,14 +3,21 @@ import {
   cn,
   Typography
 } from "@/components/ui";
+import { Calendar } from "@/components/ui/calendar";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { DesignCardTint, DesignCategoryTabs, DesignPillToggle } from "@/components/design-components";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import { useId, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
-export type TimeRange = '7d' | '30d' | 'all';
+export type CustomDateRange = {
+  from: Date,
+  to: Date,
+};
+
+export type TimeRange = '7d' | '30d' | 'all' | 'custom';
 
 export type LineChartDisplayConfig = {
   name: string,
@@ -36,7 +43,7 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
 
   const data = payload[0].payload as DataPoint;
-  const date = new Date(data.date);
+  const date = parseChartDate(data.date);
   const formattedDate = !isNaN(date.getTime())
     ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : data.date;
@@ -67,19 +74,80 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
 };
 
 // Helper function to filter datapoints by time range
-export function filterDatapointsByTimeRange(datapoints: DataPoint[], timeRange: TimeRange): DataPoint[] {
+function getDateKey(date: Date): string {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeToLocalDay(date: Date): Date {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(0, 0, 0, 0);
+  return normalizedDate;
+}
+
+function parseChartDate(dateValue: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    const [year, month, day] = dateValue.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+
+  return new Date(dateValue);
+}
+
+function formatDateRangeLabel(range: CustomDateRange | null): string {
+  if (range == null) {
+    return "Pick date range";
+  }
+
+  const fromLabel = range.from.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const toLabel = range.to.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  return `${fromLabel} - ${toLabel}`;
+}
+
+export function filterDatapointsByTimeRange(
+  datapoints: DataPoint[],
+  timeRange: TimeRange,
+  customDateRange: CustomDateRange | null = null,
+): DataPoint[] {
   if (timeRange === '7d') {
     return datapoints.slice(-7);
   }
   if (timeRange === '30d') {
     return datapoints.slice(-30);
   }
+  if (timeRange === 'custom') {
+    if (customDateRange == null) {
+      return datapoints;
+    }
+
+    const fromKey = getDateKey(customDateRange.from);
+    const toKey = getDateKey(customDateRange.to);
+
+    return datapoints.filter((point) => point.date >= fromKey && point.date <= toKey);
+  }
   return datapoints;
 }
 
-export function filterStackedDatapointsByTimeRange<T extends { date: string }>(datapoints: T[], timeRange: TimeRange): T[] {
+export function filterStackedDatapointsByTimeRange<T extends { date: string }>(
+  datapoints: T[],
+  timeRange: TimeRange,
+  customDateRange: CustomDateRange | null = null,
+): T[] {
   if (timeRange === '7d') return datapoints.slice(-7);
   if (timeRange === '30d') return datapoints.slice(-30);
+  if (timeRange === 'custom') {
+    if (customDateRange == null) {
+      return datapoints;
+    }
+
+    const fromKey = getDateKey(customDateRange.from);
+    const toKey = getDateKey(customDateRange.to);
+
+    return datapoints.filter((point) => point.date >= fromKey && point.date <= toKey);
+  }
   return datapoints;
 }
 
@@ -196,7 +264,7 @@ export function ActivityBarChart({
           isAnimationActive={false}
         >
           {datapoints.map((entry, index) => {
-            const isWeekendDay = isWeekend(new Date(entry.date));
+            const isWeekendDay = isWeekend(parseChartDate(entry.date));
             const baseOpacity = isWeekendDay ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
@@ -230,7 +298,7 @@ export function ActivityBarChart({
             fontSize: compact ? 8 : 10,
           }}
           tickFormatter={(value) => {
-            const date = new Date(value);
+            const date = parseChartDate(value);
             if (!isNaN(date.getTime())) {
               const month = date.toLocaleDateString("en-US", {
                 month: "short",
@@ -265,7 +333,7 @@ const StackedTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
 
   const row = payload[0].payload as StackedDataPoint & { avg7d?: number };
-  const date = new Date(row.date);
+  const date = parseChartDate(row.date);
   const formattedDate = !isNaN(date.getTime())
     ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : row.date;
@@ -399,7 +467,7 @@ export function StackedBarChartDisplay({
         />
         <Bar dataKey="retained" stackId="split" fill="var(--color-retained)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -413,7 +481,7 @@ export function StackedBarChartDisplay({
         </Bar>
         <Bar dataKey="reactivated" stackId="split" fill="var(--color-reactivated)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -427,7 +495,7 @@ export function StackedBarChartDisplay({
         </Bar>
         <Bar dataKey="new" stackId="split" fill="var(--color-new)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -494,7 +562,7 @@ export function StackedBarChartDisplay({
           interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
           tickFormatter={(value) => {
-            const date = new Date(value);
+            const date = parseChartDate(value);
             if (!isNaN(date.getTime())) {
               return `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getDate()}`;
             }
@@ -550,7 +618,7 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
   const row = payload[0]?.payload as ComposedDataPoint | undefined;
   if (!row) return null;
 
-  const date = new Date(row.date);
+  const date = parseChartDate(row.date);
   const formattedDate = !isNaN(date.getTime())
     ? date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
     : row.date;
@@ -641,7 +709,7 @@ export function ComposedAnalyticsChart({
       <ComposedChart
         id={id}
         data={datapoints}
-        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+        margin={{ top: 10, right: 4, left: 4, bottom: 0 }}
         onMouseMove={(state) => {
           updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex);
           setHoveredX(getActiveCoordinateX(state));
@@ -762,10 +830,11 @@ export function ComposedAnalyticsChart({
           tickLine={false}
           tickMargin={compact ? 4 : 6}
           axisLine={false}
+          padding={{ left: 8, right: 8 }}
           interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
           tickFormatter={(value) => {
-            const date = new Date(value);
+            const date = parseChartDate(value);
             if (!isNaN(date.getTime())) {
               return `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getDate()}`;
             }
@@ -819,6 +888,15 @@ export function ChartCard({
     cyan: "cyan",
   };
 
+  const hoverTints: Record<GradientColor, string> = {
+    blue: "group-hover:bg-blue-500/[0.03]",
+    purple: "group-hover:bg-purple-500/[0.03]",
+    green: "group-hover:bg-emerald-500/[0.03]",
+    orange: "group-hover:bg-orange-500/[0.03]",
+    slate: "group-hover:bg-slate-500/[0.02]",
+    cyan: "group-hover:bg-cyan-500/[0.03]",
+  };
+
   return (
     <>
       <style>
@@ -848,7 +926,7 @@ export function ChartCard({
         <div className="relative h-full min-h-0 flex flex-col">
           {children}
         </div>
-      </DesignCardTint>
+      </div>
     </>
   );
 }
@@ -856,30 +934,193 @@ export function ChartCard({
 export function TimeRangeToggle({
   timeRange,
   onTimeRangeChange,
+  customDateRange = null,
+  onCustomDateRangeChange,
 }: {
   timeRange: TimeRange,
   onTimeRangeChange: (range: TimeRange) => void,
+  customDateRange?: CustomDateRange | null,
+  onCustomDateRangeChange?: (range: CustomDateRange) => void,
 }) {
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const supportsCustomDateRange = onCustomDateRangeChange != null;
+  const customDateRangeHandler = onCustomDateRangeChange;
+
   const options: { id: TimeRange, label: string }[] = [
     { id: '7d', label: '7d' },
     { id: '30d', label: '30d' },
     { id: 'all', label: 'All' },
+    ...(supportsCustomDateRange ? [{ id: 'custom' as const, label: 'Custom' }] : []),
   ];
 
+  const selectedRange = customDateRange == null ? undefined : {
+    from: customDateRange.from,
+    to: customDateRange.to,
+  };
+  const latestSelectableDate = normalizeToLocalDay(new Date());
+
   return (
-    <DesignPillToggle
-      options={options}
-      selected={timeRange}
-      size="sm"
-      glassmorphic
-      onSelect={(selectedId) => {
-        if (selectedId === '7d' || selectedId === '30d' || selectedId === 'all') {
-          onTimeRangeChange(selectedId);
-          return;
-        }
-        throw new Error(`Unsupported time range selected: ${selectedId}`);
-      }}
-    />
+    <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+      <PopoverAnchor asChild>
+        <div className="inline-flex items-center relative">
+          <DesignPillToggle
+            options={options}
+            selected={timeRange}
+            size="sm"
+            glassmorphic
+            onSelect={(selectedId) => {
+              if (
+                selectedId === '7d' ||
+                selectedId === '30d' ||
+                selectedId === 'all' ||
+                selectedId === 'custom'
+              ) {
+                if (selectedId === "custom" && !supportsCustomDateRange) {
+                  throw new Error("Custom range selected but onCustomDateRangeChange is not provided");
+                }
+
+                if (selectedId === "custom") {
+                  if (customDateRangeHandler == null) {
+                    throw new Error("Custom range selected but onCustomDateRangeChange is not provided");
+                  }
+                  if (customDateRange == null) {
+                    const to = latestSelectableDate;
+                    const from = new Date(to);
+                    from.setDate(from.getDate() - 6);
+                    customDateRangeHandler({ from, to });
+                  }
+                  onTimeRangeChange("custom");
+                  setIsCalendarOpen(true);
+                  return;
+                }
+
+                setIsCalendarOpen(false);
+                onTimeRangeChange(selectedId);
+                return;
+              }
+              throw new Error(`Unsupported time range selected: ${selectedId}`);
+            }}
+          />
+        </div>
+      </PopoverAnchor>
+      {supportsCustomDateRange && (
+        <PopoverContent
+          align="end"
+          sideOffset={8}
+          className={cn(
+            "w-auto p-3",
+            "rounded-xl",
+            "bg-white/95 dark:bg-background/95 backdrop-blur-xl",
+            "border border-black/[0.08] dark:border-white/[0.08]",
+            "ring-1 ring-black/[0.08] dark:ring-white/[0.08]",
+            "shadow-lg",
+          )}
+        >
+          <Calendar
+            mode="range"
+            selected={selectedRange}
+            onSelect={(nextRange) => {
+              if (nextRange?.from == null || nextRange.to == null) {
+                return;
+              }
+
+              const normalizedFrom = normalizeToLocalDay(nextRange.from);
+              const normalizedTo = normalizeToLocalDay(nextRange.to);
+              const normalizedRange = normalizedFrom <= normalizedTo
+                ? { from: normalizedFrom, to: normalizedTo }
+                : { from: normalizedTo, to: normalizedFrom };
+
+              if (customDateRangeHandler == null) {
+                throw new Error("Custom date range update handler is missing");
+              }
+              customDateRangeHandler(normalizedRange);
+              onTimeRangeChange("custom");
+              setIsCalendarOpen(false);
+            }}
+            numberOfMonths={1}
+            defaultMonth={customDateRange?.from}
+            disabled={{ after: latestSelectableDate }}
+            className="!p-0 !border-0"
+            classNames={{
+              months: "relative",
+              month: "space-y-3",
+              month_caption: "flex justify-center items-center h-8",
+              caption_label: "text-sm font-semibold text-foreground",
+              nav: "absolute inset-x-0 top-0 flex items-center justify-between",
+              button_previous: cn(
+                "h-8 w-8 rounded-lg",
+                "inline-flex items-center justify-center",
+                "text-muted-foreground hover:text-foreground",
+                "hover:bg-foreground/[0.05]",
+                "transition-all duration-150 hover:transition-none",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              ),
+              button_next: cn(
+                "h-8 w-8 rounded-lg",
+                "inline-flex items-center justify-center",
+                "text-muted-foreground hover:text-foreground",
+                "hover:bg-foreground/[0.05]",
+                "transition-all duration-150 hover:transition-none",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              ),
+              month_grid: "w-full border-collapse mt-4",
+              weekdays: "flex gap-1",
+              weekday: cn(
+                "w-9 h-9 p-0 text-[11px] font-medium",
+                "text-muted-foreground/80",
+                "flex items-center justify-center",
+              ),
+              week: "flex gap-1 mt-1",
+              day: cn(
+                "relative w-9 h-9 p-0 text-center text-sm",
+                "flex items-center justify-center",
+                "focus-within:relative focus-within:z-20",
+              ),
+              day_button: cn(
+                "h-9 w-9 p-0 text-sm font-normal rounded-lg",
+                "inline-flex items-center justify-center",
+                "text-foreground",
+                "hover:bg-foreground/[0.05] hover:text-foreground",
+                "transition-all duration-150 hover:transition-none",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                "aria-selected:opacity-100",
+              ),
+              selected: "[&>button]:text-foreground",
+              range_start: cn(
+                "range_start",
+                "[&>button]:bg-white/95 dark:[&>button]:bg-white/95",
+                "[&>button]:text-background dark:[&>button]:text-background",
+                "[&>button]:shadow-sm [&>button]:ring-1",
+                "[&>button]:ring-black/[0.12] dark:[&>button]:ring-white/[0.08]",
+                "[&>button]:hover:bg-white [&>button]:hover:text-background",
+              ),
+              range_end: cn(
+                "range_end",
+                "[&>button]:bg-white/95 dark:[&>button]:bg-white/95",
+                "[&>button]:text-background dark:[&>button]:text-background",
+                "[&>button]:shadow-sm [&>button]:ring-1",
+                "[&>button]:ring-black/[0.12] dark:[&>button]:ring-white/[0.08]",
+                "[&>button]:hover:bg-white [&>button]:hover:text-background",
+              ),
+              range_middle: cn(
+                "[&>button]:bg-foreground/[0.05] dark:[&>button]:bg-white/[0.06]",
+                "[&>button]:text-foreground [&>button]:shadow-none [&>button]:ring-0",
+                "[&>button]:hover:bg-foreground/[0.08] dark:[&>button]:hover:bg-white/[0.08]",
+              ),
+              outside: "text-muted-foreground/30 aria-selected:text-muted-foreground/50",
+              disabled: cn(
+                "pointer-events-none text-muted-foreground/30",
+                "[&>button]:text-muted-foreground/30",
+                "[&>button]:opacity-35",
+                "[&>button]:cursor-not-allowed",
+                "[&>button]:hover:bg-transparent [&>button]:hover:text-muted-foreground/30",
+              ),
+              hidden: "invisible",
+            }}
+          />
+        </PopoverContent>
+      )}
+    </Popover>
   );
 }
 
@@ -895,6 +1136,7 @@ export function TabbedMetricsCard({
   height,
   compact = false,
   timeRange,
+  customDateRange = null,
   totalAllTime,
   showTotal = false,
 }: {
@@ -909,13 +1151,14 @@ export function TabbedMetricsCard({
   height?: number,
   compact?: boolean,
   timeRange: TimeRange,
+  customDateRange?: CustomDateRange | null,
   totalAllTime?: number,
   showTotal?: boolean,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
 
-  const filteredDatapoints = filterDatapointsByTimeRange(chartData, timeRange);
-  const filteredStackedDatapoints = stackedChartData ? filterStackedDatapointsByTimeRange(stackedChartData, timeRange) : null;
+  const filteredDatapoints = filterDatapointsByTimeRange(chartData, timeRange, customDateRange);
+  const filteredStackedDatapoints = stackedChartData ? filterStackedDatapointsByTimeRange(stackedChartData, timeRange, customDateRange) : null;
 
   // Calculate total for the selected time range
   const total = filteredDatapoints.reduce((sum, point) => sum + point.activity, 0);
@@ -1098,6 +1341,7 @@ export function LineChartDisplay({
   compact = false,
   gradientColor = "blue",
   timeRange,
+  customDateRange = null,
 }: {
   config: LineChartDisplayConfig,
   datapoints: DataPoint[],
@@ -1106,8 +1350,9 @@ export function LineChartDisplay({
   compact?: boolean,
   gradientColor?: GradientColor,
   timeRange: TimeRange,
+  customDateRange?: CustomDateRange | null,
 }) {
-  const filteredDatapoints = filterDatapointsByTimeRange(datapoints, timeRange);
+  const filteredDatapoints = filterDatapointsByTimeRange(datapoints, timeRange, customDateRange);
 
   return (
     <ChartCard className={className} gradientColor={gradientColor}>
@@ -1440,6 +1685,7 @@ export function CorrelationCard({
   height = 180,
   compact = false,
   timeRange,
+  customDateRange = null,
 }: {
   title: string,
   series: CorrelationSeries[],
@@ -1448,6 +1694,7 @@ export function CorrelationCard({
   height?: number,
   compact?: boolean,
   timeRange: TimeRange,
+  customDateRange?: CustomDateRange | null,
 }) {
   // Merge all series data points by date
   const dateSet = new Set<string>();
@@ -1456,11 +1703,11 @@ export function CorrelationCard({
   }
 
   const sortedDates = [...dateSet].sort();
-  const filteredDates = (() => {
-    if (timeRange === '7d') return sortedDates.slice(-7);
-    if (timeRange === '30d') return sortedDates.slice(-30);
-    return sortedDates;
-  })();
+  const filteredDates = filterStackedDatapointsByTimeRange(
+    sortedDates.map((date) => ({ date })),
+    timeRange,
+    customDateRange,
+  ).map((item) => item.date);
 
   const merged = filteredDates.map(date => {
     const row: Record<string, number | string> = { date };
@@ -1517,7 +1764,7 @@ export function CorrelationCard({
                 interval="equidistantPreserveStart"
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: compact ? 8 : 10 }}
                 tickFormatter={(value) => {
-                  const date = new Date(value);
+                  const date = parseChartDate(value);
                   if (isNaN(date.getTime())) return value;
                   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
                 }}
@@ -1734,7 +1981,7 @@ const emailStackedChartConfig: ChartConfig = {
 const EmailStackedTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as EmailStackedDataPoint & { avg7d?: number };
-  const date = new Date(row.date);
+  const date = parseChartDate(row.date);
   const formattedDate = !isNaN(date.getTime())
     ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : row.date;
@@ -1846,7 +2093,7 @@ export function EmailStackedBarChartDisplay({
         />
         <Bar dataKey="ok" stackId="split" fill="var(--color-ok)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -1860,7 +2107,7 @@ export function EmailStackedBarChartDisplay({
         </Bar>
         <Bar dataKey="in_progress" stackId="split" fill="var(--color-in_progress)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -1874,7 +2121,7 @@ export function EmailStackedBarChartDisplay({
         </Bar>
         <Bar dataKey="error" stackId="split" fill="var(--color-error)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -1934,7 +2181,7 @@ export function EmailStackedBarChartDisplay({
           tickMargin={compact ? 6 : 8}
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
           tickFormatter={(value: string) => {
-            const d = new Date(value);
+            const d = parseChartDate(value);
             return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           }}
         />
@@ -1970,7 +2217,7 @@ function VisitorsHoverTooltip({ active, payload }: TooltipProps<number, string>)
   const row = payload[0]?.payload as VisitorsHoverDataPoint | undefined;
   if (!row) return null;
 
-  const date = new Date(row.date);
+  const date = parseChartDate(row.date);
   const formattedDate = !isNaN(date.getTime())
     ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : row.date;
@@ -2024,7 +2271,7 @@ export function VisitorsHoverChart({
     >
       <BarChart
         data={datapoints}
-        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
         onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
@@ -2044,7 +2291,7 @@ export function VisitorsHoverChart({
         />
         <Bar dataKey="page_views" stackId="visitors" fill="var(--color-page_views)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -2058,7 +2305,7 @@ export function VisitorsHoverChart({
         </Bar>
         <Bar dataKey="clicks" stackId="visitors" fill="var(--color-clicks)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -2078,7 +2325,7 @@ export function VisitorsHoverChart({
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
           interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tickFormatter={(value: string) => {
-            const d = new Date(value);
+            const d = parseChartDate(value);
             return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           }}
         />
@@ -2120,7 +2367,7 @@ function RevenueHoverTooltip({ active, payload }: TooltipProps<number, string>) 
   const row = payload[0]?.payload as RevenueHoverDataPoint | undefined;
   if (!row) return null;
 
-  const date = new Date(row.date);
+  const date = parseChartDate(row.date);
   const formattedDate = !isNaN(date.getTime())
     ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : row.date;
@@ -2177,7 +2424,7 @@ export function RevenueHoverChart({
     >
       <BarChart
         data={datapoints}
-        margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
         onMouseMove={(state) => updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex)}
         onMouseLeave={() => setHoveredIndex(null)}
       >
@@ -2197,7 +2444,7 @@ export function RevenueHoverChart({
         />
         <Bar dataKey="new_cents" stackId="revenue" fill="var(--color-new_cents)" radius={[0, 0, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -2211,7 +2458,7 @@ export function RevenueHoverChart({
         </Bar>
         <Bar dataKey="refund_cents" stackId="revenue" fill="var(--color-refund_cents)" radius={[4, 4, 0, 0]} isAnimationActive={false}>
           {datapoints.map((entry, index) => {
-            const baseOpacity = isWeekend(new Date(entry.date)) ? 0.5 : 1;
+            const baseOpacity = isWeekend(parseChartDate(entry.date)) ? 0.5 : 1;
             const isActiveBar = hoveredIndex === index;
             return (
               <Cell
@@ -2231,7 +2478,7 @@ export function RevenueHoverChart({
           tick={{ fontSize: compact ? 9 : 11, fill: "hsl(var(--muted-foreground))" }}
           interval={datapoints.length <= 7 ? 0 : "equidistantPreserveStart"}
           tickFormatter={(value: string) => {
-            const d = new Date(value);
+            const d = parseChartDate(value);
             return isNaN(d.getTime()) ? value : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           }}
         />
