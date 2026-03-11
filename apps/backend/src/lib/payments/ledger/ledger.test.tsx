@@ -767,6 +767,106 @@ describe('getOwnedProductsForCustomer - include-by-default', () => {
     vi.useRealTimers();
   });
 
+  it('chooses a single default product deterministically when multiple defaults share a product line', async () => {
+    vi.setSystemTime(new Date('2025-02-10'));
+    const freePlanA = {
+      displayName: 'Free Plan A',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 1 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+    };
+    const freePlanZ = {
+      displayName: 'Free Plan Z',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 2 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-1',
+        tenancyId: 'tenancy-1',
+        snapshot: {
+          'free-z': productToInlineProduct(freePlanZ as any),
+          'free-a': productToInlineProduct(freePlanA as any),
+        },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        'free-z': freePlanZ as any,
+        'free-a': freePlanA as any,
+      },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const owned = await getOwnedProductsForCustomer({
+      prisma: _currentMockPrisma, tenancy, customerType: 'custom', customerId: 'custom-1',
+    });
+    const defaultOwned = owned.filter((p) => p.type === 'include-by-default');
+    expect(defaultOwned.map((p) => p.id)).toEqual(['free-a']);
+    vi.useRealTimers();
+  });
+
+  it('skips all defaults in a line when a paid product in that line is owned', async () => {
+    vi.setSystemTime(new Date('2025-02-10'));
+    const freePlanA = {
+      displayName: 'Free Plan A',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 1 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+    };
+    const freePlanZ = {
+      displayName: 'Free Plan Z',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 2 } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false,
+    };
+    const paidProduct = {
+      displayName: 'Paid Plan',
+      customerType: 'custom',
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 4 } },
+      prices: { monthly: { USD: '49' } },
+      isAddOnTo: false,
+    };
+    setupMockPrisma({
+      subscriptions: [createSub({
+        productId: 'paid-plan',
+        product: paidProduct,
+      })],
+      defaultProductsSnapshots: [{
+        id: 'snap-1',
+        tenancyId: 'tenancy-1',
+        snapshot: {
+          'free-z': productToInlineProduct(freePlanZ as any),
+          'free-a': productToInlineProduct(freePlanA as any),
+        },
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        'paid-plan': paidProduct as any,
+        'free-z': freePlanZ as any,
+        'free-a': freePlanA as any,
+      },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const owned = await getOwnedProductsForCustomer({
+      prisma: _currentMockPrisma, tenancy, customerType: 'custom', customerId: 'custom-1',
+    });
+    expect(owned.map((p) => p.id)).toEqual(['paid-plan']);
+    vi.useRealTimers();
+  });
+
   it('ungrouped default product is always included if not already owned by ID', async () => {
     vi.setSystemTime(new Date('2025-02-10'));
     const ungroupedDefault = {

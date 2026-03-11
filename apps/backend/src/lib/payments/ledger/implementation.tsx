@@ -181,8 +181,14 @@ export async function getOwnedProductsForCustomer(options: {
   // Add include-by-default products for uncovered product lines
   const { snapshot: defaultProducts, effectiveAtMillis: defaultsEffectiveAtMillis } = getCurrentDefaultProducts(transactions);
   const productLines = options.tenancy.config.payments.productLines;
+  const seenDefaultProductLineIds = new Set<string>();
+  // Deterministic tie-breaker for misconfigured snapshots with multiple defaults in one line.
+  // We keep the lexicographically smallest product ID for that line.
+  const sortedDefaultProducts = Object.entries(defaultProducts).sort(([leftProductId], [rightProductId]) =>
+    stringCompare(leftProductId, rightProductId),
+  );
 
-  for (const [productId, product] of Object.entries(defaultProducts)) {
+  for (const [productId, product] of sortedDefaultProducts) {
     const productLineId = (product as any).product_line_id;
 
     if (productLineId && productLineId in productLines) {
@@ -191,6 +197,9 @@ export async function getOwnedProductsForCustomer(options: {
         owned.type !== "include-by-default"
       );
       if (hasConflict) continue;
+      //If we've seen this product line ID before, and there isn't an owned paid product in this line, then we've already added a default product from this line
+      if (seenDefaultProductLineIds.has(productLineId)) continue;
+      seenDefaultProductLineIds.add(productLineId);
     } else {
       if (ownedProducts.some((owned) => owned.id === productId)) continue;
     }
