@@ -1,3 +1,5 @@
+// TODO: Use configPath in the prompt once local emulator is set up:
+// Add "npx @stackframe/stack-cli emulator run --config-file ${configPath}" to project dev command
 export const createInitPrompt = (web: boolean, configPath?: string) => `=============================
 STACK AUTH SETUP INSTRUCTIONS
 =============================

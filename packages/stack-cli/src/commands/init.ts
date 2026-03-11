@@ -180,8 +180,11 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
   const envPath = path.resolve(outputDir, ".env");
 
   if (fs.existsSync(envPath)) {
+    const existing = fs.readFileSync(envPath, "utf-8");
+    const separator = existing.endsWith("\n") ? "\n" : "\n\n";
+
     if (isNonInteractiveEnv()) {
-      fs.appendFileSync(envPath, "\n" + envLines + "\n");
+      fs.appendFileSync(envPath, separator + envLines + "\n");
       console.log("\nAppended Stack Auth keys to .env");
     } else {
       const shouldAppend = await confirm({
@@ -190,7 +193,7 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
       });
 
       if (shouldAppend) {
-        fs.appendFileSync(envPath, "\n" + envLines + "\n");
+        fs.appendFileSync(envPath, separator + envLines + "\n");
         console.log("\nAppended Stack Auth keys to .env");
       } else {
         console.log("\nHere are your environment variables:\n");
@@ -239,6 +242,11 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
 
   if (opts.apps) {
     selectedApps = opts.apps.split(",").map((s) => s.trim()).filter(Boolean);
+    const validAppIds = Object.keys(ALL_APPS);
+    const invalidApps = selectedApps.filter((id) => !validAppIds.includes(id));
+    if (invalidApps.length > 0) {
+      throw new CliError(`Unknown app IDs: ${invalidApps.join(", ")}. Valid IDs: ${validAppIds.join(", ")}`);
+    }
   } else {
     const stageOrder = { stable: 0, beta: 1 } as const;
     const appEntries = Object.entries(ALL_APPS)
@@ -255,10 +263,9 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
     });
   }
 
-  const installed: Record<string, { enabled: boolean }> = {};
-  for (const appId of selectedApps) {
-    installed[appId] = { enabled: true };
-  }
+  const installed = Object.fromEntries(
+    selectedApps.map((appId) => [appId, { enabled: true }])
+  );
 
   const config = {
     apps: {
