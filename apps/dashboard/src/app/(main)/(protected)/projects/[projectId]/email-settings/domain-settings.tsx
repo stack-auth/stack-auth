@@ -9,20 +9,23 @@ import { cn } from "@/lib/utils";
 import { AdminEmailConfig } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { Envelope, GearSix, PaperPlaneTilt } from "@phosphor-icons/react";
+import { ArrowsClockwise, Envelope, GearSix, GlobeSimple, PaperPlaneTilt } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label, Typography, useToast } from "@/components/ui";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
 import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
 import { useAdminApp } from "../use-admin-app";
 
-type ServerType = "shared" | "resend" | "standard";
+type ServerType = "shared" | "managed" | "resend" | "standard";
+
+type ManagedDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 
 type ServerFieldConfig = {
   label: string,
@@ -32,12 +35,14 @@ type ServerFieldConfig = {
 
 const SERVER_TYPE_LABELS: Record<ServerType, string> = {
   shared: "Shared (noreply@stackframe.co)",
+  managed: "Managed (via managed domain setup)",
   resend: "Resend",
   standard: "Custom SMTP",
 };
 
 const VISIBLE_FIELDS: Record<ServerType, ServerFieldConfig[]> = {
   shared: [],
+  managed: [],
   resend: [
     { label: "Sender Email", key: "senderEmail", type: "email" },
     { label: "Sender Name", key: "senderName", type: "text" },
@@ -50,6 +55,7 @@ const VISIBLE_FIELDS: Record<ServerType, ServerFieldConfig[]> = {
 
 const CONFIG_FIELDS: Record<ServerType, ServerFieldConfig[]> = {
   shared: [],
+  managed: [],
   resend: [
     { label: "Resend API Key", key: "password", type: "password" },
   ],
@@ -68,6 +74,7 @@ function maskSecret(value: string): string {
 
 function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): ServerType {
   if (config.isShared) return "shared";
+  if (config.provider === "managed") return "managed";
   if (config.provider === "resend") return "resend";
   return "standard";
 }
@@ -75,6 +82,17 @@ function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): Se
 function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], projectName: string): Record<string, string> {
   if (config.isShared) {
     return { senderEmail: "noreply@stackframe.co", senderName: projectName };
+  }
+  if (config.provider === "managed") {
+    const senderEmail = config.managedSubdomain && config.managedSenderLocalPart
+      ? `${config.managedSenderLocalPart}@${config.managedSubdomain}`
+      : "";
+    return {
+      senderEmail,
+      senderName: projectName,
+      managedSubdomain: config.managedSubdomain ?? "",
+      managedSenderLocalPart: config.managedSenderLocalPart ?? "",
+    };
   }
   return {
     senderEmail: config.senderEmail ?? "",
@@ -123,13 +141,217 @@ function TestSendingDialog(props: { trigger: React.ReactNode }) {
   );
 }
 
+const managedEmailSetupSchema = yup.object({
+  subdomain: yup
+    .string()
+    .trim()
+    .defined("Managed subdomain is required")
+    .test(
+      "non-empty-subdomain",
+      "Managed subdomain is required",
+      (value) => value.trim().length > 0,
+    )
+    .matches(
+      /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,63}$/,
+      "Enter a full subdomain like emails.example.com",
+    ),
+  senderLocalPart: yup
+    .string()
+    .trim()
+    .defined("Sender local part is required")
+    .test(
+      "non-empty-sender-local-part",
+      "Sender local part is required",
+      (value) => value.trim().length > 0,
+    ),
+});
+
+function ManagedEmailSetupDialog(props: { trigger: React.ReactNode }) {
+  const stackAdminApp = useAdminApp();
+  const [open, setOpen] = useState(false);
+  const [setupState, setSetupState] = useState<{
+    domainId: string,
+    nameServerRecords: string[],
+    subdomain: string,
+    senderLocalPart: string,
+    status: ManagedDomainStatus,
+  } | null>(null);
+  const [domains, setDomains] = useState<Array<{
+    domainId: string,
+    subdomain: string,
+    senderLocalPart: string,
+    status: ManagedDomainStatus,
+    nameServerRecords: string[],
+  }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingDomains, setLoadingDomains] = useState(false);
+
+  const refreshDomains = async () => {
+    setLoadingDomains(true);
+    try {
+      const result = await stackAdminApp.listManagedEmailDomains();
+      setDomains(result);
+    } finally {
+      setLoadingDomains(false);
+    }
+  };
+
+  return (
+    <FormDialog
+      trigger={props.trigger}
+      open={open}
+      onOpenChange={(newOpen) => {
+        setOpen(newOpen);
+        if (newOpen) {
+          runAsynchronouslyWithAlert(async () => {
+            await refreshDomains();
+          }, {
+            onError: (err) => {
+              setError(err instanceof Error ? err.message : "Failed to load managed domains");
+            },
+          });
+        } else {
+          setSetupState(null);
+          setDomains([]);
+          setError(null);
+        }
+      }}
+      title="Managed Email Setup"
+      formSchema={managedEmailSetupSchema}
+      defaultValues={{ subdomain: "", senderLocalPart: "updates" }}
+      okButton={setupState ? false : { label: "Start Setup" }}
+      cancelButton
+      onSubmit={async (values) => {
+        const setupResult = await stackAdminApp.setupManagedEmailProvider({
+          subdomain: values.subdomain,
+          senderLocalPart: values.senderLocalPart,
+        });
+        setSetupState({
+          domainId: setupResult.domainId,
+          nameServerRecords: setupResult.nameServerRecords,
+          subdomain: setupResult.subdomain,
+          senderLocalPart: setupResult.senderLocalPart,
+          status: setupResult.status,
+        });
+        await refreshDomains();
+        setError(null);
+        return "prevent-close" as const;
+      }}
+      render={(form) => (
+        <>
+          {!setupState && (
+            <>
+              <InputField
+                label="Managed subdomain"
+                name="subdomain"
+                control={form.control}
+                type="text"
+                placeholder="emails.example.com"
+                required
+              />
+              <InputField
+                label="Sender local part"
+                name="senderLocalPart"
+                control={form.control}
+                type="text"
+                required
+              />
+            </>
+          )}
+          {setupState && (
+            <Alert className="bg-blue-500/5 border-blue-500/20">
+              <AlertTitle>Delegate your subdomain with these NS records</AlertTitle>
+              <AlertDescription>
+                Add these nameservers at your DNS provider for the managed subdomain you entered.
+                <div className="mt-2 flex flex-col gap-1">
+                  {setupState.nameServerRecords.map((record) => (
+                    <div key={record} className="font-mono text-xs">{record}</div>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {setupState && (
+            <div className="flex items-center gap-2">
+              <DesignButton
+                variant="secondary"
+                size="sm"
+                onClick={() => runAsynchronouslyWithAlert(async () => {
+                  const result = await stackAdminApp.checkManagedEmailStatus({
+                    domainId: setupState.domainId,
+                    subdomain: setupState.subdomain,
+                    senderLocalPart: setupState.senderLocalPart,
+                  });
+                  setSetupState({ ...setupState, status: result.status });
+                  await refreshDomains();
+                })}
+              >
+                <ArrowsClockwise className="h-3.5 w-3.5 mr-1" />
+                Refresh Status
+              </DesignButton>
+              <DesignButton
+                size="sm"
+                disabled={setupState.status !== "verified"}
+                onClick={() => runAsynchronouslyWithAlert(async () => {
+                  await stackAdminApp.applyManagedEmailProvider({
+                    domainId: setupState.domainId,
+                  });
+                  setOpen(false);
+                })}
+              >
+                Use This Domain
+              </DesignButton>
+            </div>
+          )}
+          {(() => {
+            const visibleDomains = setupState ? domains.filter((d) => d.domainId === setupState.domainId) : domains;
+            return (
+              <div className="space-y-2">
+                <Typography variant="secondary" className="text-xs uppercase tracking-wider">Tracked managed domains</Typography>
+                {loadingDomains ? (
+                  <Typography variant="secondary" className="text-sm">Loading managed domains...</Typography>
+                ) : visibleDomains.length === 0 ? (
+                  <Typography variant="secondary" className="text-sm">No managed domains tracked yet.</Typography>
+                ) : (
+                  visibleDomains.map((domain) => (
+                    <Alert key={domain.domainId} className="bg-slate-500/5 border-slate-500/20">
+                      <AlertTitle className="font-mono text-xs">{domain.senderLocalPart}@{domain.subdomain}</AlertTitle>
+                      <AlertDescription className="mt-1 flex items-center justify-between gap-2">
+                        <span className="text-xs">Status: {domain.status}</span>
+                        <DesignButton
+                          size="sm"
+                          variant="secondary"
+                          disabled={domain.status !== "verified"}
+                          onClick={() => runAsynchronouslyWithAlert(async () => {
+                            await stackAdminApp.applyManagedEmailProvider({
+                              domainId: domain.domainId,
+                            });
+                            await refreshDomains();
+                          })}
+                        >
+                          Use This Domain
+                        </DesignButton>
+                      </AlertDescription>
+                    </Alert>
+                  ))
+                )}
+              </div>
+            );
+          })()}
+          {error && <DesignAlert variant="error" description={error} />}
+        </>
+      )}
+    />
+  );
+}
+
 export function DomainSettings() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
   const updateConfig = useUpdateConfig();
   const { toast } = useToast();
-  const isEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true";
+  const isEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   const savedServerType = getServerTypeFromConfig(emailConfig);
   const savedValues = getFormValuesFromConfig(emailConfig, project.displayName);
@@ -185,6 +407,12 @@ export function DomainSettings() {
           pushable: false,
         });
         toast({ title: "Email server updated", variant: "success" });
+      } else if (serverType === "managed") {
+        toast({
+          title: "Email server unchanged",
+          description: "Managed email configuration is controlled through the managed domain setup.",
+          variant: "success",
+        });
       } else {
         const requireField = (key: string, label: string): string => {
           const val = formValues[key];
@@ -238,6 +466,8 @@ export function DomainSettings() {
               senderEmail: emailConf.senderEmail,
               senderName: emailConf.senderName,
               provider: emailConf.type === "resend" ? "resend" : "smtp",
+              managedSubdomain: undefined,
+              managedSenderLocalPart: undefined,
             } satisfies CompleteConfig["emails"]["server"],
           },
           pushable: false,
@@ -293,6 +523,7 @@ export function DomainSettings() {
               onValueChange={(v) => handleServerTypeChange(v as ServerType)}
               options={[
                 { value: "shared", label: SERVER_TYPE_LABELS.shared },
+                { value: "managed", label: SERVER_TYPE_LABELS.managed },
                 { value: "resend", label: SERVER_TYPE_LABELS.resend },
                 { value: "standard", label: SERVER_TYPE_LABELS.standard },
               ]}
@@ -304,6 +535,12 @@ export function DomainSettings() {
             {isShared ? (
               <SimpleTooltip tooltip="Sender email is fixed on the shared server">
                 <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">noreply@stackframe.co</Typography>
+              </SimpleTooltip>
+            ) : serverType === "managed" ? (
+              <SimpleTooltip tooltip="Sender email is configured through the managed domain setup">
+                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">
+                  {formValues.senderEmail || "Not configured"}
+                </Typography>
               </SimpleTooltip>
             ) : (
               <>
@@ -323,8 +560,8 @@ export function DomainSettings() {
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Name</Label>
-            {isShared ? (
-              <SimpleTooltip tooltip="Sender name uses your project name on the shared server">
+            {isShared || serverType === "managed" ? (
+              <SimpleTooltip tooltip={isShared ? "Sender name uses your project name on the shared server" : "Sender name uses your project name for managed email"}>
                 <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">{project.displayName}</Typography>
               </SimpleTooltip>
             ) : (
@@ -339,8 +576,34 @@ export function DomainSettings() {
           </div>
         </div>
 
+        {/* Managed domain info + setup trigger */}
+        {serverType === "managed" && (
+          <div className="space-y-4 border-t border-border/40 pt-4">
+            {savedServerType === "managed" && formValues.managedSubdomain && (
+              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Managed Domain</Label>
+                  <Typography className="text-sm font-medium font-mono">{formValues.managedSubdomain}</Typography>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender</Label>
+                  <Typography className="text-sm font-medium font-mono">{formValues.senderEmail}</Typography>
+                </div>
+              </div>
+            )}
+            <ManagedEmailSetupDialog
+              trigger={
+                <DesignButton variant="secondary" size="sm" className="gap-1.5">
+                  <GlobeSimple className="h-3.5 w-3.5" />
+                  {savedServerType === "managed" ? "Manage Domain" : "Set Up Managed Domain"}
+                </DesignButton>
+              }
+            />
+          </div>
+        )}
+
         {/* Send Test Email -- prominent, centered */}
-        {!isShared && !isDirty && (
+        {!isShared && serverType !== "managed" && !isDirty && (
           <div className="flex justify-center">
             <TestSendingDialog
               trigger={
@@ -405,8 +668,8 @@ export function DomainSettings() {
           <DesignAlert variant="error" description={saveError} />
         )}
 
-        {/* Save / Cancel -- only when dirty */}
-        {isDirty && (
+        {/* Save / Cancel -- only when dirty, not for managed (config is set through setup dialog) */}
+        {isDirty && serverType !== "managed" && (
           <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
             <DesignButton variant="secondary" size="sm" onClick={handleDiscard} disabled={saving}>
               Cancel
