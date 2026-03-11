@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignCard } from "@/components/design-components/card";
 import EmailPreview, { DEVICE_VIEWPORTS, DeviceViewport } from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
@@ -172,61 +173,72 @@ export default function PageClient() {
                     Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
                   </span>
                 </div>
-                <ActionDialog
-                  trigger={
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="h-8 px-3 text-xs gap-1.5"
-                      onClick={handleOpenDialog}
-                    >
-                      Change Theme
-                    </Button>
-                  }
-                  open={dialogOpen}
-                  onOpenChange={setDialogOpen}
-                  title="Select Email Theme"
-                  cancelButton
-                  okButton={{
-                    label: "Save Theme",
-                    onClick: handleSaveTheme
-                  }}
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    {themes.map((theme) => (
-                      <ThemeOption
-                        key={theme.id}
-                        theme={theme}
-                        isSelected={dialogSelectedThemeId === theme.id}
-                        onSelect={handleThemeSelect}
-                        dialogSelectedThemeId={dialogSelectedThemeId}
-                        onDialogThemeDeleted={(deletedThemeId) => {
-                          if (deletedThemeId === dialogSelectedThemeId) {
-                            setDialogSelectedThemeId(DEFAULT_EMAIL_THEME_ID);
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {dialogError && (
-                    <div className="mt-4">
-                      <Alert variant="destructive">
-                        <AlertTitle>Theme not saved</AlertTitle>
-                        <AlertDescription>{dialogError}</AlertDescription>
-                      </Alert>
-                    </div>
-                  )}
-                </ActionDialog>
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Active Theme
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
+                </span>
               </div>
+              <ActionDialog
+                trigger={
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 px-3 text-xs gap-1.5"
+                    onClick={handleOpenDialog}
+                  >
+                    Change Theme
+                  </Button>
+                }
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                title="Select Email Theme"
+                cancelButton
+                okButton={{
+                  label: "Save Theme",
+                  onClick: handleSaveTheme
+                }}
+              >
+                <div className="grid grid-cols-2 gap-4">
+                  {themes.map((theme) => (
+                    <ThemeOption
+                      key={theme.id}
+                      theme={theme}
+                      isSelected={dialogSelectedThemeId === theme.id}
+                      onSelect={handleThemeSelect}
+                      dialogSelectedThemeId={dialogSelectedThemeId}
+                      onDialogThemeDeleted={(deletedThemeId) => {
+                        if (deletedThemeId === dialogSelectedThemeId) {
+                          setDialogSelectedThemeId(DEFAULT_EMAIL_THEME_ID);
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+                {dialogError && (
+                  <div className="mt-4">
+                    <Alert variant="destructive">
+                      <AlertTitle>Theme not saved</AlertTitle>
+                      <AlertDescription>{dialogError}</AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+              </ActionDialog>
             </div>
           </DesignAnalyticsCard>
 
           {/* Device Preview Card */}
           <DesignAnalyticsCard className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
             {/* Header with viewport selector */}
-            <div className="p-5 flex items-center justify-between gap-4 border-b border-foreground/[0.05]">
+            <div className="p-5 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <SectionHeader icon={Monitor} title="Preview" />
+                <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                  <Monitor className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
+                </div>
+                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Preview
+                </span>
                 <span className="text-[11px] text-muted-foreground font-mono tabular-nums bg-foreground/[0.04] px-2 py-1 rounded">
                   {selectedViewport.width} × {selectedViewport.height}
                 </span>

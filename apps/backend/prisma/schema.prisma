@@ -41,8 +41,19 @@ model Project {
   tenancies                  Tenancy[]
   branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
+  localEmulatorProject       LocalEmulatorProject?
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
+}
+
+model LocalEmulatorProject {
+  absoluteFilePath String @id
+  projectId        String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Tenancy {
@@ -63,6 +74,9 @@ model Tenancy {
   sessionReplays SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
+
+  // Email capacity boost - when set and in the future, email capacity is multiplied by 4
+  emailCapacityBoostExpiresAt DateTime?
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
