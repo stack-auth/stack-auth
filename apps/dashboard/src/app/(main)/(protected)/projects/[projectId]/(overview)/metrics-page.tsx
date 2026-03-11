@@ -1,13 +1,12 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
+import { DesignAnalyticsCard, DesignCategoryTabs, DesignChartLegend, useInfiniteListWindow } from "@/components/design-components";
 import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { cn, Typography } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId, getAppPath } from "@/lib/apps-frontend";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
-import { DesignListItemRow } from "@/components/design-components/list";
-import { DesignAnalyticsCard, DesignCategoryTabs, DesignChartLegend, useInfiniteListWindow } from "@/components/design-components";
 import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@stackframe/stack";
@@ -803,68 +802,73 @@ function ReferrersWithAnalyticsCard({
 
 function QuickAccessApps({ projectId, installedApps }: { projectId: string, installedApps: AppId[] }) {
   return (
-    <div className="shrink-0">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
-          <SquaresFourIcon className="h-3.5 w-3.5 text-muted-foreground" />
+    <div className={cn(
+      "shrink-0 rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
+      "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
+    )}>
+      <div className="p-4 sm:p-5 dark:px-0">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+            <SquaresFourIcon className="h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Quick Access
+          </span>
         </div>
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Quick Access
-        </span>
-      </div>
 
-      {installedApps.length === 0 ? (
-        <div className="flex items-center justify-center py-8 rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06]">
-          <Typography variant="secondary" className="text-sm text-center">
-            No apps installed
-          </Typography>
-        </div>
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2">
-          {installedApps.map((appId) => {
-            const appFrontend = ALL_APPS_FRONTEND[appId];
-            const appPath = getAppPath(projectId, appFrontend);
-            const app = ALL_APPS[appId];
-            return (
-              <Link
-                key={appId}
-                href={appPath}
-                className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
-                title={app.displayName}
-              >
-                <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
-                  <AppIcon
-                    appId={appId}
-                    variant="installed"
-                    className="shadow-sm group-hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] group-hover:brightness-110 group-hover:saturate-110 transition-all duration-150 group-hover:transition-none"
-                  />
-                </div>
-                <span
-                  className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full"
+        {installedApps.length === 0 ? (
+          <div className="flex items-center justify-center py-8 rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06]">
+            <Typography variant="secondary" className="text-sm text-center">
+              No apps installed
+            </Typography>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2">
+            {installedApps.map((appId) => {
+              const appFrontend = ALL_APPS_FRONTEND[appId];
+              const appPath = getAppPath(projectId, appFrontend);
+              const app = ALL_APPS[appId];
+              return (
+                <Link
+                  key={appId}
+                  href={appPath}
+                  className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
                   title={app.displayName}
                 >
-                  {app.displayName}
-                </span>
-              </Link>
-            );
-          })}
+                  <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
+                    <AppIcon
+                      appId={appId}
+                      variant="installed"
+                      className="shadow-sm group-hover:shadow-[0_0_20px_rgba(59,130,246,0.45)] group-hover:brightness-110 group-hover:saturate-110 transition-all duration-150 group-hover:transition-none"
+                    />
+                  </div>
+                  <span
+                    className="text-[11px] font-medium text-center group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full"
+                    title={app.displayName}
+                  >
+                    {app.displayName}
+                  </span>
+                </Link>
+              );
+            })}
 
-          <Link
-            href={`/projects/${projectId}/apps`}
-            className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
-            title="Explore apps"
-          >
-            <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
-              <div className="flex items-center justify-center w-[72px] h-[72px]">
-                <CompassIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+            <Link
+              href={`/projects/${projectId}/apps`}
+              className="group flex flex-col items-center gap-2.5 pt-3 pb-2 rounded-xl hover:bg-foreground/[0.03] transition-all duration-150 hover:transition-none"
+              title="Explore apps"
+            >
+              <div className="relative transition-transform duration-150 group-hover:transition-none group-hover:scale-105">
+                <div className="flex items-center justify-center w-[72px] h-[72px]">
+                  <CompassIcon className="w-[30px] h-[30px] text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none" />
+                </div>
               </div>
-            </div>
-            <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full">
-              Explore
-            </span>
-          </Link>
-        </div>
-      )}
+              <span className="text-[11px] font-medium text-center text-muted-foreground group-hover:text-foreground transition-colors duration-150 group-hover:transition-none leading-tight w-full">
+                Explore
+              </span>
+            </Link>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -894,6 +898,8 @@ export default function MetricsPage(props: { toSetup: () => void }) {
         </div>
       }
       fillWidth
+      fullBleed
+      wrapHeaderInCard
     >
       <Suspense fallback={<MetricsLoadingFallback />}>
         <MetricsContent includeAnonymous={includeAnonymous} timeRange={timeRange} customDateRange={customDateRange} />
@@ -1195,11 +1201,15 @@ function MetricsContent({
           : { minHeight: 400 }}
       >
         {shouldShowGlobe && (
-          <div className="hidden lg:flex lg:col-span-5 h-full relative">
+          <div className={cn(
+            "hidden lg:flex lg:col-span-5 h-full relative",
+            "rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
+            "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
+          )}>
             <div className="absolute inset-0 flex items-start justify-center">
               <GlobeSectionWithData includeAnonymous={includeAnonymous} />
             </div>
-            <div className="absolute top-0 left-0 px-1 z-10">
+            <div className="absolute top-0 left-0 px-5 pt-4 z-10 dark:px-1 dark:pt-0">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />

@@ -17,7 +17,7 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type CustomDateRange = {
@@ -593,6 +593,8 @@ export type ComposedDataPoint = {
   refund_cents: number,
   visitors: number,
   dau: number,
+  _showVisitors?: boolean,
+  _showRevenue?: boolean,
 };
 
 export type VisitorsHoverDataPoint = {
@@ -645,8 +647,10 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
     ? date.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
     : row.date;
 
+  const visitorsEnabled = row._showVisitors !== false;
+  const revenueEnabled = row._showRevenue !== false;
   const revenueDollars = (row.new_cents / 100);
-  const revenuePerVisitor = row.visitors > 0 ? (revenueDollars / row.visitors) : 0;
+  const revenuePerVisitor = visitorsEnabled && revenueEnabled && row.visitors > 0 ? (revenueDollars / row.visitors) : null;
 
   return (
     <div className={`${tooltipSurfaceClass} px-4 py-3 min-w-[180px]`} style={{ zIndex: 9999 }}>
@@ -671,7 +675,7 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
             <span className="text-xs text-muted-foreground">Unique visitors</span>
           </div>
           <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
-            {row.visitors.toLocaleString()}
+            {visitorsEnabled ? row.visitors.toLocaleString() : "—"}
           </span>
         </div>
 
@@ -681,7 +685,7 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
             <span className="text-xs text-muted-foreground">Revenue</span>
           </div>
           <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
-            ${revenueDollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {revenueEnabled ? `$${revenueDollars.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}
           </span>
         </div>
 
@@ -689,7 +693,7 @@ function ComposedTooltip({ active, payload }: TooltipProps<number, string>) {
           <div className="flex items-center justify-between gap-6">
             <span className="text-[11px] text-muted-foreground">Revenue/visitor</span>
             <span className="font-mono text-[11px] font-medium tabular-nums text-foreground">
-              ${revenuePerVisitor.toFixed(2)}
+              {revenuePerVisitor != null ? `$${revenuePerVisitor.toFixed(2)}` : "—"}
             </span>
           </div>
         </div>
@@ -729,6 +733,10 @@ export function ComposedAnalyticsChart({
   const id = useId();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [hoveredX, setHoveredX] = useState<number | null>(null);
+  const taggedDatapoints = useMemo(
+    () => datapoints.map(d => ({ ...d, _showVisitors: showVisitors, _showRevenue: showRevenue })),
+    [datapoints, showVisitors, showRevenue],
+  );
   const maxVisitors = Math.max(...datapoints.map(d => Math.max(showVisitors ? d.visitors : 0, d.dau)), 1);
   const maxRevenueCents = Math.max(...datapoints.map(d => showRevenue ? d.new_cents : 0), 1);
   const visitorTicks = niceAxisTicks(Math.ceil(maxVisitors * 1.1), 5);
@@ -744,7 +752,7 @@ export function ComposedAnalyticsChart({
     >
       <ComposedChart
         id={id}
-        data={datapoints}
+        data={taggedDatapoints}
         margin={{ top: 10, right: 4, left: 4, bottom: 0 }}
         onMouseMove={(state) => {
           updateHoveredIndexFromChartState(state, datapoints.length, setHoveredIndex);
@@ -789,39 +797,35 @@ export function ComposedAnalyticsChart({
           allowEscapeViewBox={{ x: true, y: true }}
           wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
         />
-        {showVisitors && (
-          <>
-            <Area
-              type="monotone"
-              dataKey="visitors"
-              yAxisId="visitors"
-              stroke="var(--color-visitors)"
-              strokeWidth={2}
-              fill={`url(#visitors-fill-${id})`}
-              fillOpacity={hoveredIndex == null ? 1 : 0.12}
-              strokeOpacity={hoveredIndex == null ? 1 : 0.22}
-              dot={false}
-              activeDot={<HighlightedLineDot fill="var(--color-visitors)" />}
-              isAnimationActive={false}
-            />
-            {hoveredIndex != null && hoveredX != null && (
-              <Line
-                type="monotone"
-                dataKey="visitors"
-                yAxisId="visitors"
-                stroke="var(--color-visitors)"
-                strokeWidth={4}
-                strokeOpacity={1}
-                dot={false}
-                activeDot={<HighlightedLineDot fill="var(--color-visitors)" />}
-                isAnimationActive={false}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ clipPath: `url(#visitors-highlight-clip-${id})` }}
-                legendType="none"
-              />
-            )}
-          </>
+        <Area
+          type="monotone"
+          dataKey="visitors"
+          yAxisId="visitors"
+          stroke="var(--color-visitors)"
+          strokeWidth={2}
+          fill={`url(#visitors-fill-${id})`}
+          fillOpacity={showVisitors ? (hoveredIndex == null ? 1 : 0.12) : 0}
+          strokeOpacity={showVisitors ? (hoveredIndex == null ? 1 : 0.22) : 0}
+          dot={false}
+          activeDot={showVisitors ? <HighlightedLineDot fill="var(--color-visitors)" /> : false}
+          isAnimationActive={false}
+        />
+        {showVisitors && hoveredIndex != null && hoveredX != null && (
+          <Line
+            type="monotone"
+            dataKey="visitors"
+            yAxisId="visitors"
+            stroke="var(--color-visitors)"
+            strokeWidth={4}
+            strokeOpacity={1}
+            dot={false}
+            activeDot={<HighlightedLineDot fill="var(--color-visitors)" />}
+            isAnimationActive={false}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ clipPath: `url(#visitors-highlight-clip-${id})` }}
+            legendType="none"
+          />
         )}
         <Line
           type="monotone"
@@ -851,39 +855,35 @@ export function ComposedAnalyticsChart({
             legendType="none"
           />
         )}
-        {showRevenue && (
-          <>
-            <Line
-              type="monotone"
-              dataKey="new_cents"
-              yAxisId="revenue"
-              stroke="var(--color-revenue)"
-              strokeWidth={2.25}
-              strokeOpacity={hoveredIndex == null ? 1 : 0.2}
-              strokeDasharray="4 4"
-              dot={false}
-              activeDot={<HighlightedLineDot fill="var(--color-revenue)" />}
-              isAnimationActive={false}
-            />
-            {hoveredIndex != null && hoveredX != null && (
-              <Line
-                type="monotone"
-                dataKey="new_cents"
-                yAxisId="revenue"
-                stroke="var(--color-revenue)"
-                strokeWidth={3.5}
-                strokeOpacity={1}
-                strokeDasharray="4 4"
-                dot={false}
-                activeDot={<HighlightedLineDot fill="var(--color-revenue)" />}
-                isAnimationActive={false}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ clipPath: `url(#revenue-highlight-clip-${id})` }}
-                legendType="none"
-              />
-            )}
-          </>
+        <Line
+          type="monotone"
+          dataKey="new_cents"
+          yAxisId="revenue"
+          stroke="var(--color-revenue)"
+          strokeWidth={2.25}
+          strokeOpacity={showRevenue ? (hoveredIndex == null ? 1 : 0.2) : 0}
+          strokeDasharray="4 4"
+          dot={false}
+          activeDot={showRevenue ? <HighlightedLineDot fill="var(--color-revenue)" /> : false}
+          isAnimationActive={false}
+        />
+        {showRevenue && hoveredIndex != null && hoveredX != null && (
+          <Line
+            type="monotone"
+            dataKey="new_cents"
+            yAxisId="revenue"
+            stroke="var(--color-revenue)"
+            strokeWidth={3.5}
+            strokeOpacity={1}
+            strokeDasharray="4 4"
+            dot={false}
+            activeDot={<HighlightedLineDot fill="var(--color-revenue)" />}
+            isAnimationActive={false}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ clipPath: `url(#revenue-highlight-clip-${id})` }}
+            legendType="none"
+          />
         )}
         <YAxis
           yAxisId="visitors"
@@ -1003,7 +1003,7 @@ export function TimeRangeToggle({
             options={options}
             selected={timeRange}
             size="sm"
-            glassmorphic
+            glassmorphic={false}
             onSelect={(selectedId) => {
               if (
                 selectedId === '7d' ||
