@@ -123,3 +123,9 @@ A: Return a larger bounded page from `/api/v1/internal/metrics` (for example 100
 
 Q: How can the Top Referrers card on overview support infinite lazy loading?
 A: In `metrics-page.tsx`, make the referrers list container scrollable (`min-h-0 overflow-y-auto`) and append rows incrementally via an `IntersectionObserver` sentinel (e.g. 12 rows per batch). In `internal/metrics/route.tsx`, raise the ClickHouse referrer query limit (e.g. `TOP_REFERRERS_PAGE_SIZE = 100`) so the UI has enough rows to lazy-load.
+
+Q: Where does the shared glassmorphic chart-card shell live after the design-component refactor?
+A: In `packages/dashboard/src/components/design-components/analytics-card.tsx`. It exports `DesignAnalyticsCard` (the glass card with Recharts tooltip escape), `DesignAnalyticsCardHeader` (compact header row with divider), `DesignChartLegend` (dot+label legend strip), `useInfiniteListWindow` (IntersectionObserver-based incremental list hook), and `DesignInfiniteScrollList` (a scroll container that drives `useInfiniteListWindow`). The page-local `ChartCard` wrapper in `line-chart.tsx` and all `GlassCard` clones in emails/email-drafts/email-themes pages were replaced with `DesignAnalyticsCard`.
+
+Q: How do you fix "RefObject<HTMLDivElement | null> is not assignable to LegacyRef<HTMLDivElement>" TS errors when using useRef with JSX in React 19?
+A: In React 19 with TypeScript 5.x, `useRef<T>(null)` returns `RefObject<T | null>`, but JSX `ref` props still expect `RefObject<T>`. Cast the result: `const ref = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>`. Then inside effects, cast `.current` back to `T | null` when doing null checks to avoid triggering `@typescript-eslint/no-unnecessary-condition`.

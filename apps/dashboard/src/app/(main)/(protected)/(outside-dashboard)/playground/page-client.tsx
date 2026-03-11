@@ -4,12 +4,15 @@ import { CodeBlock } from "@/components/code-block";
 import {
   CursorBlastEffect,
   DesignAlert,
+  DesignAnalyticsCard,
+  DesignAnalyticsCardHeader,
   DesignBadge,
   type DesignBadgeColor,
   type DesignBadgeContentMode,
   DesignButton,
   DesignCard,
   DesignCategoryTabs,
+  DesignChartLegend,
   DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
@@ -22,6 +25,7 @@ import {
   DesignUserList,
 } from "@/components/design-components";
 import { DataTableColumnHeader, SearchToolbarItem, Typography } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   Cube,
@@ -44,6 +48,7 @@ import { useMemo, useRef, useState } from "react";
 
 type ComponentId =
   | "alert"
+  | "analytics-card"
   | "badge"
   | "button"
   | "card"
@@ -60,6 +65,7 @@ type ComponentId =
 
 const COMPONENT_LIST: Array<{ value: ComponentId, label: string }> = [
   { value: "alert", label: "Alert" },
+  { value: "analytics-card", label: "Analytics Card" },
   { value: "badge", label: "Badge" },
   { value: "button", label: "Button" },
   { value: "card", label: "Card" },
@@ -110,8 +116,8 @@ function isSize3(v: string): v is Size3 {
 
 function PropField({ label, children }: { label: string, children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
+    <div className="space-y-2">
+      <span className="block text-[10px] font-medium uppercase tracking-[0.12em] leading-none text-muted-foreground/80">
         {label}
       </span>
       {children}
@@ -197,6 +203,21 @@ const DEMO_USERS = [
   { name: "Alan Turing", email: "alan@example.com", time: "Active 5h ago", color: "cyan" as const },
 ];
 
+const DEMO_ANALYTICS_POINTS = [
+  { date: "Feb 28", new: 31, retained: 51, reactivated: 7, visitors: 1260, revenueCents: 18200, movingAvg: 89, highlightedAvg: 96 },
+  { date: "Mar 01", new: 34, retained: 54, reactivated: 8, visitors: 1330, revenueCents: 19600, movingAvg: 92, highlightedAvg: 97 },
+  { date: "Mar 02", new: 37, retained: 57, reactivated: 9, visitors: 1390, revenueCents: 20800, movingAvg: 94, highlightedAvg: 98 },
+  { date: "Mar 03", new: 40, retained: 59, reactivated: 10, visitors: 1450, revenueCents: 21900, movingAvg: 97, highlightedAvg: 99 },
+  { date: "Mar 04", new: 42, retained: 58, reactivated: 11, visitors: 1510, revenueCents: 22800, movingAvg: 97, highlightedAvg: 101 },
+  { date: "Mar 05", new: 37, retained: 61, reactivated: 9, visitors: 1470, revenueCents: 22400, movingAvg: 98, highlightedAvg: 102 },
+  { date: "Mar 06", new: 45, retained: 64, reactivated: 12, visitors: 1620, revenueCents: 24300, movingAvg: 101, highlightedAvg: 104 },
+  { date: "Mar 07", new: 49, retained: 66, reactivated: 10, visitors: 1675, revenueCents: 25700, movingAvg: 104, highlightedAvg: 105 },
+  { date: "Mar 08", new: 43, retained: 63, reactivated: 8, visitors: 1590, revenueCents: 23600, movingAvg: 102, highlightedAvg: 104 },
+  { date: "Mar 09", new: 52, retained: 70, reactivated: 13, visitors: 1740, revenueCents: 26900, movingAvg: 108, highlightedAvg: 107 },
+  { date: "Mar 10", new: 46, retained: 68, reactivated: 12, visitors: 1710, revenueCents: 26200, movingAvg: 109, highlightedAvg: 108 },
+  { date: "Mar 11", new: 55, retained: 74, reactivated: 15, visitors: 1835, revenueCents: 28400, movingAvg: 113, highlightedAvg: 110 },
+];
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
@@ -206,6 +227,19 @@ export default function PageClient() {
   const [alertVariant, setAlertVariant] = useState<"default" | "success" | "error" | "warning" | "info">("success");
   const [alertTitle, setAlertTitle] = useState("Order placed");
   const [alertDesc, setAlertDesc] = useState("Your order has been confirmed.");
+
+  // Analytics Card
+  const [analyticsCardGradient, setAnalyticsCardGradient] = useState<"blue" | "cyan" | "purple" | "green" | "orange" | "slate">("blue");
+  const [analyticsCardShowHeader, setAnalyticsCardShowHeader] = useState(true);
+  const [analyticsCardShowLegend, setAnalyticsCardShowLegend] = useState(true);
+  const [analyticsCardType, setAnalyticsCardType] = useState<"none" | "line" | "bar" | "stacked-bar" | "composed" | "donut">("stacked-bar");
+  const [analyticsCardTooltipType, setAnalyticsCardTooltipType] = useState<"none" | "default" | "stacked" | "composed" | "visitors" | "revenue" | "donut">("stacked");
+  const [analyticsCardHighlightMode, setAnalyticsCardHighlightMode] = useState<"none" | "bar-segment" | "series-hover" | "dot-hover" | "mixed">("bar-segment");
+  const [analyticsCardMovingAverage, setAnalyticsCardMovingAverage] = useState(true);
+  const [analyticsCardSevenDayAverage, setAnalyticsCardSevenDayAverage] = useState(true);
+  const [analyticsCardMovingAverageDataKey, setAnalyticsCardMovingAverageDataKey] = useState("movingAvg");
+  const [analyticsCardSevenDayAverageDataKey, setAnalyticsCardSevenDayAverageDataKey] = useState("highlightedAvg");
+  const [analyticsCardHoveredIndex, setAnalyticsCardHoveredIndex] = useState<number | null>(null);
 
   // Badge
   const [badgeLabel, setBadgeLabel] = useState("In stock");
@@ -438,6 +472,196 @@ export default function PageClient() {
             title={alertTitle}
             description={alertDesc}
           />
+        </div>
+      );
+    }
+    if (selected === "analytics-card") {
+      const demoLegendItems = [
+        { key: "new", label: "New", color: "hsl(152, 38%, 52%)" },
+        { key: "retained", label: "Retained", color: "hsl(221, 42%, 55%)" },
+        { key: "reactivated", label: "Reactivated", color: "hsl(36, 55%, 58%)" },
+      ];
+      const maxTotal = Math.max(
+        ...DEMO_ANALYTICS_POINTS.map((point) => point.new + point.retained + point.reactivated),
+        1,
+      );
+      const hoveredIndex = analyticsCardHoveredIndex ?? 0;
+      const hoveredPoint = DEMO_ANALYTICS_POINTS[hoveredIndex] ?? DEMO_ANALYTICS_POINTS[0];
+      const tooltipLeftPercent = ((hoveredIndex + 0.5) / DEMO_ANALYTICS_POINTS.length) * 100;
+      const movingAverageValue = hoveredPoint[analyticsCardMovingAverageDataKey as keyof typeof hoveredPoint];
+      const sevenDayAverageValue = hoveredPoint[analyticsCardSevenDayAverageDataKey as keyof typeof hoveredPoint];
+      const movingAverageIsNumber = typeof movingAverageValue === "number";
+      const sevenDayAverageIsNumber = typeof sevenDayAverageValue === "number";
+      const showTooltip = analyticsCardTooltipType !== "none" && analyticsCardType !== "none";
+      return (
+        <div className="w-full max-w-md" style={{ minHeight: 220 }}>
+          <DesignAnalyticsCard
+            gradient={analyticsCardGradient}
+            className="h-full min-h-[220px] flex flex-col"
+            chart={{
+              type: analyticsCardType,
+              tooltipType: analyticsCardTooltipType,
+              highlightMode: analyticsCardHighlightMode,
+              averages: {
+                movingAverage: analyticsCardMovingAverage,
+                sevenDayAverage: analyticsCardSevenDayAverage,
+                movingAverageDataKey: analyticsCardMovingAverageDataKey,
+                sevenDayAverageDataKey: analyticsCardSevenDayAverageDataKey,
+              },
+            }}
+          >
+            {analyticsCardShowHeader && (
+              <DesignAnalyticsCardHeader label="Daily Active Users" />
+            )}
+            {analyticsCardShowLegend && (
+              <DesignChartLegend items={demoLegendItems} />
+            )}
+            <div className="flex-1 min-h-0 px-4 pb-4 pt-2 flex flex-col">
+              <div
+                className="flex-1 min-h-0 rounded-lg bg-foreground/[0.02] p-2 relative"
+                onMouseLeave={() => setAnalyticsCardHoveredIndex(null)}
+              >
+                {analyticsCardType === "none" && (
+                  <div className="h-full flex items-center justify-center">
+                    <Typography variant="secondary" className="text-xs text-center">
+                      No chart selected
+                    </Typography>
+                  </div>
+                )}
+                {analyticsCardType === "donut" && (
+                  <div className="h-full flex items-center justify-center">
+                    <div
+                      className="relative h-28 w-28 rounded-full bg-[conic-gradient(hsl(152,38%,52%)_0_35%,hsl(221,42%,55%)_35%_78%,hsl(36,55%,58%)_78%_100%)]"
+                      onMouseEnter={() => setAnalyticsCardHoveredIndex(0)}
+                    >
+                      <div className="absolute inset-[18px] rounded-full bg-background/95" />
+                    </div>
+                  </div>
+                )}
+                {analyticsCardType !== "none" && analyticsCardType !== "donut" && (
+                  <div
+                    className="h-full min-h-0 grid gap-1.5 items-end"
+                    style={{ gridTemplateColumns: `repeat(${DEMO_ANALYTICS_POINTS.length}, minmax(0, 1fr))` }}
+                  >
+                    {DEMO_ANALYTICS_POINTS.map((point, index) => {
+                      const total = point.new + point.retained + point.reactivated;
+                      const totalHeightPercent = Math.max((total / maxTotal) * 100, 12);
+                      const retainedPercent = (point.retained / total) * 100;
+                      const newPercent = (point.new / total) * 100;
+                      const reactivatedPercent = (point.reactivated / total) * 100;
+                      const isHovered = hoveredIndex === index;
+                      const dimBySeriesHover = (analyticsCardHighlightMode === "series-hover" || analyticsCardHighlightMode === "mixed")
+                        && analyticsCardHoveredIndex !== null
+                        && !isHovered;
+                      return (
+                        <div
+                          key={point.date}
+                          className={cn("flex flex-col items-center gap-1", dimBySeriesHover && "opacity-45")}
+                          onMouseEnter={() => setAnalyticsCardHoveredIndex(index)}
+                        >
+                          <div className="h-20 w-full flex items-end justify-center">
+                            {analyticsCardType === "stacked-bar" && (
+                              <div
+                                className={cn(
+                                  "w-full rounded-sm overflow-hidden flex flex-col-reverse transition-all duration-150",
+                                  (analyticsCardHighlightMode === "bar-segment" || analyticsCardHighlightMode === "mixed") && isHovered && "ring-1 ring-foreground/30"
+                                )}
+                                style={{ height: `${totalHeightPercent}%` }}
+                              >
+                                <div className="w-full bg-[hsl(152,38%,52%)]" style={{ height: `${newPercent}%` }} />
+                                <div className="w-full bg-[hsl(221,42%,55%)]" style={{ height: `${retainedPercent}%` }} />
+                                <div className="w-full bg-[hsl(36,55%,58%)]" style={{ height: `${reactivatedPercent}%` }} />
+                              </div>
+                            )}
+                            {analyticsCardType === "bar" && (
+                              <div
+                                className={cn(
+                                  "w-full rounded-sm bg-[hsl(221,42%,55%)] transition-all duration-150",
+                                  (analyticsCardHighlightMode === "bar-segment" || analyticsCardHighlightMode === "mixed") && isHovered && "ring-1 ring-foreground/30"
+                                )}
+                                style={{ height: `${totalHeightPercent}%` }}
+                              />
+                            )}
+                            {analyticsCardType === "line" && (
+                              <div className="w-full flex justify-center">
+                                <div className={cn(
+                                  "h-2.5 w-2.5 rounded-full bg-[hsl(210,84%,64%)] ring-2 ring-[hsl(210,84%,64%)]/30 transition-all duration-150",
+                                  (analyticsCardHighlightMode === "dot-hover" || analyticsCardHighlightMode === "mixed") && isHovered && "scale-125"
+                                )} />
+                              </div>
+                            )}
+                            {analyticsCardType === "composed" && (
+                              <div className="relative w-full h-full flex items-end justify-center">
+                                <div className="w-full rounded-sm bg-[hsl(221,42%,55%)]/50" style={{ height: `${Math.max(totalHeightPercent * 0.8, 10)}%` }} />
+                                <div className="absolute bottom-0 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-[hsl(268,82%,66%)] ring-2 ring-[hsl(268,82%,66%)]/30" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-muted-foreground">{point.date.slice(-2)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {showTooltip && analyticsCardHoveredIndex !== null && (
+                  <div
+                    className="absolute z-20 -top-2 -translate-x-1/2 -translate-y-full rounded-xl bg-background/95 border border-foreground/[0.1] shadow-lg px-3 py-2 min-w-[170px]"
+                    style={{ left: `${tooltipLeftPercent}%` }}
+                  >
+                    <div className="text-[10px] font-medium text-muted-foreground">{hoveredPoint.date}</div>
+                    {(analyticsCardTooltipType === "stacked" || analyticsCardTooltipType === "composed" || analyticsCardTooltipType === "default") && (
+                      <div className="mt-1.5 space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-muted-foreground">New</span>
+                          <span className="font-medium tabular-nums">{hoveredPoint.new}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-muted-foreground">Retained</span>
+                          <span className="font-medium tabular-nums">{hoveredPoint.retained}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-muted-foreground">Reactivated</span>
+                          <span className="font-medium tabular-nums">{hoveredPoint.reactivated}</span>
+                        </div>
+                      </div>
+                    )}
+                    {analyticsCardTooltipType === "visitors" && (
+                      <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground">Visitors</span>
+                        <span className="font-medium tabular-nums">{hoveredPoint.visitors.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {analyticsCardTooltipType === "revenue" && (
+                      <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground">Revenue</span>
+                        <span className="font-medium tabular-nums">${Math.round(hoveredPoint.revenueCents / 100)}</span>
+                      </div>
+                    )}
+                    {analyticsCardTooltipType === "donut" && (
+                      <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground">Segment share</span>
+                        <span className="font-medium tabular-nums">35% / 43% / 22%</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>
+                  {analyticsCardMovingAverageDataKey}:{" "}
+                  {analyticsCardMovingAverage
+                    ? (movingAverageIsNumber ? movingAverageValue : "invalid key")
+                    : "off"}
+                </span>
+                <span>
+                  {analyticsCardSevenDayAverageDataKey}:{" "}
+                  {analyticsCardSevenDayAverage
+                    ? (sevenDayAverageIsNumber ? sevenDayAverageValue : "invalid key")
+                    : "off"}
+                </span>
+              </div>
+            </div>
+          </DesignAnalyticsCard>
         </div>
       );
     }
@@ -785,6 +1009,142 @@ export default function PageClient() {
           </PropField>
           <PropField label="Description">
             <DesignInput size="sm" value={alertDesc} onChange={(e) => setAlertDesc(e.target.value)} />
+          </PropField>
+        </div>
+      );
+    }
+    if (selected === "analytics-card") {
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
+          <PropField label="Gradient">
+            <DesignSelectorDropdown
+              value={analyticsCardGradient}
+              onValueChange={(v) => {
+                if (v === "blue" || v === "cyan" || v === "purple" || v === "green" || v === "orange" || v === "slate") {
+                  setAnalyticsCardGradient(v);
+                  return;
+                }
+                throw new Error(`Unknown analytics card gradient "${v}"`);
+              }}
+              options={[
+                { value: "blue", label: "Blue" },
+                { value: "cyan", label: "Cyan" },
+                { value: "purple", label: "Purple" },
+                { value: "green", label: "Green" },
+                { value: "orange", label: "Orange" },
+                { value: "slate", label: "Slate" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Chart Type">
+            <DesignSelectorDropdown
+              value={analyticsCardType}
+              onValueChange={(v) => {
+                if (v === "none" || v === "line" || v === "bar" || v === "stacked-bar" || v === "composed" || v === "donut") {
+                  setAnalyticsCardType(v);
+                  return;
+                }
+                throw new Error(`Unknown analytics chart type "${v}"`);
+              }}
+              options={[
+                { value: "none", label: "None" },
+                { value: "line", label: "Line" },
+                { value: "bar", label: "Bar" },
+                { value: "stacked-bar", label: "Stacked Bar" },
+                { value: "composed", label: "Composed" },
+                { value: "donut", label: "Donut" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Tooltip Type">
+            <DesignSelectorDropdown
+              value={analyticsCardTooltipType}
+              onValueChange={(v) => {
+                if (v === "none" || v === "default" || v === "stacked" || v === "composed" || v === "visitors" || v === "revenue" || v === "donut") {
+                  setAnalyticsCardTooltipType(v);
+                  return;
+                }
+                throw new Error(`Unknown analytics tooltip type "${v}"`);
+              }}
+              options={[
+                { value: "none", label: "None" },
+                { value: "default", label: "Default" },
+                { value: "stacked", label: "Stacked" },
+                { value: "composed", label: "Composed" },
+                { value: "visitors", label: "Visitors" },
+                { value: "revenue", label: "Revenue" },
+                { value: "donut", label: "Donut" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Highlight Mode">
+            <DesignSelectorDropdown
+              value={analyticsCardHighlightMode}
+              onValueChange={(v) => {
+                if (v === "none" || v === "bar-segment" || v === "series-hover" || v === "dot-hover" || v === "mixed") {
+                  setAnalyticsCardHighlightMode(v);
+                  return;
+                }
+                throw new Error(`Unknown analytics highlight mode "${v}"`);
+              }}
+              options={[
+                { value: "none", label: "None" },
+                { value: "bar-segment", label: "Bar Segment" },
+                { value: "series-hover", label: "Series Hover" },
+                { value: "dot-hover", label: "Dot Hover" },
+                { value: "mixed", label: "Mixed" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Header">
+            <DesignPillToggle
+              options={[{ id: "yes", label: "Show" }, { id: "no", label: "Hide" }]}
+              selected={analyticsCardShowHeader ? "yes" : "no"}
+              onSelect={(v) => setAnalyticsCardShowHeader(v === "yes")}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Legend">
+            <DesignPillToggle
+              options={[{ id: "yes", label: "Show" }, { id: "no", label: "Hide" }]}
+              selected={analyticsCardShowLegend ? "yes" : "no"}
+              onSelect={(v) => setAnalyticsCardShowLegend(v === "yes")}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Moving Avg">
+            <DesignPillToggle
+              options={[{ id: "yes", label: "On" }, { id: "no", label: "Off" }]}
+              selected={analyticsCardMovingAverage ? "yes" : "no"}
+              onSelect={(v) => setAnalyticsCardMovingAverage(v === "yes")}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="7-Day Avg">
+            <DesignPillToggle
+              options={[{ id: "yes", label: "On" }, { id: "no", label: "Off" }]}
+              selected={analyticsCardSevenDayAverage ? "yes" : "no"}
+              onSelect={(v) => setAnalyticsCardSevenDayAverage(v === "yes")}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Moving Avg Key">
+            <DesignInput
+              size="sm"
+              value={analyticsCardMovingAverageDataKey}
+              onChange={(e) => setAnalyticsCardMovingAverageDataKey(e.target.value)}
+            />
+          </PropField>
+          <PropField label="7-Day Avg Key">
+            <DesignInput
+              size="sm"
+              value={analyticsCardSevenDayAverageDataKey}
+              onChange={(e) => setAnalyticsCardSevenDayAverageDataKey(e.target.value)}
+            />
           </PropField>
         </div>
       );
@@ -1417,6 +1777,30 @@ export default function PageClient() {
   title="${escapeAttr(alertTitle)}"
   description="${escapeAttr(alertDesc)}"
 />`;
+    }
+    if (selected === "analytics-card") {
+      const headerSnippet = analyticsCardShowHeader
+        ? `\n  <DesignAnalyticsCardHeader label="Daily Active Users" />`
+        : "";
+      const legendSnippet = analyticsCardShowLegend
+        ? `\n  <DesignChartLegend\n    items={[\n      { key: "new", label: "New", color: "hsl(152, 38%, 52%)" },\n      { key: "retained", label: "Retained", color: "hsl(221, 42%, 55%)" },\n    ]}\n  />`
+        : "";
+      return `<DesignAnalyticsCard
+  gradient="${analyticsCardGradient}"
+  chart={{
+    type: "${analyticsCardType}",
+    tooltipType: "${analyticsCardTooltipType}",
+    highlightMode: "${analyticsCardHighlightMode}",
+    averages: {
+      movingAverage: ${analyticsCardMovingAverage},
+      sevenDayAverage: ${analyticsCardSevenDayAverage},
+      movingAverageDataKey: "${escapeAttr(analyticsCardMovingAverageDataKey)}",
+      sevenDayAverageDataKey: "${escapeAttr(analyticsCardSevenDayAverageDataKey)}",
+    },
+  }}
+>${headerSnippet}${legendSnippet}
+  {/* chart content */}
+</DesignAnalyticsCard>`;
     }
     if (selected === "badge") {
       const iconProp = badgeContentMode === "icon"

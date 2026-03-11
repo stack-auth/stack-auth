@@ -13,46 +13,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-// Glassmorphic card component following design guide
-function GlassCard({
-  children,
-  className,
-  gradientColor = "blue"
-}: {
-  children: React.ReactNode,
-  className?: string,
-  gradientColor?: "blue" | "purple" | "green" | "orange" | "slate" | "cyan",
-}) {
-  const hoverTints: Record<string, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
-    slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
-  };
-
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
-      <div className={cn(
-        "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-        hoverTints[gradientColor]
-      )} />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
+import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
 function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
@@ -225,7 +186,7 @@ export default function PageClient() {
           </Button>
         }
       >
-        <GlassCard gradientColor="slate" className="overflow-hidden">
+        <DesignAnalyticsCard gradient="slate" className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
           <div className="p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
@@ -292,7 +253,7 @@ export default function PageClient() {
               </button>
             </div>
           )}
-        </GlassCard>
+        </DesignAnalyticsCard>
 
         {/* Shared SMTP Warning Dialog */}
         <ActionDialog

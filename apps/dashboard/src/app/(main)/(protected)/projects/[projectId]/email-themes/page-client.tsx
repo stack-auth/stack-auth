@@ -16,32 +16,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-
-// Glassmorphic card component following design guide
-function GlassCard({
-  children,
-  className,
-}: {
-  children: React.ReactNode,
-  className?: string,
-}) {
-  return (
-    <div className={cn(
-      "group relative rounded-2xl bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none",
-      "ring-1 ring-foreground/[0.06] hover:ring-foreground/[0.1]",
-      "shadow-sm hover:shadow-md",
-      className
-    )}>
-      {/* Subtle glassmorphic background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-      {/* Accent hover tint */}
-      <div className="absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden group-hover:bg-slate-500/[0.02]" />
-      <div className="relative">
-        {children}
-      </div>
-    </div>
-  );
-}
+import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
 function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
@@ -188,7 +163,7 @@ export default function PageClient() {
       >
         <div className="flex flex-col gap-5">
           {/* Active Theme Card */}
-          <GlassCard>
+          <DesignAnalyticsCard chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
             <div className="p-5">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -244,10 +219,10 @@ export default function PageClient() {
                 </ActionDialog>
               </div>
             </div>
-          </GlassCard>
+          </DesignAnalyticsCard>
 
           {/* Device Preview Card */}
-          <GlassCard className="overflow-hidden">
+          <DesignAnalyticsCard className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
             {/* Header with viewport selector */}
             <div className="p-5 flex items-center justify-between gap-4 border-b border-foreground/[0.05]">
               <div className="flex items-center gap-4">
@@ -281,7 +256,7 @@ export default function PageClient() {
                 senderEmail={`noreply@${project.displayName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}
               />
             </div>
-          </GlassCard>
+          </DesignAnalyticsCard>
         </div>
       </PageLayout>
     </AppEnabledGuard>

@@ -5,11 +5,19 @@ import {
 } from "@/components/ui";
 import { Calendar } from "@/components/ui/calendar";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { DesignCardTint, DesignCategoryTabs, DesignPillToggle } from "@/components/design-components";
+import {
+  DesignAnalyticsCard,
+  type DesignAnalyticsChartConfig,
+  DesignCardTint,
+  DesignCategoryTabs,
+  DesignChartLegend,
+  DesignPillToggle,
+  useInfiniteListWindow,
+} from "@/components/design-components";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type CustomDateRange = {
@@ -925,64 +933,25 @@ function niceAxisTicks(maxValue: number, count: number): number[] {
 
 export type GradientColor = "blue" | "purple" | "green" | "orange" | "slate" | "cyan";
 
+/**
+ * Thin wrapper kept for backward compatibility within this file.
+ * All new code should use DesignAnalyticsCard directly.
+ */
 export function ChartCard({
   children,
   className,
-  gradientColor = "blue"
+  gradientColor = "blue",
+  chart,
 }: {
   children: React.ReactNode,
   className?: string,
   gradientColor?: GradientColor,
+  chart?: DesignAnalyticsChartConfig,
 }) {
-  const designCardGradients: Record<GradientColor, "blue" | "cyan" | "purple" | "green" | "orange" | "default"> = {
-    blue: "blue",
-    purple: "purple",
-    green: "green",
-    orange: "orange",
-    slate: "default",
-    cyan: "cyan",
-  };
-
-  const hoverTints: Record<GradientColor, string> = {
-    blue: "group-hover:bg-blue-500/[0.03]",
-    purple: "group-hover:bg-purple-500/[0.03]",
-    green: "group-hover:bg-emerald-500/[0.03]",
-    orange: "group-hover:bg-orange-500/[0.03]",
-    slate: "group-hover:bg-slate-500/[0.02]",
-    cyan: "group-hover:bg-cyan-500/[0.03]",
-  };
-
   return (
-    <>
-      <style>
-        {`
-          .chart-card-tooltip-escape .recharts-tooltip-wrapper {
-            z-index: 9999 !important;
-            overflow: visible !important;
-          }
-          .chart-card-tooltip-escape .recharts-tooltip-wrapper > * {
-            overflow: visible !important;
-          }
-        `}
-      </style>
-      <div className={cn(
-        "group relative min-h-0 rounded-2xl bg-white/90 dark:bg-background/60 backdrop-blur-xl transition-all duration-150 hover:transition-none chart-card-tooltip-escape",
-        "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
-        "shadow-sm hover:shadow-md hover:z-10",
-        className
-      )}>
-        {/* Subtle glassmorphic background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.02] dark:from-foreground/[0.03] dark:via-foreground/[0.01] to-transparent pointer-events-none rounded-2xl overflow-hidden" />
-        {/* Accent hover tint */}
-        <div className={cn(
-          "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl overflow-hidden",
-          hoverTints[gradientColor]
-        )} />
-        <div className="relative h-full min-h-0 flex flex-col">
-          {children}
-        </div>
-      </div>
-    </>
+    <DesignAnalyticsCard gradient={gradientColor} className={className} chart={chart}>
+      {children}
+    </DesignAnalyticsCard>
   );
 }
 
@@ -1215,10 +1184,6 @@ export function TabbedMetricsCard({
   stackedLegendItems?: Array<{ key: string, label: string, color: string }>,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
-  const LIST_BATCH_SIZE = 12;
-  const [visibleListCount, setVisibleListCount] = useState(() => Math.min(LIST_BATCH_SIZE, listData.length));
-  const listScrollContainerRef = useRef<HTMLDivElement>(null);
-  const listLoadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   const filteredDatapoints = filterDatapointsByTimeRange(chartData, timeRange, customDateRange);
   const filteredStackedDatapoints = stackedChartData ? filterStackedDatapointsByTimeRange(stackedChartData, timeRange, customDateRange) : null;
@@ -1240,42 +1205,20 @@ export function TabbedMetricsCard({
 
   const hoverAccentClass = hoverAccentColors[gradientColor];
   const tabsGradient: "blue" | "cyan" | "purple" | "green" | "orange" | "default" = gradientColor === "slate" ? "default" : gradientColor;
-  const hasMoreListItems = visibleListCount < listData.length;
 
-  useEffect(() => {
-    if (view !== "list") {
-      return;
-    }
-    setVisibleListCount(Math.min(LIST_BATCH_SIZE, listData.length));
-  }, [view, listData.length]);
-
-  useEffect(() => {
-    if (view !== "list" || !hasMoreListItems) {
-      return;
-    }
-    const root = listScrollContainerRef.current;
-    const target = listLoadMoreSentinelRef.current;
-    if (root == null || target == null) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const firstEntry = entries[0];
-        if (!firstEntry.isIntersecting) {
-          return;
-        }
-        setVisibleListCount((current) => Math.min(current + LIST_BATCH_SIZE, listData.length));
-      },
-      { root, rootMargin: "120px 0px", threshold: 0.01 },
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [view, hasMoreListItems, listData.length]);
+  const listWindow = useInfiniteListWindow(listData.length, view === "list" ? "list" : "chart", view === "list");
 
   return (
-    <ChartCard className="h-full min-h-0 flex flex-col" gradientColor={gradientColor}>
+    <ChartCard
+      className="h-full min-h-0 flex flex-col"
+      gradientColor={gradientColor}
+      chart={{
+        type: view === "chart" ? (filteredStackedDatapoints != null ? "stacked-bar" : "bar") : "none",
+        tooltipType: view === "chart" ? (filteredStackedDatapoints != null ? "stacked" : "default") : "none",
+        highlightMode: view === "chart" ? "bar-segment" : "none",
+        averages: filteredStackedDatapoints != null ? { movingAverage: true, sevenDayAverage: true } : undefined,
+      }}
+    >
       <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
         <DesignCategoryTabs
           categories={[
@@ -1311,18 +1254,14 @@ export function TabbedMetricsCard({
       )}
 
       {filteredStackedDatapoints != null && view === 'chart' && (
-        <div className={cn("flex items-center gap-3 flex-wrap", compact ? "px-4 pt-2" : "px-5 pt-2.5")}>
-          {(stackedLegendItems ?? [
+        <DesignChartLegend
+          items={(stackedLegendItems ?? [
             { key: 'new',         label: 'New',         color: 'hsl(152, 38%, 52%)' },
             { key: 'reactivated', label: 'Reactivated', color: 'hsl(36,  55%, 58%)'  },
             { key: 'retained',    label: 'Retained',    color: 'hsl(221, 42%, 55%)' },
-          ]).map((item) => (
-            <div key={item.key} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-              <span className="text-[10px] font-medium text-muted-foreground">{item.label}</span>
-            </div>
-          ))}
-        </div>
+          ])}
+          compact={compact}
+        />
       )}
 
       <div className={cn(
@@ -1362,7 +1301,7 @@ export function TabbedMetricsCard({
             />
           )
         ) : (
-          <div ref={listScrollContainerRef} className="flex-1 overflow-y-auto min-h-0">
+          <div ref={listWindow.scrollRef} className="flex-1 overflow-y-auto min-h-0">
             {listData.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Typography variant="secondary" className="text-xs">
@@ -1371,7 +1310,7 @@ export function TabbedMetricsCard({
               </div>
             ) : (
               <div className="divide-y divide-foreground/[0.04]">
-                {listData.slice(0, visibleListCount).map((user) => {
+                {listData.slice(0, listWindow.visibleCount).map((user) => {
                   const displayName = user.display_name || user.primary_email || 'Anonymous User';
                   const secondaryEmail = user.display_name && user.primary_email ? user.primary_email : null;
                   const timeLabel = config.name === 'Daily Active Users'
@@ -1420,8 +1359,8 @@ export function TabbedMetricsCard({
                     </button>
                   );
                 })}
-                {hasMoreListItems && (
-                  <div ref={listLoadMoreSentinelRef} className="py-2 text-center">
+                {listWindow.hasMore && (
+                  <div ref={listWindow.sentinelRef} className="py-2 text-center">
                     <Typography variant="secondary" className="text-[10px]">
                       Loading more...
                     </Typography>
@@ -1458,7 +1397,15 @@ export function LineChartDisplay({
   const filteredDatapoints = filterDatapointsByTimeRange(datapoints, timeRange, customDateRange);
 
   return (
-    <ChartCard className={className} gradientColor={gradientColor}>
+    <ChartCard
+      className={className}
+      gradientColor={gradientColor}
+      chart={{
+        type: "bar",
+        tooltipType: "default",
+        highlightMode: "bar-segment",
+      }}
+    >
       <div className={compact ? "p-4 pb-3" : "p-5 pb-4"}>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
@@ -1520,7 +1467,11 @@ export function StatCard({
   const isNegative = delta !== undefined && delta < 0;
 
   return (
-    <ChartCard gradientColor={gradientColor} className={cn("h-full", className)}>
+    <ChartCard
+      gradientColor={gradientColor}
+      className={cn("h-full", className)}
+      chart={{ type: "line", tooltipType: "default", highlightMode: "series-hover" }}
+    >
       <div className={cn("flex flex-col gap-1 h-full justify-between", compact ? "p-4" : "p-5")}>
         <div className="flex items-start justify-between gap-2">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
@@ -1952,7 +1903,11 @@ export function DonutChartDisplay({
   const outerRadius = compact ? 55 : 85;
 
   return (
-    <ChartCard className={className} gradientColor={gradientColor}>
+    <ChartCard
+      className={className}
+      gradientColor={gradientColor}
+      chart={{ type: "donut", tooltipType: "donut", highlightMode: "dot-hover" }}
+    >
       <div className={compact ? "p-4 pb-3" : "p-5 pb-4"}>
         <div className="flex items-center justify-between">
           <div className="space-y-1">

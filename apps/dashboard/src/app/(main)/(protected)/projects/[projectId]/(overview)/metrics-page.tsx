@@ -7,6 +7,7 @@ import { cn, Typography } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId, getAppPath } from "@/lib/apps-frontend";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { DesignListItemRow } from "@/components/design-components/list";
+import { DesignAnalyticsCard, DesignCategoryTabs, DesignChartLegend, useInfiniteListWindow } from "@/components/design-components";
 import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@stackframe/stack";
@@ -18,7 +19,6 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
 import {
-  ChartCard,
   ComposedAnalyticsChart,
   ComposedDataPoint,
   CustomDateRange,
@@ -103,7 +103,7 @@ function DualStatCard({
   gradientColor?: GradientColor,
 }) {
   return (
-    <ChartCard gradientColor={gradientColor}>
+    <DesignAnalyticsCard gradient={gradientColor} chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="p-4 flex flex-col gap-1.5 h-full justify-between">
         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
           {label}
@@ -120,7 +120,7 @@ function DualStatCard({
           </div>
         </div>
       </div>
-    </ChartCard>
+    </DesignAnalyticsCard>
   );
 }
 
@@ -140,7 +140,7 @@ function StatCard({
   compact?: boolean,
 }) {
   return (
-    <ChartCard gradientColor="blue" className="h-full">
+    <DesignAnalyticsCard gradient="blue" className="h-full" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className={cn(
         "flex flex-col justify-between h-full",
         compact ? "px-4 py-3" : "px-5 py-4",
@@ -162,7 +162,7 @@ function StatCard({
           )}
         </div>
       </div>
-    </ChartCard>
+    </DesignAnalyticsCard>
   );
 }
 
@@ -261,7 +261,11 @@ function HeroAnalyticsWidget({
   const [chartMode, setChartMode] = useState<HeroChartMode>('default');
   const [fadingOut, setFadingOut] = useState(false);
   const [displayMode, setDisplayMode] = useState<HeroChartMode>('default');
+  const [fadingIn, setFadingIn] = useState(false);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeInRaf1Ref = useRef<number | null>(null);
+  const fadeInRaf2Ref = useRef<number | null>(null);
+  const FADE_OUT_MS = 140;
 
   const switchToMode = (mode: HeroChartMode) => {
     if (mode === displayMode) return;
@@ -272,9 +276,32 @@ function HeroAnalyticsWidget({
     fadeTimerRef.current = setTimeout(() => {
       setDisplayMode(mode);
       setFadingOut(false);
+      setFadingIn(true);
+      // Let the browser paint the new chart at opacity-0 first, then fade in
+      fadeInRaf1Ref.current = requestAnimationFrame(() => {
+        fadeInRaf2Ref.current = requestAnimationFrame(() => {
+          setFadingIn(false);
+          fadeInRaf2Ref.current = null;
+        });
+        fadeInRaf1Ref.current = null;
+      });
       fadeTimerRef.current = null;
-    }, 120);
+    }, FADE_OUT_MS);
   };
+
+  useEffect(() => {
+    return () => {
+      if (fadeTimerRef.current != null) {
+        clearTimeout(fadeTimerRef.current);
+      }
+      if (fadeInRaf1Ref.current != null) {
+        cancelAnimationFrame(fadeInRaf1Ref.current);
+      }
+      if (fadeInRaf2Ref.current != null) {
+        cancelAnimationFrame(fadeInRaf2Ref.current);
+      }
+    };
+  }, []);
 
   const handlePillMouseEnter = (mode: 'dau' | 'visitors' | 'revenue') => {
     setChartMode(mode);
@@ -303,7 +330,22 @@ function HeroAnalyticsWidget({
       </div>
 
       {/* Chart card with in-card pills */}
-      <ChartCard gradientColor="blue" className="flex-1 min-h-0">
+      <DesignAnalyticsCard
+        gradient="blue"
+        className="flex-1 min-h-0"
+        chart={{
+          type: displayMode === "dau" ? "stacked-bar" : displayMode === "default" ? "composed" : "bar",
+          tooltipType: displayMode === "dau"
+            ? "stacked"
+            : displayMode === "visitors"
+              ? "visitors"
+              : displayMode === "revenue"
+                ? "revenue"
+                : "composed",
+          highlightMode: "mixed",
+          averages: { movingAverage: true, sevenDayAverage: true },
+        }}
+      >
         <div
           className={cn(
             "flex-1 min-h-0 flex flex-col",
@@ -346,8 +388,11 @@ function HeroAnalyticsWidget({
             <div
               className={cn(
                 "h-full flex flex-col",
-                fadingOut ? "opacity-0" : "opacity-100",
-                "transition-opacity duration-[120ms]",
+                fadingOut
+                  ? "opacity-0 -translate-y-0.5 transition-[opacity,transform] duration-[140ms] ease-in"
+                  : fadingIn
+                    ? "opacity-0 translate-y-0.5"
+                    : "opacity-100 translate-y-0 transition-[opacity,transform] duration-[260ms] ease-out",
               )}
             >
               {displayMode === 'default' && (
@@ -401,12 +446,10 @@ function HeroAnalyticsWidget({
             </div>
           </div>
         </div>
-      </ChartCard>
+      </DesignAnalyticsCard>
     </div>
   );
 }
-
-// ── Tabbed DAU stacked chart + recently active list ──────────────────────────
 
 // ── Email list row ────────────────────────────────────────────────────────────
 
@@ -482,78 +525,43 @@ function TabbedEmailsCard({
   compact?: boolean,
 }) {
   const [view, setView] = useState<'chart' | 'list'>('chart');
-  const LIST_BATCH_SIZE = 12;
-  const [visibleEmailCount, setVisibleEmailCount] = useState(() => Math.min(LIST_BATCH_SIZE, recentEmails.length));
-  const listScrollContainerRef = useRef<HTMLDivElement>(null);
-  const listLoadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const filteredDatapoints = filterStackedDatapointsByTimeRange(stackedChartData, timeRange, customDateRange);
 
-  const activeTabColor = "bg-orange-500 dark:bg-[hsl(240,71%,70%)]";
-  const hasMoreEmails = visibleEmailCount < recentEmails.length;
-
-  useEffect(() => {
-    if (view !== "list") {
-      return;
-    }
-    setVisibleEmailCount(Math.min(LIST_BATCH_SIZE, recentEmails.length));
-  }, [view, recentEmails.length]);
-
-  useEffect(() => {
-    if (view !== "list" || !hasMoreEmails) {
-      return;
-    }
-    const root = listScrollContainerRef.current;
-    const target = listLoadMoreSentinelRef.current;
-    if (root == null || target == null) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const firstEntry = entries[0];
-        if (!firstEntry.isIntersecting) {
-          return;
-        }
-        setVisibleEmailCount((current) => Math.min(current + LIST_BATCH_SIZE, recentEmails.length));
-      },
-      { root, rootMargin: "120px 0px", threshold: 0.01 },
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [view, hasMoreEmails, recentEmails.length]);
+  const listWindow = useInfiniteListWindow(recentEmails.length, view === "list" ? "list" : "chart", view === "list");
 
   return (
-    <ChartCard gradientColor="orange" className="h-full min-h-0 flex flex-col">
+    <DesignAnalyticsCard
+      gradient="orange"
+      className="h-full min-h-0 flex flex-col"
+      chart={{
+        type: view === "chart" ? "stacked-bar" : "none",
+        tooltipType: view === "chart" ? "stacked" : "none",
+        highlightMode: view === "chart" ? "bar-segment" : "none",
+      }}
+    >
       <div className={cn("flex items-center justify-between border-b border-foreground/[0.05]", compact ? "px-4" : "px-5")}>
-        <div className="flex items-center gap-1">
-          {(['chart', 'list'] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setView(tab)}
-              className={cn(
-                "relative px-3 py-3.5 text-xs font-medium transition-all duration-150 hover:transition-none rounded-t-lg",
-                view === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab === 'chart' ? 'Emails Sent' : 'Recent Emails'}
-              {view === tab && (
-                <div className={cn("absolute bottom-0 left-3 right-3 h-0.5 rounded-full", activeTabColor)} />
-              )}
-            </button>
-          ))}
-        </div>
+        <DesignCategoryTabs
+          categories={[
+            { id: "chart", label: "Emails Sent" },
+            { id: "list", label: "Recent Emails" },
+          ]}
+          selectedCategory={view}
+          onSelect={(selectedId) => {
+            if (selectedId === "chart" || selectedId === "list") {
+              setView(selectedId);
+              return;
+            }
+            throw new Error(`Unsupported emails tab selected: ${selectedId}`);
+          }}
+          showBadge={false}
+          size="sm"
+          glassmorphic={false}
+          gradient="blue"
+          className="flex-1 min-w-0 border-0 [&>button]:rounded-none [&>button]:px-3 [&>button]:py-3.5 [&>button]:text-xs"
+        />
       </div>
       {view === 'chart' && (
-        <div className={cn("flex items-center gap-3 flex-wrap", compact ? "px-4 pt-2" : "px-5 pt-2.5")}>
-          {emailLegendItems.map((item) => (
-            <div key={item.key} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-              <span className="text-[10px] font-medium text-muted-foreground">{item.label}</span>
-            </div>
-          ))}
-        </div>
+        <DesignChartLegend items={emailLegendItems} compact={compact} />
       )}
       <div className={cn(
         view === 'chart'
@@ -571,18 +579,18 @@ function TabbedEmailsCard({
             <EmailStackedBarChartDisplay datapoints={filteredDatapoints} compact={compact} />
           )
         ) : (
-          <div ref={listScrollContainerRef} className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
+          <div ref={listWindow.scrollRef} className="flex-1 overflow-y-auto min-h-0 pr-1 -mr-1">
             {recentEmails.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <Typography variant="secondary" className="text-xs">No recent emails</Typography>
               </div>
             ) : (
               <div className="divide-y divide-foreground/[0.04]">
-                {recentEmails.slice(0, visibleEmailCount).map((email) => (
+                {recentEmails.slice(0, listWindow.visibleCount).map((email) => (
                   <EmailListRow key={email.id} email={email} />
                 ))}
-                {hasMoreEmails && (
-                  <div ref={listLoadMoreSentinelRef} className="py-2 text-center">
+                {listWindow.hasMore && (
+                  <div ref={listWindow.sentinelRef} className="py-2 text-center">
                     <Typography variant="secondary" className="text-[10px]">
                       Loading more...
                     </Typography>
@@ -593,7 +601,7 @@ function TabbedEmailsCard({
           </div>
         )}
       </div>
-    </ChartCard>
+    </DesignAnalyticsCard>
   );
 }
 
@@ -617,7 +625,7 @@ function EmailBreakdownCard({
   const total = items.reduce((s, i) => s + i.count, 0);
 
   return (
-    <ChartCard gradientColor="orange" className="h-full">
+    <DesignAnalyticsCard gradient="orange" className="h-full" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="px-4 py-3 border-b border-foreground/[0.05]">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email Delivery</span>
       </div>
@@ -665,10 +673,11 @@ function EmailBreakdownCard({
           </div>
         </div>
       </div>
-    </ChartCard>
+    </DesignAnalyticsCard>
   );
 }
 
+// ── Tabbed DAU stacked chart + recently active list ──────────────────────────
 // ── Top Referrers with analytics footer ──────────────────────────────────────
 
 function ReferrersWithAnalyticsCard({
@@ -676,54 +685,21 @@ function ReferrersWithAnalyticsCard({
 }: {
   topReferrers: Array<{ referrer: string, visitors: number }>,
 }) {
-  const LIST_BATCH_SIZE = 12;
-  const [visibleReferrerCount, setVisibleReferrerCount] = useState(() => Math.min(LIST_BATCH_SIZE, topReferrers.length));
-  const listScrollContainerRef = useRef<HTMLDivElement>(null);
-  const listLoadMoreSentinelRef = useRef<HTMLDivElement>(null);
-  const hasMoreReferrers = visibleReferrerCount < topReferrers.length;
-
-  useEffect(() => {
-    setVisibleReferrerCount(Math.min(LIST_BATCH_SIZE, topReferrers.length));
-  }, [topReferrers.length]);
-
-  useEffect(() => {
-    if (!hasMoreReferrers) {
-      return;
-    }
-    const root = listScrollContainerRef.current;
-    const target = listLoadMoreSentinelRef.current;
-    if (root == null || target == null) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const firstEntry = entries[0];
-        if (!firstEntry.isIntersecting) {
-          return;
-        }
-        setVisibleReferrerCount((current) => Math.min(current + LIST_BATCH_SIZE, topReferrers.length));
-      },
-      { root, rootMargin: "120px 0px", threshold: 0.01 },
-    );
-
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMoreReferrers, topReferrers.length]);
+  const listWindow = useInfiniteListWindow(topReferrers.length);
 
   return (
-    <ChartCard gradientColor="purple" className="h-full">
+    <DesignAnalyticsCard gradient="purple" className="h-full" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="px-4 py-3 border-b border-foreground/[0.05]">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Referrers</span>
       </div>
-      <div ref={listScrollContainerRef} className="p-4 pt-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
+      <div ref={listWindow.scrollRef} className="p-4 pt-3 flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
         {topReferrers.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs">No referrer data</Typography>
           </div>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {topReferrers.slice(0, visibleReferrerCount).map((item) => {
+            {topReferrers.slice(0, listWindow.visibleCount).map((item) => {
               const max = topReferrers[0].visitors;
               return (
                 <div key={item.referrer} className="relative flex items-center justify-between rounded-lg px-2.5 py-1.5 overflow-hidden">
@@ -736,8 +712,8 @@ function ReferrersWithAnalyticsCard({
                 </div>
               );
             })}
-            {hasMoreReferrers && (
-              <div ref={listLoadMoreSentinelRef} className="py-2 text-center">
+            {listWindow.hasMore && (
+              <div ref={listWindow.sentinelRef} className="py-2 text-center">
                 <Typography variant="secondary" className="text-[10px]">
                   Loading more...
                 </Typography>
@@ -746,7 +722,7 @@ function ReferrersWithAnalyticsCard({
           </div>
         )}
       </div>
-    </ChartCard>
+    </DesignAnalyticsCard>
   );
 }
 
