@@ -17291,7 +17291,15 @@ ${colorConfig.map(([key, itemConfig]) => {
         const best = _WidgetInstanceGrid._findNearestAvailablePosition(el, placed, this.width);
         placed.push({ ...el, x: best.x, y: best.y });
       }
-      return new _WidgetInstanceGrid(placed, this._varHeights, this.width, this._fixedHeight);
+      let newFixedHeight = this._fixedHeight;
+      if (newFixedHeight !== "auto") {
+        for (const p2 of placed) {
+          if (p2.y + p2.height > newFixedHeight) {
+            newFixedHeight = p2.y + p2.height;
+          }
+        }
+      }
+      return new _WidgetInstanceGrid(placed, this._varHeights, this.width, newFixedHeight);
     }
     /**
      * Finds the nearest available (non-overlapping) position for an element,
@@ -17408,31 +17416,8 @@ ${colorConfig.map(([key, itemConfig]) => {
       const blockedTop = requestedDelta.top !== 0 && clampedVert.top !== requestedDelta.top;
       const array2 = this.as2dArray();
       let achievedBottom = requestedDelta.bottom;
-      let blockedBottom = false;
-      if (achievedBottom > 0) {
-        for (let row = element.y + element.height; row < element.y + element.height + achievedBottom && row < this.height; row++) {
-          for (let col = element.x; col < element.x + element.width; col++) {
-            const occ = array2[col]?.[row];
-            if (occ && occ !== element.instance) {
-              achievedBottom = Math.min(achievedBottom, row - (element.y + element.height));
-              blockedBottom = true;
-            }
-          }
-        }
-        if (achievedBottom === 0 && requestedDelta.bottom > 0) {
-          const nextRow = element.y + element.height;
-          if (nextRow < this.height) {
-            for (let col = element.x; col < element.x + element.width; col++) {
-              const occ = array2[col]?.[nextRow];
-              if (occ && occ !== element.instance) {
-                blockedBottom = true;
-                break;
-              }
-            }
-          }
-        }
-        achievedBottom = Math.max(0, achievedBottom);
-      } else if (achievedBottom < 0) {
+      const blockedBottom = false;
+      if (achievedBottom < 0) {
         const minSize = this.elementMinSize(element);
         const newHeight = element.height + achievedBottom;
         if (newHeight < minSize.height) {
@@ -17521,24 +17506,45 @@ ${colorConfig.map(([key, itemConfig]) => {
       if (achievedDelta.top === 0 && achievedDelta.left === 0 && achievedDelta.bottom === 0 && achievedDelta.right === 0) {
         return { grid: this, achievedDelta, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
       }
-      const newElements = this._nonEmptyElements.map((el) => {
-        if (el.instance?.id === element.instance?.id) {
-          return {
-            ...el,
-            x: el.x + achievedDelta.left,
-            y: el.y + achievedDelta.top,
-            width: el.width - achievedDelta.left + achievedDelta.right,
-            height: el.height - achievedDelta.top + achievedDelta.bottom
-          };
+      const resizedElement = {
+        ...element,
+        x: element.x + achievedDelta.left,
+        y: element.y + achievedDelta.top,
+        width: element.width - achievedDelta.left + achievedDelta.right,
+        height: element.height - achievedDelta.top + achievedDelta.bottom
+      };
+      const newElements = [resizedElement];
+      const others = this._nonEmptyElements.filter((el) => el.instance?.id !== element.instance?.id).sort((a8, b) => a8.y - b.y || a8.x - b.x);
+      for (const el of others) {
+        let pushed = { ...el };
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const placed of newElements) {
+            if (_WidgetInstanceGrid._rectsOverlap(
+              pushed.x,
+              pushed.y,
+              pushed.width,
+              pushed.height,
+              placed.x,
+              placed.y,
+              placed.width,
+              placed.height
+            )) {
+              pushed = { ...pushed, y: placed.y + placed.height };
+              changed = true;
+            }
+          }
         }
-        return el;
-      });
+        newElements.push(pushed);
+      }
       try {
         let newFixedHeight = this._fixedHeight;
         if (newFixedHeight !== "auto") {
-          const resizedElement = newElements.find((el) => el.instance?.id === element.instance?.id);
-          if (resizedElement && resizedElement.y + resizedElement.height > newFixedHeight) {
-            newFixedHeight = resizedElement.y + resizedElement.height;
+          for (const el of newElements) {
+            if (el.y + el.height > newFixedHeight) {
+              newFixedHeight = el.y + el.height;
+            }
           }
         }
         const newGrid = new _WidgetInstanceGrid(newElements, this._varHeights, this.width, newFixedHeight);
@@ -21412,21 +21418,23 @@ ${colorConfig.map(([key, itemConfig]) => {
                   if (event.over) {
                     const overCoordinates = JSON.parse(`${event.over.id}`);
                     const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
-                    const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]];
-                    if (props.gridRef.current.canSwap(...swapArgs)) {
+                    if (overElement.instance === null) {
+                      const newGrid = props.gridRef.current.withMovedElementTo(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
                       const activeId = event.active.id;
-                      const partnerId = overElement.instance?.id ?? null;
+                      setJustSwappedActiveId(activeId);
+                      setTimeout(() => setJustSwappedActiveId(null), 300);
+                      props.gridRef.set(newGrid);
+                      dispatchGridStateChange(newGrid);
+                    } else if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
+                      const activeId = event.active.id;
+                      const partnerId = overElement.instance.id;
                       setJustSwappedActiveId(activeId);
                       setJustSwappedPartnerId(partnerId);
                       setTimeout(() => {
                         setJustSwappedActiveId(null);
                         setJustSwappedPartnerId(null);
                       }, 300);
-                      const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
-                      props.gridRef.set(newGrid);
-                      dispatchGridStateChange(newGrid);
-                    } else if (overElement.instance === null) {
-                      const newGrid = props.gridRef.current.withMovedElementTo(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
+                      const newGrid = props.gridRef.current.withSwappedElements(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
                       props.gridRef.set(newGrid);
                       dispatchGridStateChange(newGrid);
                     } else {
@@ -21451,7 +21459,11 @@ ${colorConfig.map(([key, itemConfig]) => {
                       const overCoordinates = JSON.parse(`${event.over.id}`);
                       const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
                       const overId = overElement.instance?.id;
-                      if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
+                      if (overElement.instance === null) {
+                        setOverElementPosition(overCoordinates);
+                        setHoverElementSwap(null);
+                        setHoverSwapBlocked(null);
+                      } else if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
                         setOverElementPosition(overCoordinates);
                         if (overId && overId !== widgetId) {
                           setHoverElementSwap(overId);
@@ -21460,10 +21472,6 @@ ${colorConfig.map(([key, itemConfig]) => {
                           setHoverElementSwap(null);
                           setHoverSwapBlocked(null);
                         }
-                      } else if (overElement.instance === null) {
-                        setOverElementPosition(overCoordinates);
-                        setHoverElementSwap(null);
-                        setHoverSwapBlocked(null);
                       } else {
                         setOverElementPosition(null);
                         setHoverElementSwap(null);

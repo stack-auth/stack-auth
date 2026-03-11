@@ -281,22 +281,24 @@ export function SwappableWidgetInstanceGrid(props: {
             if (event.over) {
               const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
               const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
-              const swapArgs = [widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]] as const;
-              if (props.gridRef.current.canSwap(...swapArgs)) {
+              if (overElement.instance === null) {
+                // Move to empty space keeping original size, pushing other elements as needed
+                const newGrid = props.gridRef.current.withMovedElementTo(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
                 const activeId = event.active.id as string;
-                const partnerId = overElement.instance?.id ?? null;
+                setJustSwappedActiveId(activeId);
+                setTimeout(() => setJustSwappedActiveId(null), 300);
+                props.gridRef.set(newGrid);
+                dispatchGridStateChange(newGrid);
+              } else if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
+                const activeId = event.active.id as string;
+                const partnerId = overElement.instance.id;
                 setJustSwappedActiveId(activeId);
                 setJustSwappedPartnerId(partnerId);
                 setTimeout(() => {
                   setJustSwappedActiveId(null);
                   setJustSwappedPartnerId(null);
                 }, 300);
-                const newGrid = props.gridRef.current.withSwappedElements(...swapArgs);
-                props.gridRef.set(newGrid);
-                dispatchGridStateChange(newGrid);
-              } else if (overElement.instance === null) {
-                // Move to empty space keeping original size
-                const newGrid = props.gridRef.current.withMovedElementTo(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
+                const newGrid = props.gridRef.current.withSwappedElements(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1]);
                 props.gridRef.set(newGrid);
                 dispatchGridStateChange(newGrid);
               } else {
@@ -323,7 +325,12 @@ export function SwappableWidgetInstanceGrid(props: {
                 const overCoordinates = JSON.parse(`${event.over.id}`) as [number, number];
                 const overElement = props.gridRef.current.getElementAt(overCoordinates[0], overCoordinates[1]);
                 const overId = overElement.instance?.id;
-                if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
+                if (overElement.instance === null) {
+                  // Empty space — always a valid drop target (will use withMovedElementTo)
+                  setOverElementPosition(overCoordinates);
+                  setHoverElementSwap(null);
+                  setHoverSwapBlocked(null);
+                } else if (props.gridRef.current.canSwap(widgetElement.x, widgetElement.y, overCoordinates[0], overCoordinates[1])) {
                   setOverElementPosition(overCoordinates);
                   if (overId && overId !== widgetId) {
                     setHoverElementSwap(overId);
@@ -332,11 +339,6 @@ export function SwappableWidgetInstanceGrid(props: {
                     setHoverElementSwap(null);
                     setHoverSwapBlocked(null);
                   }
-                } else if (overElement.instance === null) {
-                  // Allow moving to empty space even if canSwap fails (we'll use withMovedElementTo)
-                  setOverElementPosition(overCoordinates);
-                  setHoverElementSwap(null);
-                  setHoverSwapBlocked(null);
                 } else {
                   setOverElementPosition(null);
                   setHoverElementSwap(null);

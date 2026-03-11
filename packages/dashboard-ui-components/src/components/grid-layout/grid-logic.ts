@@ -406,7 +406,17 @@ export class WidgetInstanceGrid {
       placed.push({ ...el, x: best.x, y: best.y });
     }
 
-    return new WidgetInstanceGrid(placed, this._varHeights, this.width, this._fixedHeight);
+    // Expand grid height if needed to fit all placed elements
+    let newFixedHeight = this._fixedHeight;
+    if (newFixedHeight !== "auto") {
+      for (const p of placed) {
+        if (p.y + p.height > newFixedHeight) {
+          newFixedHeight = p.y + p.height;
+        }
+      }
+    }
+
+    return new WidgetInstanceGrid(placed, this._varHeights, this.width, newFixedHeight);
   }
 
   /**
@@ -557,34 +567,10 @@ export class WidgetInstanceGrid {
 
     const array = this.as2dArray();
 
-    // Bottom expansion: allow freely, only blocked by other widgets below
+    // Bottom expansion: always allowed, push overlapping widgets down
     let achievedBottom = requestedDelta.bottom;
-    let blockedBottom = false;
-    if (achievedBottom > 0) {
-      for (let row = element.y + element.height; row < element.y + element.height + achievedBottom && row < this.height; row++) {
-        for (let col = element.x; col < element.x + element.width; col++) {
-          const occ = array[col]?.[row];
-          if (occ && occ !== element.instance) {
-            achievedBottom = Math.min(achievedBottom, row - (element.y + element.height));
-            blockedBottom = true;
-          }
-        }
-      }
-      if (achievedBottom === 0 && requestedDelta.bottom > 0) {
-        // Check if we're already touching a neighbor below
-        const nextRow = element.y + element.height;
-        if (nextRow < this.height) {
-          for (let col = element.x; col < element.x + element.width; col++) {
-            const occ = array[col]?.[nextRow];
-            if (occ && occ !== element.instance) {
-              blockedBottom = true;
-              break;
-            }
-          }
-        }
-      }
-      achievedBottom = Math.max(0, achievedBottom);
-    } else if (achievedBottom < 0) {
+    const blockedBottom = false;
+    if (achievedBottom < 0) {
       // Shrinking bottom: check min height
       const minSize = this.elementMinSize(element);
       const newHeight = element.height + achievedBottom;
@@ -690,26 +676,47 @@ export class WidgetInstanceGrid {
       return { grid: this, achievedDelta, blocked: { top: blockedTop, left: blockedLeft, right: blockedRight, bottom: blockedBottom } };
     }
 
-    const newElements = this._nonEmptyElements.map(el => {
-      if (el.instance?.id === element.instance?.id) {
-        return {
-          ...el,
-          x: el.x + achievedDelta.left,
-          y: el.y + achievedDelta.top,
-          width: el.width - achievedDelta.left + achievedDelta.right,
-          height: el.height - achievedDelta.top + achievedDelta.bottom,
-        };
+    const resizedElement = {
+      ...element,
+      x: element.x + achievedDelta.left,
+      y: element.y + achievedDelta.top,
+      width: element.width - achievedDelta.left + achievedDelta.right,
+      height: element.height - achievedDelta.top + achievedDelta.bottom,
+    };
+
+    // Push overlapping elements down when expanding, with cascading
+    const newElements: GridElement[] = [resizedElement];
+    const others = this._nonEmptyElements
+      .filter(el => el.instance?.id !== element.instance?.id)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+
+    for (const el of others) {
+      let pushed = { ...el };
+      // Keep resolving overlaps until stable (a push may cause new overlaps)
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const placed of newElements) {
+          if (WidgetInstanceGrid._rectsOverlap(
+            pushed.x, pushed.y, pushed.width, pushed.height,
+            placed.x, placed.y, placed.width, placed.height,
+          )) {
+            pushed = { ...pushed, y: placed.y + placed.height };
+            changed = true;
+          }
+        }
       }
-      return el;
-    });
+      newElements.push(pushed);
+    }
 
     try {
-      // Expand the grid height if needed to accommodate bottom growth
+      // Expand the grid height if needed to accommodate pushed elements
       let newFixedHeight = this._fixedHeight;
       if (newFixedHeight !== "auto") {
-        const resizedElement = newElements.find(el => el.instance?.id === element.instance?.id);
-        if (resizedElement && resizedElement.y + resizedElement.height > newFixedHeight) {
-          newFixedHeight = resizedElement.y + resizedElement.height;
+        for (const el of newElements) {
+          if (el.y + el.height > newFixedHeight) {
+            newFixedHeight = el.y + el.height;
+          }
         }
       }
       const newGrid = new WidgetInstanceGrid(newElements, this._varHeights, this.width, newFixedHeight);

@@ -259,22 +259,23 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         }
       });
 
-      // Auto-update Edit button label based on editPanelOpen state
+      // Auto-update Edit button label based on editPanelOpen and layoutEditing state
       // This works for ALL dashboards (old and new) by directly finding and patching the button text
       function patchEditButtonLabel() {
-        // Find buttons that contain "Edit" text (the edit/done button)
         var buttons = document.querySelectorAll('button');
         for (var i = 0; i < buttons.length; i++) {
           var btn = buttons[i];
           var text = btn.textContent.trim();
-          if (text === 'Edit ✎' && window.__editPanelOpen) {
-            btn.textContent = 'Edit Layout ✎';
-          } else if (text === 'Edit Layout ✎' && !window.__editPanelOpen) {
-            btn.textContent = 'Edit ✎';
+          // Determine desired label
+          var desired = window.__layoutEditing ? 'Done' : window.__editPanelOpen ? 'Edit Layout ✎' : 'Edit ✎';
+          // Match any of the known button labels
+          if ((text === 'Edit ✎' || text === 'Edit Layout ✎' || text === 'Done') && text !== desired) {
+            btn.textContent = desired;
           }
         }
       }
       window.addEventListener('chat-state-change', patchEditButtonLabel);
+      window.addEventListener('layout-edit-change', patchEditButtonLabel);
       // Also run periodically to catch React re-renders that reset the text
       setInterval(patchEditButtonLabel, 200);
 
