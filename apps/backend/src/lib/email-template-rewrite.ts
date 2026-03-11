@@ -2,6 +2,7 @@ import { renderEmailWithTemplate } from "@/lib/email-rendering";
 import { createOpenAI } from "@ai-sdk/openai";
 import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateText } from "ai";
@@ -161,5 +162,13 @@ export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Pr
     lastError = renderResult.error;
   }
 
+  captureError("email-template-rewrite-failed-after-retries", new StackAssertionError(
+    "Template rewrite failed after all retries",
+    {
+      isMockMode,
+      maxRewriteAttempts: MAX_REWRITE_ATTEMPTS,
+      lastError,
+    },
+  ));
   return Result.error(lastError);
 }
