@@ -6,6 +6,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import yup from 'yup';
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
@@ -22,6 +23,11 @@ const DataPointsSchema = yupArray(yupObject({
 function formatClickhouseDateTimeParam(date: Date): string {
   // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
   return date.toISOString().slice(0, 19);
+}
+
+function normalizeUuidFromEvent(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  return isUuid(normalized) ? normalized : null;
 }
 
 async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
@@ -252,7 +258,15 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
     format: "JSONEachRow",
   }).then((result) => result.json() as Promise<{ day: string, user_id: string }[]>);
 
-  const activeUserIds = [...new Set(userRows.map((row) => row.user_id))];
+  const sanitizedUserRows = userRows.flatMap((row) => {
+    const userId = normalizeUuidFromEvent(row.user_id);
+    if (userId == null) {
+      return [];
+    }
+    return [{ ...row, user_id: userId }];
+  });
+
+  const activeUserIds = [...new Set(sanitizedUserRows.map((row) => row.user_id))];
   const users = activeUserIds.length === 0
     ? []
     : await prisma.projectUser.findMany({
@@ -274,7 +288,7 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
     orderedDays.push(date);
     idsByDay.set(date, new Set<string>());
   }
-  for (const row of userRows) {
+  for (const row of sanitizedUserRows) {
     const day = row.day.split('T')[0];
     const daySet = idsByDay.get(day);
     if (daySet) {
@@ -324,7 +338,15 @@ async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<A
     format: "JSONEachRow",
   }).then((result) => result.json() as Promise<{ day: string, team_id: string }[]>);
 
-  const activeTeamIds = [...new Set(teamRows.map((row) => row.team_id))];
+  const sanitizedTeamRows = teamRows.flatMap((row) => {
+    const teamId = normalizeUuidFromEvent(row.team_id);
+    if (teamId == null) {
+      return [];
+    }
+    return [{ ...row, team_id: teamId }];
+  });
+
+  const activeTeamIds = [...new Set(sanitizedTeamRows.map((row) => row.team_id))];
   const teams = activeTeamIds.length === 0
     ? []
     : await prisma.team.findMany({
@@ -345,7 +367,7 @@ async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<A
     orderedDays.push(date);
     idsByDay.set(date, new Set<string>());
   }
-  for (const row of teamRows) {
+  for (const row of sanitizedTeamRows) {
     const day = row.day.split('T')[0];
     const daySet = idsByDay.get(day);
     if (daySet) {

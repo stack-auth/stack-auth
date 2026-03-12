@@ -2112,7 +2112,7 @@ async function seedDummyEmails(options: EmailSeedOptions) {
 
     for (let j = 0; j < count; j++) {
       // Deterministic ID so seeding is idempotent across runs
-      const bulkId = `66000000-bulk-seed-${String(emailBulkIndex).padStart(4, '0')}-000000000000`;
+      const bulkId = `66000000-0000-4000-8000-${emailBulkIndex.toString(16).padStart(12, '0')}`;
       const hour = 7 + Math.floor(emailBulkRand() * 14);
       const createdAt = emailDaysAgo(dayBack, hour);
       const subject = bulkEmailSubjects[Math.floor(emailBulkRand() * bulkEmailSubjects.length)];

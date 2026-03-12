@@ -378,7 +378,6 @@ function HeroAnalyticsWidget({
               color={dauColor}
               isHovered={chartMode === 'dau'}
               onMouseEnter={() => handlePillMouseEnter('dau')}
-              onMouseLeave={handlePillMouseLeave}
             />
             <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
@@ -388,7 +387,6 @@ function HeroAnalyticsWidget({
               color={visitorsColor}
               isHovered={chartMode === 'visitors'}
               onMouseEnter={() => handlePillMouseEnter('visitors')}
-              onMouseLeave={handlePillMouseLeave}
             />
             <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
@@ -398,7 +396,6 @@ function HeroAnalyticsWidget({
               color={revenueColor}
               isHovered={chartMode === 'revenue'}
               onMouseEnter={() => handlePillMouseEnter('revenue')}
-              onMouseLeave={handlePillMouseLeave}
             />
           </div>
 
