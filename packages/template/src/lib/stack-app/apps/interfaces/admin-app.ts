@@ -30,6 +30,8 @@ export type EmailOutboxUpdateOptions = {
   isPaused?: boolean,
   scheduledAtMillis?: number,
   cancel?: boolean,
+  tsxSource?: string,
+  themeId?: string | null,
 };
 
 export type ManagedEmailProviderSetupResult = {
@@ -137,6 +139,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       domPath: Array<{ tagName: string, index: number }>,
       htmlContext: string,
     }): Promise<{ updatedSource: string }>,
+    rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsxSource: string }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,
@@ -148,6 +151,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
     deleteEmailDraft(id: string): Promise<void>,
+    refreshEmailDrafts(): Promise<void>,
     createItemQuantityChange(options: (
       { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |

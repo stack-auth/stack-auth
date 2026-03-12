@@ -1552,6 +1552,17 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+const TemplateSourceRewriteError = createKnownErrorConstructor(
+  KnownError,
+  "TEMPLATE_SOURCE_REWRITE_ERROR",
+  (error: string) => [
+    400,
+    `Failed to rewrite template source: ${error}`,
+    { error },
+  ] as const,
+  (json: any) => [json.error] as const,
+);
+
 const RequiresCustomEmailServer = createKnownErrorConstructor(
   KnownError,
   "REQUIRES_CUSTOM_EMAIL_SERVER",
@@ -1560,6 +1571,17 @@ const RequiresCustomEmailServer = createKnownErrorConstructor(
     `This action requires a custom SMTP server. Please edit your email server configuration and try again.`,
   ] as const,
   () => [] as const,
+);
+
+const EmailCapacityBoostAlreadyActive = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_CAPACITY_BOOST_ALREADY_ACTIVE",
+  (expiresAt: string) => [
+    409,
+    `Email capacity boost is already active until ${expiresAt}.`,
+    { expires_at: expiresAt },
+  ] as const,
+  (json: any) => [json.expires_at] as const,
 );
 
 const EmailNotEditable = createKnownErrorConstructor(
@@ -1933,7 +1955,9 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
+  TemplateSourceRewriteError,
   RequiresCustomEmailServer,
+  EmailCapacityBoostAlreadyActive,
   EmailNotEditable,
   ItemNotFound,
   ItemCustomerTypeDoesNotMatch,
