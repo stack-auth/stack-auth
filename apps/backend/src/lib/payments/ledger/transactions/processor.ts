@@ -166,11 +166,17 @@ export function processEvent(state: BuildState, event: SeedEvent) {
         }
 
         if (nextQuantity > 0 && nextConfig) {
+          const nextExpiresWhenRepeated = nextConfig.expires === "when-repeated";
+          const hasSchedulingOrQuantityChange =
+            !prev ||
+            prevQuantity !== nextQuantity ||
+            JSON.stringify(prev.repeat) !== JSON.stringify(nextConfig.repeat) ||
+            prev.expiresWhenRepeated !== nextExpiresWhenRepeated;
           nextItems.set(itemId, {
             quantity: nextQuantity,
             repeat: nextConfig.repeat,
-            expiresWhenRepeated: nextConfig.expires === "when-repeated",
-            sourceTxId: txId,
+            expiresWhenRepeated: nextExpiresWhenRepeated,
+            sourceTxId: hasSchedulingOrQuantityChange ? txId : prev.sourceTxId,
             grants: currentGrants,
           });
         }

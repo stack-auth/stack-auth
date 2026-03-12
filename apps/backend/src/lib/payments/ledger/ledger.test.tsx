@@ -1829,6 +1829,50 @@ describe('item-grant-renewal: default product igr-renewal includes source detail
     }
     vi.useRealTimers();
   });
+
+  it('metadata-only default snapshot changes do not reset repeat source anchor', async () => {
+    vi.setSystemTime(new Date('2025-01-05T00:00:00Z'));
+    const defaultV1 = {
+      displayName: 'Free',
+      customerType: 'custom' as const,
+      productLineId: 'plans',
+      includedItems: { seats: { quantity: 1, repeat: [1, 'day'] as const } },
+      prices: 'include-by-default' as const,
+      isAddOnTo: false, serverOnly: false, stackable: false,
+      clientMetadata: { version: 1 },
+    };
+    const defaultV2MetadataOnly = {
+      ...defaultV1,
+      clientMetadata: { version: 2 },
+    };
+    setupMockPrisma({
+      defaultProductsSnapshots: [
+        {
+          id: 'snap-1',
+          tenancyId: 'tenancy-1',
+          snapshot: { 'free': productToInlineProduct(defaultV1 as any) },
+          createdAt: new Date('2025-01-01'),
+        },
+        {
+          id: 'snap-2',
+          tenancyId: 'tenancy-1',
+          snapshot: { 'free': productToInlineProduct(defaultV2MetadataOnly as any) },
+          createdAt: new Date('2025-01-03'),
+        },
+      ],
+    });
+    const tenancy = createMockTenancy({
+      products: { 'free': defaultV2MetadataOnly as any },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const allTx = await getAllTransactionsForCustomer(_currentMockPrisma, tenancy, 'custom', 'custom-1');
+    const renewals = allTx.filter((tx) => tx.type === 'default-product-item-grant-repeat');
+    expect(renewals.length).toBe(4);
+    for (const renewal of renewals) {
+      expect((renewal.details as any)?.source_transaction_id).toBe('default-products:snap-1');
+    }
+    vi.useRealTimers();
+  });
 });
 
 describe('ledger: default products snapshot transition handled by ledger function', () => {
