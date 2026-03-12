@@ -18,10 +18,6 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   tokenStore?: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
   inheritsFrom?: StackClientApp<any, any>,
-  fraudProtection?: {
-    turnstileInvisibleSiteKey?: string,
-    turnstileSiteKey?: string,
-  },
 
   /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first

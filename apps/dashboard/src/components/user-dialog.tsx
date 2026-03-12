@@ -8,6 +8,7 @@ import { FormDialog } from "./form-dialog";
 import { CountryCodeField } from "./country-code-select";
 import { DateField, InputField, SwitchField, TextAreaField } from "./form-fields";
 import { StyledLink } from "./link";
+import { validateRiskScore } from "@/lib/risk-score-utils";
 
 const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -79,12 +80,12 @@ export function UserDialog(props: {
     botRiskScore: yup.string().test({
       name: "bot-risk-score-format",
       message: "Bot risk score must be an integer between 0 and 100",
-      test: (value) => value == null || value === "" || /^(100|[1-9]?[0-9])$/.test(value),
+      test: (value) => validateRiskScore(value),
     }).optional(),
     freeTrialAbuseRiskScore: yup.string().test({
       name: "free-trial-risk-score-format",
       message: "Free trial abuse score must be an integer between 0 and 100",
-      test: (value) => value == null || value === "" || /^(100|[1-9]?[0-9])$/.test(value),
+      test: (value) => validateRiskScore(value),
     }).optional(),
   }).test({
     name: "risk-score-pair",

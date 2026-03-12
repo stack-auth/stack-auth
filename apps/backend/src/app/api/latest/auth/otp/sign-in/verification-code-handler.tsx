@@ -130,7 +130,8 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
             data.turnstile_result,
             data.turnstile_visible_challenge_result,
           ),
-          // TODO: Pass request context when available in verification code handler
+          // Request context is not available in the verification code handler because the
+          // sign-in code is verified in a separate request from where it was sent
         })
       );
       isNewUser = true;

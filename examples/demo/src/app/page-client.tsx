@@ -2,13 +2,9 @@
 
 import { UserAvatar, useStackApp, useUser } from '@stackframe/stack';
 import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typography } from '@stackframe/stack-ui';
-import { turnstileDevelopmentKeys } from '@stackframe/stack-shared/dist/utils/turnstile';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-
-const turnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY || turnstileDevelopmentKeys.visibleSiteKey;
-const invisibleTurnstileSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY || turnstileDevelopmentKeys.invisibleSiteKey;
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });
@@ -23,30 +19,22 @@ export default function PageClient() {
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
       <Card className='max-w-xl w-full text-left'>
         <CardHeader>
-          <Typography type='h4'>Turnstile demo status</Typography>
+          <Typography type='h4'>Fraud protection</Typography>
         </CardHeader>
         <CardContent className='space-y-2'>
           <Typography>
-            Turnstile fraud protection is handled transparently by the SDK. All auth methods (credential signup, magic link, OAuth) acquire invisible tokens and show visible challenge overlays automatically when needed — no consumer code required.
+            Turnstile fraud protection is handled transparently by the SDK — no consumer code required.
           </Typography>
           <Typography className='text-sm'>
             Status: enabled
           </Typography>
-          <div className='space-y-1 text-sm'>
-            <Typography className='break-all'>
-              Fallback / visible site key: <span className='font-mono'>{turnstileSiteKey}</span>
-            </Typography>
-            <Typography className='break-all'>
-              Invisible site key: <span className='font-mono'>{invisibleTurnstileSiteKey}</span>
-            </Typography>
-          </div>
         </CardContent>
         <CardFooter>
           <div className='flex gap-2'>
             <Button onClick={() => router.push(app.urls.signUp)}>Open hosted sign-up</Button>
             <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open hosted sign-in</Button>
             <Button variant='secondary' onClick={() => router.push('/turnstile-signup')}>
-              Open wrapper + debug demo
+              Debug demo
             </Button>
           </div>
         </CardFooter>

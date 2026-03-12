@@ -88,6 +88,7 @@ export const InternalProjectClientKeys = Object.freeze({
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
 });
 
+// These prefixes must match getMockTurnstileVerificationResponse in apps/mock-oauth-server/src/index.ts
 export const mockTurnstileTokens = Object.freeze({
   signUpOk: "mock-turnstile-ok:sign_up_with_credential",
   magicLinkOk: "mock-turnstile-ok:send_magic_link_email",
@@ -98,6 +99,12 @@ export const mockTurnstileTokens = Object.freeze({
   visibleMagicLinkOk: "mock-turnstile-visible-ok:send_magic_link_email",
   visibleOAuthOk: "mock-turnstile-visible-ok:oauth_authenticate",
 });
+
+type TurnstileTestOptions = {
+  turnstileToken?: string,
+  turnstilePhase?: "invisible" | "visible",
+  previousTurnstileResult?: "invalid" | "error",
+};
 
 function expectSnakeCase(obj: unknown, path: string): void {
   if (typeof obj !== "object" || obj === null) return;
@@ -442,11 +449,7 @@ export namespace Auth {
   }
 
   export namespace Otp {
-    export async function sendSignInCode(options: {
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
-    } = {}) {
+    export async function sendSignInCode(options: TurnstileTestOptions = {}) {
       const mailbox = backendContext.value.mailbox;
       const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
         method: "POST",
@@ -726,12 +729,9 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery(options: {
+    export async function getAuthorizeQuery(options: TurnstileTestOptions & {
       forceBranchId?: string,
       includeClientSecret?: boolean,
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
     } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
@@ -759,14 +759,11 @@ export namespace Auth {
       });
     }
 
-    export async function authorize(options: {
+    export async function authorize(options: TurnstileTestOptions & {
       redirectUrl?: string,
       errorRedirectUrl?: string,
       forceBranchId?: string,
       includeClientSecret?: boolean,
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
     } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
@@ -793,13 +790,10 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options: {
+    export async function getInnerCallbackUrl(options: TurnstileTestOptions & {
       authorizeResponse?: NiceResponse,
       forceBranchId?: string,
       includeClientSecret?: boolean,
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
     } = {}) {
       const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
@@ -881,14 +875,11 @@ export namespace Auth {
       };
     }
 
-    export async function getMaybeFailingAuthorizationCode(options: {
+    export async function getMaybeFailingAuthorizationCode(options: TurnstileTestOptions & {
       innerCallbackUrl?: URL,
       authorizeResponse?: NiceResponse,
       forceBranchId?: string,
       includeClientSecret?: boolean,
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
     } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
@@ -913,14 +904,11 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: {
+    export async function getAuthorizationCode(options: TurnstileTestOptions & {
       innerCallbackUrl?: URL,
       authorizeResponse?: NiceResponse,
       forceBranchId?: string,
       includeClientSecret?: boolean,
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
     } = {}) {
       const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
@@ -943,12 +931,9 @@ export namespace Auth {
       };
     }
 
-    export async function signIn(options: {
+    export async function signIn(options: TurnstileTestOptions & {
       forceBranchId?: string,
       includeClientSecret?: boolean,
-      turnstileToken?: string,
-      turnstilePhase?: "invisible" | "visible",
-      previousTurnstileResult?: "invalid" | "error",
     } = {}) {
       const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode(options);
 

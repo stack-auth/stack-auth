@@ -47,7 +47,7 @@ export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | n
     return null;
   }
 
-  const locationInfo = endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+  const locationInfo = getLocationInfo(endUserInfo);
   return pick(locationInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]);
 }
 
@@ -67,7 +67,7 @@ export async function getBestEffortEndUserRequestContext(): Promise<BestEffortEn
     };
   }
 
-  const locationInfo = endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+  const locationInfo = getLocationInfo(endUserInfo);
   return {
     ipAddress: locationInfo.ip,
     ipTrusted: !endUserInfo.maybeSpoofed,
@@ -77,6 +77,10 @@ export async function getBestEffortEndUserRequestContext(): Promise<BestEffortEn
 
 
 type EndUserInfoInner = EndUserLocation & { ip: string }
+
+function getLocationInfo(endUserInfo: { maybeSpoofed: true, spoofedInfo: EndUserInfoInner } | { maybeSpoofed: false, exactInfo: EndUserInfoInner }) {
+  return endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+}
 
 export async function getEndUserInfo(): Promise<
   // discriminated union to make sure the user is really explicit about checking the maybeSpoofed field

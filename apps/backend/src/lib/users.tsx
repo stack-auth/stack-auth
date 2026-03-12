@@ -50,6 +50,8 @@ async function persistSignUpHeuristicFacts(params: {
 }
 
 export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
+  // In testing/development, allow deriving country code from email tags
+  // e.g. "user+CA@example.com" → "CA". Only works for @example.com addresses.
   if (email != null) {
     const match = email.match(/^[^+]+\+([^@]+)@example\.com$/i);
     if (match) {

@@ -50,6 +50,7 @@ import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { validateRiskScore } from "@/lib/risk-score-utils";
 
 // Analytics types
 type RuleAnalytics = {
@@ -542,10 +543,10 @@ function TestRulesCard({
     if (normalizedCountryCodeOverride !== '' && !isValidCountryCode(normalizedCountryCodeOverride)) {
       throw new Error("Country code override must be a two-letter ISO code.");
     }
-    if (normalizedBotRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedBotRiskScoreOverride)) {
+    if (!validateRiskScore(normalizedBotRiskScoreOverride)) {
       throw new Error("Bot risk score override must be an integer between 0 and 100.");
     }
-    if (normalizedFreeTrialAbuseRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedFreeTrialAbuseRiskScoreOverride)) {
+    if (!validateRiskScore(normalizedFreeTrialAbuseRiskScoreOverride)) {
       throw new Error("Free trial abuse risk score override must be an integer between 0 and 100.");
     }
     if ((normalizedBotRiskScoreOverride === '') !== (normalizedFreeTrialAbuseRiskScoreOverride === '')) {

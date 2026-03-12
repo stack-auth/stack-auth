@@ -53,6 +53,7 @@ const simulatedRefreshErrors = new Map<string, { error: string, error_descriptio
 // Storage for simulating errors by grant ID (since we can't easily get refresh tokens)
 const simulatedRefreshErrorsByGrant = new Map<string, { error: string, error_description: string }>();
 
+// These prefixes must match mockTurnstileTokens in apps/e2e/tests/backend/backend-helpers.ts
 function getMockTurnstileVerificationResponse(token: unknown): {
   statusCode: number,
   body: {
@@ -125,7 +126,8 @@ app.post('/turnstile/siteverify', async (req: express.Request, res: express.Resp
     const responseText = await cloudflareResponse.text();
     const contentType = cloudflareResponse.headers.get("content-type") ?? "application/json";
     res.status(cloudflareResponse.status).type(contentType).send(responseText);
-  } catch {
+  } catch (error) {
+    console.error("Turnstile proxy error:", error);
     res.status(502).json({
       success: false,
       error: "turnstile_proxy_failed",

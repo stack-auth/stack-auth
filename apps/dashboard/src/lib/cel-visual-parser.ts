@@ -276,76 +276,29 @@ function splitByOperator(expr: string, operator: string): string[] {
 function parseCondition(expr: string): ConditionNode | null {
   const trimmed = expr.trim();
 
-  // Match patterns like: field >= 42
-  const greaterOrEqualNumberMatch = trimmed.match(/^([\w.]+)\s*>=\s*(-?\d+(?:\.\d+)?)$/);
-  if (greaterOrEqualNumberMatch) {
-    return {
-      type: 'condition',
-      id: generateNodeId(),
-      field: greaterOrEqualNumberMatch[1] as ConditionField,
-      operator: 'greater_or_equal',
-      value: Number(greaterOrEqualNumberMatch[2]),
-    };
-  }
+  // Match numeric comparison patterns like: field >= 42, field < 10, field == 5
+  // Order matters: >= before >, <= before <
+  const numericOperators = [
+    { symbol: '>=', operator: 'greater_or_equal' },
+    { symbol: '<=', operator: 'less_or_equal' },
+    { symbol: '>', operator: 'greater_than' },
+    { symbol: '<', operator: 'less_than' },
+    { symbol: '==', operator: 'equals' },
+    { symbol: '!=', operator: 'not_equals' },
+  ] as const;
 
-  // Match patterns like: field <= 42
-  const lessOrEqualNumberMatch = trimmed.match(/^([\w.]+)\s*<=\s*(-?\d+(?:\.\d+)?)$/);
-  if (lessOrEqualNumberMatch) {
-    return {
-      type: 'condition',
-      id: generateNodeId(),
-      field: lessOrEqualNumberMatch[1] as ConditionField,
-      operator: 'less_or_equal',
-      value: Number(lessOrEqualNumberMatch[2]),
-    };
-  }
-
-  // Match patterns like: field > 42
-  const greaterNumberMatch = trimmed.match(/^([\w.]+)\s*>\s*(-?\d+(?:\.\d+)?)$/);
-  if (greaterNumberMatch) {
-    return {
-      type: 'condition',
-      id: generateNodeId(),
-      field: greaterNumberMatch[1] as ConditionField,
-      operator: 'greater_than',
-      value: Number(greaterNumberMatch[2]),
-    };
-  }
-
-  // Match patterns like: field < 42
-  const lessNumberMatch = trimmed.match(/^([\w.]+)\s*<\s*(-?\d+(?:\.\d+)?)$/);
-  if (lessNumberMatch) {
-    return {
-      type: 'condition',
-      id: generateNodeId(),
-      field: lessNumberMatch[1] as ConditionField,
-      operator: 'less_than',
-      value: Number(lessNumberMatch[2]),
-    };
-  }
-
-  // Match patterns like: field == 42
-  const equalsNumberMatch = trimmed.match(/^([\w.]+)\s*==\s*(-?\d+(?:\.\d+)?)$/);
-  if (equalsNumberMatch) {
-    return {
-      type: 'condition',
-      id: generateNodeId(),
-      field: equalsNumberMatch[1] as ConditionField,
-      operator: 'equals',
-      value: Number(equalsNumberMatch[2]),
-    };
-  }
-
-  // Match patterns like: field != 42
-  const notEqualsNumberMatch = trimmed.match(/^([\w.]+)\s*!=\s*(-?\d+(?:\.\d+)?)$/);
-  if (notEqualsNumberMatch) {
-    return {
-      type: 'condition',
-      id: generateNodeId(),
-      field: notEqualsNumberMatch[1] as ConditionField,
-      operator: 'not_equals',
-      value: Number(notEqualsNumberMatch[2]),
-    };
+  for (const { symbol, operator } of numericOperators) {
+    const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = trimmed.match(new RegExp(`^([\\w.]+)\\s*${escapedSymbol}\\s*(-?\\d+(?:\\.\\d+)?)$`));
+    if (match) {
+      return {
+        type: 'condition',
+        id: generateNodeId(),
+        field: match[1] as ConditionField,
+        operator,
+        value: Number(match[2]),
+      };
+    }
   }
 
   // Match patterns like: field == "value"

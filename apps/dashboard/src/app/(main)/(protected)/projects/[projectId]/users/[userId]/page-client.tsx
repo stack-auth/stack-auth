@@ -56,6 +56,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { parseRiskScore } from "@/lib/risk-score-utils";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -392,13 +393,6 @@ type UserDetailsProps = {
 function UserDetails({ user }: UserDetailsProps) {
   const [newPassword, setNewPassword] = useState<string | null>(null);
 
-  const parseRiskScore = (value: string): number => {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
-      throw new Error("Risk scores must be integers between 0 and 100");
-    }
-    return parsed;
-  };
 
   return (
     <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">

@@ -136,7 +136,8 @@ export const POST = createSmartRouteHandler({
             oauthProvider: 'apple',
             requestContext,
             turnstileAssessment: { status: "invalid" },
-            // TODO: Apple native OAuth doesn't pass a turnstile token yet
+            // Apple native OAuth doesn't pass a turnstile token because the
+            // authentication happens in the native Apple sign-in flow outside our control
           }),
         });
         projectUserId = result.projectUserId;

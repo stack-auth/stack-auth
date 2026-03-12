@@ -50,6 +50,8 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
   }
 }
 
+const TURNSTILE_OVERLAY_Z_INDEX = "999999";
+
 let activeOverlay: { cleanup: () => void, reject: (err: Error) => void } | null = null;
 
 export function showTurnstileVisibleChallenge(siteKey: string, action: TurnstileAction): Promise<string> {
@@ -65,7 +67,7 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
     Object.assign(overlay.style, {
       position: "fixed",
       inset: "0",
-      zIndex: "999999",
+      zIndex: TURNSTILE_OVERLAY_Z_INDEX,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",

@@ -48,21 +48,12 @@ export type ClientInterfaceOptions = {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
-function getOptionalTurnstileToken(token: string | undefined): string | undefined {
-  const trimmedToken = token?.trim();
-  if (trimmedToken) {
-    return trimmedToken;
-  }
-
-  return undefined;
-}
-
 function getTurnstileRequestFields(turnstile: {
   token?: string,
   phase?: "invisible" | "visible",
   previousResult?: TurnstileRetryResult,
 } | undefined, context: string) {
-  const turnstileToken = getOptionalTurnstileToken(turnstile?.token);
+  const turnstileToken = turnstile?.token?.trim() || undefined;
   if (turnstile?.phase === "visible") {
     if (turnstileToken == null) {
       throw new StackAssertionError(`${context} visible Turnstile retries require a token.`);
@@ -970,7 +961,7 @@ export class StackClientInterface {
     turnstile?: {
       token?: string,
       phase?: "invisible" | "visible",
-      previousResult?: "invalid" | "error",
+      previousResult?: TurnstileRetryResult,
     },
   ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(

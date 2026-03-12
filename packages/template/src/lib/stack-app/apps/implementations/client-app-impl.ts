@@ -38,7 +38,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
-import { resolveTurnstileSiteKey, resolveTurnstileInvisibleSiteKey } from "@stackframe/stack-shared/dist/utils/turnstile-site-keys";
+import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -2134,20 +2134,23 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _getTurnstileSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (typeof window === "undefined") return null;
 
-    const fraudProtection = this._options.fraudProtection;
-    const visibleSiteKey = resolveTurnstileSiteKey(
-      fraudProtection?.turnstileSiteKey,
-      process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY,
-    );
+    const isDev = (() => {
+      try {
+        return (globalThis as any).process?.env?.NODE_ENV !== "production";
+      } catch {
+        return false;
+      }
+    })();
+
+    const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY
+      ?? (isDev ? turnstileDevelopmentKeys.visibleSiteKey : undefined);
     if (!visibleSiteKey) return null;
 
-    const invisibleSiteKey = resolveTurnstileInvisibleSiteKey(
-      fraudProtection?.turnstileInvisibleSiteKey,
-      process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY,
-      visibleSiteKey,
-    );
+    const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY
+      ?? (isDev ? turnstileDevelopmentKeys.invisibleSiteKey : undefined)
+      ?? visibleSiteKey;
 
-    return { visibleSiteKey, invisibleSiteKey: invisibleSiteKey ?? visibleSiteKey };
+    return { visibleSiteKey, invisibleSiteKey };
   }
 
   protected async _isTrusted(url: string): Promise<boolean> {
@@ -2289,9 +2292,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
           return null;
         },
+      // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+      // and never reaches the caller, so we narrow the error type
       }) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
     }
 
+    // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+    // and never reaches the caller, so we narrow the error type
     return await this._interface.sendMagicLinkEmail(email, callbackUrl) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
   }
 
@@ -2731,6 +2738,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       return Result.ok(undefined);
     } else {
+      // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+      // and never reaches the caller, so we narrow the error type
       return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>;
     }
   }
@@ -3198,7 +3207,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           tokenStore: this._tokenStoreInit,
           urls: this._urlOptions,
           oauthScopesOnSignIn: this._oauthScopesOnSignIn,
-          fraudProtection: this._options.fraudProtection,
           uniqueIdentifier: this._getUniqueIdentifier(),
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
