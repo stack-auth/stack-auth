@@ -10,6 +10,7 @@ import { writeConfigValue } from "../lib/config.js";
 import { CliError, AuthError } from "../lib/errors.js";
 import { isNonInteractiveEnv } from "../lib/interactive.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
+import { runClaudeAgent } from "../lib/claude-agent.js";
 
 type InitOptions = {
   mode?: "create" | "link-config" | "link-cloud",
@@ -17,6 +18,7 @@ type InitOptions = {
   configFile?: string,
   selectProjectId?: string,
   outputDir?: string,
+  agent?: boolean,
 };
 
 export function registerInitCommand(program: Command) {
@@ -28,6 +30,7 @@ export function registerInitCommand(program: Command) {
     .option("--config-file <path>", "Path to existing config file (for link-config mode)")
     .option("--select-project-id <id>", "Project ID to link (for link-cloud mode)")
     .option("--output-dir <dir>", "Directory to write output files (defaults to cwd)")
+    .option("--no-agent", "Skip Claude agent and print setup instructions instead")
     .action(async (opts: InitOptions) => {
       const hasFlags = opts.mode != null;
 
@@ -73,7 +76,21 @@ async function runInit(program: Command, opts: InitOptions) {
     throw new CliError(`Unknown mode: ${mode}`);
   }
 
-  console.log("\n" + createInitPrompt(false, configPath));
+  const initPrompt = createInitPrompt(false, configPath);
+  const useAgent = opts.agent !== false && !isNonInteractiveEnv();
+
+  if (useAgent) {
+    const success = await runClaudeAgent({
+      prompt: `Execute ALL of the following setup steps in my project now. Do not ask questions — just detect the framework and package manager from existing files and proceed.\n\n${initPrompt}`,
+      cwd: outputDir,
+    });
+    if (!success) {
+      console.log("\nFalling back to manual instructions:\n");
+      console.log(initPrompt);
+    }
+  } else {
+    console.log("\n" + initPrompt);
+  }
 }
 
 async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {

@@ -722,7 +722,7 @@ importers:
         version: 1.163.2(crossws@0.4.4(srvx@0.8.16))
       nitro:
         specifier: ^3.0.0
-        version: 3.0.0(@electric-sql/pglite@0.3.2)(chokidar@4.0.3)(lru-cache@11.2.2)(mysql2@3.15.3)(rolldown@1.0.0-rc.3)(vite@7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.30.1)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
+        version: 3.0.0(@electric-sql/pglite@0.3.2)(chokidar@4.0.3)(lru-cache@11.2.2)(mysql2@3.15.3)(vite@7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.30.1)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0))
       react:
         specifier: 19.2.1
         version: 19.2.1
@@ -1471,10 +1471,10 @@ importers:
         version: link:../../packages/stack
       '@supabase/ssr':
         specifier: latest
-        version: 0.9.0(@supabase/supabase-js@2.98.0)
+        version: 0.9.0(@supabase/supabase-js@2.99.0)
       '@supabase/supabase-js':
         specifier: latest
-        version: 2.98.0
+        version: 2.99.0
       jose:
         specifier: ^5.2.2
         version: 5.6.3
@@ -1906,6 +1906,9 @@ importers:
 
   packages/stack-cli:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.73
+        version: 0.2.73(zod@4.1.12)
       '@inquirer/prompts':
         specifier: ^7.0.0
         version: 7.10.1(@types/node@20.17.6)
@@ -2429,6 +2432,12 @@ packages:
 
   '@antfu/utils@8.1.1':
     resolution: {integrity: sha512-Mex9nXf9vR6AhcXmMrlz/HVgYYZpVGJ6YlPgwl7UnaFpnshXs6EK/oa5Gpf3CzENMjkvEx2tQtntGnb7UtSTOQ==}
+
+  '@anthropic-ai/claude-agent-sdk@0.2.73':
+    resolution: {integrity: sha512-JrHeMl93Q5ai9GMPAffQkSisbbDvD1skU2x6sf6WRzEZw0sK6aTG+XSiZHY2F5aSrfd4G2qUogLHEm6Y8obyOQ==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      zod: ^4.0.0
 
   '@apidevtools/json-schema-ref-parser@11.9.3':
     resolution: {integrity: sha512-60vepv88RwcJtSHrD6MjIL6Ta3SOYbgfnkHb+ppAVK+o9mXprRtulx7VlRl3lN3bbvysAfCS7WMVfhUYemB0IQ==}
@@ -8526,20 +8535,20 @@ packages:
     resolution: {integrity: sha512-SXuhqhuR5FXaYgKTXzZJeqtVA6JKb9IZWaGeEUxHHiOcFy2p51wccO72bYpXwoK4D5pzQOIYLTuAc7etxyMmwg==}
     engines: {node: '>=12.16'}
 
-  '@supabase/auth-js@2.98.0':
-    resolution: {integrity: sha512-GBH361T0peHU91AQNzOlIrjUZw9TZbB9YDRiyFgk/3Kvr3/Z1NWUZ2athWTfHhwNNi8IrW00foyFxQD9IO/Trg==}
+  '@supabase/auth-js@2.99.0':
+    resolution: {integrity: sha512-tHiIST/OEoLmWBE+3X69xRY5srJM/lL86KltmMlIfDo9ePJLo14vQQV9T4NF+P+MoGhCwQL1GTmk51zuAFMXKw==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/functions-js@2.98.0':
-    resolution: {integrity: sha512-N/xEyiNU5Org+d+PNCpv+TWniAXRzxIURxDYsS/m2I/sfAB/HcM9aM2Dmf5edj5oWb9GxID1OBaZ8NMmPXL+Lg==}
+  '@supabase/functions-js@2.99.0':
+    resolution: {integrity: sha512-zA9oad6EqGwMLLu2LfP1bXbqKcJGiotAdbdTfZG7YS7619YZQAEgejj9mp+E5vglKE1yMWbKK+S1J3PbuUtgLg==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/postgrest-js@2.98.0':
-    resolution: {integrity: sha512-v6e9WeZuJijzUut8HyXu6gMqWFepIbaeaMIm1uKzei4yLg9bC9OtEW9O14LE/9ezqNbSAnSLO5GtOLFdm7Bpkg==}
+  '@supabase/postgrest-js@2.99.0':
+    resolution: {integrity: sha512-8qfOMi2pu9y0IQhUAeFqjrvR49G4ELGevXCWV9qAHXFQ/h2FFh0I8PYjFQj4rHcHSq6hrpozDnS1vbQU8NAQ/A==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/realtime-js@2.98.0':
-    resolution: {integrity: sha512-rOWt28uGyFipWOSd+n0WVMr9kUXiWaa7J4hvyLCIHjRFqWm1z9CaaKAoYyfYMC1Exn3WT8WePCgiVhlAtWC2yw==}
+  '@supabase/realtime-js@2.99.0':
+    resolution: {integrity: sha512-7nFTZhNeANR7FvEY6PfWLCfE8dHqcaJd9SuR7IPEZvBPG9K4uEHMivpjZx4NWRSU7Eji7ZbKy2LG+cJ48DhwHg==}
     engines: {node: '>=20.0.0'}
 
   '@supabase/ssr@0.9.0':
@@ -8547,12 +8556,12 @@ packages:
     peerDependencies:
       '@supabase/supabase-js': ^2.97.0
 
-  '@supabase/storage-js@2.98.0':
-    resolution: {integrity: sha512-tzr2mG+v7ILSAZSfZMSL9OPyIH4z1ikgQ8EcQTKfMRz4EwmlFt3UnJaGzSOxyvF5b+fc9So7qdSUWTqGgeLokQ==}
+  '@supabase/storage-js@2.99.0':
+    resolution: {integrity: sha512-mAEEbfsght5EEALejYrwAP9k8sFBGjfMZT8n4SyMXk2iYuWVeRMs1kA/uKg0uDMctWdZ0bL+L4jZzksUJpCjMA==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/supabase-js@2.98.0':
-    resolution: {integrity: sha512-Ohc97CtInLwZyiSASz7tT9/Abm/vqnIbO9REp+PivVUII8UZsuI3bngRQnYgJdFoOIwvaEII1fX1qy8x0CyNiw==}
+  '@supabase/supabase-js@2.99.0':
+    resolution: {integrity: sha512-SP9Sn9tsHDB7N4u2gT13rdeZJewE4xibAxasG7vOz+fYi92+XkMMbWNx0uGK53zKTnAnvTs16isRooyBy4sn5w==}
     engines: {node: '>=20.0.0'}
 
   '@swc/counter@0.1.3':
@@ -16957,6 +16966,20 @@ snapshots:
 
   '@antfu/utils@8.1.1': {}
 
+  '@anthropic-ai/claude-agent-sdk@0.2.73(zod@4.1.12)':
+    dependencies:
+      zod: 4.1.12
+    optionalDependencies:
+      '@img/sharp-darwin-arm64': 0.34.4
+      '@img/sharp-darwin-x64': 0.34.4
+      '@img/sharp-linux-arm': 0.34.4
+      '@img/sharp-linux-arm64': 0.34.4
+      '@img/sharp-linux-x64': 0.34.4
+      '@img/sharp-linuxmusl-arm64': 0.34.4
+      '@img/sharp-linuxmusl-x64': 0.34.4
+      '@img/sharp-win32-arm64': 0.34.4
+      '@img/sharp-win32-x64': 0.34.4
+
   '@apidevtools/json-schema-ref-parser@11.9.3':
     dependencies:
       '@jsdevtools/ono': 7.1.3
@@ -24890,19 +24913,19 @@ snapshots:
 
   '@stripe/stripe-js@7.7.0': {}
 
-  '@supabase/auth-js@2.98.0':
+  '@supabase/auth-js@2.99.0':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/functions-js@2.98.0':
+  '@supabase/functions-js@2.99.0':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/postgrest-js@2.98.0':
+  '@supabase/postgrest-js@2.99.0':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/realtime-js@2.98.0':
+  '@supabase/realtime-js@2.99.0':
     dependencies:
       '@types/phoenix': 1.6.6
       '@types/ws': 8.18.1
@@ -24912,23 +24935,23 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@supabase/ssr@0.9.0(@supabase/supabase-js@2.98.0)':
+  '@supabase/ssr@0.9.0(@supabase/supabase-js@2.99.0)':
     dependencies:
-      '@supabase/supabase-js': 2.98.0
+      '@supabase/supabase-js': 2.99.0
       cookie: 1.0.2
 
-  '@supabase/storage-js@2.98.0':
+  '@supabase/storage-js@2.99.0':
     dependencies:
       iceberg-js: 0.8.1
       tslib: 2.8.1
 
-  '@supabase/supabase-js@2.98.0':
+  '@supabase/supabase-js@2.99.0':
     dependencies:
-      '@supabase/auth-js': 2.98.0
-      '@supabase/functions-js': 2.98.0
-      '@supabase/postgrest-js': 2.98.0
-      '@supabase/realtime-js': 2.98.0
-      '@supabase/storage-js': 2.98.0
+      '@supabase/auth-js': 2.99.0
+      '@supabase/functions-js': 2.99.0
+      '@supabase/postgrest-js': 2.99.0
+      '@supabase/realtime-js': 2.99.0
+      '@supabase/storage-js': 2.99.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -28361,7 +28384,7 @@ snapshots:
       debug: 4.4.3
       enhanced-resolve: 5.17.1
       eslint: 8.57.1
-      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       fast-glob: 3.3.3
       get-tsconfig: 4.8.1
       is-bun-module: 1.2.1
@@ -28404,7 +28427,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1):
+  eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -28482,7 +28505,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.15.1
       is-glob: 4.0.3
@@ -31685,7 +31708,7 @@ snapshots:
 
   nice-try@1.0.5: {}
 
-  nitro@3.0.0(@electric-sql/pglite@0.3.2)(chokidar@4.0.3)(lru-cache@11.2.2)(mysql2@3.15.3)(rolldown@1.0.0-rc.3)(vite@7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.30.1)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0)):
+  nitro@3.0.0(@electric-sql/pglite@0.3.2)(chokidar@4.0.3)(lru-cache@11.2.2)(mysql2@3.15.3)(vite@7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.30.1)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0)):
     dependencies:
       consola: 3.4.2
       cookie-es: 2.0.0
@@ -31705,7 +31728,6 @@ snapshots:
       unenv: 2.0.0-rc.21
       unstorage: 2.0.0-alpha.3(chokidar@4.0.3)(db0@0.3.4(@electric-sql/pglite@0.3.2)(mysql2@3.15.3))(lru-cache@11.2.2)(ofetch@1.5.1)
     optionalDependencies:
-      rolldown: 1.0.0-rc.3
       vite: 7.3.1(@types/node@22.19.0)(jiti@2.6.1)(lightningcss@1.30.1)(terser@5.44.0)(tsx@4.21.0)(yaml@2.8.0)
     transitivePeerDependencies:
       - '@azure/app-configuration'
