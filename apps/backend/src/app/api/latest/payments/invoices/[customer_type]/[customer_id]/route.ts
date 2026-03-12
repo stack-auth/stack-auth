@@ -1,7 +1,7 @@
-import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { ensureClientCanAccessCustomer } from "@/lib/payments";
-import { getPrismaClientForTenancy } from "@/prisma-client";
 import { Prisma } from "@/generated/prisma/client";
+import { ensureClientCanAccessCustomer } from "@/lib/payments/index";
+import { getPrismaClientForTenancy } from "@/prisma-client";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { customerInvoicesListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/invoices";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";

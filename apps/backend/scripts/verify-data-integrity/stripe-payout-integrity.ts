@@ -57,7 +57,7 @@ function sumMoneyTransfersUsdMinorUnits(transactions: Transaction[]): bigint {
   let total = 0n;
   for (const transaction of transactions) {
     for (const entry of transaction.entries) {
-      if (entry.type !== "money_transfer") continue;
+      if (entry.type !== "money-transfer") continue;
       total += parseMoneyAmountToMinorUnits(entry.net_amount.USD, 2);
     }
   }

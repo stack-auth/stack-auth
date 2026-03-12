@@ -1,6 +1,6 @@
-import type { Tenancy } from "@/lib/tenancies";
-import { getItemQuantityForCustomer } from "@/lib/payments";
 import { SubscriptionStatus } from "@/generated/prisma/client";
+import { getItemQuantityForCustomer } from "@/lib/payments";
+import type { Tenancy } from "@/lib/tenancies";
 import type { getPrismaClientForTenancy } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
@@ -53,6 +53,7 @@ type SubscriptionSnapshot = {
   currentPeriodEnd: Date | null,
   cancelAtPeriodEnd: boolean,
   createdAt: Date,
+  endedAt: Date | null,
   refundedAt: Date | null,
 };
 
@@ -279,7 +280,7 @@ function buildExpectedItemQuantitiesForCustomer(options: {
   }
 
   for (const { entry, transactionId, createdAtMillis } of options.entries) {
-    if (entry.type === "item_quantity_change") {
+    if (entry.type === "item-quantity-change") {
       const change = options.itemQuantityChangeById.get(transactionId);
       if (!change) {
         continue;
@@ -292,7 +293,7 @@ function buildExpectedItemQuantitiesForCustomer(options: {
       continue;
     }
 
-    if (entry.type !== "product_grant") continue;
+    if (entry.type !== "product-grant") continue;
 
     const includedItems = entry.product.included_items;
 
@@ -361,15 +362,22 @@ function buildExpectedOwnedProductsForCustomer(options: {
 }) {
   const expected: ExpectedOwnedProduct[] = [];
   for (const { entry } of options.entries) {
-    if (entry.type !== "product_grant") continue;
+    if (entry.type !== "product-grant") continue;
 
     if (entry.subscription_id) {
       const subscription = options.subscriptionById.get(entry.subscription_id);
       if (!subscription) {
         continue;
       }
-      if (subscription.status !== SubscriptionStatus.active && subscription.status !== SubscriptionStatus.trialing) {
-        continue;
+      const isActive = subscription.status === SubscriptionStatus.active || subscription.status === SubscriptionStatus.trialing;
+      if (!isActive) {
+        const now = new Date();
+        const endedAt = subscription.endedAt;
+        const periodEnd = subscription.currentPeriodEnd;
+        const stillProviding = endedAt ? endedAt > now : periodEnd ? periodEnd > now : false;
+        if (!stillProviding) {
+          continue;
+        }
       }
       expected.push({
         id: entry.product_id ?? null,
@@ -555,11 +563,11 @@ export async function createPaymentsVerifier(options: {
         customCustomerIds.add(entry.customer_id);
       }
 
-      if (entry.type === "item_quantity_change") {
+      if (entry.type === "item-quantity-change") {
         itemQuantityChangeIds.add(transaction.id);
         continue;
       }
-      if (entry.type !== "product_grant") continue;
+      if (entry.type !== "product-grant") continue;
       if (entry.subscription_id) {
         subscriptionIds.add(entry.subscription_id);
       }
@@ -587,6 +595,7 @@ export async function createPaymentsVerifier(options: {
         currentPeriodEnd: true,
         cancelAtPeriodEnd: true,
         createdAt: true,
+        endedAt: true,
         refundedAt: true,
       },
     }),
@@ -625,7 +634,7 @@ export async function createPaymentsVerifier(options: {
 
     const entryItemQuantityChangeIds = new Set<string>();
     for (const { entry, transactionId } of entries) {
-      if (entry.type !== "item_quantity_change") continue;
+      if (entry.type !== "item-quantity-change") continue;
       entryItemQuantityChangeIds.add(transactionId);
     }
     const extraItemQuantityChanges: ExtraItemQuantityChangeRow[] = await options.prisma.itemQuantityChange.findMany({
