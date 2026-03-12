@@ -2,10 +2,10 @@
 
 import { DashboardRuntimeCodegen } from "@/lib/ai-dashboard/contracts";
 import { getPublicEnvVar } from "@/lib/env";
+import { useTheme } from "@/lib/theme";
 import { useUser } from "@stackframe/stack";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useTheme } from "@/lib/theme";
 import { memo, useEffect, useMemo, useRef } from "react";
 import packageJson from "../../../../package.json";
 
@@ -21,7 +21,7 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): string {
 
 const isDev = process.env.NODE_ENV === "development";
 
-function getDependencyScripts(esmVersion: string, dashboardUrl: string): string {
+function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, dashboardUrl: string): string {
   if (isDev) {
     return html`
       <script type="module">
@@ -29,16 +29,29 @@ function getDependencyScripts(esmVersion: string, dashboardUrl: string): string 
         import * as ReactDOM from 'https://esm.sh/react-dom@18?deps=react@18';
         import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
         import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
-        import * as StackSDK from 'https://esm.sh/@stackframe/js@${esmVersion}';
-        import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${esmVersion}/dist/utils/uuids';
 
         window.React = React;
         window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
         window.Recharts = Recharts;
-        window.StackAdminApp = StackSDK.StackAdminApp;
-        window.StackServerApp = StackSDK.StackServerApp;
-        window.StackSDK = StackSDK;
-        window.generateUuid = generateUuid;
+
+        // Stack SDK may not be published at the current version — try with fallback
+        try {
+          const StackSDK = await import('https://esm.sh/@stackframe/js@${esmVersion}');
+          window.StackAdminApp = StackSDK.StackAdminApp;
+          window.StackServerApp = StackSDK.StackServerApp;
+          window.StackSDK = StackSDK;
+        } catch (e) {
+          window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Stack SDK failed at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
+          try {
+            const StackSDK = await import('https://esm.sh/@stackframe/js@${esmFallbackVersion}');
+            window.StackAdminApp = StackSDK.StackAdminApp;
+            window.StackServerApp = StackSDK.StackServerApp;
+            window.StackSDK = StackSDK;
+          } catch (e2) {
+            window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Stack SDK fallback also failed: ' + e2?.message }, '*');
+          }
+        }
+        window.generateUuid = () => crypto.randomUUID();
 
         // Load local IIFE for dashboard-ui-components (after globals are set)
         const script = document.createElement('script');
@@ -63,19 +76,32 @@ function getDependencyScripts(esmVersion: string, dashboardUrl: string): string 
       import * as ReactDOM from 'https://esm.sh/react-dom@18?deps=react@18';
       import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
       import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
-      import * as DashboardUIComponents from 'https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@18,react-dom@18';
-      import * as StackSDK from 'https://esm.sh/@stackframe/js@${esmVersion}';
-      import { generateUuid } from 'https://esm.sh/@stackframe/stack-shared@${esmVersion}/dist/utils/uuids';
-      
+
       window.React = React;
       window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
       window.Recharts = Recharts;
+
+      // Try current version first, fall back to last known good version
+      let DashboardUIComponents, StackSDK;
+      try {
+        [DashboardUIComponents, StackSDK] = await Promise.all([
+          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@18,react-dom@18'),
+          import('https://esm.sh/@stackframe/js@${esmVersion}'),
+        ]);
+      } catch (e) {
+        window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Failed to load at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
+        [DashboardUIComponents, StackSDK] = await Promise.all([
+          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@18,react-dom@18'),
+          import('https://esm.sh/@stackframe/js@${esmFallbackVersion}'),
+        ]);
+      }
+
       window.DashboardUI = DashboardUIComponents;
       window.StackAdminApp = StackSDK.StackAdminApp;
       window.StackServerApp = StackSDK.StackServerApp;
       window.StackSDK = StackSDK;
-      window.generateUuid = generateUuid;
-      
+      window.generateUuid = () => crypto.randomUUID();
+
       window.__depsReady = true;
       window.dispatchEvent(new Event('deps-ready'));
     </script>`;
@@ -85,6 +111,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
   const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = packageJson.version;
+  const esmFallbackVersion = "2.8.71";
   const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
   const devConnectSrc = isDev ? ` ${dashboardUrl} http://127.0.0.1:7322` : '';
 
@@ -201,7 +228,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
     <!-- Babel (for JSX transpilation) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    ${getDependencyScripts(esmVersion, dashboardUrl)}
+    ${getDependencyScripts(esmVersion, esmFallbackVersion, dashboardUrl)}
     
     <script type="text/babel">
       // Navigation API for AI-generated code

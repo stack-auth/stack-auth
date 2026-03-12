@@ -28,6 +28,28 @@ export type EmailOutboxUpdateOptions = {
   isPaused?: boolean,
   scheduledAtMillis?: number,
   cancel?: boolean,
+  tsxSource?: string,
+  themeId?: string | null,
+};
+
+export type ManagedEmailProviderSetupResult = {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  nameServerRecords: string[],
+  status: ManagedEmailProviderStatus["status"],
+};
+
+export type ManagedEmailProviderStatus = {
+  status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+};
+
+export type ManagedEmailProviderListItem = {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  status: ManagedEmailProviderStatus["status"],
+  nameServerRecords: string[],
 };
 
 import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
@@ -88,6 +110,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,
+    setupManagedEmailProvider(options: { subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderSetupResult>,
+    checkManagedEmailStatus(options: { domainId: string, subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderStatus>,
+    listManagedEmailDomains(): Promise<ManagedEmailProviderListItem[]>,
+    applyManagedEmailProvider(options: { domainId: string }): Promise<{ status: "applied" }>,
 
     useEmailTheme(id: string): { displayName: string, tsxSource: string }, // THIS_LINE_PLATFORM react-like
     createEmailTheme(displayName: string): Promise<{ id: string }>,
@@ -95,6 +121,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     deleteEmailTheme(id: string): Promise<void>,
     saveChatMessage(threadId: string, message: any): Promise<void>,
     listChatMessages(threadId: string): Promise<{ messages: Array<any> }>,
+    rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsxSource: string }>,
     updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ renderedHtml: string }>,
     createEmailTemplate(displayName: string): Promise<{ id: string }>,
     deleteEmailTemplate(id: string): Promise<void>,
@@ -106,6 +133,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     createEmailDraft(options: { displayName: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<{ id: string }>,
     updateEmailDraft(id: string, data: { displayName?: string, themeId?: string | undefined | false, tsxSource?: string }): Promise<void>,
     deleteEmailDraft(id: string): Promise<void>,
+    refreshEmailDrafts(): Promise<void>,
     createItemQuantityChange(options: (
       { userId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |
       { teamId: string, itemId: string, quantity: number, expiresAt?: string, description?: string } |

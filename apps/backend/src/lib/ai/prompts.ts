@@ -40,7 +40,8 @@ export type SystemPromptId =
   | "email-assistant-theme"
   | "email-assistant-draft"
   | "create-dashboard"
-  | "run-query";
+  | "run-query"
+  | "rewrite-template-source";
 
 /**
  * Context-specific system prompts that are appended to the base prompt.
@@ -791,6 +792,22 @@ You are helping users query their Stack Auth project's analytics data using Clic
 - Explain query results clearly
 - Suggest relevant queries based on user questions
 - Use the queryAnalytics tool to execute queries and return results
+`,
+
+  "rewrite-template-source": `You rewrite email template TSX source into standalone draft TSX.
+
+Requirements:
+1) Keep exactly one exported EmailTemplate component.
+2) Remove variables schema declarations and preview variable assignments.
+   - Remove exports like variablesSchema regardless of symbol name. For example, you may see export const profileSchema = ... which should be removed too.
+   - Remove EmailTemplate.PreviewVariables assignment.
+3) Make EmailTemplate standalone:
+   - It must not rely on a variables prop from outside.
+   - Define "const variables = { ... }" inside EmailTemplate with sensible placeholder values based on the schema/types present in source.
+   - It should be the only exported function in the file.
+4) Preserve subject/notification/category and existing JSX structure as much as possible.
+5) Fix imports after removal.
+6) Return only raw TSX source, without markdown code fences.
 `,
 };
 

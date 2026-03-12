@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/backend",
-  "version": "2.8.71",
+  "version": "2.8.72",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "type": "module",
@@ -92,6 +92,7 @@
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
     "freestyle-sandboxes": "^0.1.6",
+    "jiti": "^2.6.1",
     "jose": "^6.1.3",
     "json-diff": "^1.0.6",
     "next": "16.1.5",

@@ -4,7 +4,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Form } from "@/components/ui";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
 import { CheckboxField, DateField, InputField, NumberField, TextAreaField } from "./form-fields";
@@ -26,10 +26,13 @@ export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
   onSubmit: (values: yup.InferType<S>) => Promise<void>,
   formId?: string,
   onChangeIsSubmitting?: (isSubmitting: boolean) => void,
+  defaultValues?: Partial<yup.InferType<S>>,
+  isOpen?: boolean,
 }) {
+  const resolvedDefaultValues = props.defaultValues ?? props.formSchema.getDefault();
   const form = useForm({
     resolver: yupResolver(props.formSchema),
-    defaultValues: props.formSchema.getDefault(),
+    defaultValues: resolvedDefaultValues,
     mode: "onChange",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,16 +43,25 @@ export function SmartForm<S extends yup.ObjectSchema<any>>(props: {
       await form.handleSubmit(async (values: yup.InferType<S>, e?: React.BaseSyntheticEvent) => {
         e!.preventDefault();
         await props.onSubmit(values);
-        form.reset();
+        form.reset(resolvedDefaultValues);
       })(e);
     } finally {
       props.onChangeIsSubmitting?.(false);
       setIsSubmitting(false);
     }
-  }, [props, form]);
+  }, [props, form, resolvedDefaultValues]);
+
+  const prevOpen = useRef(props.isOpen ?? false);
+  useEffect(() => {
+    const currentOpen = props.isOpen ?? false;
+    if (currentOpen && !prevOpen.current) {
+      form.reset(resolvedDefaultValues);
+    }
+    prevOpen.current = currentOpen;
+  }, [props.isOpen, resolvedDefaultValues, form]);
 
   const details = props.formSchema.describe();
-  const defaults = props.formSchema.getDefault();
+  const defaults = resolvedDefaultValues;
 
   return (
     <Form {...form}>

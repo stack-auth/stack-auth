@@ -1,3 +1,4 @@
+export * from "@stackframe/dashboard-ui-components";
 export * from "./editable-grid";
 export * from "./list";
 export * from "./menu";

@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignListItemRow } from "@/components/design-components/list";
+import { DesignListItemRow } from "@/components/design-components";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
@@ -34,7 +34,7 @@ export default function PageClient() {
   const dashboards = useMemo((): DashboardEntry[] => {
     return Object.entries(config.customDashboards).map(([id, dashboard]) => ({
       id,
-      displayName: dashboard.displayName,
+      displayName: (dashboard as { displayName: string }).displayName,
     }));
   }, [config.customDashboards]);
 

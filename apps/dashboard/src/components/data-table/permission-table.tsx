@@ -1,8 +1,9 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { DesignDataTable } from "@/components/design-components";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip, TextCell } from "@/components/ui";
-import { ColumnDef, Row, Table } from "@tanstack/react-table";
+import { ActionCell, ActionDialog, BadgeCell, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip, TextCell } from "@/components/ui";
+import { ColumnDef, Row } from "@tanstack/react-table";
 import { useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
@@ -15,14 +16,6 @@ type AdminPermissionDefinition = {
 };
 
 type PermissionType = 'project' | 'team';
-
-function toolbarRender<TData>(table: Table<TData>) {
-  return (
-    <>
-      <SearchToolbarItem table={table} keyName="id" placeholder="Filter by ID" />
-    </>
-  );
-}
 
 function EditDialog(props: {
   open: boolean,
@@ -188,11 +181,12 @@ export function PermissionTable<T extends AdminPermissionDefinition>(props: {
 }) {
   const columns = createColumns<T>(props.permissionType);
 
-  return <DataTable
+  return <DesignDataTable
     data={props.permissions}
     columns={columns}
-    toolbarRender={toolbarRender}
+    toolbarRender={(table) => <SearchToolbarItem table={table} keyName="id" placeholder="Filter by ID" />}
     defaultColumnFilters={[]}
     defaultSorting={[]}
+    glassmorphic
   />;
 }

@@ -3119,6 +3119,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ) => {
         return await this._interface.sendClientRequest(path, requestOptions, await this._getSession(), requestType);
       },
+      refreshOwnedProjects: async () => {
+        await this._refreshOwnedProjects(await this._getSession());
+      },
     };
   };
 }

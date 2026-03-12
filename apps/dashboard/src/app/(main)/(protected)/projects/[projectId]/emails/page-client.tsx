@@ -7,7 +7,7 @@ import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, D
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
-import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
+import { CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
 import { AdminEmailConfig, AdminProject, AdminSentEmail, ServerUser, UserAvatar } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
@@ -119,11 +119,7 @@ export default function PageClient() {
       >
         <div className="flex flex-col gap-5">
           {/* Email Server Card */}
-          {getPublicEnvVar('NEXT_PUBLIC_STACK_EMULATOR_ENABLED') === 'true' ? (
-            <EmulatorModeCard />
-          ) : (
-            <EmailServerCard emailConfig={emailConfig} />
-          )}
+          <EmailServerCard emailConfig={emailConfig} />
 
           {/* Email Log Card */}
           <EmailLogCard />
@@ -133,42 +129,19 @@ export default function PageClient() {
   );
 }
 
-function EmulatorModeCard() {
-  return (
-    <GlassCard gradientColor="purple">
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-5">
-          <div className="flex-1 min-w-0">
-            <SectionHeader icon={HardDrive} title="Mock Emails" />
-            <Typography variant="secondary" className="text-sm mt-1">
-              View all emails sent through the emulator in Inbucket
-            </Typography>
-          </div>
-          <Button
-            variant='secondary'
-            size="sm"
-            className="h-8 px-3 text-xs gap-1.5 flex-shrink-0"
-            onClick={() => {
-              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
-            }}
-          >
-            <ArrowSquareOut className="h-3.5 w-3.5" />
-            Open Inbox
-          </Button>
-        </div>
-      </div>
-    </GlassCard>
-  );
-}
-
 function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails']['server'] }) {
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const serverType = emailConfig.isShared
     ? 'Shared'
-    : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
+    : emailConfig.provider === 'managed'
+      ? 'Managed By Stack Auth'
+      : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared
     ? 'noreply@stackframe.co'
-    : emailConfig.senderEmail;
+    : emailConfig.provider === 'managed' && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
+      ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
+      : emailConfig.senderEmail;
 
   return (
     <GlassCard gradientColor="slate">
@@ -177,11 +150,13 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
           <div className="flex-1 min-w-0">
             <SectionHeader icon={HardDrive} title="Email Server" />
             <Typography variant="secondary" className="text-sm mt-1">
-              Configure the email server and sender address for outgoing emails
+              {isLocalEmulator
+                ? "Email server settings are read-only in the local emulator"
+                : "Configure the email server and sender address for outgoing emails"}
             </Typography>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {!emailConfig.isShared && (
+            {!emailConfig.isShared && !isLocalEmulator && (
               <TestSendingDialog
                 trigger={
                   <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
@@ -191,16 +166,35 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
                 }
               />
             )}
-            <EditEmailServerDialog
-              trigger={
-                <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
-                  <Sliders className="h-3.5 w-3.5" />
-                  Configure
-                </Button>
-              }
-            />
+            {!isLocalEmulator ? (
+              <>
+                <ManagedEmailSetupDialog
+                  trigger={
+                    <Button variant='ghost' size="sm" className="h-8 px-3 text-xs gap-1.5">
+                      <Envelope className="h-3.5 w-3.5" />
+                      Managed Setup
+                    </Button>
+                  }
+                />
+                <EditEmailServerDialog
+                  trigger={
+                    <Button variant='secondary' size="sm" className="h-8 px-3 text-xs gap-1.5">
+                      <Sliders className="h-3.5 w-3.5" />
+                      Configure
+                    </Button>
+                  }
+                />
+              </>
+            ) : null}
           </div>
         </div>
+        {isLocalEmulator && (
+          <Alert className="mt-4">
+            <AlertDescription>
+              Email server settings cannot be changed in the local emulator. Update these settings in your production deployment.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
       <div className="border-t border-foreground/[0.05] px-5 pb-5 pt-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -224,9 +218,232 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
             </span>
             <span className="text-sm font-medium text-foreground font-mono">{senderEmail}</span>
           </div>
+
+          {emailConfig.provider === "managed" && (
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Managed Domain
+              </span>
+              <span className="text-sm font-medium text-foreground font-mono">{emailConfig.managedSubdomain}</span>
+            </div>
+          )}
+
+          {emailConfig.provider === "managed" && (
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Sender Local Part
+              </span>
+              <span className="text-sm font-medium text-foreground font-mono">{emailConfig.managedSenderLocalPart}</span>
+            </div>
+          )}
         </div>
       </div>
     </GlassCard>
+  );
+}
+
+const managedEmailSetupSchema = yup.object({
+  subdomain: yup
+    .string()
+    .trim()
+    .defined("Managed subdomain is required")
+    .test(
+      "non-empty-subdomain",
+      "Managed subdomain is required",
+      (value) => value.trim().length > 0,
+    )
+    .matches(
+      /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,63}$/,
+      "Enter a full subdomain like emails.example.com",
+    ),
+  senderLocalPart: yup
+    .string()
+    .trim()
+    .defined("Sender local part is required")
+    .test(
+      "non-empty-sender-local-part",
+      "Sender local part is required",
+      (value) => value.trim().length > 0,
+    ),
+});
+
+function ManagedEmailSetupDialog(props: {
+  trigger: React.ReactNode,
+}) {
+  const stackAdminApp = useAdminApp();
+  const [open, setOpen] = useState(false);
+  const [setupState, setSetupState] = useState<{
+    domainId: string,
+    nameServerRecords: string[],
+    subdomain: string,
+    senderLocalPart: string,
+    status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+  } | null>(null);
+  const [domains, setDomains] = useState<Array<{
+    domainId: string,
+    subdomain: string,
+    senderLocalPart: string,
+    status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+    nameServerRecords: string[],
+  }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loadingDomains, setLoadingDomains] = useState(false);
+
+  const refreshDomains = async () => {
+    setLoadingDomains(true);
+    try {
+      const result = await stackAdminApp.listManagedEmailDomains();
+      setDomains(result);
+    } finally {
+      setLoadingDomains(false);
+    }
+  };
+
+  return (
+    <FormDialog
+      trigger={props.trigger}
+      open={open}
+      onOpenChange={(newOpen) => {
+        setOpen(newOpen);
+        if (newOpen) {
+          runAsynchronouslyWithAlert(async () => {
+            await refreshDomains();
+          }, {
+            onError: (err) => {
+              setError(err instanceof Error ? err.message : "Failed to load managed domains");
+            },
+          });
+        } else {
+          setSetupState(null);
+          setDomains([]);
+          setError(null);
+        }
+      }}
+      title="Managed Email Setup"
+      formSchema={managedEmailSetupSchema}
+      defaultValues={{ subdomain: "", senderLocalPart: "updates" }}
+      okButton={setupState ? false : { label: "Start Setup" }}
+      cancelButton
+      onSubmit={async (values) => {
+        const setupResult = await stackAdminApp.setupManagedEmailProvider({
+          subdomain: values.subdomain,
+          senderLocalPart: values.senderLocalPart,
+        });
+        setSetupState({
+          domainId: setupResult.domainId,
+          nameServerRecords: setupResult.nameServerRecords,
+          subdomain: setupResult.subdomain,
+          senderLocalPart: setupResult.senderLocalPart,
+          status: setupResult.status,
+        });
+        await refreshDomains();
+        setError(null);
+        return "prevent-close" as const;
+      }}
+      render={(form) => (
+        <>
+          {!setupState && (
+            <>
+              <InputField
+                label="Managed subdomain"
+                name="subdomain"
+                control={form.control}
+                type="text"
+                placeholder="emails.example.com"
+                required
+              />
+              <InputField
+                label="Sender local part"
+                name="senderLocalPart"
+                control={form.control}
+                type="text"
+                required
+              />
+            </>
+          )}
+          {setupState && (
+            <Alert className="bg-blue-500/5 border-blue-500/20">
+              <AlertTitle>Delegate your subdomain with these NS records</AlertTitle>
+              <AlertDescription>
+                Add these nameservers at your DNS provider for the managed subdomain you entered.
+                <div className="mt-2 flex flex-col gap-1">
+                  {setupState.nameServerRecords.map((record) => (
+                    <div key={record} className="font-mono text-xs">{record}</div>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {setupState && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => runAsynchronouslyWithAlert(async () => {
+                  const result = await stackAdminApp.checkManagedEmailStatus({
+                    domainId: setupState.domainId,
+                    subdomain: setupState.subdomain,
+                    senderLocalPart: setupState.senderLocalPart,
+                  });
+                  setSetupState({
+                    ...setupState,
+                    status: result.status,
+                  });
+                  await refreshDomains();
+                })}
+              >
+                Refresh Status
+              </Button>
+              <Button
+                variant="default"
+                disabled={setupState.status !== "verified"}
+                onClick={() => runAsynchronouslyWithAlert(async () => {
+                  await stackAdminApp.applyManagedEmailProvider({
+                    domainId: setupState.domainId,
+                  });
+                  setOpen(false);
+                })}
+              >
+                Use This Domain
+              </Button>
+            </div>
+          )}
+          {(() => {
+            const visibleDomains = setupState ? domains.filter((d) => d.domainId === setupState.domainId) : domains;
+            return <div className="space-y-2">
+              <Typography variant="secondary" className="text-xs uppercase tracking-wider">Tracked managed domains</Typography>
+              {loadingDomains ? (
+                <Typography variant="secondary" className="text-sm">Loading managed domains...</Typography>
+              ) : visibleDomains.length === 0 ? (
+                <Typography variant="secondary" className="text-sm">No managed domains tracked yet.</Typography>
+              ) : (
+              visibleDomains.map((domain) => (
+                <Alert key={domain.domainId} className="bg-slate-500/5 border-slate-500/20">
+                  <AlertTitle className="font-mono text-xs">{domain.senderLocalPart}@{domain.subdomain}</AlertTitle>
+                  <AlertDescription className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-xs">Status: {domain.status}</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={domain.status !== "verified"}
+                      onClick={() => runAsynchronouslyWithAlert(async () => {
+                        await stackAdminApp.applyManagedEmailProvider({
+                          domainId: domain.domainId,
+                        });
+                        await refreshDomains();
+                      })}
+                    >
+                      Use This Domain
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ))
+              )}
+            </div>;
+          })()}
+          {error && <Alert variant="destructive">{error}</Alert>}
+        </>
+      )}
+    />
   );
 }
 
@@ -392,6 +609,16 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
       senderName: emailConfig.senderName,
       password: emailConfig.password,
     } as const;
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  } else if (emailConfig.provider === 'managed') {
+    return {
+      type: 'managed',
+      senderEmail: emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
+        ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
+        : emailConfig.senderEmail,
+      senderName: emailConfig.senderName ?? project.displayName,
+      password: emailConfig.password,
+    } as const;
   } else {
     return {
       type: 'standard',
@@ -406,7 +633,7 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
 };
 
 const emailServerSchema = yup.object({
-  type: yup.string().oneOf(['shared', 'standard', 'resend']).defined(),
+  type: yup.string().oneOf(['shared', 'standard', 'resend', 'managed']).defined(),
   host: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Host is required"),
   port: definedWhenTypeIsOneOf(yup.number().min(0, "Port must be a number between 0 and 65535").max(65535, "Port must be a number between 0 and 65535"), ["standard"], "Port is required"),
   username: definedWhenTypeIsOneOf(yup.string(), ["standard"], "Username is required"),
@@ -468,7 +695,7 @@ function InputFieldWithInfo({
       name={name}
       control={control}
       type={type}
-      // Don't pass required prop - it adds asterisk which we don't want
+    // Don't pass required prop - it adds asterisk which we don't want
     />
   );
 }
@@ -508,6 +735,8 @@ function EditEmailServerDialog(props: {
           senderEmail: emailConfig.senderEmail,
           senderName: emailConfig.senderName,
           provider: emailConfig.type === 'resend' ? 'resend' : 'smtp',
+          managedSubdomain: undefined,
+          managedSenderLocalPart: undefined,
         } satisfies CompleteConfig['emails']['server']
       },
       pushable: false,
@@ -539,6 +768,13 @@ function EditEmailServerDialog(props: {
             } satisfies Partial<CompleteConfig['emails']['server']>
           },
           pushable: false,
+        });
+      } else if (values.type === 'managed') {
+        // Managed config is set through the ManagedEmailSetupDialog; just close
+        toast({
+          title: "Email server unchanged",
+          description: "Managed email configuration is controlled through the managed domain setup.",
+          variant: 'success',
         });
       } else if (values.type === 'resend') {
         if (!values.password || !values.senderEmail || !values.senderName) {
@@ -584,6 +820,7 @@ function EditEmailServerDialog(props: {
           control={form.control}
           options={[
             { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: "Managed (via managed domain setup)", value: 'managed' },
             { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },
           ]}
@@ -616,6 +853,21 @@ function EditEmailServerDialog(props: {
             <Typography variant="secondary" className="text-sm">
               <strong>Note:</strong> Your API key will be encrypted and securely stored in the database.
             </Typography>
+          </Alert>
+        </>}
+        {form.watch('type') === 'managed' && <>
+          <Alert className="bg-blue-500/5 border-blue-500/20">
+            <AlertTitle>Managed Email Domain</AlertTitle>
+            <AlertDescription>
+              <Typography variant="secondary" className="text-sm">
+                This email server was configured through the managed domain setup flow. To change the domain or sender, use the managed email setup dialog above.
+              </Typography>
+              {defaultValues.type === 'managed' && defaultValues.senderEmail && (
+                <Typography variant="secondary" className="text-sm mt-2">
+                  <strong>Sender:</strong> {defaultValues.senderName ? `${defaultValues.senderName} <${defaultValues.senderEmail}>` : defaultValues.senderEmail}
+                </Typography>
+              )}
+            </AlertDescription>
           </Alert>
         </>}
         {form.watch('type') === 'standard' && <>
@@ -707,9 +959,11 @@ function TestSendingDialog(props: {
       }
 
       const missingFields: string[] = [];
-      if (!emailServerConfig.host) missingFields.push("host");
-      if (!emailServerConfig.port) missingFields.push("port");
-      if (!emailServerConfig.username) missingFields.push("username");
+      if (emailServerConfig.provider !== "managed") {
+        if (!emailServerConfig.host) missingFields.push("host");
+        if (!emailServerConfig.port) missingFields.push("port");
+        if (!emailServerConfig.username) missingFields.push("username");
+      }
       if (!emailServerConfig.password) missingFields.push("password");
       if (!emailServerConfig.senderName) missingFields.push("sender name");
       if (!emailServerConfig.senderEmail) missingFields.push("sender email");
@@ -719,14 +973,24 @@ function TestSendingDialog(props: {
       }
 
       // Convert CompleteConfig email server to AdminEmailConfig format
-      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' ? {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      const emailConfig: AdminEmailConfig = emailServerConfig.provider === 'resend' || emailServerConfig.provider === 'managed' ? {
         type: 'resend',
-        host: emailServerConfig.host ?? throwErr("Email host is missing"),
-        port: emailServerConfig.port ?? throwErr("Email port is missing"),
-        username: emailServerConfig.username ?? throwErr("Email username is missing"),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        host: emailServerConfig.provider === "managed" ? "smtp.resend.com" : (emailServerConfig.host ?? throwErr("Email host is missing")),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        port: emailServerConfig.provider === "managed" ? 465 : (emailServerConfig.port ?? throwErr("Email port is missing")),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        username: emailServerConfig.provider === "managed" ? "resend" : (emailServerConfig.username ?? throwErr("Email username is missing")),
         password: emailServerConfig.password ?? throwErr("Email password is missing"),
-        senderName: emailServerConfig.senderName ?? throwErr("Email sender name is missing"),
-        senderEmail: emailServerConfig.senderEmail ?? throwErr("Email sender email is missing"),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        senderName: emailServerConfig.provider === "managed" ? project.displayName : (emailServerConfig.senderName ?? throwErr("Email sender name is missing")),
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        senderEmail: emailServerConfig.provider === "managed"
+          ? (emailServerConfig.managedSubdomain && emailServerConfig.managedSenderLocalPart
+            ? `${emailServerConfig.managedSenderLocalPart}@${emailServerConfig.managedSubdomain}`
+            : throwErr("Managed sender config is missing"))
+          : (emailServerConfig.senderEmail ?? throwErr("Email sender email is missing")),
       } : {
         type: 'standard',
         host: emailServerConfig.host ?? throwErr("Email host is missing"),
