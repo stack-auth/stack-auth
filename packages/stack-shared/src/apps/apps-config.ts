@@ -148,6 +148,6 @@ export const ALL_APPS = {
     displayName: "Analytics",
     subtitle: "View and explore analytics data",
     tags: ["developers", "operations"],
-    stage: "alpha",
+    stage: "beta",
   },
 } as const satisfies Record<string, App>;
