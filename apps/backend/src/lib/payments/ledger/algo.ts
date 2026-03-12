@@ -32,7 +32,6 @@ export function computeLedgerBalanceAtNow(transactions: LedgerTransaction[], now
 
   let grantedSum = 0;
   let expiredSum = 0;
-  let usedSum = 0;
   let usedOrExpiredSum = 0;
   for (const t of times) {
     const g = grantedAt.get(t) ?? 0;
@@ -40,7 +39,6 @@ export function computeLedgerBalanceAtNow(transactions: LedgerTransaction[], now
     const u = usedAt.get(t) ?? 0;
     grantedSum += g;
     expiredSum += e;
-    usedSum += u;
     usedOrExpiredSum = Math.max(usedOrExpiredSum + u, expiredSum);
   }
   return grantedSum - usedOrExpiredSum;
