@@ -19,6 +19,33 @@ function sanitizeSubject(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function buildInternalEmailHtml(options: {
+  heading: string,
+  fields: Array<{ label: string, value: string } | { label: string, href: string, linkText: string }>,
+  contentLabel: string,
+  contentBody: string,
+}): string {
+  const fieldRows = options.fields.map((field) => {
+    if ("href" in field) {
+      return `<p><strong>${escapeHtml(field.label)}:</strong> <a href="${escapeHtml(field.href)}">${escapeHtml(field.linkText)}</a></p>`;
+    }
+    return `<p><strong>${escapeHtml(field.label)}:</strong> ${formatTextForHtml(field.value)}</p>`;
+  }).join("\n      ");
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 24px; color: #1f2937;">
+      <h2 style="margin: 0 0 20px;">${escapeHtml(options.heading)}</h2>
+      ${fieldRows}
+      <div style="margin-top: 24px;">
+        <p style="margin-bottom: 8px;"><strong>${escapeHtml(options.contentLabel)}</strong></p>
+        <div style="padding: 16px; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb; white-space: normal;">
+          ${formatTextForHtml(options.contentBody)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function getInternalFeedbackRecipients(): string[] {
   const rawRecipients = getEnvVariable("STACK_INTERNAL_FEEDBACK_RECIPIENTS", defaultRecipient);
   const recipients = rawRecipients.split(",").map((recipient) => recipient.trim());
@@ -65,26 +92,21 @@ export async function sendSupportFeedbackEmail(options: {
   message: string,
 }) {
   const displayName = options.name ?? options.user.display_name ?? "Not provided";
-  const htmlContent = `
-    <div style="font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 24px; color: #1f2937;">
-      <h2 style="margin: 0 0 20px;">Support feedback submission</h2>
-      <p><strong>Sender name:</strong> ${formatTextForHtml(displayName)}</p>
-      <p><strong>Sender email:</strong> ${formatTextForHtml(options.email)}</p>
-      <p><strong>Stack Auth user ID:</strong> ${formatTextForHtml(options.user.id)}</p>
-      <p><strong>Stack Auth display name:</strong> ${formatTextForHtml(options.user.display_name ?? "Not provided")}</p>
-      <div style="margin-top: 24px;">
-        <p style="margin-bottom: 8px;"><strong>Message</strong></p>
-        <div style="padding: 16px; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb; white-space: normal;">
-          ${formatTextForHtml(options.message)}
-        </div>
-      </div>
-    </div>
-  `;
 
   await sendInternalOperationsEmail({
     tenancy: options.tenancy,
     subject: `[Support] ${options.email}`,
-    htmlContent,
+    htmlContent: buildInternalEmailHtml({
+      heading: "Support feedback submission",
+      fields: [
+        { label: "Sender name", value: displayName },
+        { label: "Sender email", value: options.email },
+        { label: "Stack Auth user ID", value: options.user.id },
+        { label: "Stack Auth display name", value: options.user.display_name ?? "Not provided" },
+      ],
+      contentLabel: "Message",
+      contentBody: options.message,
+    }),
   });
 }
 
@@ -96,28 +118,23 @@ export async function sendFeatureRequestNotificationEmail(options: {
   featureRequestId: string,
 }) {
   const featureRequestUrl = new URL(urlString`/p/${options.featureRequestId}`, "https://feedback.stack-auth.com").toString();
-  const htmlContent = `
-    <div style="font-family: Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 24px; color: #1f2937;">
-      <h2 style="margin: 0 0 20px;">New feature request submitted</h2>
-      <p><strong>Title:</strong> ${formatTextForHtml(options.title)}</p>
-      <p><strong>Featurebase post ID:</strong> ${formatTextForHtml(options.featureRequestId)}</p>
-      <p><strong>Featurebase URL:</strong> <a href="${escapeHtml(featureRequestUrl)}">${escapeHtml(featureRequestUrl)}</a></p>
-      <p><strong>Submitted by:</strong> ${formatTextForHtml(options.user.display_name ?? "Not provided")}</p>
-      <p><strong>Submitted email:</strong> ${formatTextForHtml(options.user.primary_email ?? "Not provided")}</p>
-      <p><strong>Stack Auth user ID:</strong> ${formatTextForHtml(options.user.id)}</p>
-      <div style="margin-top: 24px;">
-        <p style="margin-bottom: 8px;"><strong>Details</strong></p>
-        <div style="padding: 16px; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb; white-space: normal;">
-          ${formatTextForHtml(options.content ?? "Not provided")}
-        </div>
-      </div>
-    </div>
-  `;
 
   await sendInternalOperationsEmail({
     tenancy: options.tenancy,
     subject: `[Feature Request] ${options.title}`,
-    htmlContent,
+    htmlContent: buildInternalEmailHtml({
+      heading: "New feature request submitted",
+      fields: [
+        { label: "Title", value: options.title },
+        { label: "Featurebase post ID", value: options.featureRequestId },
+        { label: "Featurebase URL", href: featureRequestUrl, linkText: featureRequestUrl },
+        { label: "Submitted by", value: options.user.display_name ?? "Not provided" },
+        { label: "Submitted email", value: options.user.primary_email ?? "Not provided" },
+        { label: "Stack Auth user ID", value: options.user.id },
+      ],
+      contentLabel: "Details",
+      contentBody: options.content ?? "Not provided",
+    }),
   });
 }
 
