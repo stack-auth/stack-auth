@@ -75,6 +75,9 @@ model Tenancy {
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
 
+  // Email capacity boost - when set and in the future, email capacity is multiplied by 4
+  emailCapacityBoostExpiresAt DateTime?
+
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])
 }
