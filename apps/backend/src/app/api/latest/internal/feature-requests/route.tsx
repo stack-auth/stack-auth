@@ -1,10 +1,13 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { sendFeatureRequestNotificationEmail } from "@/lib/internal-feedback-emails";
 import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 
-const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY", "");
+function getFeaturebaseApiKey() {
+  return getEnvVariable("STACK_FEATUREBASE_API_KEY", "");
+}
 
 // GET /api/latest/internal/feature-requests
 export const GET = createSmartRouteHandler({
@@ -16,6 +19,7 @@ export const GET = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
       type: adaptSchema,
+      tenancy: adaptSchema.defined(),
       user: adaptSchema.defined(),
       project: yupObject({
         id: yupString().oneOf(["internal"]).defined(),
@@ -43,7 +47,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    if (!STACK_FEATUREBASE_API_KEY) {
+    const featurebaseApiKey = getFeaturebaseApiKey();
+    if (!featurebaseApiKey) {
       throw new StackAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
     }
 
@@ -59,7 +64,7 @@ export const GET = createSmartRouteHandler({
     const response = await fetch('https://do.featurebase.app/v2/posts?limit=50&sortBy=upvotes:desc', {
       method: 'GET',
       headers: {
-        'X-API-Key': STACK_FEATUREBASE_API_KEY,
+        'X-API-Key': featurebaseApiKey,
       },
     });
 
@@ -90,7 +95,7 @@ export const GET = createSmartRouteHandler({
         const upvoteResponse = await fetch(`https://do.featurebase.app/v2/posts/upvoters?submissionId=${post.id}`, {
           method: 'GET',
           headers: {
-            'X-API-Key': STACK_FEATUREBASE_API_KEY,
+            'X-API-Key': featurebaseApiKey,
           },
         });
 
@@ -132,6 +137,7 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
       type: adaptSchema,
+      tenancy: adaptSchema.defined(),
       user: adaptSchema.defined(),
       project: yupObject({
         id: yupString().oneOf(["internal"]).defined(),
@@ -156,7 +162,8 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    if (!STACK_FEATUREBASE_API_KEY) {
+    const featurebaseApiKey = getFeaturebaseApiKey();
+    if (!featurebaseApiKey) {
       throw new StackAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
     }
 
@@ -189,7 +196,7 @@ export const POST = createSmartRouteHandler({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': STACK_FEATUREBASE_API_KEY,
+        'X-API-Key': featurebaseApiKey,
       },
       body: JSON.stringify(featurebaseRequestBody),
     });
@@ -198,6 +205,25 @@ export const POST = createSmartRouteHandler({
 
     if (!response.ok) {
       throw new StackAssertionError(`Featurebase API error: ${data.error || 'Failed to create feature request'}`, { data });
+    }
+
+    try {
+      await sendFeatureRequestNotificationEmail({
+        tenancy: auth.tenancy,
+        user: auth.user,
+        title: body.title,
+        content: body.content ?? null,
+        featureRequestId: data.id,
+      });
+    } catch (error) {
+      captureError("feature-request-notification-email", new StackAssertionError(
+        "Feature request notification email failed after Featurebase post creation succeeded",
+        {
+          cause: error,
+          featureRequestId: data.id,
+          userId: auth.user.id,
+        },
+      ));
     }
 
     return {
