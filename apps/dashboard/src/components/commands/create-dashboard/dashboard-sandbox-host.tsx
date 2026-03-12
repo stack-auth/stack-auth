@@ -48,7 +48,10 @@ function getDependencyScripts(esmVersion: string, dashboardUrl: string): string 
           window.dispatchEvent(new Event('deps-ready'));
         };
         script.onerror = (e) => {
-          console.error('Failed to load dashboard-ui-components IIFE bundle', e);
+          window.parent.postMessage({
+            type: 'dashboard-error-boundary',
+            message: 'Failed to load dashboard-ui-components IIFE bundle',
+          }, '*');
         };
         document.head.appendChild(script);
       </script>`;
@@ -304,7 +307,12 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         }
         
         componentDidCatch(error, errorInfo) {
-          console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+          window.parent.postMessage({
+            type: 'dashboard-error-boundary',
+            message: error?.message,
+            stack: error?.stack,
+            componentStack: errorInfo?.componentStack,
+          }, '*');
         }
         
         render() {
@@ -493,6 +501,13 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
 
       if (type === "dashboard-edit") {
         onEditToggleRef.current?.();
+        return;
+      }
+
+      if (type === "dashboard-error-boundary") {
+        const err = new Error(event.data.message ?? 'Unknown dashboard error');
+        if (event.data.stack) err.stack = event.data.stack;
+        captureError('dashboard-sandbox-error-boundary', err);
         return;
       }
 
