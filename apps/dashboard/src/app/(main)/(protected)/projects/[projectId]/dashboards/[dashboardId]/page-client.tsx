@@ -1,3 +1,4 @@
+
 "use client";
 
 import { DashboardSandboxHost } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
@@ -43,7 +44,7 @@ export default function PageClient() {
   const project = adminApp.useProject();
   const projectId = useProjectId();
   const currentUser = useUser({ or: "redirect" });
-  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? "";
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
   const router = useRouter();

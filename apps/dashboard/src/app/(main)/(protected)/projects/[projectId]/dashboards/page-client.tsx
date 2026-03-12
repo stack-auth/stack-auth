@@ -87,7 +87,7 @@ export default function PageClient() {
               icon={ChartBarIcon}
               title={dashboard.displayName}
               size="lg"
-              onClick={() => router.push(`dashboards/${dashboard.id}`)}
+              onClick={() => router.push(`/projects/${project.id}/dashboards/${dashboard.id}`)}
               buttons={[
                 {
                   id: "delete",
@@ -153,7 +153,7 @@ function NewDashboardButton({
       },
       pushable: false,
     });
-    router.push(`dashboards/${id}`);
+    router.push(`/projects/${adminApp.projectId}/dashboards/${id}`);
   };
 
   return (

@@ -46,8 +46,12 @@ export const POST = createSmartRouteHandler({
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
     // Verify user has access to the target project
-    if (projectId && fullReq.auth?.user) {
-      const managedProjectIds = await listManagedProjectIds(fullReq.auth.user);
+    if (projectId != null) {
+      const user = fullReq.auth?.user;
+      if (user == null) {
+        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
+      }
+      const managedProjectIds = await listManagedProjectIds(user);
       if (!managedProjectIds.includes(projectId)) {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
       }
@@ -76,13 +80,12 @@ export const POST = createSmartRouteHandler({
     } else {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
-      console.log(systemPrompt);
-      console.log(messages);
       const result = await generateText({
         model,
         system: systemPrompt,
         messages: messages as ModelMessage[],
         tools: toolsArg,
+        abortSignal: controller.signal,
         stopWhen: stepCountIs(stepLimit),
       }).finally(() => clearTimeout(timeoutId));
 

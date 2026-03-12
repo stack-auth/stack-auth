@@ -121,7 +121,6 @@ export async function generateDashboardCode(
     options?.currentTsxSource,
     options?.enabledAppIds,
   );
-  console.log("contextMessages", [...contextMessages, ...messages]);
   const rawContent = await sendAiRequest(
     backendBaseUrl,
     currentUser,
