@@ -1,5 +1,6 @@
-import { evaluate } from "cel-js";
+import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { evaluate } from "cel-js";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";
 
@@ -166,7 +167,7 @@ export function createSignUpRuleContext(params: {
   countryCode: string | null,
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   oauthProvider: string | null,
-  riskScores: SignUpRiskScores,
+  riskScores: SignUpRiskScoresCrud,
 }): SignUpRuleContext {
   // Handle missing email (e.g., OAuth providers that don't return email)
   // Use empty string so email-based rules don't match
@@ -188,7 +189,10 @@ export function createSignUpRuleContext(params: {
     countryCode,
     authMethod: params.authMethod,
     oauthProvider: params.oauthProvider === null ? '' : params.oauthProvider,
-    riskScores: params.riskScores,
+    riskScores: {
+      bot: params.riskScores.bot,
+      free_trial_abuse: params.riskScores.free_trial_abuse,
+    },
   };
 }
 
@@ -202,7 +206,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: null,
     riskScores: {
       bot: 17,
-      freeTrialAbuse: 23,
+      free_trial_abuse: 23,
     },
   })).toEqual({
     email: 'test.user@example.com',
@@ -224,7 +228,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: 'discord',
     riskScores: {
       bot: 1,
-      freeTrialAbuse: 2,
+      free_trial_abuse: 2,
     },
   })).toEqual({
     email: '',
@@ -246,7 +250,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: 'twitter',
     riskScores: {
       bot: 10,
-      freeTrialAbuse: 20,
+      free_trial_abuse: 20,
     },
   })).toEqual({
     email: '',
@@ -268,7 +272,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: 'google',
     riskScores: {
       bot: 8,
-      freeTrialAbuse: 9,
+      free_trial_abuse: 9,
     },
   })).toEqual({
     email: 'oauth.user@gmail.com',
@@ -289,7 +293,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
     oauthProvider: null,
     riskScores: {
       bot: 3,
-      freeTrialAbuse: 4,
+      free_trial_abuse: 4,
     },
   })).toEqual({
     email: 'user@example.com',
@@ -313,7 +317,7 @@ import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ ex
     oauthProvider: 'discord',
     riskScores: {
       bot: 33,
-      freeTrialAbuse: 44,
+      free_trial_abuse: 44,
     },
   });
 
@@ -339,7 +343,7 @@ import.meta.vitest?.test('countryCode in_list vs equals', ({ expect }) => {
     countryCode: 'US',
     authMethod: 'password',
     oauthProvider: null,
-    riskScores: { bot: 0, freeTrialAbuse: 0 },
+    riskScores: { bot: 0, free_trial_abuse: 0 },
   });
 
   expect(evaluateCelExpression('countryCode in ["US", "CA"]', usContext)).toBe(true);

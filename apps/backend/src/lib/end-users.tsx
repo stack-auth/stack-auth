@@ -62,6 +62,30 @@ export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | n
   return pick(locationInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]);
 }
 
+export type BestEffortEndUserRequestContext = {
+  ipAddress: string | null,
+  ipTrusted: boolean | null,
+  location: EndUserLocation | null,
+};
+
+export async function getBestEffortEndUserRequestContext(): Promise<BestEffortEndUserRequestContext> {
+  const endUserInfo = await getEndUserInfo();
+  if (!endUserInfo) {
+    return {
+      ipAddress: null,
+      ipTrusted: null,
+      location: null,
+    };
+  }
+
+  const locationInfo = endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+  return {
+    ipAddress: locationInfo.ip,
+    ipTrusted: !endUserInfo.maybeSpoofed,
+    location: pick(locationInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]),
+  };
+}
+
 
 type EndUserInfoInner = EndUserLocation & { ip: string }
 

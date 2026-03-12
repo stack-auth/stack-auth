@@ -68,6 +68,7 @@ export const POST = createSmartRouteHandler({
         authMethod: 'password',
         oauthProvider: null,
         ipAddress: null,
+        ipTrusted: null,
         countryCode: null,
       }
     );

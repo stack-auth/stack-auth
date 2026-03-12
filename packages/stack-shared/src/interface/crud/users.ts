@@ -1,3 +1,4 @@
+import type { InferType } from "yup";
 import * as yup from "yup";
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as fieldSchema from "../../schema-fields";
@@ -12,13 +13,14 @@ const restrictedByAdminMeta = {
 
 const countryCodeMeta = { openapiField: { description: 'Best-effort ISO country code captured at sign-up time from request geo headers.', exampleValue: "US" } } as const;
 
-const riskScoreFieldSchema = fieldSchema.yupNumber().integer().min(0).max(100).defined();
-const signUpRiskScoresSchema = fieldSchema.yupObject({
+export const riskScoreFieldSchema = fieldSchema.yupNumber().integer().min(0).max(100).defined();
+export const signUpRiskScoresSchema = fieldSchema.yupObject({
   sign_up: fieldSchema.yupObject({
     bot: riskScoreFieldSchema,
     free_trial_abuse: riskScoreFieldSchema,
   }).defined(),
 });
+export type SignUpRiskScoresCrud = InferType<typeof signUpRiskScoresSchema>["sign_up"];
 
 const oauthProviderBaseFields = {
   id: fieldSchema.yupString().defined(),

@@ -114,3 +114,30 @@ A: In `apps/dashboard/src/components/rule-builder/condition-builder.tsx`, single
 
 Q: What must raw `ProjectUser` SQL fixtures include after sign-up risk scores were added?
 A: Any direct `INSERT INTO "ProjectUser"` path that bypasses the CRUD layer must write `"signUpRiskScoreBot"` and `"signUpRiskScoreFreeTrialAbuse"` explicitly, usually as `0, 0`. The migration intentionally removed the temporary DB defaults, so external-db-sync/performance fixtures that omit those columns can fail with `null value in column "signUpRiskScoreBot" violates not-null constraint`.
+
+Q: Where should disposable-email fraud detection live for this PR?
+A: Put it in `apps/backend/src/lib/risk-scores.tsx` as a weighted sign-up heuristic pipeline that outputs `risk_scores`, and keep the sign-up rules engine unchanged. For the current slice, derive bot/free-trial-abuse scores from regex matches against disposable-looking email domains.
+
+Q: Why did `internal-metrics.test.ts` snapshots change after adding signup country and risk scores?
+A: The internal metrics response now includes the server user fields `country_code` and `risk_scores` inside `recently_active`/`recently_registered`, so `apps/e2e/tests/backend/endpoints/api/v1/__snapshots__/internal-metrics.test.ts.snap` must be updated whenever those user read-shape fields change.
+
+Q: How should recent-signup abuse heuristics persist signup-only correlation facts?
+A: Keep the public `risk_scores` API unchanged and persist private, immutable signup facts directly on `ProjectUser`: a real-signup timestamp (`signUpHeuristicRecordedAt`), normalized signup IP (`signUpIp`), signup IP trust (`signUpIpTrusted`), normalized email identity (`signUpEmailNormalized`), and base email pattern (`signUpEmailBase`). Compute them centrally in `createOrUpgradeAnonymousUserWithRules`, then query them from `apps/backend/src/lib/risk-scores.tsx` so the scoring pipeline can stay deterministic without relying on mutable user fields or session rows.
+
+Q: How should recent-signup heuristic lookups be optimized on `ProjectUser`?
+A: In `apps/backend/src/lib/risk-scores.tsx`, do not use open-ended `COUNT(*)` when the logic only needs to know whether recent matches reached a configured threshold. Instead, fetch up to the threshold and compare `rows.length`. Back that with composite indexes on `ProjectUser` ordered as `(tenancyId, signUpIp, signUpHeuristicRecordedAt)` and `(tenancyId, signUpEmailBase, signUpHeuristicRecordedAt)`, added in a separate concurrent migration because `ProjectUser` is large.
+
+Q: How should Emailable be shared between email delivery and signup fraud scoring?
+A: Put the vendor call in a shared helper at `apps/backend/src/lib/emailable.tsx` using the existing `STACK_EMAILABLE_API_KEY` and the test fallback domain `emailable-not-deliverable.example.com`. Keep email sending fail-open on Emailable errors in `apps/backend/src/lib/email-queue-step.tsx`, but let `apps/backend/src/lib/risk-scores.tsx` treat Emailable request failures as a max-risk match for the disposable-email heuristic.
+
+Q: How should tests clear auth between repeated signup cases?
+A: In long-running backend E2E cases, prefer `backendContext.set({ userAuth: null })` over `Auth.signOut()` when you only need to clear the client session. `Auth.signOut()` asserts a snapshot against a live access token and can fail if the token expired during a slower suite.
+
+Q: What needs to happen before replacing renamed signup-heuristic raw SQL with Prisma ORM calls?
+A: Regenerate the backend Prisma client first. After renaming the persisted `ProjectUser` signup heuristic fields to `signUpIp`, `signUpEmailNormalized`, and `signUpEmailBase`, `apps/backend/src/generated/prisma` can still reference the old names until `pnpm --dir apps/backend run codegen-prisma` runs. Only after that will `prisma.projectUser.update(...)` and `findMany(...)` typecheck cleanly in `apps/backend/src/lib/users.tsx` and `apps/backend/src/lib/risk-scores.tsx`.
+
+Q: Should the backend use Emailable's official SDK directly?
+A: Yes. The official package is `emailable` (`https://github.com/emailable/emailable-node` / npm `emailable`) and `apps/backend` can use it instead of a hand-rolled HTTP client. But its published TypeScript surface is extremely loose (`Promise<any>` / `options?: {}`), so keep local runtime validation in `apps/backend/src/lib/emailable.tsx` and inject a fake client in unit tests instead of trusting the SDK types.
+
+Q: Where should the sign-up risk-score shape come from?
+A: Reuse the shared CRUD schema in `packages/stack-shared/src/interface/crud/users.ts`. Export `riskScoreFieldSchema`, `signUpRiskScoresSchema`, and the inferred `SignUpRiskScoresCrud` type there, then import them into backend code instead of re-declaring the same `bot` / `free_trial_abuse` shape in `apps/backend/src/lib/risk-scores.tsx` or internal route schemas.

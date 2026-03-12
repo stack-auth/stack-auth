@@ -9,7 +9,7 @@ describe("risk scores", () => {
   // ==========================================
 
   describe("persistence on password signup", () => {
-    it("should persist non-zero risk scores for high-risk email (test@example.com stub)", async ({ expect }) => {
+    it("should persist non-zero risk scores for disposable-email domains", async ({ expect }) => {
       await Project.createAndSwitch({
         config: { credential_enabled: true },
       });
@@ -18,7 +18,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@emailable-not-deliverable.example.com",
           password: generateSecureRandomString(),
         },
       });
@@ -168,7 +168,7 @@ describe("risk scores", () => {
         accessType: "client",
         headers: { "x-stack-access-token": accessToken },
         body: {
-          email: "test@example.com",
+          email: "user@emailable-not-deliverable.example.com",
           password: generateSecureRandomString(),
         },
       });
@@ -184,6 +184,189 @@ describe("risk scores", () => {
         sign_up: {
           bot: 100,
           free_trial_abuse: 100,
+        },
+      });
+    });
+  });
+
+  describe("recent-signup heuristics", () => {
+    it("should score repeated recent signups from the same spoofable IP", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      backendContext.set({
+        ipData: {
+          ipAddress: "127.0.0.21",
+          country: "US",
+          city: "New York",
+          region: "NY",
+          latitude: 40.7128,
+          longitude: -74.006,
+          tzIdentifier: "America/New_York",
+        },
+      });
+
+      const firstResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: `same-ip-first-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(firstResponse.status).toBe(200);
+
+      backendContext.set({ userAuth: null });
+
+      const secondResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: `same-ip-second-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(secondResponse.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${secondResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 15,
+          free_trial_abuse: 35,
+        },
+      });
+    });
+
+    it("should score recent similar-email signups without matching unrelated emails", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+      backendContext.set({ ipData: undefined });
+
+      const firstResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: "alice+1@example.com",
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(firstResponse.status).toBe(200);
+
+      backendContext.set({ userAuth: null });
+
+      const similarResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: "alice+2@example.com",
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(similarResponse.status).toBe(200);
+
+      const similarUserResponse = await niceBackendFetch(`/api/v1/users/${similarResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(similarUserResponse.status).toBe(200);
+      expect(similarUserResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 20,
+          free_trial_abuse: 60,
+        },
+      });
+
+      backendContext.set({ userAuth: null });
+
+      const unrelatedResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: "alice+sales@example.com",
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(unrelatedResponse.status).toBe(200);
+
+      const unrelatedUserResponse = await niceBackendFetch(`/api/v1/users/${unrelatedResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(unrelatedUserResponse.status).toBe(200);
+      expect(unrelatedUserResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 0,
+          free_trial_abuse: 0,
+        },
+      });
+    });
+
+    it("should persist recent-signup heuristic scores when upgrading an anonymous user", async ({ expect }) => {
+      await Project.createAndSwitch({
+        config: { credential_enabled: true },
+      });
+
+      backendContext.set({
+        ipData: {
+          ipAddress: "127.0.0.31",
+          country: "CA",
+          city: "Toronto",
+          region: "ON",
+          latitude: 43.6532,
+          longitude: -79.3832,
+          tzIdentifier: "America/Toronto",
+        },
+      });
+
+      const firstResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        body: {
+          email: `upgrade-baseline-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(firstResponse.status).toBe(200);
+
+      backendContext.set({ userAuth: null });
+
+      const anonymousResponse = await niceBackendFetch("/api/v1/auth/anonymous/sign-up", {
+        accessType: "client",
+        method: "POST",
+        body: {},
+      });
+      expect(anonymousResponse.status).toBe(200);
+
+      const upgradeResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+        method: "POST",
+        accessType: "client",
+        headers: { "x-stack-access-token": anonymousResponse.body.access_token },
+        body: {
+          email: `upgrade-target-${generateSecureRandomString(8)}@example.com`,
+          password: generateSecureRandomString(),
+        },
+      });
+      expect(upgradeResponse.status).toBe(200);
+
+      const userResponse = await niceBackendFetch(`/api/v1/users/${upgradeResponse.body.user_id}`, {
+        method: "GET",
+        accessType: "server",
+      });
+
+      expect(userResponse.status).toBe(200);
+      expect(userResponse.body.risk_scores).toEqual({
+        sign_up: {
+          bot: 15,
+          free_trial_abuse: 35,
         },
       });
     });
@@ -574,7 +757,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });
@@ -626,7 +809,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });
@@ -661,7 +844,7 @@ describe("risk scores", () => {
         method: "POST",
         accessType: "client",
         body: {
-          email: "test@example.com",
+          email: "user@tempmail.com",
           password: generateSecureRandomString(),
         },
       });

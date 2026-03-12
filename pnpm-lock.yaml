@@ -222,6 +222,9 @@ importers:
       dotenv-cli:
         specifier: ^7.3.0
         version: 7.4.1
+      emailable:
+        specifier: ^3.1.1
+        version: 3.1.1
       freestyle-sandboxes:
         specifier: ^0.1.6
         version: 0.1.6
@@ -10937,6 +10940,9 @@ packages:
 
   elliptic@6.5.7:
     resolution: {integrity: sha512-ESVCtTwiA+XhY3wyh24QqRGBoP3rEdDUl3EDUUo9tft074fi19IrdpH7hLCMMP3CIj7jb3W96rn8lt/BqIlt5Q==}
+
+  emailable@3.1.1:
+    resolution: {integrity: sha512-u29D/famJqKBee+4V8SctKiwMP9+qS9WFu2mZtwMQQGN/wrK7iFY/Yi3LfiO2hfQpgv+19swsbhJsBm+WCDSGA==}
 
   embla-carousel-react@8.6.0:
     resolution: {integrity: sha512-0/PjqU7geVmo6F734pmPqpyHqiM99olvyecY7zdweCw+6tKEXnrE90pBiBbMMU8s5tICemzpQ3hi5EpxzGW+JA==}
@@ -27553,6 +27559,12 @@ snapshots:
       inherits: 2.0.4
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
+
+  emailable@3.1.1:
+    dependencies:
+      axios: 1.7.7
+    transitivePeerDependencies:
+      - debug
 
   embla-carousel-react@8.6.0(react@18.3.1):
     dependencies:

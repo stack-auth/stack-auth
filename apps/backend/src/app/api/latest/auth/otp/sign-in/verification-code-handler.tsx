@@ -121,6 +121,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           authMethod: 'otp',
           oauthProvider: null,
           ipAddress: null,
+          ipTrusted: null,
           countryCode: null,
           // TODO: Pass request context when available in verification code handler
         }
