@@ -12,19 +12,19 @@ type ScorePair = Pick<SignUpRiskScoresCrud, "bot" | "free_trial_abuse">;
  * signal → higher weight).
  */
 export const riskScoreWeights = {
-  emailable: { bot: 45, free_trial_abuse: 40 } satisfies ScorePair,
+  emailable: { bot: 45, free_trial_abuse: 35 } satisfies ScorePair,
   sameIp: {
-    trusted: { bot: 20, free_trial_abuse: 30 } satisfies ScorePair,
-    spoofable: { bot: 10, free_trial_abuse: 15 } satisfies ScorePair,
+    trusted: { bot: 25, free_trial_abuse: 35 } satisfies ScorePair,
+    spoofable: { bot: 12, free_trial_abuse: 18 } satisfies ScorePair,
   },
-  similarEmail: { bot: 15, free_trial_abuse: 20 } satisfies ScorePair,
-  turnstile: { bot: 20, free_trial_abuse: 10 } satisfies ScorePair,
+  similarEmail: { bot: 10, free_trial_abuse: 10 } satisfies ScorePair,
+  turnstile: { bot: 20, free_trial_abuse: 20 } satisfies ScorePair,
 } as const;
 
 export const riskScoreThresholds = {
   recentWindowHours: 24,
   sameIpMinMatches: 1,
-  sameIpMaxMatchesForFullPenalty: 10,
+  sameIpMaxMatchesForFullPenalty: 3,
   similarEmailMinMatches: 1,
 } as const;
 

@@ -112,7 +112,7 @@ describe("risk scores", () => {
     it("turnstile invalid", async ({ expect }) => {
       await Project.createAndSwitch({ config: { credential_enabled: true } });
       const s = await signUpReadScoresAndLogout({ turnstileToken: mockTurnstileTokens.invalid });
-      assertScores(expect, "turnstile invalid", s, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "turnstile invalid", s, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("turnstile error", async ({ expect }) => {
@@ -124,7 +124,7 @@ describe("risk scores", () => {
     it("turnstile omitted (legacy backward compat)", async ({ expect }) => {
       await Project.createAndSwitch({ config: { credential_enabled: true } });
       const s = await signUpReadScoresAndLogout({});
-      assertScores(expect, "turnstile omitted (legacy)", s, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "turnstile omitted (legacy)", s, { bot: 20, free_trial_abuse: 20 });
     });
   });
 
@@ -134,7 +134,7 @@ describe("risk scores", () => {
       const s = await signUpReadScoresAndLogout({
         email: `user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`,
       });
-      assertScores(expect, "emailable not-deliverable + turnstile omitted", s, { bot: 65, free_trial_abuse: 50 });
+      assertScores(expect, "emailable not-deliverable + turnstile omitted", s, { bot: 65, free_trial_abuse: 55 });
     });
   });
 
@@ -147,23 +147,23 @@ describe("risk scores", () => {
 
       // Seed: 1st signup establishes the IP baseline (no prior same-IP → turnstile-only)
       const seed = await signUpReadScoresAndLogout({});
-      assertScores(expect, "seed (0 prior)", seed, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "seed (0 prior)", seed, { bot: 20, free_trial_abuse: 20 });
 
       // 1 prior same-IP signup  →  IP contributes 1/3 of trusted weight
       const s1 = await signUpReadScoresAndLogout({});
-      assertScores(expect, "1 prior same-IP", s1, { bot: 27, free_trial_abuse: 20 });
+      assertScores(expect, "1 prior same-IP", s1, { bot: 28, free_trial_abuse: 32 });
 
       // 2 prior  →  2/3 of trusted weight
       const s2 = await signUpReadScoresAndLogout({});
-      assertScores(expect, "2 prior same-IP", s2, { bot: 33, free_trial_abuse: 30 });
+      assertScores(expect, "2 prior same-IP", s2, { bot: 37, free_trial_abuse: 43 });
 
       // 3 prior  →  full trusted weight (max)
       const s3 = await signUpReadScoresAndLogout({});
-      assertScores(expect, "3 prior same-IP (max)", s3, { bot: 40, free_trial_abuse: 40 });
+      assertScores(expect, "3 prior same-IP (max)", s3, { bot: 45, free_trial_abuse: 55 });
 
       // 4 prior  →  still clamped at full trusted weight
       const s4 = await signUpReadScoresAndLogout({});
-      assertScores(expect, "4 prior same-IP (clamped)", s4, { bot: 40, free_trial_abuse: 40 });
+      assertScores(expect, "4 prior same-IP (clamped)", s4, { bot: 45, free_trial_abuse: 55 });
     });
   });
 
@@ -179,11 +179,11 @@ describe("risk scores", () => {
 
       // Same base (alice@example.com) → triggers similar email signal
       const similar = await signUpReadScoresAndLogout({ email: "alice+2@example.com" });
-      assertScores(expect, "alice+2 after alice+1 (same base)", similar, { bot: 35, free_trial_abuse: 30 });
+      assertScores(expect, "alice+2 after alice+1 (same base)", similar, { bot: 30, free_trial_abuse: 30 });
 
       // Different base (bob@example.com) → no similar email signal
       const unrelated = await signUpReadScoresAndLogout({ email: "bob@example.com" });
-      assertScores(expect, "bob after alice (different base)", unrelated, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "bob after alice (different base)", unrelated, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("non-numeric plus suffixes also share the same base", async ({ expect }) => {
@@ -195,7 +195,7 @@ describe("risk scores", () => {
       await signUpReadScoresAndLogout({ email: "demo+abc12345@example.com" });
 
       const similar = await signUpReadScoresAndLogout({ email: "demo+xyz67890@example.com" });
-      assertScores(expect, "demo+xyz after demo+abc (same base)", similar, { bot: 35, free_trial_abuse: 30 });
+      assertScores(expect, "demo+xyz after demo+abc (same base)", similar, { bot: 30, free_trial_abuse: 30 });
     });
   });
 
@@ -212,8 +212,8 @@ describe("risk scores", () => {
       await signUpReadScoresAndLogout({ email: "combo+3@example.com", turnstileToken: mockTurnstileTokens.signUpOk });
 
       const target = await signUpReadScoresAndLogout({ email: "combo+4@example.com", turnstileToken: mockTurnstileTokens.signUpOk });
-      // turnstile ok (0,0) + IP trusted x3 (20,30) + similar email (15,20) = (35, 50)
-      assertScores(expect, "turnstile ok + IP x3 + similar", target, { bot: 35, free_trial_abuse: 50 });
+      // turnstile ok (0,0) + IP trusted x3 (25,35) + similar email (10,10) = (35, 45)
+      assertScores(expect, "turnstile ok + IP x3 + similar", target, { bot: 35, free_trial_abuse: 45 });
     });
 
     it("turnstile invalid + trusted IP x3 + similar email", async ({ expect }) => {
@@ -227,8 +227,8 @@ describe("risk scores", () => {
       await signUpReadScoresAndLogout({ email: "comboB+3@example.com" });
 
       const target = await signUpReadScoresAndLogout({ email: "comboB+4@example.com" });
-      // turnstile inv (20,10) + IP x3 (20,30) + similar (15,20) = (55, 60)
-      assertScores(expect, "turnstile inv + IP x3 + similar", target, { bot: 55, free_trial_abuse: 60 });
+      // turnstile inv (20,20) + IP x3 (25,35) + similar (10,10) = (55, 65)
+      assertScores(expect, "turnstile inv + IP x3 + similar", target, { bot: 55, free_trial_abuse: 65 });
     });
 
     it("all signals maxed → clamped at {100, 100}", async ({ expect }) => {
@@ -243,7 +243,7 @@ describe("risk scores", () => {
       await signUpReadScoresAndLogout({ email: `allmax+3@${domain}` });
 
       const target = await signUpReadScoresAndLogout({ email: `allmax+4@${domain}` });
-      // turnstile inv (20,10) + emailable (45,40) + IP x3 (20,30) + similar (15,20) = (100, 100)
+      // turnstile inv (20,20) + emailable (45,35) + IP x3 (25,35) + similar (10,10) = (100, 100)
       assertScores(expect, "all signals maxed", target, { bot: 100, free_trial_abuse: 100 });
     });
 
@@ -257,8 +257,8 @@ describe("risk scores", () => {
       await signUpReadScoresAndLogout({ email: `emailsim+1@${domain}` });
 
       const target = await signUpReadScoresAndLogout({ email: `emailsim+2@${domain}` });
-      // turnstile inv (20,10) + emailable (45,40) + similar (15,20) = (80, 70)
-      assertScores(expect, "emailable + similar (no IP)", target, { bot: 80, free_trial_abuse: 70 });
+      // turnstile inv (20,20) + emailable (45,35) + similar (10,10) = (75, 65)
+      assertScores(expect, "emailable + similar (no IP)", target, { bot: 75, free_trial_abuse: 65 });
     });
   });
 
@@ -288,7 +288,7 @@ describe("risk scores", () => {
 
       const userResponse = await niceBackendFetch(`/api/v1/users/${signInResult.userId}`, { method: "GET", accessType: "server" });
       expect(userResponse.status).toBe(200);
-      assertScores(expect, "OTP + turnstile invalid", userResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "OTP + turnstile invalid", userResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("OAuth with valid turnstile → {0, 0}", async ({ expect }) => {
@@ -312,7 +312,7 @@ describe("risk scores", () => {
 
       const meResponse = await niceBackendFetch("/api/v1/users/me", { accessType: "server" });
       expect(meResponse.status).toBe(200);
-      assertScores(expect, "OAuth + turnstile invalid", meResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "OAuth + turnstile invalid", meResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 20 });
     });
   });
 
@@ -356,7 +356,7 @@ describe("risk scores", () => {
       expect(secondResponse.status).toBe(200);
 
       const scores = await readUserScores(secondResponse.body.user_id);
-      assertScores(expect, "password invisible→visible recovery", scores, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "password invisible→visible recovery", scores, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("password: invisible invalid → visible also invalid → 409 again", async ({ expect }) => {
@@ -425,7 +425,7 @@ describe("risk scores", () => {
 
       const userResponse = await niceBackendFetch(`/api/v1/users/${signInResult.userId}`, { method: "GET", accessType: "server" });
       expect(userResponse.status).toBe(200);
-      assertScores(expect, "OTP invisible→visible recovery", userResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "OTP invisible→visible recovery", userResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("OTP: visible phase without previous_result → 400 SCHEMA_ERROR", async ({ expect }) => {
@@ -479,7 +479,7 @@ describe("risk scores", () => {
 
       const meResponse = await niceBackendFetch("/api/v1/users/me", { accessType: "server" });
       expect(meResponse.status).toBe(200);
-      assertScores(expect, "OAuth invisible→visible recovery", meResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "OAuth invisible→visible recovery", meResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("OAuth: visible phase without previous_result → 400 SCHEMA_ERROR", async ({ expect }) => {
@@ -517,7 +517,7 @@ describe("risk scores", () => {
       });
 
       const scores = await readUserScores(userId);
-      assertScores(expect, "anon → password (turnstile omitted)", scores, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "anon → password (turnstile omitted)", scores, { bot: 20, free_trial_abuse: 20 });
     });
 
     it("anonymous → password with emailable not-deliverable + turnstile omitted → {65, 50}", async ({ expect }) => {
@@ -534,7 +534,7 @@ describe("risk scores", () => {
       });
 
       const scores = await readUserScores(userId);
-      assertScores(expect, "anon → password (emailable bad)", scores, { bot: 65, free_trial_abuse: 50 });
+      assertScores(expect, "anon → password (emailable bad)", scores, { bot: 65, free_trial_abuse: 55 });
     });
 
     it("anonymous → password with same-IP prior (trusted) → turnstile omitted + IP", async ({ expect }) => {
@@ -555,8 +555,8 @@ describe("risk scores", () => {
       });
 
       const scores = await readUserScores(userId);
-      // turnstile inv (20,10) + IP trusted x1 (7,10) = (27, 20)
-      assertScores(expect, "anon → password (IP trusted x1)", scores, { bot: 27, free_trial_abuse: 20 });
+      // turnstile inv (20,20) + IP trusted x1 (8,12) = (28, 32)
+      assertScores(expect, "anon → password (IP trusted x1)", scores, { bot: 28, free_trial_abuse: 32 });
     });
 
     it("anonymous user without conversion has {0, 0}", async ({ expect }) => {
@@ -675,7 +675,7 @@ describe("risk scores", () => {
       expect(updateResponse.status).toBe(400);
 
       const readResponse = await niceBackendFetch(`/api/v1/users/${signUpResult.userId}`, { method: "GET", accessType: "server" });
-      assertScores(expect, "unchanged after client PATCH attempt", readResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 10 });
+      assertScores(expect, "unchanged after client PATCH attempt", readResponse.body.risk_scores.sign_up, { bot: 20, free_trial_abuse: 20 });
     });
   });
 
@@ -760,7 +760,7 @@ describe("risk scores", () => {
       });
       expect(updateResponse.status).toBe(200);
       expect(updateResponse.body.display_name).toBe("Updated Name");
-      assertScores(expect, "unchanged after display_name update", updateResponse.body.risk_scores.sign_up, { bot: 65, free_trial_abuse: 50 });
+      assertScores(expect, "unchanged after display_name update", updateResponse.body.risk_scores.sign_up, { bot: 65, free_trial_abuse: 55 });
     });
 
     it("server-created users default to {0, 0}", async ({ expect }) => {
