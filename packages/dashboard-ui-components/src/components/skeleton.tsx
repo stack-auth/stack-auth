@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@stackframe/stack-ui";
+import type React from "react";
 
 export type DesignSkeletonProps = React.HTMLAttributes<HTMLDivElement>;
 

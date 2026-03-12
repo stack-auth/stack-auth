@@ -84,6 +84,10 @@ async function sendAiRequest(
     body: JSON.stringify(body),
   });
 
+  if (!response.ok) {
+    throw new Error(`AI request failed: ${response.status} ${response.statusText}`);
+  }
+
   const json = await response.json() as { content?: ChatContent };
   return Array.isArray(json.content) ? json.content : [];
 }
@@ -322,6 +326,10 @@ Please update the source code to change "${oldText}" to "${newText}" at the spec
       messages: [{ role: "user", content: userPrompt }],
     }),
   });
+
+  if (!response.ok) {
+    throw new Error(`Wysiwyg edit request failed: ${response.status} ${response.statusText}`);
+  }
 
   const json = await response.json() as { content?: Array<{ type: string, text?: string }> };
   const textBlock = Array.isArray(json.content)

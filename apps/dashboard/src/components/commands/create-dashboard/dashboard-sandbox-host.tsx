@@ -25,10 +25,10 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
   if (isDev) {
     return html`
       <script type="module">
-        import React from 'https://esm.sh/react@18';
-        import * as ReactDOM from 'https://esm.sh/react-dom@18?deps=react@18';
-        import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
-        import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
+        import React from 'https://esm.sh/react@19.2.3';
+        import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
+        import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
+        import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
 
         window.React = React;
         window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
@@ -72,10 +72,10 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
 
   return html`
     <script type="module">
-      import React from 'https://esm.sh/react@18';
-      import * as ReactDOM from 'https://esm.sh/react-dom@18?deps=react@18';
-      import * as ReactDOMClient from 'https://esm.sh/react-dom@18/client?deps=react@18';
-      import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@18,react-dom@18';
+      import React from 'https://esm.sh/react@19.2.3';
+      import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
+      import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
+      import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
 
       window.React = React;
       window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
@@ -85,13 +85,13 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
       let DashboardUIComponents, StackSDK;
       try {
         [DashboardUIComponents, StackSDK] = await Promise.all([
-          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@18,react-dom@18'),
+          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@19.2.3,react-dom@19.2.3'),
           import('https://esm.sh/@stackframe/js@${esmVersion}'),
         ]);
       } catch (e) {
         window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Failed to load at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
         [DashboardUIComponents, StackSDK] = await Promise.all([
-          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@18,react-dom@18'),
+          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@19.2.3,react-dom@19.2.3'),
           import('https://esm.sh/@stackframe/js@${esmFallbackVersion}'),
         ]);
       }
@@ -243,7 +243,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
       };
       // Controls visibility flag — only true in the full dashboard viewer (not cmd+K preview)
       window.__showControls = ${showControls};
-      window.__chatOpen = false;
+      window.__chatOpen = ${initialChatOpen};
 
       // Theme syncing and chat state from parent window
       window.addEventListener('message', (event) => {

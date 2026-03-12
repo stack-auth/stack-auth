@@ -16,7 +16,7 @@ import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/erro
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { CmdKPreviewProps } from "../../cmdk-commands";
 import { DashboardSandboxHost } from "./dashboard-sandbox-host";
 
@@ -61,18 +61,26 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
   const [errorText, setErrorText] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<DashboardArtifact | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const generateDashboard = useCallback(async () => {
     if (!projectId || !prompt) {
       return;
     }
+
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setState("generating");
     setErrorText(null);
     setArtifact(null);
 
     try {
       const userMessages: Array<{ role: string, content: string }> = [{ role: "user", content: prompt }];
-      const { toolCall } = await generateDashboardCode(backendBaseUrl, currentUser, userMessages, { enabledAppIds });
+      const { toolCall } = await generateDashboardCode(backendBaseUrl, currentUser, userMessages, { enabledAppIds, abortSignal: controller.signal });
+
+      if (controller.signal.aborted) return;
 
       if (!toolCall?.args?.content) {
         setState("error");
@@ -91,6 +99,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
       });
       setState("ready");
     } catch (error) {
+      if (controller.signal.aborted) return;
       captureError("create-dashboard-preview", error);
       setState("error");
       setErrorText("Failed to generate dashboard. Please try again.");
