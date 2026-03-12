@@ -227,42 +227,45 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
   const clickhouseClient = getClickhouseAdminClient();
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const [userRows, users] = await Promise.all([
-    clickhouseClient.query({
-      query: `
-        SELECT
-          toDate(event_at) AS day,
-          assumeNotNull(user_id) AS user_id
-        FROM analytics_internal.events
-        WHERE event_type = '$token-refresh'
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND user_id IS NOT NULL
-          AND event_at >= {since:DateTime}
-          AND event_at < {untilExclusive:DateTime}
-          AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
-        GROUP BY day, user_id
-      `,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        since: formatClickhouseDateTimeParam(since),
-        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
-        includeAnonymous: includeAnonymous ? 1 : 0,
-      },
-      format: "JSONEachRow",
-    }).then((result) => result.json() as Promise<{ day: string, user_id: string }[]>),
-    prisma.projectUser.findMany({
+  const userRows = await clickhouseClient.query({
+    query: `
+      SELECT
+        toDate(event_at) AS day,
+        assumeNotNull(user_id) AS user_id
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND user_id IS NOT NULL
+        AND event_at >= {since:DateTime}
+        AND event_at < {untilExclusive:DateTime}
+        AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+      GROUP BY day, user_id
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+      includeAnonymous: includeAnonymous ? 1 : 0,
+    },
+    format: "JSONEachRow",
+  }).then((result) => result.json() as Promise<{ day: string, user_id: string }[]>);
+
+  const activeUserIds = [...new Set(userRows.map((row) => row.user_id))];
+  const users = activeUserIds.length === 0
+    ? []
+    : await prisma.projectUser.findMany({
       where: {
         tenancyId: tenancy.id,
+        projectUserId: { in: activeUserIds },
         ...(includeAnonymous ? {} : { isAnonymous: false }),
       },
       select: {
         projectUserId: true,
         createdAt: true,
       },
-    }),
-  ]);
+    });
 
   const orderedDays: string[] = [];
   const idsByDay = new Map<string, Set<string>>();
@@ -298,37 +301,42 @@ async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<A
   const clickhouseClient = getClickhouseAdminClient();
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const [teamRows, teams] = await Promise.all([
-    clickhouseClient.query({
-      query: `
-        SELECT
-          toDate(event_at) AS day,
-          assumeNotNull(team_id) AS team_id
-        FROM analytics_internal.events
-        WHERE event_type = '$token-refresh'
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND team_id IS NOT NULL
-          AND event_at >= {since:DateTime}
-          AND event_at < {untilExclusive:DateTime}
-        GROUP BY day, team_id
-      `,
-      query_params: {
-        projectId: tenancy.project.id,
-        branchId: tenancy.branchId,
-        since: formatClickhouseDateTimeParam(since),
-        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+  const teamRows = await clickhouseClient.query({
+    query: `
+      SELECT
+        toDate(event_at) AS day,
+        assumeNotNull(team_id) AS team_id
+      FROM analytics_internal.events
+      WHERE event_type = '$token-refresh'
+        AND project_id = {projectId:String}
+        AND branch_id = {branchId:String}
+        AND team_id IS NOT NULL
+        AND event_at >= {since:DateTime}
+        AND event_at < {untilExclusive:DateTime}
+      GROUP BY day, team_id
+    `,
+    query_params: {
+      projectId: tenancy.project.id,
+      branchId: tenancy.branchId,
+      since: formatClickhouseDateTimeParam(since),
+      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+    },
+    format: "JSONEachRow",
+  }).then((result) => result.json() as Promise<{ day: string, team_id: string }[]>);
+
+  const activeTeamIds = [...new Set(teamRows.map((row) => row.team_id))];
+  const teams = activeTeamIds.length === 0
+    ? []
+    : await prisma.team.findMany({
+      where: {
+        tenancyId: tenancy.id,
+        teamId: { in: activeTeamIds },
       },
-      format: "JSONEachRow",
-    }).then((result) => result.json() as Promise<{ day: string, team_id: string }[]>),
-    prisma.team.findMany({
-      where: { tenancyId: tenancy.id },
       select: {
         teamId: true,
         createdAt: true,
       },
-    }),
-  ]);
+    });
 
   const orderedDays: string[] = [];
   const idsByDay = new Map<string, Set<string>>();
@@ -471,9 +479,11 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
       where: { tenancyId: tenancy.id },
     }),
     prisma.subscription.findMany({
-      where: { tenancyId: tenancy.id },
+      where: {
+        tenancyId: tenancy.id,
+        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
       orderBy: { createdAt: 'desc' },
-      take: 30,
       select: { createdAt: true, status: true, customerType: true, productId: true },
     }),
     prisma.subscriptionInvoice.aggregate({
@@ -488,11 +498,11 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     }),
   ]);
 
-  // Build subscriptions-by-status map
-  const subsByStatus: Record<string, number> = {};
+  const subsByStatusMap = new Map<string, number>();
   for (const group of subscriptionsByStatus) {
-    subsByStatus[group.status.toLowerCase()] = group._count._all;
+    subsByStatusMap.set(group.status.toLowerCase(), group._count._all);
   }
+  const subsByStatus = Object.fromEntries(subsByStatusMap);
 
   // Daily subscription signups for the last 30 days
   const now = new Date();
@@ -591,10 +601,11 @@ async function loadEmailOverview(tenancy: Tenancy) {
     })(),
   ]);
 
-  const emailsByStatus: Record<string, number> = {};
+  const emailsByStatusMap = new Map<string, number>();
   for (const group of statusGroups) {
-    emailsByStatus[group.simpleStatus.toLowerCase().replace('_', '-')] = group._count._all;
+    emailsByStatusMap.set(group.simpleStatus.toLowerCase().replace('_', '-'), group._count._all);
   }
+  const emailsByStatus = Object.fromEntries(emailsByStatusMap);
 
   // Daily email sends for last 30 days
   const emailByDay = new Map<string, number>();
@@ -611,9 +622,9 @@ async function loadEmailOverview(tenancy: Tenancy) {
 
   const totalEmails = Object.values(emailsByStatus).reduce((a, b) => a + b, 0);
   const denom = finishedSendingCount > 0 ? finishedSendingCount : 1;
-  const deliverabilityRate = Number(((deliveredCount / denom) * 100).toFixed(2));
-  const bounceRate = Number(((bouncedCount / denom) * 100).toFixed(2));
-  const clickRate = Number(((clickedCount / denom) * 100).toFixed(2));
+  const deliverabilityRate = Number((Math.min(deliveredCount / denom, 1) * 100).toFixed(2));
+  const bounceRate = Number((Math.min(bouncedCount / denom, 1) * 100).toFixed(2));
+  const clickRate = Number((Math.min(clickedCount / denom, 1) * 100).toFixed(2));
 
   // Build per-day per-status breakdown for stacked bar chart
   type DayStatusCounts = { date: string, ok: number, error: number, in_progress: number };
@@ -916,7 +927,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         new_cents: 0,
         refund_cents: 0,
       })),
-      total_revenue_cents: 0,
+      total_revenue_cents: replayResult.totalRevenueCents,
       total_replays: replayResult.total,
       recent_replays: replayResult.recent,
       visitors,
@@ -1098,7 +1109,7 @@ function generateDevAnalyticsOverview(now: Date, totalUsers: number) {
 async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const [totalUsers, verifiedUsers, anonymousUsers, totalTeams] = await Promise.all([
+  const [totalUsers, verifiedUsers, verifiedNonAnonymousUsers, anonymousUsers, totalTeams] = await Promise.all([
     prisma.projectUser.count({ where: { tenancyId: tenancy.id } }),
     prisma.projectUser.count({
       where: {
@@ -1106,11 +1117,18 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
         contactChannels: { some: { type: 'EMAIL', isVerified: true } },
       },
     }),
+    prisma.projectUser.count({
+      where: {
+        tenancyId: tenancy.id,
+        isAnonymous: false,
+        contactChannels: { some: { type: 'EMAIL', isVerified: true } },
+      },
+    }),
     prisma.projectUser.count({ where: { tenancyId: tenancy.id, isAnonymous: true } }),
     prisma.team.count({ where: { tenancyId: tenancy.id } }),
   ]);
 
-  const filteredTotal = includeAnonymous ? totalUsers : totalUsers - anonymousUsers;
+  const nonAnonymousTotal = totalUsers - anonymousUsers;
 
   const [dailyActiveUsersSplit, dailyActiveTeamsSplit, mau] = await Promise.all([
     loadDailyActiveUsersSplit(tenancy, now, includeAnonymous),
@@ -1119,8 +1137,8 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
   ]);
 
   return {
-    verified_users: verifiedUsers,
-    unverified_users: filteredTotal - verifiedUsers,
+    verified_users: includeAnonymous ? verifiedUsers : verifiedNonAnonymousUsers,
+    unverified_users: nonAnonymousTotal - verifiedNonAnonymousUsers,
     anonymous_users: anonymousUsers,
     total_teams: totalTeams,
     mau,

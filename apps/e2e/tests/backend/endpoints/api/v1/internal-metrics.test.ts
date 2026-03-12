@@ -28,11 +28,15 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
     response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
     const noAnonymousInRecentlyRegistered = (response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous);
     const noAnonymousInRecentlyActive = (response.body.recently_active as MetricsUser[]).every((user) => !user.is_anonymous);
+    const currentRecentlyRegisteredIds = (response.body.recently_registered as Array<{ id: string }>).map((user) => user.id);
+    const currentRecentlyActiveIds = (response.body.recently_active as Array<{ id: string }>).map((user) => user.id);
     if (
       response.body.total_users === baselineTotalUsers &&
       JSON.stringify(response.body.users_by_country) === JSON.stringify(baselineUsersByCountry) &&
       noAnonymousInRecentlyRegistered &&
-      noAnonymousInRecentlyActive
+      noAnonymousInRecentlyActive &&
+      JSON.stringify(currentRecentlyRegisteredIds) === JSON.stringify(baselineRecentlyRegisteredIds) &&
+      JSON.stringify(currentRecentlyActiveIds) === JSON.stringify(baselineRecentlyActiveIds)
     ) {
       return;
     }

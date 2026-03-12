@@ -1,6 +1,5 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components/card";
 import EmailPreview, { DEVICE_VIEWPORTS, DeviceViewport } from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
@@ -12,7 +11,7 @@ import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } 
 import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -20,7 +19,7 @@ import { useAdminApp } from "../use-admin-app";
 import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
+function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
   return (
     <div className="flex items-center gap-2">
       <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
@@ -173,12 +172,6 @@ export default function PageClient() {
                     Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
                   </span>
                 </div>
-                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  Active Theme
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
-                </span>
               </div>
               <ActionDialog
                 trigger={

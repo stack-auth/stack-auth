@@ -1,6 +1,5 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components/card";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
@@ -9,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -17,7 +16,7 @@ import { useAdminApp } from "../use-admin-app";
 import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
+function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
   return (
     <div className="flex items-center gap-2">
       <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
@@ -367,6 +366,35 @@ export default function PageClient() {
             </div>
           )}
         </DesignAnalyticsCard>
+
+        {/* Draft History */}
+        {historyDrafts.length > 0 && (
+          <DesignAnalyticsCard chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <SectionHeader icon={ClockCounterClockwise} title="History" />
+                <Typography variant="secondary" className="text-xs">
+                  {historyDrafts.length} sent {historyDrafts.length === 1 ? "draft" : "drafts"}
+                </Typography>
+              </div>
+              <div className="flex flex-col gap-2">
+                {historyDrafts.map((draft) => (
+                  <Button
+                    key={draft.id}
+                    variant="ghost"
+                    className="justify-between px-3 py-2 h-auto rounded-lg border border-transparent hover:border-border text-xs"
+                    onClick={() => handleOpenHistoryDraft(draft.id)}
+                  >
+                    <span className="truncate text-left">
+                      {draft.displayName}
+                    </span>
+                    <ClockCounterClockwise className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </DesignAnalyticsCard>
+        )}
 
         {/* Shared SMTP Warning Dialog */}
         <ActionDialog

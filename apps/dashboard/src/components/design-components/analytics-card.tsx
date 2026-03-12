@@ -78,16 +78,6 @@ export function DesignAnalyticsCard({
 
   return (
     <>
-      {/* Inject tooltip-escape styles once per card instance. */}
-      <style>{`
-        .analytics-card-tooltip-escape .recharts-tooltip-wrapper {
-          z-index: 9999 !important;
-          overflow: visible !important;
-        }
-        .analytics-card-tooltip-escape .recharts-tooltip-wrapper > * {
-          overflow: visible !important;
-        }
-      `}</style>
       <div
         className={cn(
           // Surface

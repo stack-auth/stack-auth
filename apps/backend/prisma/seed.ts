@@ -587,7 +587,13 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
 async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<string, string>> {
   const { prisma, tenancy, teamNameToId } = options;
 
-  const daysAgo = (d: number, h: number = 12) => new Date(Date.now() - d * 24 * 60 * 60 * 1000 + h * 60 * 60 * 1000);
+  const daysAgo = (d: number, h: number = 12) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - d);
+    date.setHours(h, 0, 0, 0);
+    return date;
+  };
 
   const userSeeds = [
     {
@@ -1889,7 +1895,13 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     isQueued?: boolean,
   };
 
-  const emailDaysAgo = (d: number, h: number = 12) => new Date(Date.now() - d * 24 * 60 * 60 * 1000 + h * 60 * 60 * 1000);
+  const emailDaysAgo = (d: number, h: number = 12) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - d);
+    date.setHours(h, 0, 0, 0);
+    return date;
+  };
 
   const emailSeeds: EmailOutboxSeedExtended[] = [
     {
@@ -2099,7 +2111,8 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     const dayBack = dailyEmailCounts.length - dayOffset;
 
     for (let j = 0; j < count; j++) {
-      const bulkId = generateUuid();
+      // Deterministic ID so seeding is idempotent across runs
+      const bulkId = `66000000-bulk-seed-${String(emailBulkIndex).padStart(4, '0')}-000000000000`;
       const hour = 7 + Math.floor(emailBulkRand() * 14);
       const createdAt = emailDaysAgo(dayBack, hour);
       const subject = bulkEmailSubjects[Math.floor(emailBulkRand() * bulkEmailSubjects.length)];

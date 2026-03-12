@@ -14,7 +14,7 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -22,7 +22,7 @@ import { useAdminApp } from "../use-admin-app";
 import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
-function SectionHeader({ icon: Icon, title }: { icon: React.ElementType, title: string }) {
+function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
   return (
     <div className="flex items-center gap-2">
       <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
@@ -59,6 +59,7 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return (
     <AppEnabledGuard appId="emails">
@@ -78,6 +79,8 @@ export default function PageClient() {
         }
       >
         <div className="flex flex-col gap-5">
+          {isLocalEmulator && <EmulatorModeCard />}
+
           {/* Email Server Card */}
           <EmailServerCard emailConfig={emailConfig} />
 

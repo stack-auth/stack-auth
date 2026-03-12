@@ -25,9 +25,7 @@ import {
   DonutChartDisplay,
   EmailStackedBarChartDisplay,
   EmailStackedDataPoint,
-  filterDatapointsByTimeRange,
   filterStackedDatapointsByTimeRange,
-  GradientColor,
   LineChartDisplayConfig,
   RevenueHoverChart,
   RevenueHoverDataPoint,
@@ -64,10 +62,6 @@ function formatSeconds(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-function sumRange(points: DataPoint[], range: TimeRange, customDateRange: CustomDateRange | null): number {
-  return filterDatapointsByTimeRange(points, range, customDateRange).reduce((s, p) => s + p.activity, 0);
 }
 
 function formatCompact(n: number): string {
@@ -132,43 +126,6 @@ function SetupAppPrompt({
   );
 }
 
-// ── Compact dual-value stat card ─────────────────────────────────────────────
-
-function DualStatCard({
-  label,
-  value,
-  subLabel,
-  subValue,
-  gradientColor = "blue",
-}: {
-  label: string,
-  value: string | number,
-  subLabel: string,
-  subValue: string | number,
-  gradientColor?: GradientColor,
-}) {
-  return (
-    <DesignAnalyticsCard gradient={gradientColor} chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
-      <div className="p-4 flex flex-col gap-1.5 h-full justify-between">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">
-          {label}
-        </span>
-        <div>
-          <div className="text-2xl font-bold tabular-nums text-foreground leading-none">
-            {typeof value === 'number' ? value.toLocaleString() : value}
-          </div>
-          <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-muted-foreground">
-            <span>{subLabel}</span>
-            <span className="font-semibold text-foreground tabular-nums">
-              {typeof subValue === 'number' ? subValue.toLocaleString() : subValue}
-            </span>
-          </div>
-        </div>
-      </div>
-    </DesignAnalyticsCard>
-  );
-}
-
 // ── Hero analytics widget (stat pills + composed bar+line chart) ─────────────
 
 type AnalyticsStatPill = {
@@ -220,6 +177,7 @@ function HeroInChartPill({
   color,
   isHovered,
   onMouseEnter,
+  onMouseLeave,
 }: {
   label: string,
   value: string,
@@ -227,11 +185,17 @@ function HeroInChartPill({
   color: string,
   isHovered: boolean,
   onMouseEnter: () => void,
+  onMouseLeave?: () => void,
 }) {
   return (
     <button
       type="button"
       onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocus={onMouseEnter}
+      onBlur={onMouseLeave}
+      onClick={onMouseEnter}
+      aria-pressed={isHovered}
       className={cn(
         "group/pill flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors hover:transition-none cursor-default select-none flex-1",
         isHovered
@@ -414,6 +378,7 @@ function HeroAnalyticsWidget({
               color={dauColor}
               isHovered={chartMode === 'dau'}
               onMouseEnter={() => handlePillMouseEnter('dau')}
+              onMouseLeave={handlePillMouseLeave}
             />
             <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
@@ -423,6 +388,7 @@ function HeroAnalyticsWidget({
               color={visitorsColor}
               isHovered={chartMode === 'visitors'}
               onMouseEnter={() => handlePillMouseEnter('visitors')}
+              onMouseLeave={handlePillMouseLeave}
             />
             <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
@@ -432,6 +398,7 @@ function HeroAnalyticsWidget({
               color={revenueColor}
               isHovered={chartMode === 'revenue'}
               onMouseEnter={() => handlePillMouseEnter('revenue')}
+              onMouseLeave={handlePillMouseLeave}
             />
           </div>
 
@@ -942,8 +909,6 @@ function MetricsContent({
   const recentEmails = (email.recent_emails ?? []) as Array<{ id: string, subject: string, status: string }>;
   const topReferrers = (analytics.top_referrers ?? []) as Array<{ referrer: string, visitors: number }>;
 
-  const signUpsInRange = sumRange(data.daily_users ?? [], timeRange, customDateRange);
-
   // ── DAU split stacked data for sign-ups chart ─────────────────────────────
   const dauSplit = (auth.daily_active_users_split ?? {}) as {
     new?: DataPoint[],
@@ -1134,12 +1099,12 @@ function MetricsContent({
       visitorsLabel: "Unique Visitors",
       visitorsDelta: analyticsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
       revenueTotal: paymentsEnabled
-        ? formatUsdFromCents(totalRevenueCentsInRange > 0 ? totalRevenueCentsInRange : (payments.revenue_cents ?? 0))
+        ? formatUsdFromCents(totalRevenueCentsInRange)
         : "—",
       revenueLabel: "Revenue",
       revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, payments.revenue_cents, analyticsEnabled, paymentsEnabled]);
+  }, [allComposedData, composedData, dauStackedData, analyticsEnabled, paymentsEnabled]);
 
   // ── Globe visibility ──────────────────────────────────────────────────────
   const gridContainerRef = useRef<HTMLDivElement>(null);
