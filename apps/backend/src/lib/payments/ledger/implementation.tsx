@@ -186,7 +186,7 @@ export async function getOwnedProductsForCustomer(options: {
           stripeSubscriptionId: subMeta?.stripeSubscriptionId ?? null,
           currentPeriodEnd: subMeta?.currentPeriodEnd ?? null,
           cancelAtPeriodEnd: subMeta?.cancelAtPeriodEnd ?? false,
-          isCancelable: entry.product_id !== null,
+          isCancelable: entry.subscription_id !== undefined,
         } : null,
       });
     }
