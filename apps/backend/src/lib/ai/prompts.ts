@@ -801,8 +801,8 @@ Requirements:
 2) Remove variables schema declarations and preview variable assignments.
    - Remove exports like variablesSchema regardless of symbol name. For example, you may see export const profileSchema = ... which should be removed too.
    - Remove EmailTemplate.PreviewVariables assignment.
-3) Make EmailTemplate standalone:
-   - It must not rely on a variables prop from outside.
+3) Adjust EmailTemplate props:
+   - It must not rely on a variables prop from outside. user and project are fine as props
    - Define "const variables = { ... }" inside EmailTemplate with sensible placeholder values based on the schema/types present in source.
    - It should be the only exported function in the file.
 4) Preserve subject/notification/category and existing JSX structure as much as possible.

@@ -15,6 +15,7 @@ export const requestBodySchema = yupObject({
     "email-assistant-draft",
     "create-dashboard",
     "run-query",
+    "rewrite-template-source"
   ]).defined(),
   messages: yupArray(
     yupObject({
