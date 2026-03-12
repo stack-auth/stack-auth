@@ -17,9 +17,7 @@ export const preMigration = async (sql: Sql) => {
       "mirroredBranchId",
       "createdAt",
       "updatedAt",
-      "lastActiveAt",
-      "signUpRiskScoreBot",
-      "signUpRiskScoreFreeTrialAbuse"
+      "lastActiveAt"
     ) VALUES (
       ${userId}::uuid,
       ${tenancyId}::uuid,
@@ -27,13 +25,11 @@ export const preMigration = async (sql: Sql) => {
       'main',
       NOW(),
       NOW(),
-      NOW(),
-      0,
-      0
+      NOW()
     )
   `;
 
-  return { userId };
+  return { projectId, tenancyId, userId };
 };
 
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
@@ -44,15 +40,21 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "signUpIp",
       "signUpIpTrusted",
       "signUpEmailNormalized",
-      "signUpEmailBase"
+      "signUpEmailBase",
+      "countryCode",
+      "signUpRiskScoreBot",
+      "signUpRiskScoreFreeTrialAbuse"
     FROM "ProjectUser"
     WHERE "projectUserId" = ${ctx.userId}::uuid
   `;
 
   expect(rows).toHaveLength(1);
-  expect(rows[0].signUpAt?.toISOString()).toBe(rows[0].createdAt?.toISOString());
+  expect(rows[0].signUpAt.toISOString()).toBe(rows[0].createdAt.toISOString());
   expect(rows[0].signUpIp).toBeNull();
   expect(rows[0].signUpIpTrusted).toBeNull();
   expect(rows[0].signUpEmailNormalized).toBeNull();
   expect(rows[0].signUpEmailBase).toBeNull();
+  expect(rows[0].countryCode).toBeNull();
+  expect(rows[0].signUpRiskScoreBot).toBe(0);
+  expect(rows[0].signUpRiskScoreFreeTrialAbuse).toBe(0);
 };

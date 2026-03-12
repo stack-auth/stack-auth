@@ -1193,13 +1193,13 @@ export class StackClientInterface {
     await this.options.prepareRequest?.();
 
     const url = new URL(await this.getOAuthUrl(options));
-    url.searchParams.set("stack_oauth_response_format", "json");
 
     let rawRes;
     try {
       rawRes = await fetch(url, {
         method: "GET",
         credentials: "include",
+        headers: { "Accept": "application/json" },
       });
     } catch (error) {
       if (error instanceof TypeError) {

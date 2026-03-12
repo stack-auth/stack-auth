@@ -274,7 +274,7 @@ model ProjectUser {
   signUpRiskScoreBot              Int @db.SmallInt
   signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
   countryCode                     String?
-  signUpAt                       DateTime?
+  signUpAt                       DateTime
   signUpIp                        String?
   signUpIpTrusted                 Boolean?
   signUpEmailNormalized           String?

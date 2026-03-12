@@ -31,7 +31,6 @@ export const GET = createSmartRouteHandler({
       type: yupString().oneOf(["authenticate", "link"]).default("authenticate"),
       token: yupString().default(""),
       provider_scope: yupString().optional(),
-      stack_oauth_response_format: yupString().oneOf(["redirect", "json"]).default("redirect").meta({ openapiField: { hidden: true } }),
       /**
        * @deprecated
        */
@@ -59,7 +58,7 @@ export const GET = createSmartRouteHandler({
       location: yupString().defined(),
     }).defined(),
   }),
-  async handler({ params, query }) {
+  async handler({ params, query }, fullReq) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
@@ -152,7 +151,7 @@ export const GET = createSmartRouteHandler({
       }
     );
 
-    if (query.stack_oauth_response_format === "json") {
+    if (fullReq.headers["accept"]?.[0]?.includes("application/json")) {
       return {
         statusCode: 200,
         bodyType: "json",

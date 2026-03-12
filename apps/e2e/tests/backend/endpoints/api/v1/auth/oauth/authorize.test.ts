@@ -50,9 +50,11 @@ it("should redirect the user to the OAuth provider with the right arguments even
 
 it("should return the OAuth location as JSON when requested by the SDK flow", async ({ expect }) => {
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    headers: {
+      accept: "application/json",
+    },
     query: {
       ...await Auth.OAuth.getAuthorizeQuery(),
-      stack_oauth_response_format: "json",
     },
   });
 
@@ -73,10 +75,10 @@ it("should return credentialed CORS headers for versioned OAuth authorize reques
     redirect: "manual",
     headers: {
       origin: localhostUrl("01"),
+      accept: "application/json",
     },
     query: {
       ...await Auth.OAuth.getAuthorizeQuery(),
-      stack_oauth_response_format: "json",
     },
   });
 

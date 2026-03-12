@@ -177,10 +177,11 @@ describe("StackClientInterface Turnstile compatibility", () => {
     if (!(typeof requestUrl === "string" || requestUrl instanceof URL)) {
       throw new Error("Expected authorizeOAuth to call fetch with a URL");
     }
-    expect(new URL(requestUrl.toString()).searchParams.get("stack_oauth_response_format")).toBe("json");
+    expect(new URL(requestUrl.toString()).searchParams.has("stack_oauth_response_format")).toBe(false);
     expect(requestInit).toMatchObject({
       method: "GET",
       credentials: "include",
+      headers: { "Accept": "application/json" },
     });
   });
 

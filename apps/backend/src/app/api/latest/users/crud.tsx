@@ -61,17 +61,11 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 const personalTeamDefaultDisplayName = "Personal Team";
 
 function getSignedUpAt(params: {
-  signUpAt: Date | null,
+  signUpAt: Date,
   createdAt: Date,
   isAnonymous: boolean,
 }): Date {
-  if (params.signUpAt != null) {
-    return params.signUpAt;
-  }
-  if (params.isAnonymous) {
-    return params.createdAt;
-  }
-  throw new StackAssertionError("Expected non-anonymous user to have signUpAt recorded", params);
+  return params.signUpAt;
 }
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
@@ -397,7 +391,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
         signed_up_at_millis: getSignedUpAt({
-          signUpAt: row.signUpAt == null ? null : new Date(row.signUpAt + "Z"),
+          signUpAt: new Date(row.signUpAt + "Z"),
           createdAt: new Date(row.createdAt + "Z"),
           isAnonymous: row.isAnonymous,
         }).getTime(),
