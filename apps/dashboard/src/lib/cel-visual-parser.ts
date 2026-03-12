@@ -8,11 +8,14 @@
  * - email == "value" / email != "value"
  * - email.endsWith("@domain.com")
  * - email.matches("regex")
+ * - countryCode == "US" / countryCode in ["US", "CA"]
  * - emailDomain == "domain.com" / emailDomain in ["d1", "d2"]
  * - authMethod == "password" / authMethod in ["password", "otp"]
  * - oauthProvider == "google" / oauthProvider in ["google", "github"]
  * - riskScores.bot > 80 / riskScores.freeTrialAbuse >= 60
  */
+
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 
 export type ConditionOperator =
   | 'equals'
@@ -29,6 +32,7 @@ export type ConditionOperator =
 
 export type ConditionField =
   | 'email'
+  | 'countryCode'
   | 'emailDomain'
   | 'authMethod'
   | 'oauthProvider'
@@ -86,8 +90,25 @@ function unescapeCelString(value: string): string {
   return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
 }
 
+function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {
+  if (condition.field !== 'countryCode') {
+    return condition.value;
+  }
+
+  if (Array.isArray(condition.value)) {
+    return condition.value.map(normalizeCountryCode);
+  }
+
+  if (typeof condition.value === 'number') {
+    return condition.value;
+  }
+
+  return normalizeCountryCode(condition.value);
+}
+
 function conditionToCel(condition: ConditionNode): string {
-  const { field, operator, value } = condition;
+  const { field, operator } = condition;
+  const value = normalizeConditionValue(condition);
   const valueAsNumber = typeof value === 'number' ? value : Number(value);
   const useNumericValue = isNumericField(field) && Number.isFinite(valueAsNumber);
 
@@ -153,7 +174,6 @@ function groupToCel(group: GroupNode): string {
   const celOperator = group.operator === 'and' ? ' && ' : ' || ';
   const childExpressions = group.children.map(child => {
     const expr = visualTreeToCel(child);
-    // Wrap child groups in parentheses if they have a different operator
     if (child.type === 'group' && child.operator !== group.operator) {
       return `(${expr})`;
     }
@@ -485,4 +505,3 @@ export function createEmptyGroup(operator: 'and' | 'or' = 'and'): GroupNode {
     children: [],
   };
 }
-

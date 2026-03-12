@@ -1,3 +1,4 @@
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
@@ -5,7 +6,6 @@ import { createAuthTokens } from "@/lib/tokens";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { emailSchema, signInResponseSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -119,6 +119,9 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         [],
         {
           authMethod: 'otp',
+          oauthProvider: null,
+          ipAddress: null,
+          countryCode: null,
           // TODO: Pass request context when available in verification code handler
         }
       );

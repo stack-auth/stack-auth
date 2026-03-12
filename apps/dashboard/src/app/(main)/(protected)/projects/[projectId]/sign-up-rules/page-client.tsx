@@ -1,5 +1,6 @@
 "use client";
 
+import { CountryCodeSelect } from "@/components/country-code-select";
 import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builder";
 import {
   ActionDialog,
@@ -38,6 +39,7 @@ import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIc
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -85,6 +87,7 @@ type SignUpRulesTestResult = {
   context: {
     email: string,
     email_domain: string,
+    country_code: string,
     auth_method: 'password' | 'otp' | 'oauth' | 'passkey',
     oauth_provider: string,
     risk_scores: {
@@ -525,23 +528,47 @@ function TestRulesCard({
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
-  const [riskScoreBot, setRiskScoreBot] = useState<number>(0);
-  const [riskScoreFreeTrialAbuse, setRiskScoreFreeTrialAbuse] = useState<number>(0);
+  const [countryCodeOverride, setCountryCodeOverride] = useState('');
+  const [botRiskScoreOverride, setBotRiskScoreOverride] = useState('');
+  const [freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride] = useState('');
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
 
   const [runTest, isRunning] = useAsyncCallback(async () => {
+    const normalizedCountryCodeOverride = normalizeCountryCode(countryCodeOverride);
+    const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
+    const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();
+    if (normalizedCountryCodeOverride !== '' && !isValidCountryCode(normalizedCountryCodeOverride)) {
+      throw new Error("Country code override must be a two-letter ISO code.");
+    }
+    if (normalizedBotRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedBotRiskScoreOverride)) {
+      throw new Error("Bot risk score override must be an integer between 0 and 100.");
+    }
+    if (normalizedFreeTrialAbuseRiskScoreOverride !== '' && !/^(100|[1-9]?[0-9])$/.test(normalizedFreeTrialAbuseRiskScoreOverride)) {
+      throw new Error("Free trial abuse risk score override must be an integer between 0 and 100.");
+    }
+    if ((normalizedBotRiskScoreOverride === '') !== (normalizedFreeTrialAbuseRiskScoreOverride === '')) {
+      throw new Error("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
+    }
+
     const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
       '/internal/sign-up-rules-test',
       {
         method: 'POST',
         body: JSON.stringify({
-          email: email || undefined,
+          email: email === '' ? null : email,
           auth_method: authMethod,
-          oauth_provider: authMethod === 'oauth' ? (oauthProvider || undefined) : undefined,
-          risk_scores: {
-            bot: riskScoreBot,
-            free_trial_abuse: riskScoreFreeTrialAbuse,
-          },
+          oauth_provider: authMethod === 'oauth'
+            ? (oauthProvider === '' ? null : oauthProvider)
+            : null,
+          country_code: normalizedCountryCodeOverride === '' ? null : normalizedCountryCodeOverride,
+          ...(normalizedBotRiskScoreOverride === ''
+            ? {}
+            : {
+              risk_scores: {
+                bot: Number(normalizedBotRiskScoreOverride),
+                free_trial_abuse: Number(normalizedFreeTrialAbuseRiskScoreOverride),
+              },
+            }),
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -556,7 +583,7 @@ function TestRulesCard({
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, email, oauthProvider, riskScoreBot, riskScoreFreeTrialAbuse, stackAdminApp]);
+  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp]);
 
   const handleAuthMethodChange = (value: string) => {
     if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
@@ -663,31 +690,36 @@ function TestRulesCard({
           </datalist>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Risk score: bot
+              Country code override
             </Typography>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={String(riskScoreBot)}
-              onChange={(e) => setRiskScoreBot(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+            <CountryCodeSelect
+              value={countryCodeOverride || null}
+              onChange={(val) => setCountryCodeOverride(val ?? "")}
             />
           </div>
           <div className="space-y-1.5">
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Risk score: free trial abuse
+              Bot score override
             </Typography>
             <Input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={String(riskScoreFreeTrialAbuse)}
-              onChange={(e) => setRiskScoreFreeTrialAbuse(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+              value={botRiskScoreOverride}
+              onChange={(e) => setBotRiskScoreOverride(e.target.value)}
+              placeholder="0-100"
+              inputMode="numeric"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Free trial abuse override
+            </Typography>
+            <Input
+              value={freeTrialAbuseRiskScoreOverride}
+              onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
+              placeholder="0-100"
+              inputMode="numeric"
             />
           </div>
         </div>
@@ -702,6 +734,9 @@ function TestRulesCard({
           </Button>
           <Typography variant="secondary" className="text-xs">
             Simulate a sign-up request to preview which rules trigger.
+          </Typography>
+          <Typography variant="secondary" className="text-xs">
+            Leave overrides blank to derive country code and risk scores on the server from request geolocation and signup context.
           </Typography>
         </div>
       </div>
@@ -839,6 +874,9 @@ function TestRulesCard({
               </Typography>
               <Typography variant="secondary" className="text-xs">
                 Email domain: {result.context.email_domain || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Country code: {result.context.country_code || "(empty)"}
               </Typography>
               <Typography variant="secondary" className="text-xs">
                 OAuth provider: {result.context.oauth_provider || "(empty)"}

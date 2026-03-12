@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 
 
 export default function PageClient() {
-  const user = useUser();
+  const user = useUser({ includeRestricted: true });
   const router = useRouter();
   const app = useStackApp();
 
@@ -35,7 +35,14 @@ export default function PageClient() {
                 <UserAvatar user={user} size={100} />
                 <div>
                   <Typography className='text-sm'>logged in as</Typography>
-                  <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                  <div className="flex items-center gap-2">
+                    <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                    {user.isRestricted && (
+                      <span className="rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-2 py-0.5 text-sm font-medium">
+                        Restricted
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -54,6 +61,10 @@ export default function PageClient() {
                       <div>{user.primaryEmail}</div>
                     </div>
                   )}
+                  <div className="flex">
+                    <div className="w-32 font-semibold">Restricted:</div>
+                    <div>{user.isRestricted ? `Yes${user.restrictedReason ? ` (${user.restrictedReason.type})` : ''}` : 'No'}</div>
+                  </div>
                 </div>
               </div>
             </CardContent>

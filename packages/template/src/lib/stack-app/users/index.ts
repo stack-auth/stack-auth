@@ -360,6 +360,8 @@ export type ServerBaseUser = {
   readonly restrictedByAdminReason: string | null,
   /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
   readonly restrictedByAdminPrivateDetails: string | null,
+  /** Best-effort ISO country code captured at sign-up time from request geo headers. */
+  readonly countryCode: string | null,
   /** Server-only risk scores used during sign-up risk evaluation. */
   readonly riskScores: {
     readonly signUp: {
@@ -444,6 +446,13 @@ export type ServerUserUpdateOptions = {
   restrictedByAdmin?: boolean,
   restrictedByAdminReason?: string | null,
   restrictedByAdminPrivateDetails?: string | null,
+  countryCode?: string | null,
+  riskScores?: {
+    signUp: {
+      bot: number,
+      freeTrialAbuse: number,
+    },
+  },
 } & UserUpdateOptions;
 export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions): CurrentUserCrud["Server"]["Update"] {
   // Base update options
@@ -466,6 +475,13 @@ export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions):
     restricted_by_admin: options.restrictedByAdmin,
     restricted_by_admin_reason: options.restrictedByAdminReason,
     restricted_by_admin_private_details: options.restrictedByAdminPrivateDetails,
+    country_code: options.countryCode,
+    risk_scores: options.riskScores ? {
+      sign_up: {
+        bot: options.riskScores.signUp.bot,
+        free_trial_abuse: options.riskScores.signUp.freeTrialAbuse,
+      },
+    } : undefined,
   } as CurrentUserCrud["Server"]["Update"];
 }
 
@@ -480,6 +496,13 @@ export type ServerUserCreateOptions = {
   clientMetadata?: any,
   clientReadOnlyMetadata?: any,
   serverMetadata?: any,
+  countryCode?: string | null,
+  riskScores?: {
+    signUp: {
+      bot: number,
+      freeTrialAbuse: number,
+    },
+  },
 }
 export function serverUserCreateOptionsToCrud(options: ServerUserCreateOptions): UsersCrud["Server"]["Create"] {
   return {
@@ -492,5 +515,12 @@ export function serverUserCreateOptionsToCrud(options: ServerUserCreateOptions):
     client_metadata: options.clientMetadata,
     client_read_only_metadata: options.clientReadOnlyMetadata,
     server_metadata: options.serverMetadata,
+    country_code: options.countryCode,
+    risk_scores: options.riskScores ? {
+      sign_up: {
+        bot: options.riskScores.signUp.bot,
+        free_trial_abuse: options.riskScores.signUp.freeTrialAbuse,
+      },
+    } : undefined,
   };
 }

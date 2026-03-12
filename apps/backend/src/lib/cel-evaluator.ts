@@ -1,4 +1,5 @@
 import { evaluate } from "cel-js";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { normalizeEmail } from "./emails";
 import { SignUpRiskScores } from "./risk-scores";
 
@@ -12,7 +13,7 @@ export class CelEvaluationError extends Error {
   constructor(
     message: string,
     public readonly expression: string,
-    public readonly cause?: unknown
+    public readonly cause: unknown | null = null,
   ) {
     super(message);
     this.name = 'CelEvaluationError';
@@ -29,6 +30,8 @@ export type SignUpRuleContext = {
   email: string,
   /** Domain part of email (after @) */
   emailDomain: string,
+  /** Best-effort ISO 3166-1 alpha-2 country code derived from request geo headers */
+  countryCode: string,
   /** Authentication method: "password", "otp", "oauth", "passkey" */
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
   /** OAuth provider ID if authMethod is "oauth", empty string otherwise */
@@ -159,9 +162,10 @@ export function evaluateCelExpression(
  * @returns SignUpRuleContext ready for CEL evaluation
  */
 export function createSignUpRuleContext(params: {
-  email?: string,
+  email: string | null,
+  countryCode: string | null,
   authMethod: 'password' | 'otp' | 'oauth' | 'passkey',
-  oauthProvider?: string,
+  oauthProvider: string | null,
   riskScores: SignUpRiskScores,
 }): SignUpRuleContext {
   // Handle missing email (e.g., OAuth providers that don't return email)
@@ -169,18 +173,21 @@ export function createSignUpRuleContext(params: {
   let email = '';
   let emailDomain = '';
 
-  if (params.email) {
+  if (params.email !== null && params.email !== '') {
     // Normalize email to match how it's stored in the database
     email = normalizeEmail(params.email);
     // Extract domain from normalized email
     emailDomain = email.includes('@') ? (email.split('@').pop() ?? '') : '';
   }
 
+  const countryCode = params.countryCode === null ? '' : normalizeCountryCode(params.countryCode);
+
   return {
     email,
     emailDomain,
+    countryCode,
     authMethod: params.authMethod,
-    oauthProvider: params.oauthProvider ?? '',
+    oauthProvider: params.oauthProvider === null ? '' : params.oauthProvider,
     riskScores: params.riskScores,
   };
 }
@@ -190,7 +197,9 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   // Should normalize email
   expect(createSignUpRuleContext({
     email: 'Test.User@Example.COM',
+    countryCode: null,
     authMethod: 'password',
+    oauthProvider: null,
     riskScores: {
       bot: 17,
       freeTrialAbuse: 23,
@@ -198,6 +207,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   })).toEqual({
     email: 'test.user@example.com',
     emailDomain: 'example.com',
+    countryCode: '',
     authMethod: 'password',
     oauthProvider: '',
     riskScores: {
@@ -208,7 +218,8 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
 
   // Should handle missing email (OAuth providers without email)
   expect(createSignUpRuleContext({
-    email: undefined,
+    email: null,
+    countryCode: null,
     authMethod: 'oauth',
     oauthProvider: 'discord',
     riskScores: {
@@ -218,6 +229,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   })).toEqual({
     email: '',
     emailDomain: '',
+    countryCode: '',
     authMethod: 'oauth',
     oauthProvider: 'discord',
     riskScores: {
@@ -229,6 +241,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   // Should handle empty string email
   expect(createSignUpRuleContext({
     email: '',
+    countryCode: null,
     authMethod: 'oauth',
     oauthProvider: 'twitter',
     riskScores: {
@@ -238,6 +251,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   })).toEqual({
     email: '',
     emailDomain: '',
+    countryCode: '',
     authMethod: 'oauth',
     oauthProvider: 'twitter',
     riskScores: {
@@ -249,6 +263,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   // Should handle OAuth with email
   expect(createSignUpRuleContext({
     email: 'oauth.user@gmail.com',
+    countryCode: null,
     authMethod: 'oauth',
     oauthProvider: 'google',
     riskScores: {
@@ -258,6 +273,7 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
   })).toEqual({
     email: 'oauth.user@gmail.com',
     emailDomain: 'gmail.com',
+    countryCode: '',
     authMethod: 'oauth',
     oauthProvider: 'google',
     riskScores: {
@@ -265,12 +281,34 @@ import.meta.vitest?.test('createSignUpRuleContext(...)', async ({ expect }) => {
       freeTrialAbuse: 9,
     },
   });
+
+  expect(createSignUpRuleContext({
+    email: 'user@example.com',
+    countryCode: 'us',
+    authMethod: 'password',
+    oauthProvider: null,
+    riskScores: {
+      bot: 3,
+      freeTrialAbuse: 4,
+    },
+  })).toEqual({
+    email: 'user@example.com',
+    emailDomain: 'example.com',
+    countryCode: 'US',
+    authMethod: 'password',
+    oauthProvider: '',
+    riskScores: {
+      bot: 3,
+      freeTrialAbuse: 4,
+    },
+  });
 });
 
 import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ expect }) => {
   // When email is empty, email-based conditions should not match
   const context = createSignUpRuleContext({
-    email: undefined,
+    email: null,
+    countryCode: null,
     authMethod: 'oauth',
     oauthProvider: 'discord',
     riskScores: {
@@ -293,4 +331,18 @@ import.meta.vitest?.test('evaluateCelExpression with missing email', async ({ ex
 
   // Empty email should match empty string
   expect(evaluateCelExpression('email == ""', context)).toBe(true);
+});
+
+import.meta.vitest?.test('countryCode in_list vs equals', ({ expect }) => {
+  const usContext = createSignUpRuleContext({
+    email: 'test@example.com',
+    countryCode: 'US',
+    authMethod: 'password',
+    oauthProvider: null,
+    riskScores: { bot: 0, freeTrialAbuse: 0 },
+  });
+
+  expect(evaluateCelExpression('countryCode in ["US", "CA"]', usContext)).toBe(true);
+  expect(evaluateCelExpression('countryCode in ["CA"]', usContext)).toBe(false);
+  expect(evaluateCelExpression('countryCode == "US"', usContext)).toBe(true);
 });

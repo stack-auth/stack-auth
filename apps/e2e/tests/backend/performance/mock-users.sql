@@ -79,7 +79,7 @@ generated AS (
 insert_users AS (
   INSERT INTO "ProjectUser"
     ("tenancyId","projectUserId","mirroredProjectId","mirroredBranchId","displayName",
-     "projectId","createdAt","updatedAt")
+     "projectId","createdAt","updatedAt","signUpRiskScoreBot","signUpRiskScoreFreeTrialAbuse")
   SELECT
     tenancy_id,
     project_user_id,
@@ -88,7 +88,9 @@ insert_users AS (
     'Perf Test User ' || idx,
     'internal',
     ts,
-    ts
+    ts,
+    0,
+    0
   FROM generated
   ON CONFLICT ("tenancyId", "projectUserId") DO NOTHING
   RETURNING "tenancyId","projectUserId"

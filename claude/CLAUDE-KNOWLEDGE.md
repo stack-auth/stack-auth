@@ -78,3 +78,39 @@ Q: What is the reliable way to lint a single dashboard file in this monorepo?
 A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx"`), because running root `pnpm lint -- <file>` fans out through Turbo packages where that path does not exist.
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: What should `getSpoofableEndUserLocation()` return for normal browser/proxy traffic?
+A: It should return location fields from `spoofedInfo` when `getEndUserInfo()` reports `maybeSpoofed: true`, and from `exactInfo` otherwise. Returning only exact info drops country data for the normal header-derived browser path and breaks geo-based signup rules.
+
+Q: How should nullable signup-rule context inputs be typed?
+A: If a field already uses `null` to represent absence, keep it non-optional and pass explicit `null` at callsites. In practice, `createSignUpRuleContext` and signup-rule option plumbing should use `countryCode: string | null` and `ipAddress: string | null`, not `?: ... | null`, so `undefined` never leaks into the flow.
+
+Q: What shape should `/api/v1/internal/sign-up-rules-test` use for optional-looking inputs?
+A: `email`, `country_code`, and `oauth_provider` can be explicit `string | null`, but `risk_scores` should never use nullable score values. For admin tester overrides, either omit `risk_scores` entirely to derive scores server-side or provide both numeric fields as concrete integers.
+
+Q: Where is signup country code stored and exposed for dashboard user details?
+A: Persist the best-effort signup country on `ProjectUser.countryCode`, expose it as `country_code` on the server user CRUD read shape, map it to `ServerUser.countryCode` in `packages/template`, and render it as a read-only field in the dashboard user details page.
+
+Q: Is there a deterministic email-based stub for signup country in local/test flows?
+A: No. `apps/backend/src/lib/users.tsx` now derives signup country only from request geo (normalized and validated); if geo is missing or invalid, it stores `null` instead of inferring a country from the email address.
+
+Q: How should anonymous-user signup upgrades handle an existing `country_code`?
+A: Preserve a non-null `currentUser.country_code` when upgrading an anonymous user in `createOrUpgradeAnonymousUserWithRules`. Only write a newly derived/signup-provided country code when the anonymous user does not already have one.
+
+Q: How should the dashboard signup-rule builder validate `countryCode in_list`?
+A: Treat an empty list as invalid in `apps/dashboard/src/components/rule-builder/condition-builder.tsx`; otherwise `countryCode in []` can be saved and silently makes that condition always false.
+
+Q: Who is allowed to set `risk_scores` and `country_code`?
+A: Customers/admins can set them through server/admin user create and update surfaces, the server SDK `createUser`/`update`, the dashboard admin create flow, and the internal sign-up-rules tester. End users still cannot set them themselves because `current-user` client update schemas do not expose those fields.
+
+Q: Where should country-code validation and normalization live?
+A: Keep the canonical ISO alpha-2 list and normalization helpers in `packages/stack-shared/src/utils/country-codes.ts`, then build `countryCodeSchema` in `packages/stack-shared/src/schema-fields.ts` on top of that. Backend signup derivation, CRUD/internal-route schemas, dashboard forms, the rule builder, CEL serialization, and `getFlagEmoji` should all flow through that shared source instead of ad hoc regexes or `trim().toUpperCase()` copies.
+
+Q: Why can `pnpm dev` fail immediately after adding a new `@stackframe/stack-shared` source entry?
+A: The monorepo dev stack reads `packages/stack-shared/dist` immediately. If a new source entry like `src/utils/country-codes.ts` is referenced by existing dist files before `@stackframe/stack-shared` has been rebuilt, backend/dashboard can crash with `ERR_MODULE_NOT_FOUND`. Run `pnpm --filter @stackframe/stack-shared build` so the new dist artifacts exist before relying on the watcher.
+
+Q: How should the dashboard signup-rule builder collect `countryCode` values?
+A: In `apps/dashboard/src/components/rule-builder/condition-builder.tsx`, single-value `countryCode` operators (`equals`, `does not equal`) should use a dropdown sourced from `ISO_3166_ALPHA_2_COUNTRY_CODES` re-exported by `schema-fields`, and `is one of` should render repeated country-code dropdowns with add/remove controls while still storing a `string[]`.
+
+Q: What must raw `ProjectUser` SQL fixtures include after sign-up risk scores were added?
+A: Any direct `INSERT INTO "ProjectUser"` path that bypasses the CRUD layer must write `"signUpRiskScoreBot"` and `"signUpRiskScoreFreeTrialAbuse"` explicitly, usually as `0, 0`. The migration intentionally removed the temporary DB defaults, so external-db-sync/performance fixtures that omit those columns can fail with `null value in column "signUpRiskScoreBot" violates not-null constraint`.

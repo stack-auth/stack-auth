@@ -66,6 +66,9 @@ export const POST = createSmartRouteHandler({
       [KnownErrors.UserWithEmailAlreadyExists],
       {
         authMethod: 'password',
+        oauthProvider: null,
+        ipAddress: null,
+        countryCode: null,
       }
     );
 

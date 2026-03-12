@@ -54,7 +54,12 @@ type EndUserLocation = {
 
 export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | null> {
   const endUserInfo = await getEndUserInfo();
-  return endUserInfo?.maybeSpoofed === false ? pick(endUserInfo.exactInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]) : null;
+  if (!endUserInfo) {
+    return null;
+  }
+
+  const locationInfo = endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+  return pick(locationInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]);
 }
 
 

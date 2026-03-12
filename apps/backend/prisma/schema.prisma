@@ -276,6 +276,7 @@ model ProjectUser {
   // Sign-up risk scores (0-100, set at sign-up time)
   signUpRiskScoreBot              Int @db.SmallInt
   signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
+  countryCode                     String?
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
