@@ -16,7 +16,12 @@ function getApiKey(): string {
 
 function sanitizeBody(raw: ArrayBuffer): Uint8Array {
   const text = new TextDecoder().decode(raw);
-  const parsed = JSON.parse(text);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new StatusError(400, "Request body must be valid JSON");
+  }
 
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new StatusError(400, "Request body must be a JSON object");
