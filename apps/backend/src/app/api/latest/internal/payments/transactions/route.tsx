@@ -3,6 +3,7 @@ import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { TRANSACTION_TYPES } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -37,7 +38,14 @@ export const GET = createSmartRouteHandler({
       customerType: query.customer_type,
     });
 
-    const start = query.cursor ? Math.max(0, all.findIndex((tx) => tx.id === query.cursor) + 1) : 0;
+    let start = 0;
+    if (query.cursor) {
+      const cursorIndex = all.findIndex((tx) => tx.id === query.cursor);
+      if (cursorIndex === -1) {
+        throw new StatusError(400, "Invalid cursor");
+      }
+      start = cursorIndex + 1;
+    }
     const page = all.slice(start, start + limit);
     const isLast = start + limit >= all.length;
 
