@@ -216,3 +216,6 @@ A: Keep `getOAuthUrl(...)` for direct-navigation flows, but have `StackClientInt
 
 Q: How should backend CORS detection treat OAuth authorize requests on versioned API paths?
 A: Match both `/api/latest/auth/oauth/authorize/...` and `/api/v1/auth/oauth/authorize/...` in `apps/backend/src/proxy.tsx` before deciding whether to echo the request `Origin` and set `Access-Control-Allow-Credentials: true`. On March 11, 2026, the proxy only recognized `/api/latest/...`, so the browser’s credentialed fetch to `/api/v1/auth/oauth/authorize/...` got `Access-Control-Allow-Origin: *` and was blocked with `Cannot use wildcard in Access-Control-Allow-Origin when credentials flag is true`.
+
+Q: How should sign-up risk heuristics stay optional in OSS when private logic lives in `packages/private`?
+A: Keep the public `risk_scores` model in OSS, but load the actual risk engine dynamically from `packages/private/dist/sign-up-risk-engine.js` or `packages/private/src/sign-up-risk-engine.ts` inside `apps/backend/src/lib/risk-scores.tsx`. If the submodule or module entry is absent/unreadable, fall back to a no-op engine that returns `{ bot: 0, free_trial_abuse: 0 }` and neutral heuristic facts; only existing module imports that throw at runtime should fail loudly.

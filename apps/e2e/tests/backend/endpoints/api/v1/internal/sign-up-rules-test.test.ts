@@ -1,24 +1,17 @@
-import { riskScoreWeights } from "@stackframe/stack-shared/dist/utils/risk-score-weights";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
-type ScorePair = {
-  bot: number,
-  free_trial_abuse: number,
-};
-
 const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
 
-function sumScores(...contributions: ScorePair[]): ScorePair {
-  return {
-    bot: Math.min(100, contributions.reduce((score, contribution) => score + contribution.bot, 0)),
-    free_trial_abuse: Math.min(100, contributions.reduce((score, contribution) => score + contribution.free_trial_abuse, 0)),
-  };
+function expectValidRiskScores(expect: typeof import("vitest").expect, scores: { bot: number, free_trial_abuse: number }) {
+  expect(scores.bot).toBeGreaterThanOrEqual(0);
+  expect(scores.bot).toBeLessThanOrEqual(100);
+  expect(scores.free_trial_abuse).toBeGreaterThanOrEqual(0);
+  expect(scores.free_trial_abuse).toBeLessThanOrEqual(100);
+  expect(Number.isInteger(scores.bot)).toBe(true);
+  expect(Number.isInteger(scores.free_trial_abuse)).toBe(true);
 }
-
-const derivedTurnstileRiskScore = riskScoreWeights.turnstile;
-const derivedNonDeliverablePasswordRiskScore = sumScores(riskScoreWeights.emailable, riskScoreWeights.turnstile);
 
 describe("with admin access", () => {
   it("uses default action when no rules match", async ({ expect }) => {
@@ -113,7 +106,7 @@ describe("with admin access", () => {
         enabled: true,
         displayName: "Block high bot score",
         priority: 1,
-        condition: `riskScores.bot >= ${derivedNonDeliverablePasswordRiskScore.bot}`,
+        condition: "riskScores.bot >= 50",
         action: {
           type: "reject",
           message: "High bot risk",
@@ -153,7 +146,7 @@ describe("with admin access", () => {
     });
   });
 
-  it("derives risk score conditions from disposable-email heuristics", async ({ expect }) => {
+  it("returns derived risk_scores when no override is provided", async ({ expect }) => {
     await Project.createAndSwitch();
     backendContext.set({ ipData: undefined });
     await Project.updateConfig({
@@ -161,7 +154,7 @@ describe("with admin access", () => {
         enabled: true,
         displayName: "Block high bot score",
         priority: 1,
-        condition: `riskScores.bot >= ${derivedNonDeliverablePasswordRiskScore.bot}`,
+        condition: "riskScores.bot >= 1",
         action: {
           type: "reject",
           message: "High bot risk",
@@ -182,21 +175,14 @@ describe("with admin access", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      context: {
-        risk_scores: {
-          ...derivedNonDeliverablePasswordRiskScore,
-        },
-      },
-      outcome: {
-        should_allow: false,
-        decision: "reject",
-        decision_rule_id: "block-high-bot-score",
-      },
+    expectValidRiskScores(expect, response.body.context.risk_scores);
+    expect(response.body.outcome).toMatchObject({
+      should_allow: response.body.context.risk_scores.bot >= 1 ? false : true,
+      decision: response.body.context.risk_scores.bot >= 1 ? "reject" : "default-allow",
     });
   });
 
-  it("derives risk score conditions from Turnstile overrides unless risk_scores are overridden", async ({ expect }) => {
+  it("uses derived risk_scores for turnstile input unless risk_scores are overridden", async ({ expect }) => {
     await Project.createAndSwitch();
     backendContext.set({ ipData: undefined });
     await Project.updateConfig({
@@ -204,7 +190,7 @@ describe("with admin access", () => {
         enabled: true,
         displayName: "Block high bot score",
         priority: 1,
-        condition: `riskScores.bot >= ${derivedTurnstileRiskScore.bot}`,
+        condition: "riskScores.bot >= 1",
         action: {
           type: "reject",
           message: "High bot risk",
@@ -226,19 +212,8 @@ describe("with admin access", () => {
     });
 
     expect(derivedResponse.status).toBe(200);
-    expect(derivedResponse.body).toMatchObject({
-      context: {
-        turnstile_result: "invalid",
-        risk_scores: {
-          ...derivedTurnstileRiskScore,
-        },
-      },
-      outcome: {
-        should_allow: false,
-        decision: "reject",
-        decision_rule_id: "block-high-bot-score",
-      },
-    });
+    expect(derivedResponse.body.context.turnstile_result).toBe("invalid");
+    expectValidRiskScores(expect, derivedResponse.body.context.risk_scores);
 
     const overriddenResponse = await niceBackendFetch("/api/v1/internal/sign-up-rules-test", {
       method: "POST",
@@ -250,8 +225,8 @@ describe("with admin access", () => {
         country_code: null,
         turnstile_result: "invalid",
         risk_scores: {
-          bot: 0,
-          free_trial_abuse: 0,
+          bot: 10,
+          free_trial_abuse: 10,
         },
       },
     });
@@ -261,13 +236,14 @@ describe("with admin access", () => {
       context: {
         turnstile_result: "invalid",
         risk_scores: {
-          bot: 0,
-          free_trial_abuse: 0,
+          bot: 10,
+          free_trial_abuse: 10,
         },
       },
       outcome: {
-        should_allow: true,
-        decision: "default-allow",
+        should_allow: false,
+        decision: "reject",
+        decision_rule_id: "block-high-bot-score",
       },
     });
   });

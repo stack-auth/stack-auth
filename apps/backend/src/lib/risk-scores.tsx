@@ -1,11 +1,16 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
-import { riskScoreWeights, riskScoreThresholds } from "@stackframe/stack-shared/dist/utils/risk-score-weights";
-import { Tenancy } from "./tenancies";
-import { SignUpTurnstileAssessment } from "./turnstile";
-import { DerivedSignUpHeuristicFacts, deriveSignUpHeuristicFacts } from "./sign-up-heuristics";
+import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { createJiti } from "jiti";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { checkEmailWithEmailable } from "./emailable";
+import { normalizeEmail } from "./emails";
+import { createNeutralSignUpHeuristicFacts, type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
+import type { Tenancy } from "./tenancies";
+import type { SignUpTurnstileAssessment } from "./turnstile";
+import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -27,112 +32,192 @@ export type SignUpRiskAssessment = {
   heuristicFacts: DerivedSignUpHeuristicFacts,
 };
 
+export type SignUpRiskRecentStatsRequest = {
+  signUpAt: Date,
+  signUpIp: string | null,
+  signUpEmailBase: string | null,
+  recentWindowHours: number,
+  sameIpLimit: number,
+  similarEmailLimit: number,
+};
 
-// ── Score arithmetic helpers ───────────────────────────────────────────
-
-const ZERO: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
-
-function scaleScores(scores: SignUpRiskScores, factor: number): SignUpRiskScores {
-  return {
-    bot: Math.round(scores.bot * factor),
-    free_trial_abuse: Math.round(scores.free_trial_abuse * factor),
-  };
-}
-
-function scaleRepeatedSignalCount(params: {
-  matchCount: number,
-  minMatches: number,
-  maxMatchesForFullPenalty: number,
-}): number {
-  if (params.matchCount < params.minMatches) {
-    return 0;
-  }
-  if (params.maxMatchesForFullPenalty < params.minMatches) {
-    throw new Error("Expected maxMatchesForFullPenalty to be >= minMatches");
-  }
-
-  const clampedMatchCount = Math.min(params.matchCount, params.maxMatchesForFullPenalty);
-  const penaltySteps = params.maxMatchesForFullPenalty - params.minMatches + 1;
-  const matchedSteps = clampedMatchCount - params.minMatches + 1;
-
-  return matchedSteps / penaltySteps;
-}
-
-function sumScores(...contributions: SignUpRiskScores[]): SignUpRiskScores {
-  return {
-    bot: Math.min(100, contributions.reduce((s, c) => s + c.bot, 0)),
-    free_trial_abuse: Math.min(100, contributions.reduce((s, c) => s + c.free_trial_abuse, 0)),
-  };
-}
-
-
-// ── Per-signal contribution functions ──────────────────────────────────
-
-function getEmailableContribution(result: EmailableCheckResult): SignUpRiskScores {
-  if (result.emailableScore == null) return ZERO;
-  return scaleScores(riskScoreWeights.emailable, 1 - result.emailableScore / 100);
-}
-
-function getSameIpContribution(matchCount: number, ipTrusted: boolean | null): SignUpRiskScores {
-  const sameIpWeight = ipTrusted === true ? riskScoreWeights.sameIp.trusted : riskScoreWeights.sameIp.spoofable;
-  const factor = scaleRepeatedSignalCount({
-    matchCount,
-    minMatches: riskScoreThresholds.sameIpMinMatches,
-    maxMatchesForFullPenalty: riskScoreThresholds.sameIpMaxMatchesForFullPenalty,
-  });
-  return factor === 0 ? ZERO : scaleScores(sameIpWeight, factor);
-}
-
-function getSimilarEmailContribution(matched: boolean): SignUpRiskScores {
-  return matched ? riskScoreWeights.similarEmail : ZERO;
-}
-
-function getTurnstileContribution(assessment: SignUpTurnstileAssessment): SignUpRiskScores {
-  // The invisible check initially failed (user recovered via visible CAPTCHA to reach this point).
-  if (assessment.status === "invalid") return riskScoreWeights.turnstile;
-  return ZERO;
-}
-
-
-// ── Recent sign-up stats (DB) ──────────────────────────────────────────
-
-type RecentSignUpStats = {
+export type SignUpRiskRecentStats = {
   sameIpCount: number,
   similarEmailCount: number,
 };
 
-async function loadRecentSignUpStats(tenancy: Tenancy, facts: DerivedSignUpHeuristicFacts): Promise<RecentSignUpStats> {
+export type SignUpRiskEngineDependencies = {
+  now: () => Date,
+  normalizeEmail: (email: string) => string,
+  isIpAddress: (ipAddress: string) => boolean,
+  createAssertionError: (message: string, details: Record<string, unknown>) => Error,
+  checkPrimaryEmailRisk: (primaryEmail: string) => Promise<{ emailableScore: number | null }>,
+  loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => Promise<SignUpRiskRecentStats>,
+};
+
+export type SignUpRiskEngine = {
+  calculateRiskAssessment: (
+    context: SignUpRiskScoreContext,
+    dependencies: SignUpRiskEngineDependencies,
+  ) => Promise<SignUpRiskAssessment>,
+};
+
+
+// ── Fallback engine ────────────────────────────────────────────────────
+
+const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
+
+const fallbackSignUpRiskEngine: SignUpRiskEngine = {
+  async calculateRiskAssessment(_context, deps) {
+    return {
+      scores: ZERO_SCORES,
+      heuristicFacts: createNeutralSignUpHeuristicFacts(deps.now()),
+    };
+  },
+};
+
+
+// ── Private engine loader ──────────────────────────────────────────────
+
+const CANDIDATE_SUBPATHS = [
+  "dist/sign-up-risk-engine.js",
+  "src/sign-up-risk-engine.ts",
+] as const;
+
+const _testOverrides = {
+  rootPath: null as string | null,
+  importer: null as ((modulePath: string) => Promise<unknown>) | null,
+};
+
+let cachedEngine: Promise<SignUpRiskEngine> | null = null;
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
+  return typeof value === "object"
+    && value !== null
+    && "calculateRiskAssessment" in value
+    && typeof (value as Record<string, unknown>).calculateRiskAssessment === "function";
+}
+
+function getNestedValue(obj: unknown, key: string): unknown {
+  if (typeof obj === "object" && obj !== null && key in obj) {
+    return (obj as Record<string, unknown>)[key];
+  }
+  return undefined;
+}
+
+function extractEngine(mod: unknown): SignUpRiskEngine {
+  const defaultExport = getNestedValue(mod, "default");
+
+  const candidates = [
+    mod,
+    getNestedValue(mod, "signUpRiskEngine"),
+    defaultExport,
+    getNestedValue(defaultExport, "signUpRiskEngine"),
+  ];
+
+  for (const candidate of candidates) {
+    if (isSignUpRiskEngine(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Private sign-up risk module does not export a valid signUpRiskEngine");
+}
+
+async function loadEngine(): Promise<SignUpRiskEngine> {
+  const root = _testOverrides.rootPath ?? path.resolve(process.cwd(), "packages/private");
+  if (!await fileExists(root)) {
+    return fallbackSignUpRiskEngine;
+  }
+
+  for (const subpath of CANDIDATE_SUBPATHS) {
+    const fullPath = path.join(root, subpath);
+    if (!await fileExists(fullPath)) {
+      continue;
+    }
+
+    const importer = _testOverrides.importer ?? (async (p: string) => {
+      const jiti = createJiti(import.meta.url, { cache: false });
+      return await jiti.import(p);
+    });
+
+    return extractEngine(await importer(fullPath));
+  }
+
+  return fallbackSignUpRiskEngine;
+}
+
+function getEngine(): Promise<SignUpRiskEngine> {
+  cachedEngine ??= loadEngine();
+  return cachedEngine;
+}
+
+function resetEngineForTests() {
+  cachedEngine = null;
+  _testOverrides.rootPath = null;
+  _testOverrides.importer = null;
+}
+
+
+// ── DB queries for the private engine ──────────────────────────────────
+
+async function loadRecentSignUpStats(
+  tenancy: Tenancy,
+  request: SignUpRiskRecentStatsRequest,
+): Promise<SignUpRiskRecentStats> {
   const prisma = await getPrismaClientForTenancy(tenancy);
   const schema = await getPrismaSchemaForTenancy(tenancy);
-  const windowStart = new Date(facts.signUpAt.getTime() - riskScoreThresholds.recentWindowHours * 60 * 60 * 1000);
+  const windowStart = new Date(request.signUpAt.getTime() - request.recentWindowHours * 60 * 60 * 1000);
 
   const [sameIpRows, similarEmailRows] = await Promise.all([
-    facts.signUpIp == null
+    request.signUpIp == null || request.sameIpLimit === 0
       ? []
       : prisma.$replica().$queryRaw<{ matched: number }[]>`
           SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "signUpAt" >= ${windowStart}
-            AND "signUpIp" = ${facts.signUpIp}
-          LIMIT ${riskScoreThresholds.sameIpMaxMatchesForFullPenalty}
+            AND "signUpIp" = ${request.signUpIp}
+          LIMIT ${request.sameIpLimit}
         `,
 
-    facts.signUpEmailBase == null
+    request.signUpEmailBase == null || request.similarEmailLimit === 0
       ? []
       : prisma.$replica().$queryRaw<{ matched: number }[]>`
           SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "signUpAt" >= ${windowStart}
-            AND "signUpEmailBase" = ${facts.signUpEmailBase}
-          LIMIT ${riskScoreThresholds.similarEmailMinMatches}
+            AND "signUpEmailBase" = ${request.signUpEmailBase}
+          LIMIT ${request.similarEmailLimit}
         `,
   ]);
 
   return {
     sameIpCount: sameIpRows.length,
     similarEmailCount: similarEmailRows.length,
+  };
+}
+
+function createDependencies(tenancy: Tenancy): SignUpRiskEngineDependencies {
+  return {
+    now: () => new Date(),
+    normalizeEmail,
+    isIpAddress,
+    createAssertionError: (message, details) => new StackAssertionError(message, details),
+    checkPrimaryEmailRisk: async (email) => ({
+      emailableScore: (await checkEmailWithEmailable(email)).emailableScore,
+    }),
+    loadRecentSignUpStats: (request) => loadRecentSignUpStats(tenancy, request),
   };
 }
 
@@ -143,30 +228,8 @@ export async function calculateSignUpRiskAssessment(
   tenancy: Tenancy,
   context: SignUpRiskScoreContext,
 ): Promise<SignUpRiskAssessment> {
-  const heuristicFacts = deriveSignUpHeuristicFacts({
-    primaryEmail: context.primaryEmail,
-    ipAddress: context.ipAddress,
-    ipTrusted: context.ipTrusted,
-  });
-
-  const [stats, emailableResult] = await Promise.all([
-    loadRecentSignUpStats(tenancy, heuristicFacts),
-    context.primaryEmail == null
-      ? { status: "ok" as const, emailableScore: null }
-      : checkEmailWithEmailable(context.primaryEmail),
-  ]);
-
-  const similarEmailMatched = heuristicFacts.signUpEmailBase != null
-    && stats.similarEmailCount >= riskScoreThresholds.similarEmailMinMatches;
-
-  const scores = sumScores(
-    getEmailableContribution(emailableResult),
-    getSameIpContribution(heuristicFacts.signUpIp == null ? 0 : stats.sameIpCount, context.ipTrusted),
-    getSimilarEmailContribution(similarEmailMatched),
-    getTurnstileContribution(context.turnstileAssessment),
-  );
-
-  return { scores, heuristicFacts };
+  const engine = await getEngine();
+  return await engine.calculateRiskAssessment(context, createDependencies(tenancy));
 }
 
 export async function calculateSignUpRiskScores(tenancy: Tenancy, context: SignUpRiskScoreContext): Promise<SignUpRiskScores> {
@@ -176,101 +239,58 @@ export async function calculateSignUpRiskScores(tenancy: Tenancy, context: SignU
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-import.meta.vitest?.test("scaleScores", ({ expect }) => {
-  expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 0)).toEqual({ bot: 0, free_trial_abuse: 0 });
-  expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 1)).toEqual({ bot: 100, free_trial_abuse: 80 });
-  expect(scaleScores({ bot: 100, free_trial_abuse: 80 }, 0.5)).toEqual({ bot: 50, free_trial_abuse: 40 });
-});
-
-import.meta.vitest?.test("scaleRepeatedSignalCount", ({ expect }) => {
-  const sameIpMaxMatchesForFullPenalty = riskScoreThresholds.sameIpMaxMatchesForFullPenalty;
-
-  expect(scaleRepeatedSignalCount({
-    matchCount: 0,
-    minMatches: 1,
-    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
-  })).toBe(0);
-  expect(scaleRepeatedSignalCount({
-    matchCount: 1,
-    minMatches: 1,
-    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
-  })).toBe(1 / sameIpMaxMatchesForFullPenalty);
-  expect(scaleRepeatedSignalCount({
-    matchCount: 2,
-    minMatches: 1,
-    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
-  })).toBe(2 / sameIpMaxMatchesForFullPenalty);
-  expect(scaleRepeatedSignalCount({
-    matchCount: sameIpMaxMatchesForFullPenalty,
-    minMatches: 1,
-    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
-  })).toBe(1);
-  expect(scaleRepeatedSignalCount({
-    matchCount: 99,
-    minMatches: 1,
-    maxMatchesForFullPenalty: sameIpMaxMatchesForFullPenalty,
-  })).toBe(1);
-});
-
-import.meta.vitest?.test("sumScores clamps to 100", ({ expect }) => {
-  expect(sumScores({ bot: 80, free_trial_abuse: 60 }, { bot: 50, free_trial_abuse: 50 }))
-    .toEqual({ bot: 100, free_trial_abuse: 100 });
-});
-
-import.meta.vitest?.test("getSameIpContribution", ({ expect }) => {
-  const firstMatchFactor = scaleRepeatedSignalCount({
-    matchCount: 1,
-    minMatches: riskScoreThresholds.sameIpMinMatches,
-    maxMatchesForFullPenalty: riskScoreThresholds.sameIpMaxMatchesForFullPenalty,
-  });
-  const secondMatchFactor = scaleRepeatedSignalCount({
-    matchCount: 2,
-    minMatches: riskScoreThresholds.sameIpMinMatches,
-    maxMatchesForFullPenalty: riskScoreThresholds.sameIpMaxMatchesForFullPenalty,
+import.meta.vitest?.test("fallback engine returns zero scores", async ({ expect }) => {
+  const now = new Date("2026-03-11T00:00:00.000Z");
+  const assessment = await fallbackSignUpRiskEngine.calculateRiskAssessment({
+    primaryEmail: "user@example.com",
+    primaryEmailVerified: false,
+    authMethod: "password",
+    oauthProvider: null,
+    ipAddress: "127.0.0.1",
+    ipTrusted: true,
+    turnstileAssessment: { status: "invalid" },
+  }, {
+    now: () => now,
+    normalizeEmail,
+    isIpAddress,
+    createAssertionError: (msg, details) => new StackAssertionError(msg, details),
+    checkPrimaryEmailRisk: async () => ({ emailableScore: 100 }),
+    loadRecentSignUpStats: async () => ({ sameIpCount: 10, similarEmailCount: 10 }),
   });
 
-  expect(getSameIpContribution(0, true)).toEqual(ZERO);
-  expect(getSameIpContribution(1, true)).toEqual(scaleScores(riskScoreWeights.sameIp.trusted, firstMatchFactor));
-  expect(getSameIpContribution(2, false)).toEqual(scaleScores(riskScoreWeights.sameIp.spoofable, secondMatchFactor));
-  expect(getSameIpContribution(riskScoreThresholds.sameIpMaxMatchesForFullPenalty, false)).toEqual(riskScoreWeights.sameIp.spoofable);
-  expect(getSameIpContribution(10, null)).toEqual(riskScoreWeights.sameIp.spoofable);
+  expect(assessment).toEqual({
+    scores: ZERO_SCORES,
+    heuristicFacts: createNeutralSignUpHeuristicFacts(now),
+  });
 });
 
-import.meta.vitest?.test("getTurnstileContribution", ({ expect }) => {
-  expect(getTurnstileContribution({ status: "ok" })).toEqual(ZERO);
-  expect(getTurnstileContribution({ status: "error" })).toEqual(ZERO);
-  expect(getTurnstileContribution({ status: "invalid" })).toEqual(riskScoreWeights.turnstile);
-  expect(getTurnstileContribution({ status: "invalid", visibleChallengeResult: "ok" })).toEqual(riskScoreWeights.turnstile);
+import.meta.vitest?.test("loader falls back when private submodule is absent", async ({ expect }) => {
+  resetEngineForTests();
+  _testOverrides.rootPath = path.join(process.cwd(), "packages", `private-missing-${Date.now()}`);
+
+  try {
+    expect(await getEngine()).toBe(fallbackSignUpRiskEngine);
+  } finally {
+    resetEngineForTests();
+  }
 });
 
-import.meta.vitest?.test("getEmailableContribution", ({ expect }) => {
-  expect(getEmailableContribution({ status: "error", error: new Error("unavailable"), emailableScore: null })).toEqual(ZERO);
-  expect(getEmailableContribution({ status: "ok", emailableScore: null })).toEqual(ZERO);
-  expect(getEmailableContribution({
-    status: "not-deliverable",
-    emailableResponse: { state: "undeliverable", disposable: false, score: null },
-    emailableScore: null,
-  })).toEqual(ZERO);
+import.meta.vitest?.test("loader rethrows private engine import errors", async ({ expect }) => {
+  resetEngineForTests();
+  const tempRoot = await fs.mkdtemp(path.join(process.cwd(), "tmp/private-risk-engine-"));
 
-  expect(getEmailableContribution({ status: "ok", emailableScore: 100 })).toEqual(ZERO);
-  expect(getEmailableContribution({ status: "ok", emailableScore: 0 })).toEqual(riskScoreWeights.emailable);
-  expect(getEmailableContribution({ status: "ok", emailableScore: 50 })).toEqual(
-    scaleScores(riskScoreWeights.emailable, 0.5),
-  );
+  try {
+    await fs.mkdir(path.join(tempRoot, "dist"), { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "dist", "sign-up-risk-engine.js"), "export {};\n");
 
-  expect(getEmailableContribution({
-    status: "not-deliverable",
-    emailableResponse: { state: "undeliverable", disposable: false, score: 10 },
-    emailableScore: 10,
-  })).toEqual(scaleScores(riskScoreWeights.emailable, 0.9));
-});
+    _testOverrides.rootPath = tempRoot;
+    _testOverrides.importer = async () => {
+      throw new Error("private engine exploded");
+    };
 
-import.meta.vitest?.test("worst-case scenario produces exactly 100", ({ expect }) => {
-  const worstCase = sumScores(
-    riskScoreWeights.emailable,
-    riskScoreWeights.sameIp.trusted,
-    riskScoreWeights.similarEmail,
-    riskScoreWeights.turnstile,
-  );
-  expect(worstCase).toEqual({ bot: 100, free_trial_abuse: 100 });
+    await expect(getEngine()).rejects.toThrow("private engine exploded");
+  } finally {
+    resetEngineForTests();
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
 });
