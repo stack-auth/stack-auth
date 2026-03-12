@@ -2568,9 +2568,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const siteKeys = this._getTurnstileSiteKeys();
+    const { codeChallenge, state } = await saveVerifierAndState();
 
     const executeOAuth = async (turnstile: { token?: string, phase?: "invisible" | "visible", previousResult?: import("@stackframe/stack-shared/dist/utils/turnstile").TurnstileRetryResult }) => {
-      const { codeChallenge, state } = await saveVerifierAndState();
       return await this._interface.authorizeOAuth({
         provider,
         redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
