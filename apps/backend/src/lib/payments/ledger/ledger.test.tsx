@@ -696,6 +696,127 @@ describe('getItemQuantityForCustomer - combined sources', () => {
     expect(qty).toBe(1);
     vi.useRealTimers();
   });
+
+  it('deterministically orders same-millis transactions for item quantity computation', async () => {
+    vi.setSystemTime(new Date('2025-02-15'));
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-1',
+        tenancyId: 'tenancy-1',
+        snapshot: {},
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        'free-plan': { displayName: 'Free Plan', customerType: 'custom', productLineId: 'plans', includedItems: { seats: { quantity: 1 } }, prices: 'include-by-default', isAddOnTo: false } as any,
+      },
+      productLines: {
+        plans: { displayName: 'Plans', customerType: 'custom' },
+      },
+    });
+    const sameMillis = new Date('2025-01-03').getTime();
+    _transactionsOverride = [
+      {
+        id: 'tx-default-change',
+        type: 'default-products-change',
+        created_at_millis: new Date('2025-01-01').getTime(),
+        effective_at_millis: new Date('2025-01-01').getTime(),
+        entries: [{
+          type: 'default-products-change',
+          snapshot: {
+            'free-plan': {
+              display_name: 'Free Plan',
+              customer_type: 'custom',
+              product_line_id: 'plans',
+              included_items: { seats: { quantity: 1 } },
+              prices: {},
+              server_only: false,
+              stackable: false,
+              client_metadata: null,
+              client_read_only_metadata: null,
+              server_metadata: null,
+            },
+          },
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      {
+        id: 'tx-product-grant',
+        type: 'subscription-start',
+        created_at_millis: new Date('2025-01-02').getTime(),
+        effective_at_millis: new Date('2025-01-02').getTime(),
+        entries: [{
+          type: 'product-grant',
+          adjusted_transaction_id: null,
+          adjusted_entry_index: null,
+          customer_type: 'custom',
+          customer_id: 'custom-1',
+          product_id: 'paid-plans',
+          product: {
+            display_name: 'Paid Plans',
+            customer_type: 'custom',
+            product_line_id: 'plans',
+            included_items: {},
+            prices: {},
+            server_only: false,
+            stackable: false,
+            client_metadata: null,
+            client_read_only_metadata: null,
+            server_metadata: null,
+          },
+          price_id: null,
+          quantity: 1,
+          cycle_anchor: new Date('2025-01-02').getTime(),
+          subscription_id: 'sub-plans',
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      // Same-millis tie case: ID ordering should process default grant first, then revocation.
+      {
+        id: 'tx-default-grant',
+        type: 'default-product-item-grant-repeat',
+        created_at_millis: sameMillis,
+        effective_at_millis: sameMillis,
+        entries: [{
+          type: 'default-product-item-grant',
+          adjusted_transaction_id: null,
+          adjusted_entry_index: null,
+          product_id: 'free-plan',
+          item_id: 'seats',
+          quantity: 1,
+          expires_when_repeated: false,
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      {
+        id: 'tx-revoke-product',
+        type: 'subscription-end',
+        created_at_millis: sameMillis,
+        effective_at_millis: sameMillis,
+        entries: [{
+          type: 'product-revocation',
+          adjusted_transaction_id: 'tx-product-grant',
+          adjusted_entry_index: 0,
+          customer_type: 'custom',
+          customer_id: 'custom-1',
+          quantity: 1,
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+    ];
+
+    const qty = await getItemQuantityForCustomer({
+      prisma: _currentMockPrisma, tenancy, itemId: 'seats', customerId: 'custom-1', customerType: 'custom',
+    });
+    // default grant event is skipped while paid is active; revocation then restores one default grant.
+    expect(qty).toBe(1);
+    vi.useRealTimers();
+  });
 });
 
 // ===== getOwnedProductsForCustomer =====
@@ -922,6 +1043,64 @@ describe('getOwnedProductsForCustomer - include-by-default', () => {
 
     expect(owned.length).toBe(1);
     expect(owned[0].id).toBe('free-new');
+    expect(owned[0].type).toBe('include-by-default');
+    vi.useRealTimers();
+  });
+
+  it('deterministically picks the same-millis default snapshot using transaction ID tiebreak', async () => {
+    vi.setSystemTime(new Date('2025-02-10'));
+    setupMockPrisma({
+      defaultProductsSnapshots: [{
+        id: 'snap-db',
+        tenancyId: 'tenancy-1',
+        snapshot: {},
+        createdAt: new Date('2025-01-01'),
+      }],
+    });
+    const tenancy = createMockTenancy({
+      products: {
+        'free-a': { displayName: 'Free A', customerType: 'custom', productLineId: 'plans', includedItems: { seats: { quantity: 1 } }, prices: 'include-by-default', isAddOnTo: false } as any,
+        'free-b': { displayName: 'Free B', customerType: 'custom', productLineId: 'plans', includedItems: { seats: { quantity: 2 } }, prices: 'include-by-default', isAddOnTo: false } as any,
+      },
+      productLines: { plans: { displayName: 'Plans', customerType: 'custom' } },
+    });
+    const sameMillis = new Date('2025-01-15').getTime();
+    _transactionsOverride = [
+      {
+        id: 'tx-default-a',
+        type: 'default-products-change',
+        created_at_millis: sameMillis,
+        effective_at_millis: sameMillis,
+        entries: [{
+          type: 'default-products-change',
+          snapshot: {
+            'free-a': productToInlineProduct(tenancy.config.payments.products['free-a'] as any),
+          },
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+      {
+        id: 'tx-default-b',
+        type: 'default-products-change',
+        created_at_millis: sameMillis,
+        effective_at_millis: sameMillis,
+        entries: [{
+          type: 'default-products-change',
+          snapshot: {
+            'free-b': productToInlineProduct(tenancy.config.payments.products['free-b'] as any),
+          },
+        }],
+        adjusted_by: [],
+        test_mode: false,
+      },
+    ];
+
+    const owned = await getOwnedProductsForCustomer({
+      prisma: _currentMockPrisma, tenancy, customerType: 'custom', customerId: 'custom-1',
+    });
+    expect(owned.length).toBe(1);
+    expect(owned[0].id).toBe('free-b');
     expect(owned[0].type).toBe('include-by-default');
     vi.useRealTimers();
   });

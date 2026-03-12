@@ -67,8 +67,20 @@ function normalizeDefaultSnapshot(snapshot: Record<string, any>): Record<string,
   return normalized;
 }
 
+function compareTransactionsByEffectiveAtAsc(left: Transaction, right: Transaction): number {
+  const effectiveAtDiff = left.effective_at_millis - right.effective_at_millis;
+  if (effectiveAtDiff !== 0) return effectiveAtDiff;
+  return stringCompare(left.id, right.id);
+}
+
+function compareTransactionsByEffectiveAtDesc(left: Transaction, right: Transaction): number {
+  const effectiveAtDiff = right.effective_at_millis - left.effective_at_millis;
+  if (effectiveAtDiff !== 0) return effectiveAtDiff;
+  return stringCompare(right.id, left.id);
+}
+
 function getCurrentDefaultProducts(transactions: Transaction[]): { snapshot: Record<string, any>, effectiveAtMillis: number } {
-  const sortedTransactions = [...transactions].sort((a, b) => b.effective_at_millis - a.effective_at_millis);
+  const sortedTransactions = [...transactions].sort(compareTransactionsByEffectiveAtDesc);
 
   for (const tx of sortedTransactions) {
     if ((tx.type as string) !== "default-products-change") continue;
@@ -102,7 +114,9 @@ export async function getOwnedProductsForCustomer(options: {
   const allTransactions = await getAllTransactionsForCustomer(options.prisma, options.tenancy, options.customerType, options.customerId);
 
   const now = options.now ?? new Date();
-  const transactions = allTransactions.filter((tx) => tx.effective_at_millis <= now.getTime());
+  const transactions = allTransactions
+    .filter((tx) => tx.effective_at_millis <= now.getTime())
+    .sort(compareTransactionsByEffectiveAtAsc);
 
   const revokedQuantities = new Map<string, number>();
   const subscriptionIds = new Set<string>();
@@ -230,7 +244,9 @@ export async function getItemQuantityForCustomer(options: {
   const allTransactions = await getAllTransactionsForCustomer(options.prisma, options.tenancy, options.customerType, options.customerId);
 
   const now = options.now ?? new Date();
-  const transactions = allTransactions.filter((tx) => tx.effective_at_millis <= now.getTime()).sort((a, b) => a.effective_at_millis - b.effective_at_millis);
+  const transactions = allTransactions
+    .filter((tx) => tx.effective_at_millis <= now.getTime())
+    .sort(compareTransactionsByEffectiveAtAsc);
   const ledgerTransactions: LedgerTransaction[] = [];
   const ledgerItemGrantMapByTxIdAndEntryIndex = new Map<string, Map<number, LedgerTransaction>>();
 
@@ -343,7 +359,7 @@ export async function getItemQuantityForCustomer(options: {
         const ledgerTransaction = {
           amount: entry.quantity,
           grantTime: new Date(tx.effective_at_millis),
-          expirationTime: expiresAtMillis ? new Date(expiresAtMillis) : new Date(8640000000000000),
+          expirationTime: expiresAtMillis !== null && expiresAtMillis !== undefined ? new Date(expiresAtMillis) : new Date(8640000000000000),
         };
         ledgerTransactions.push(ledgerTransaction);
         const ledgerTransactionMap = ledgerItemGrantMapByTxIdAndEntryIndex.get(tx.id) ?? new Map<number, LedgerTransaction>();
