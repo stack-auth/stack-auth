@@ -1,9 +1,10 @@
 'use client';
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { DataTableColumnHeader, DataTableManualPagination, Input, Skeleton, TextCell } from "@/components/ui";
+import { DesignDataTable } from "@/components/design-components/table";
+import { DataTableColumnHeader, Input, Skeleton, TextCell } from "@/components/ui";
 import { ServerUser } from '@stackframe/stack';
-import { ColumnDef, ColumnFiltersState, SortingState } from "@tanstack/react-table";
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { ColumnDef } from "@tanstack/react-table";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { extendUsers } from "./user-table";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -19,7 +20,6 @@ function UserSearchTable(props: {
     query: props.query || undefined,
   });
 
-  // Reset filters when query changes
   useEffect(() => {
     setFilters({ limit: PAGE_SIZE, query: props.query || undefined });
   }, [props.query]);
@@ -46,32 +46,15 @@ function UserSearchTable(props: {
     },
   ], [action]);
 
-  const onUpdate = useCallback(async (options: {
-    cursor: string,
-    limit: number,
-    sorting: SortingState,
-    columnFilters: ColumnFiltersState,
-    globalFilters: any,
-  }) => {
-    const newFilters: Parameters<typeof stackAdminApp.listUsers>[0] = {
-      cursor: options.cursor,
-      limit: options.limit,
-      query: props.query || undefined,
-    };
-
-    setFilters(newFilters);
-    const result = await stackAdminApp.listUsers(newFilters);
-    return { nextCursor: result.nextCursor };
-  }, [stackAdminApp, props.query]);
-
-  return <DataTableManualPagination
-    showDefaultToolbar={false}
-    columns={columns}
-    data={users}
-    onUpdate={onUpdate}
-    defaultColumnFilters={[]}
-    defaultSorting={[]}
-  />;
+  return (
+    <DesignDataTable
+      showDefaultToolbar={false}
+      columns={columns}
+      data={users}
+      defaultColumnFilters={[]}
+      defaultSorting={[]}
+    />
+  );
 }
 
 export function UserSearchPicker(props: {
