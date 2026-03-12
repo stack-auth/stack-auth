@@ -142,7 +142,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   const dauByDay = new Map<string, number>();
   for (const row of rows) {
     // ClickHouse returns dates/datetimes without timezone, treat as UTC.
-    const dayKey = new Date(row.day + 'Z').toISOString().split('T')[0];
+    const dayKey = row.day.split('T')[0];
     dauByDay.set(dayKey, Number(row.dau));
   }
 
@@ -275,7 +275,7 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
     idsByDay.set(date, new Set<string>());
   }
   for (const row of userRows) {
-    const day = new Date(row.day + 'Z').toISOString().split('T')[0];
+    const day = row.day.split('T')[0];
     const daySet = idsByDay.get(day);
     if (daySet) {
       daySet.add(row.user_id);
@@ -346,7 +346,7 @@ async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<A
     idsByDay.set(date, new Set<string>());
   }
   for (const row of teamRows) {
-    const day = new Date(row.day + 'Z').toISOString().split('T')[0];
+    const day = row.day.split('T')[0];
     const daySet = idsByDay.get(day);
     if (daySet) {
       daySet.add(row.team_id);
@@ -886,18 +886,18 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
 
     const pvByDay = new Map<string, number>();
     for (const row of pvRows) {
-      const key = new Date(row.day + 'Z').toISOString().split('T')[0];
+      const key = row.day.split('T')[0];
       pvByDay.set(key, Number(row.cnt));
     }
     const clByDay = new Map<string, number>();
     for (const row of clRows) {
-      const key = new Date(row.day + 'Z').toISOString().split('T')[0];
+      const key = row.day.split('T')[0];
       clByDay.set(key, Number(row.cnt));
     }
     const visitorRows: { day: string, cnt: number }[] = await dailyVisitorResult.json();
     const visitorByDay = new Map<string, number>();
     for (const row of visitorRows) {
-      const key = new Date(row.day + 'Z').toISOString().split('T')[0];
+      const key = row.day.split('T')[0];
       visitorByDay.set(key, Number(row.cnt));
     }
     const totalVisitorRows: { visitors: number }[] = await totalVisitorResult.json();
