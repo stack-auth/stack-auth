@@ -118,6 +118,8 @@ Stack Auth provides several built-in email templates for common authentication f
 - **Magic Link**: `magic_link` - Sent for passwordless authentication
 - **Team Invitation**: `team_invitation` - Sent when users are invited to teams
 - **Sign-in Invitation**: `sign_in_invitation` - Sent to invite users to sign up
+- **Payment Receipt**: `payment_receipt` - Sent when a payment succeeds (one-time or subscription)
+- **Payment Failed**: `payment_failed` - Sent when a payment fails (one-time or subscription)
 
 These templates can be customized through the admin interface or programmatically.
 
@@ -141,7 +143,7 @@ For production, configure your own SMTP server through the dashboard:
 - Select "Custom SMTP server" as your email server type
 - Configure the following settings:
   - **Host**: Your SMTP server hostname (e.g., `smtp.yourprovider.com`)
-  - **Port**: SMTP port (typically 587 for TLS or 465 for SSL)
+  - **Port**: SMTP port (typically 587 for STARTTLS, or 465/2465 for implicit TLS)
   - **Username**: Your SMTP username
   - **Password**: Your SMTP password
   - **Sender Email**: The email address emails will be sent from

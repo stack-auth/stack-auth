@@ -24,6 +24,7 @@ import {
 } from "@/components/ui";
 import { ClockIcon, HardDriveIcon } from "@phosphor-icons/react";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useState } from "react";
 import { DEFAULT_INTERVAL_UNITS, PRICE_INTERVAL_UNITS, type Price } from "./utils";
 
@@ -222,8 +223,9 @@ export function PriceEditDialog({
                   name: "Server Only",
                   tooltip: "Server-only prices can only be assigned through server-side API calls.",
                   value: editingPrice.serverOnly,
-                  onChange: (value: boolean) => {
+                  onUpdate: (value: boolean) => {
                     onEditingPriceChange({ ...editingPrice, serverOnly: value });
+                    return Promise.resolve();
                   },
                 },
               ]}
@@ -234,7 +236,7 @@ export function PriceEditDialog({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={editingPrice ? () => onSave(editingPrice, isAdding) : undefined}>
+          <Button onClick={editingPrice ? () => runAsynchronouslyWithAlert(() => onSave(editingPrice, isAdding)) : undefined}>
             {isAdding ? "Add Price" : "Save Changes"}
           </Button>
         </DialogFooter>

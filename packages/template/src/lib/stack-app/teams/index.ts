@@ -26,11 +26,44 @@ export type TeamUser = {
   teamProfile: TeamMemberProfile,
 }
 
-export type TeamInvitation = {
+/**
+ * A team invitation as seen from the team's perspective (ie. the sender).
+ *
+ * Returned by `team.listInvitations()`. Contains the recipient email and allows
+ * revoking the invitation.
+ */
+export type SentTeamInvitation = {
   id: string,
   recipientEmail: string | null,
   expiresAt: Date,
   revoke(): Promise<void>,
+}
+
+/**
+ * @deprecated Use `SentTeamInvitation` instead.
+ */
+export type TeamInvitation = SentTeamInvitation;
+
+/**
+ * A team invitation as seen from the invited user's perspective (ie. the receiver).
+ *
+ * Returned by `user.listTeamInvitations()`. Contains information about teams that have
+ * sent invitations to any of the user's verified email addresses, and allows accepting
+ * the invitation to join the team.
+ */
+export type ReceivedTeamInvitation = {
+  id: string,
+  teamId: string,
+  teamDisplayName: string,
+  recipientEmail: string,
+  expiresAt: Date,
+
+  /**
+   * Accepts the invitation, adding the current user to the team.
+   *
+   * The user must have a verified email address matching the invitation's recipient email.
+   */
+  accept(): Promise<void>,
 }
 
 export type Team = {
@@ -42,8 +75,8 @@ export type Team = {
   inviteUser(options: { email: string, callbackUrl?: string }): Promise<void>,
   listUsers(): Promise<TeamUser[]>,
   useUsers(): TeamUser[], // THIS_LINE_PLATFORM react-like
-  listInvitations(): Promise<TeamInvitation[]>,
-  useInvitations(): TeamInvitation[], // THIS_LINE_PLATFORM react-like
+  listInvitations(): Promise<SentTeamInvitation[]>,
+  useInvitations(): SentTeamInvitation[], // THIS_LINE_PLATFORM react-like
   update(update: TeamUpdateOptions): Promise<void>,
   delete(): Promise<void>,
   createApiKey(options: ApiKeyCreationOptions<"team">): Promise<TeamApiKeyFirstView>,

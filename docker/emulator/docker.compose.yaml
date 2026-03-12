@@ -52,6 +52,7 @@ services:
       STACK_SPOTIFY_CLIENT_SECRET: "MOCK"
       STACK_S3_ENDPOINT: "http://localhost:32205"
       STACK_S3_BUCKET: "stack-storage"
+      STACK_S3_PRIVATE_BUCKET: "stack-storage-private"
       STACK_S3_REGION: "us-east-1"
       STACK_S3_ACCESS_KEY_ID: "S3RVER"
       STACK_S3_SECRET_ACCESS_KEY: "S3RVER"
@@ -145,7 +146,7 @@ services:
     ports:
       - 32205:9090
     environment:
-      - initialBuckets=stack-storage
+      - initialBuckets=stack-storage,stack-storage-private
       - root=s3mockroot
       - debug=false
     volumes:

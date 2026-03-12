@@ -182,6 +182,7 @@ export async function getOwnedProductsForCustomer(options: {
         createdAt: new Date(tx.effective_at_millis),
         sourceId: entry.subscription_id ?? entry.one_time_purchase_id ?? tx.id,
         subscription: isSubscription ? {
+          subscriptionId: entry.subscription_id ?? null,
           stripeSubscriptionId: subMeta?.stripeSubscriptionId ?? null,
           currentPeriodEnd: subMeta?.currentPeriodEnd ?? null,
           cancelAtPeriodEnd: subMeta?.cancelAtPeriodEnd ?? false,

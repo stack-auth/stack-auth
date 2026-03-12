@@ -293,6 +293,9 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       isAnonymous: user.is_anonymous,
       teamId: undefined,
       ipInfo,
+    },
+    {
+      refreshTokenId: options.refreshTokenObj.id,
     }
   );
 

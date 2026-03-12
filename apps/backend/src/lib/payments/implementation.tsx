@@ -557,6 +557,7 @@ export type OwnedProduct = {
   createdAt: Date,
   sourceId: string,
   subscription: null | {
+    subscriptionId: string | null,
     stripeSubscriptionId: string | null,
     currentPeriodEnd: Date | null,
     cancelAtPeriodEnd: boolean,

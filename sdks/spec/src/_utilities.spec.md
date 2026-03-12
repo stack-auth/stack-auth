@@ -19,6 +19,7 @@ Construct API URL: `{baseUrl}/api/v1{path}`
 
 x-stack-project-id: <projectId>
 x-stack-publishable-client-key: <publishableClientKey>
+  - Note that this argument is optional, although if this is not given then the backend will return a PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT error if requirePublishableClientKey is true on the project and you should panic.
 x-stack-client-version: "<sdk-name>@<version>" (e.g., "python@1.0.0", "go@0.1.0")
 x-stack-access-type: "client" | "server" | "admin"
   - "client" for StackClientApp
@@ -30,6 +31,11 @@ x-stack-random-nonce: <random-string>
   - Cache buster to prevent framework caching (e.g., Next.js)
   - Generate a new random string for each request
 content-type: application/json (for requests with body)
+
+### OAuth client_secret sentinel
+
+publishableClientKeyNotNecessarySentinel: "__stack_public_client__"
+  - Use this as the OAuth client_secret when a project does not require a publishable client key.
 
 
 ### Authentication Headers [authenticated]
@@ -208,7 +214,7 @@ To refresh an access token from a refresh token, use an OAuth2 token grant:
     grant_type: refresh_token
     refresh_token: <refresh_token>
     client_id: <projectId>
-    client_secret: <publishableClientKey>
+    client_secret: <publishableClientKey | publishableClientKeyNotNecessarySentinel>
 
   Response on success (200 OK):
     { access_token: string, refresh_token?: string, ... }

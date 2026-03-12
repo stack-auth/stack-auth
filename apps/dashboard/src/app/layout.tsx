@@ -2,7 +2,6 @@ import { DevErrorNotifier } from '@/components/dev-error-notifier';
 import { RouterProvider } from '@/components/router';
 import { SiteLoadingIndicatorDisplay } from '@/components/site-loading-indicator';
 import { StyleLink } from '@/components/style-link';
-import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster, cn } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { stackServerApp } from '@/stack';
@@ -88,6 +87,9 @@ export default function RootLayout({
             ...attributes,
           });
         })}
+
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script dangerouslySetInnerHTML={{ __html: "(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;var r=t==='dark'||t==='light'?t:window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';d.classList.add(r);d.style.colorScheme=r}catch(e){}})()" }} />
       </head>
       <body
         className={cn(
@@ -98,20 +100,18 @@ export default function RootLayout({
       >
         <Analytics />
         <SpeedInsights />
-        <ThemeProvider>
-          <StackProvider app={stackServerApp} lang={translationLocale as any}>
-            <StackTheme>
-              <ClientPolyfill />
-              <RouterProvider>
-                <UserIdentity />
-                <VersionAlerter />
-                <BackgroundShine />
-                {children}
-                <DevelopmentPortDisplay />
-              </RouterProvider>
-            </StackTheme>
-          </StackProvider>
-        </ThemeProvider>
+        <StackProvider app={stackServerApp} lang={translationLocale as any}>
+          <StackTheme>
+            <ClientPolyfill />
+            <RouterProvider>
+              <UserIdentity />
+              <VersionAlerter />
+              <BackgroundShine />
+              {children}
+              <DevelopmentPortDisplay />
+            </RouterProvider>
+          </StackTheme>
+        </StackProvider>
         <DevErrorNotifier />
         <Toaster />
         <SiteLoadingIndicatorDisplay />

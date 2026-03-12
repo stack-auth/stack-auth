@@ -17,6 +17,8 @@ import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
+const MONTHLY_REPEAT: DayInterval = [1, "month"];
+
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
 
@@ -130,9 +132,10 @@ export async function seed() {
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.free.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.free.sessionReplays, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
             },
           },
           team: {
@@ -144,16 +147,18 @@ export async function seed() {
             prices: {
               monthly: {
                 USD: "49",
-                interval: [1, "month"] as any,
+                interval: MONTHLY_REPEAT,
                 serverOnly: false,
               },
             },
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.team.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.team.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.team.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.team.sessionReplays, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.onboardingCall]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
           },
           growth: {
@@ -165,16 +170,18 @@ export async function seed() {
             prices: {
               monthly: {
                 USD: "299",
-                interval: [1, "month"] as any,
+                interval: MONTHLY_REPEAT,
                 serverOnly: false,
               },
             },
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.growth.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.growth.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
               [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.growth.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
-              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.sessionReplays]: { quantity: PLAN_LIMITS.growth.sessionReplays, repeat: MONTHLY_REPEAT, expires: "when-repeated" as const },
+              [ITEM_IDS.onboardingCall]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
           },
           "extra-seats": {
@@ -186,7 +193,7 @@ export async function seed() {
             prices: {
               monthly: {
                 USD: "29",
-                interval: [1, "month"] as any,
+                interval: MONTHLY_REPEAT,
                 serverOnly: false,
               },
             },
@@ -205,6 +212,8 @@ export async function seed() {
           [ITEM_IDS.emailsPerMonth]: { displayName: "Emails per Month", customerType: "team" as const },
           [ITEM_IDS.analyticsTimeoutSeconds]: { displayName: "Analytics Timeout (seconds)", customerType: "team" as const },
           [ITEM_IDS.analyticsEvents]: { displayName: "Analytics Events", customerType: "team" as const },
+          [ITEM_IDS.sessionReplays]: { displayName: "Session Replays", customerType: "team" as const },
+          [ITEM_IDS.onboardingCall]: { displayName: "Onboarding Call", customerType: "team" as const },
         },
       },
       apps: {
@@ -1116,6 +1125,13 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     userEmailToId,
   });
 
+  await seedDummySessionReplays({
+    prisma: dummyPrisma,
+    tenancyId: dummyTenancy.id,
+    userEmailToId,
+    targetSessionReplayCount: 75
+  });
+
   console.log('Seeded dummy project data');
 }
 
@@ -1762,4 +1778,66 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   }
 
   console.log('Finished seeding session activity events');
+}
+
+type SessionReplaySeedOptions = {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  userEmailToId: Map<string, string>,
+  targetSessionReplayCount?: number,
+};
+
+async function seedDummySessionReplays(options: SessionReplaySeedOptions) {
+  const {
+    prisma,
+    tenancyId,
+    userEmailToId,
+    targetSessionReplayCount = 250,
+  } = options;
+
+  const existingCount = await prisma.sessionReplay.count({
+    where: {
+      tenancyId,
+    },
+  });
+
+  if (existingCount >= targetSessionReplayCount) {
+    console.log(`Dummy project already has ${existingCount} session replays, skipping seeding`);
+    return;
+  }
+
+  const toCreate = targetSessionReplayCount - existingCount;
+  const userIds = Array.from(userEmailToId.values());
+  if (userIds.length === 0) {
+    throw new Error('Cannot seed session replays: no dummy project users exist');
+  }
+
+  const now = new Date();
+  const twoWeeksAgo = new Date(now);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  for (let i = 0; i < toCreate; i++) {
+    const startedAt = new Date(
+      twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
+    );
+    const durationMs = 10_000 + Math.floor(Math.random() * (20 * 60 * 1000)); // 10s..20m
+    const lastEventAt = new Date(startedAt.getTime() + durationMs);
+    const projectUserId = userIds[Math.floor(Math.random() * userIds.length)]!;
+
+    seeds.push({
+      tenancyId,
+      refreshTokenId: generateUuid(),
+      projectUserId,
+      id: generateUuid(),
+      startedAt,
+      lastEventAt,
+    });
+  }
+
+  await prisma.sessionReplay.createMany({
+    data: seeds,
+  });
+
+  console.log(`Seeded ${toCreate} session replays`);
 }

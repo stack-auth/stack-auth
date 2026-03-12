@@ -520,6 +520,19 @@ describe('renderEmailWithTemplate', () => {
     }
   `;
 
+  const editableTemplate = `
+    export const variablesSchema = (v: any) => v;
+    export function EmailTemplate() {
+      return <div>Hello Template</div>;
+    }
+  `;
+
+  const editableTheme = `
+    export function EmailTheme({ children }: any) {
+      return <div>Theme Wrapper {children}</div>;
+    }
+  `;
+
   it('preview mode: uses default user and project when not provided', async () => {
     const result = await renderEmailWithTemplate(simpleTemplate, simpleTheme, {
       previewMode: true,
@@ -550,5 +563,125 @@ describe('renderEmailWithTemplate', () => {
     if (result.status === 'ok') {
       expect(result.data.html).toContain('Hello from preview!');
     }
+  });
+
+  it('editable markers: disabled by default', async () => {
+    const result = await renderEmailWithTemplate(editableTemplate, editableTheme, {
+      previewMode: true,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status === 'ok') {
+      expect(result.data.editableRegions).toBeUndefined();
+      expect(result.data.html).not.toContain('STACK_EDITABLE_START');
+    }
+  });
+
+  it('editable markers: template only', async () => {
+    const result = await renderEmailWithTemplate(editableTemplate, editableTheme, {
+      previewMode: true,
+      editableMarkers: true,
+      editableSource: 'template',
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "data": {
+          "editableRegions": {
+            "t0": {
+              "id": "t0",
+              "jsxPath": [
+                "EmailTemplate",
+                "div",
+              ],
+              "loc": {
+                "column": 18,
+                "end": 121,
+                "line": 4,
+                "start": 107,
+              },
+              "occurrenceCount": 1,
+              "occurrenceIndex": 1,
+              "originalText": "Hello Template",
+              "parentElement": {
+                "props": {},
+                "tagName": "div",
+              },
+              "siblingIndex": 0,
+              "sourceContext": {
+                "after": "    }
+        ",
+                "before": "
+          export const variablesSchema = (v: any) => v;
+          export function EmailTemplate() {",
+              },
+              "sourceFile": "template",
+              "textHash": "94fa2ad62c98a1d3",
+            },
+          },
+          "html": "<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><!--$--><div>Theme Wrapper <div><!-- STACK_EDITABLE_START t0 --><!-- -->Hello Template<!-- --><!-- STACK_EDITABLE_END t0 --></div></div><!--/$-->",
+          "text": "Theme Wrapper
+      ⟦STACK_EDITABLE_START:t0⟧Hello Template⟦STACK_EDITABLE_END:t0⟧",
+        },
+        "status": "ok",
+      }
+    `);
+  });
+
+  it('editable markers: theme only', async () => {
+    const templateWithoutText = `
+      export const variablesSchema = (v: any) => v;
+      export function EmailTemplate() {
+        return <div>{null}</div>;
+      }
+    `;
+
+    const result = await renderEmailWithTemplate(templateWithoutText, editableTheme, {
+      previewMode: true,
+      editableMarkers: true,
+      editableSource: 'theme',
+    });
+
+    expect(result).toMatchInlineSnapshot(`
+      {
+        "data": {
+          "editableRegions": {
+            "h0": {
+              "id": "h0",
+              "jsxPath": [
+                "EmailTheme",
+                "div",
+              ],
+              "loc": {
+                "column": 18,
+                "end": 85,
+                "line": 3,
+                "start": 71,
+              },
+              "occurrenceCount": 1,
+              "occurrenceIndex": 1,
+              "originalText": "Theme Wrapper ",
+              "parentElement": {
+                "props": {},
+                "tagName": "div",
+              },
+              "siblingIndex": 0,
+              "sourceContext": {
+                "after": "    }
+        ",
+                "before": "
+          export function EmailTheme({ children }: any) {",
+              },
+              "sourceFile": "theme",
+              "textHash": "c6990020d33ca275",
+            },
+          },
+          "html": "<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><!--$--><div><!-- STACK_EDITABLE_START h0 --><!-- -->Theme Wrapper <!-- --><!-- STACK_EDITABLE_END h0 --><div></div></div><!--/$-->",
+          "text": "⟦STACK_EDITABLE_START:h0⟧Theme Wrapper ⟦STACK_EDITABLE_END:h0⟧
+      ",
+        },
+        "status": "ok",
+      }
+    `);
   });
 });

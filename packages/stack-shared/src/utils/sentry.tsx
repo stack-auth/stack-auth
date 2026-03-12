@@ -1,6 +1,4 @@
-import * as Sentry from "@sentry/nextjs";
-
-export const sentryBaseConfig: Sentry.BrowserOptions & Sentry.NodeOptions & Sentry.VercelEdgeOptions = {
+export const sentryBaseConfig = {
   ignoreErrors: [
     // React throws these errors when used with some browser extensions (eg. Google Translate)
     "NotFoundError: Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",

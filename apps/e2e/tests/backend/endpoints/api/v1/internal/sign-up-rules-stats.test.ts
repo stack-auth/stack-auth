@@ -169,4 +169,58 @@ describe("with admin access", () => {
     expect(lastHourlyCount.hour).toEqual(new Date().toISOString().slice(0, 13) + ':00:00.000Z');
     expect(lastHourlyCount.count).toBe(1);
   });
+
+  it("should read rule_id from ClickHouse events with COALESCE for both camelCase and snake_case data", async ({ expect }) => {
+    // Regression test: a ClickHouse migration converts ruleId -> rule_id (snake_case).
+    // The stats query must handle both field name formats via COALESCE.
+    // This test verifies the COALESCE query reads the correct rule_id from the event.
+    await Project.createAndSwitch();
+    await Project.updateConfig({
+      'auth.signUpRules.coalesce-rule': {
+        enabled: true,
+        displayName: 'COALESCE Test Rule',
+        priority: 1,
+        condition: 'true',
+        action: { type: 'log' },
+      },
+    });
+
+    await Auth.Password.signUpWithEmail();
+
+    // Wait for the ClickHouse event to appear and verify via a raw COALESCE query
+    let chResult: any;
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await wait(500);
+      chResult = await niceBackendFetch("/api/v1/internal/analytics/query", {
+        method: "POST",
+        accessType: "admin",
+        body: {
+          query: `
+            SELECT
+              COALESCE(
+                NULLIF(CAST(data.rule_id, 'Nullable(String)'), ''),
+                NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
+              ) as rule_id
+            FROM events
+            WHERE event_type = '$sign-up-rule-trigger'
+            LIMIT 1
+          `,
+          params: {},
+        },
+      });
+      if (chResult.status === 200 && chResult.body?.result?.length > 0) break;
+    }
+
+    expect(chResult.status).toBe(200);
+    expect(chResult.body.result.length).toBeGreaterThan(0);
+    expect(chResult.body.result[0].rule_id).toBe('coalesce-rule');
+
+    // Verify the stats endpoint returns correct data with the COALESCE-based query
+    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
+    expect(response.status).toBe(200);
+    expect(response.body.rule_triggers.length).toBeGreaterThan(0);
+    const trigger = response.body.rule_triggers.find((t: any) => t.rule_id === 'coalesce-rule');
+    expect(trigger).toBeTruthy();
+    expect(trigger.total_count).toBeGreaterThanOrEqual(1);
+  });
 });

@@ -19,5 +19,11 @@ export const stackServerApp = new StackServerApp<"nextjs-cookie", true, 'interna
     afterSignIn: "/projects",
     afterSignUp: "/new-project",
     afterSignOut: "/",
-  }
+  },
+  analytics: {
+    replays: {
+      maskAllInputs: false,
+      enabled: true,
+    },
+  },
 });

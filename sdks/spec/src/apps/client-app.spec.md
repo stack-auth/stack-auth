@@ -9,9 +9,13 @@ StackClientApp(options)
 
 Required:
   projectId: string - from Stack Auth dashboard
-  publishableClientKey: string - from Stack Auth dashboard
 
 Optional:
+  publishableClientKey: string
+    From Stack Auth dashboard. If omitted, the SDK uses
+    publishableClientKeyNotNecessarySentinel for OAuth client_secret (which
+    assumes that the project does not require a publishable client key), and
+    no x-stack-publishable-client-key header is sent.
   baseUrl: string | { browser, server } 
     Default: "https://api.stack-auth.com"
     Can specify different URLs for browser vs server environments.
@@ -165,7 +169,8 @@ Note on URL schemes:
 Implementation:
 1. Generate or use provided state and codeVerifier
 2. Compute code challenge: base64url(sha256(codeVerifier))
-3. Build authorization URL (same as signInWithOAuth step 5)
+3. Build authorization URL (same as signInWithOAuth step 5), using
+   client_secret=<publishableClientKey | publishableClientKeyNotNecessarySentinel>
 4. Return { url, state, codeVerifier, redirectUrl } without redirecting
 
 The caller is responsible for:
@@ -773,7 +778,7 @@ Implementation:
      - redirect_uri=<redirectUrl - must match getOAuthUrl exactly>
      - code_verifier=<codeVerifier>
      - client_id=<projectId>
-     - client_secret=<publishableClientKey>
+     - client_secret=<publishableClientKey | publishableClientKeyNotNecessarySentinel>
 
    Response on success:
      { 

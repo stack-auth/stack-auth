@@ -1,9 +1,12 @@
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { getStackServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
 import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
@@ -196,6 +199,9 @@ export async function logEvent<T extends EventType[]>(
   data: DataOfMany<T>,
   options: {
     time?: Date | { start: Date, end: Date },
+    refreshTokenId?: string,
+    sessionReplayId?: string,
+    sessionReplaySegmentId?: string,
   } = {}
 ) {
   let timeOrTimeRange = options.time ?? new Date();
@@ -261,6 +267,27 @@ export async function logEvent<T extends EventType[]>(
 
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
+    // Resolve billing team for analytics event quota enforcement
+    let billingTeamId: string | null = null;
+    if (projectId) {
+      const project = await globalPrismaClient.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, ownerTeamId: true },
+      });
+      if (project != null) {
+        billingTeamId = getBillingTeamId(project);
+      }
+    }
+
+    if (billingTeamId != null) {
+      const app = getStackServerApp();
+      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+      const isDebited = await eventsItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        return;
+      }
+    }
+
     // log event in DB
     await globalPrismaClient.event.create({
       data: {
@@ -307,10 +334,36 @@ export async function logEvent<T extends EventType[]>(
           is_anonymous: isAnonymous,
           ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
         };
-      } else {
+      } else if (matchingEventType.id === "$sign-up-rule-trigger") {
+        const ruleId =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.ruleId === "string"
+            ? dataRecord.ruleId
+            : throwErr(new StackAssertionError("ruleId is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+        const action =
+          typeof dataRecord === "object" && dataRecord && typeof dataRecord.action === "string"
+            ? dataRecord.action
+            : throwErr(new StackAssertionError("action is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+        const email =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.email as string | null | undefined) ?? null
+            : null;
+        const authMethod =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.authMethod as string | null | undefined) ?? null
+            : null;
+        const oauthProvider =
+          typeof dataRecord === "object" && dataRecord
+            ? (dataRecord.oauthProvider as string | null | undefined) ?? null
+            : null;
         clickhouseEventData = {
-          ...(data as Record<string, unknown>),
+          rule_id: ruleId,
+          action,
+          email,
+          auth_method: authMethod,
+          oauth_provider: oauthProvider,
         };
+      } else {
+        throw new StackAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
       }
 
       if (!projectId) {
@@ -320,6 +373,12 @@ export async function logEvent<T extends EventType[]>(
         );
       }
       const clickhouseClient = getClickhouseAdminClient();
+      // Resolve refresh_token_id: prefer explicit option, fall back to data for $token-refresh events
+      const resolvedRefreshTokenId = options.refreshTokenId
+        ?? (matchingEventType.id === "$token-refresh" && typeof (clickhouseEventData as any).refresh_token_id === "string"
+          ? (clickhouseEventData as any).refresh_token_id as string
+          : null);
+
       await clickhouseClient.insert({
         table: "analytics_internal.events",
         values: [{
@@ -330,6 +389,9 @@ export async function logEvent<T extends EventType[]>(
           branch_id: branchId,
           user_id: userId || null,
           team_id: null,
+          refresh_token_id: resolvedRefreshTokenId ?? null,
+          session_replay_id: options.sessionReplayId ?? null,
+          session_replay_segment_id: options.sessionReplaySegmentId ?? null,
         }],
         format: "JSONEachRow",
         clickhouse_settings: {

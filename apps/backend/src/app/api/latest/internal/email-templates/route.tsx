@@ -1,8 +1,9 @@
 import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { defaultNewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { filterUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 export const GET = createSmartRouteHandler({
@@ -65,32 +66,11 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ body, auth: { tenancy } }) {
+    if (tenancy.config.emails.server.isShared) {
+      throw new KnownErrors.RequiresCustomEmailServer();
+    }
+
     const id = generateUuid();
-    const defaultTemplateSource = deindent`
-      import { type } from "arktype"
-      import { Container } from "@react-email/components";
-      import { Subject, NotificationCategory, Props } from "@stackframe/emails";
-
-      export const variablesSchema = type({
-        count: "number"
-      });
-
-      export function EmailTemplate({ user, variables }: Props<typeof variablesSchema.infer>) {
-        return (
-          <Container>
-            <Subject value={\`Hello \${user.displayName}!\`} />
-            <NotificationCategory value="Transactional" />
-            <div className="font-bold">Hi {user.displayName}!</div>
-            <br />
-            count is {variables.count}
-          </Container>
-        );
-      }
-
-      EmailTemplate.PreviewVariables = {
-        count: 10
-      } satisfies typeof variablesSchema.infer
-    `;
 
     await overrideEnvironmentConfigOverride({
       projectId: tenancy.project.id,
@@ -98,7 +78,7 @@ export const POST = createSmartRouteHandler({
       environmentConfigOverrideOverride: {
         [`emails.templates.${id}`]: {
           displayName: body.display_name,
-          tsxSource: defaultTemplateSource,
+          tsxSource: defaultNewTemplateSource,
           themeId: null,
         },
       },

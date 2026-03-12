@@ -26,7 +26,7 @@ COPY . .
 RUN tsx ./scripts/generate-sdks.ts
 
 # https://turbo.build/repo/docs/guides/tools/docker
-RUN turbo prune --scope=@stackframe/stack-backend --scope=@stackframe/stack-dashboard --docker
+RUN turbo prune --scope=@stackframe/backend --scope=@stackframe/dashboard --docker
 
 
 
@@ -52,7 +52,7 @@ COPY docs ./docs
 ENV NEXT_CONFIG_OUTPUT=standalone
 
 # Build the backend NextJS app
-RUN pnpm turbo run docker-build --filter=@stackframe/stack-backend... --filter=@stackframe/stack-dashboard...
+RUN pnpm turbo run docker-build --filter=@stackframe/backend... --filter=@stackframe/dashboard...
 
 # Build the self-host seed script
 RUN cd apps/backend && pnpm build-self-host-migration-script
