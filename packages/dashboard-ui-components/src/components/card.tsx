@@ -111,19 +111,25 @@ export function DesignCard({
             "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
             "shadow-none",
           ],
+          glassmorphic && variant === "bodyOnly" && "dark:bg-transparent dark:ring-0 dark:shadow-none",
           className
         )}
         {...props}
       >
         {glassmorphic && (
           <>
-            <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl" />
-            <div
-              className={cn(
-                "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl",
-                hoverTintClass
-              )}
-            />
+            <div className={cn(
+              "absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl",
+              variant === "bodyOnly" && "dark:hidden"
+            )} />
+            {variant !== "bodyOnly" && (
+              <div
+                className={cn(
+                  "absolute inset-0 transition-colors duration-150 group-hover:transition-none pointer-events-none rounded-2xl",
+                  hoverTintClass
+                )}
+              />
+            )}
           </>
         )}
         <div className="relative">

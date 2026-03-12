@@ -13815,13 +13815,17 @@ For more information, see https://radix-ui.com/primitives/docs/components/${titl
             "ring-1 ring-black/[0.06] hover:ring-black/[0.1] dark:ring-white/[0.06] dark:hover:ring-white/[0.1]",
             "shadow-none"
           ],
+          glassmorphic && variant === "bodyOnly" && "dark:bg-transparent dark:ring-0 dark:shadow-none",
           className
         ),
         ...props,
         children: [
           glassmorphic && /* @__PURE__ */ jsxs(Fragment8, { children: [
-            /* @__PURE__ */ jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl" }),
-            /* @__PURE__ */ jsx(
+            /* @__PURE__ */ jsx("div", { className: cn(
+              "absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl",
+              variant === "bodyOnly" && "dark:hidden"
+            ) }),
+            variant !== "bodyOnly" && /* @__PURE__ */ jsx(
               "div",
               {
                 className: cn(
@@ -16668,6 +16672,8 @@ ${colorConfig.map(([key, itemConfig]) => {
   ]);
   function DesignChartCard({
     gradient = "default",
+    title,
+    description,
     className,
     children,
     ...props
@@ -16704,7 +16710,13 @@ ${colorConfig.map(([key, itemConfig]) => {
                 )
               }
             ),
-            /* @__PURE__ */ jsx("div", { className: "relative h-full flex flex-col", children })
+            /* @__PURE__ */ jsxs("div", { className: "relative h-full flex flex-col p-4", children: [
+              (title || description) && /* @__PURE__ */ jsxs("div", { className: "mb-3", children: [
+                title && /* @__PURE__ */ jsx("h3", { className: "text-sm font-semibold text-foreground", children: title }),
+                description && /* @__PURE__ */ jsx("p", { className: "text-xs text-muted-foreground mt-0.5", children: description })
+              ] }),
+              children
+            ] })
           ]
         }
       )
@@ -16727,7 +16739,8 @@ ${colorConfig.map(([key, itemConfig]) => {
     trend,
     icon: Icon,
     gradient = "default",
-    className
+    className,
+    ...props
   }) {
     const hoverTintClass = hoverTintClasses3.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
     return /* @__PURE__ */ jsxs(
@@ -16739,6 +16752,7 @@ ${colorConfig.map(([key, itemConfig]) => {
           "shadow-sm hover:shadow-md",
           className
         ),
+        ...props,
         children: [
           /* @__PURE__ */ jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl" }),
           /* @__PURE__ */ jsx(
@@ -21936,7 +21950,7 @@ ${colorConfig.map(([key, itemConfig]) => {
                   width: "100%",
                   height: "100%"
                 },
-                overflow: "hidden",
+                overflow: props.isStatic ? "auto" : "hidden",
                 flexGrow: 1,
                 alignSelf: "stretch",
                 boxShadow: isEditing ? "0 0 32px 0 #8882" : "0 0 0 0 transparent",

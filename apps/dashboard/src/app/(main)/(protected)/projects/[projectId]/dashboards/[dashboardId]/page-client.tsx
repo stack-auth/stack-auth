@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import {
   FloppyDiskIcon,
   PencilSimpleIcon,
-  PlusIcon,
   TrashIcon,
   XIcon,
 } from "@phosphor-icons/react";
@@ -31,35 +30,6 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp, useProjectId } from "../../use-admin-app";
-
-const GRID_STATE_PREFIX = "// __GRID_STATE__:";
-
-function extractGridStateFromSource(tsxSource: string): unknown | null {
-  const idx = tsxSource.indexOf(GRID_STATE_PREFIX);
-  if (idx === -1) return null;
-  const lineStart = idx + GRID_STATE_PREFIX.length;
-  const lineEnd = tsxSource.indexOf("\n", lineStart);
-  const jsonStr = tsxSource.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    return null;
-  }
-}
-
-function stripGridStateFromSource(tsxSource: string): string {
-  const idx = tsxSource.indexOf(GRID_STATE_PREFIX);
-  if (idx === -1) return tsxSource;
-  const lineEnd = tsxSource.indexOf("\n", idx);
-  if (lineEnd === -1) return tsxSource.slice(0, idx).trimEnd();
-  return (tsxSource.slice(0, idx) + tsxSource.slice(lineEnd + 1)).replace(/^\n/, "");
-}
-
-function embedGridStateInSource(tsxSource: string, gridState: unknown | null): string {
-  if (gridState == null) return tsxSource;
-  const clean = stripGridStateFromSource(tsxSource);
-  return `${GRID_STATE_PREFIX}${JSON.stringify(gridState)}\n${clean}`;
-}
 
 function useDashboardId(): string {
   const pathname = usePathname();
@@ -154,20 +124,9 @@ function DashboardDetailContent({
   const hasSource = tsxSource.length > 0;
   const [isChatOpen, setIsChatOpen] = useState(!hasSource);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [currentTsxSource, setCurrentTsxSource] = useState(() => stripGridStateFromSource(tsxSource));
-  const [savedTsxSource, setSavedTsxSource] = useState(() => stripGridStateFromSource(tsxSource));
-  const [gridState, setGridState] = useState<unknown | null>(() => {
-    const gs = extractGridStateFromSource(tsxSource);
-    console.log('[GridSave] initial gridState from source:', gs ? 'present' : 'null');
-    return gs;
-  });
-  const [savedGridState, setSavedGridState] = useState<unknown | null>(() => extractGridStateFromSource(tsxSource));
-  const hasUnsavedChanges = currentTsxSource !== savedTsxSource || JSON.stringify(gridState) !== JSON.stringify(savedGridState);
-  const [layoutEditing, setLayoutEditing] = useState(false);
-  const [editingWidgetId, setEditingWidgetId] = useState<string | null>(null);
-  const [editingWidgetLabel, setEditingWidgetLabel] = useState<string | null>(null);
-  const [addingWidgetPosition, setAddingWidgetPosition] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
-  const [selectingForEdit, setSelectingForEdit] = useState(false);
+  const [currentTsxSource, setCurrentTsxSource] = useState(tsxSource);
+  const [savedTsxSource, setSavedTsxSource] = useState(tsxSource);
+  const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
   const { setNeedConfirm } = useRouterConfirm();
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -196,14 +155,7 @@ function DashboardDetailContent({
 
   const handleEditToggle = useCallback(() => {
     if (!currentHasSource) return;
-    setIsChatOpen(prev => {
-      if (prev) {
-        setLayoutEditing(true);
-        setSelectingForEdit(false);
-        return false;
-      }
-      return true;
-    });
+    setIsChatOpen(prev => !prev);
   }, [currentHasSource]);
 
   const handleNavigate = useCallback((path: string) => {
@@ -214,42 +166,16 @@ function DashboardDetailContent({
     setCurrentTsxSource(toolCall.args.content);
   }, []);
 
-  const handleWidgetEditRequest = useCallback((widgetId: string, widgetLabel: string) => {
-    setEditingWidgetId(widgetId);
-    setEditingWidgetLabel(widgetLabel);
-    setAddingWidgetPosition(null);
-    setIsChatOpen(true);
-    setLayoutEditing(false);
-    setSelectingForEdit(false);
-  }, []);
-
-  const handleWidgetAddRequest = useCallback((x: number, y: number, width: number, height: number) => {
-    setAddingWidgetPosition({ x, y, width, height });
-    setEditingWidgetId(null);
-    setEditingWidgetLabel(null);
-    setIsChatOpen(true);
-  }, []);
-
-  const handleGridStateChange = useCallback((serializedGrid: unknown) => {
-    console.log('[GridSave] handleGridStateChange called, serializedGrid:', JSON.stringify(serializedGrid).slice(0, 200));
-    setGridState(serializedGrid);
-  }, []);
-
   const handleSaveDashboard = useCallback(async () => {
-    const sourceToSave = embedGridStateInSource(currentTsxSource, gridState);
-    console.log('[GridSave] saving, gridState is:', gridState ? 'present' : 'null');
-    console.log('[GridSave] sourceToSave first 300 chars:', sourceToSave.slice(0, 300));
     await updateConfig({
       adminApp,
       configUpdate: {
-        [`customDashboards.${dashboardId}.tsxSource`]: sourceToSave,
+        [`customDashboards.${dashboardId}.tsxSource`]: currentTsxSource,
       },
       pushable: false,
     });
     setSavedTsxSource(currentTsxSource);
-    setSavedGridState(gridState);
-    console.log('[GridSave] save complete');
-  }, [updateConfig, adminApp, dashboardId, currentTsxSource, gridState]);
+  }, [updateConfig, adminApp, dashboardId, currentTsxSource]);
 
   const handleSaveName = async () => {
     const trimmed = editedName.trim();
@@ -285,19 +211,7 @@ function DashboardDetailContent({
       onBack={handleBack}
       onEditToggle={handleEditToggle}
       onNavigate={handleNavigate}
-      onWidgetEditRequest={handleWidgetEditRequest}
-      onWidgetAddRequest={handleWidgetAddRequest}
-      onGridStateChange={handleGridStateChange}
-      savedGridState={gridState}
       isChatOpen={isChatOpen}
-      layoutEditing={layoutEditing}
-      selectingForEdit={selectingForEdit}
-      onDoneEditing={() => {
-        setLayoutEditing(false);
-        setIsChatOpen(true);
-      }}
-      onAltKeyDown={() => {}}
-      onAltKeyUp={() => {}}
     />
   ) : (
     <div className="flex h-full items-center justify-center">
@@ -365,80 +279,13 @@ function DashboardDetailContent({
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, editingWidgetId, addingWidgetPosition, enabledAppIds)}
+                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
-                  toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} />}
+                  toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} currentCode={currentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : composerPlaceholder}
-                  hideMessageActions
                 />
               </div>
-              {selectingForEdit && (
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
-                  <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />
-                  <span className="text-xs text-primary truncate flex-1">
-                    Choose a component to edit
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 text-primary hover:text-primary/80"
-                    onClick={() => setSelectingForEdit(false)}
-                  >
-                    <XIcon className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              {editingWidgetId == null && addingWidgetPosition == null && !selectingForEdit && currentHasSource && (
-                <div className="flex items-center gap-2 px-4 py-1.5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground w-full justify-start"
-                    onClick={() => {
-                      setSelectingForEdit(true);
-                    }}
-                  >
-                    <PencilSimpleIcon className="h-3 w-3" />
-                    Edit a component...
-                  </Button>
-                </div>
-              )}
-              {editingWidgetId != null && (
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
-                  <PencilSimpleIcon className="h-3 w-3 text-primary shrink-0" />
-                  <span className="text-xs text-primary truncate flex-1">
-                    Editing: {editingWidgetLabel ?? editingWidgetId}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 text-primary hover:text-primary/80"
-                    onClick={() => {
-                      setEditingWidgetId(null);
-                      setEditingWidgetLabel(null);
-                    }}
-                  >
-                    <XIcon className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              {addingWidgetPosition != null && (
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/5 border-t border-border/30 dark:border-foreground/[0.06] shrink-0">
-                  <PlusIcon className="h-3 w-3 text-primary shrink-0" />
-                  <span className="text-xs text-primary truncate flex-1">
-                    Adding new widget
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 text-primary hover:text-primary/80"
-                    onClick={() => setAddingWidgetPosition(null)}
-                  >
-                    <XIcon className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
         </div>

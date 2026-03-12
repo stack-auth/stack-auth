@@ -3,11 +3,14 @@ import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { tool } from "ai";
 import { z } from "zod";
 
-export function createSqlQueryTool(auth: SmartRequestAuth | null) {
+export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectId?: string | null) {
   if (auth == null) {
     // Return null or throw - analytics queries require authentication
     return null;
   }
+
+  const projectId = targetProjectId ?? auth.tenancy.project.id;
+  const branchId = targetProjectId ? "main" : auth.tenancy.branchId;
 
   return tool({
     description: "Run a ClickHouse SQL query against the project's analytics database. Only SELECT queries are allowed. Project filtering is automatic.",
@@ -21,8 +24,8 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null) {
       return await client.query({
         query,
         clickhouse_settings: {
-          SQL_project_id: auth.tenancy.project.id,
-          SQL_branch_id: auth.tenancy.branchId,
+          SQL_project_id: projectId,
+          SQL_branch_id: branchId,
           max_execution_time: 5,
           readonly: "1",
           allow_ddl: 0,

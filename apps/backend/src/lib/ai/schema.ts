@@ -22,6 +22,7 @@ export const requestBodySchema = yupObject({
       content: yupMixed().defined(),
     }).defined()
   ).defined().min(1),
+  projectId: yupString().optional().nullable(),
 });
 
 export type RequestBody = InferType<typeof requestBodySchema>;

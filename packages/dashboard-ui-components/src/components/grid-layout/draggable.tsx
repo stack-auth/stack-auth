@@ -244,7 +244,7 @@ export function Draggable(props: {
               width: '100%',
               height: '100%',
             },
-            overflow: 'hidden',
+            overflow: props.isStatic ? 'auto' : 'hidden',
             flexGrow: 1,
             alignSelf: 'stretch',
             boxShadow: isEditing ? '0 0 32px 0 #8882' : '0 0 0 0 transparent',

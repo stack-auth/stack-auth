@@ -275,6 +275,10 @@ const MessageError: FC = () => {
 
 const AssistantActionBar: FC = () => {
   const hidden = useContext(HideMessageActionsContext);
+  if (hidden) {
+    return null;
+  }
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -283,7 +287,7 @@ const AssistantActionBar: FC = () => {
       className="text-muted-foreground flex gap-0.5 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 data-[floating]:bg-background/95 data-[floating]:backdrop-blur-sm data-[floating]:absolute data-[floating]:rounded-lg data-[floating]:ring-1 data-[floating]:ring-foreground/[0.06] data-[floating]:p-1 data-[floating]:shadow-md"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md !text-muted-foreground hover:bg-foreground/[0.05] hover:!text-foreground">
           <MessagePrimitive.If copied>
             <CheckIcon size={14} className="text-green-500" />
           </MessagePrimitive.If>
@@ -292,13 +296,11 @@ const AssistantActionBar: FC = () => {
           </MessagePrimitive.If>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      {!hidden && (
-        <ActionBarPrimitive.Reload asChild>
-          <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
-            <ArrowClockwiseIcon size={14} />
-          </TooltipIconButton>
-        </ActionBarPrimitive.Reload>
-      )}
+      <ActionBarPrimitive.Reload asChild>
+        <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md !text-muted-foreground hover:bg-foreground/[0.05] hover:!text-foreground">
+          <ArrowClockwiseIcon size={14} />
+        </TooltipIconButton>
+      </ActionBarPrimitive.Reload>
     </ActionBarPrimitive.Root>
   );
 };

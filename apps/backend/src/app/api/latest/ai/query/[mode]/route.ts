@@ -3,6 +3,7 @@ import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools, validateToolNames } from "@/lib/ai/tools";
+import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -42,11 +43,19 @@ export const POST = createSmartRouteHandler({
     }
 
     const isAuthenticated = fullReq.auth != null;
-    const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages } = body;
+    const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
+
+    // Verify user has access to the target project
+    if (projectId && fullReq.auth?.user) {
+      const managedProjectIds = await listManagedProjectIds(fullReq.auth.user);
+      if (!managedProjectIds.includes(projectId)) {
+        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
+      }
+    }
 
     const model = selectModel(quality, speed, isAuthenticated);
     const systemPrompt = getFullSystemPrompt(systemPromptId);
-    const tools = await getTools(toolNames, { auth: fullReq.auth });
+    const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
     const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
@@ -67,6 +76,8 @@ export const POST = createSmartRouteHandler({
     } else {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
+      console.log(systemPrompt);
+      console.log(messages);
       const result = await generateText({
         model,
         system: systemPrompt,

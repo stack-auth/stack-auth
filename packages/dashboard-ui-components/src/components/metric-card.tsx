@@ -27,8 +27,7 @@ export type DesignMetricCardProps = {
   trend?: DesignMetricCardTrend,
   icon?: React.ElementType,
   gradient?: DesignMetricCardGradient,
-  className?: string,
-};
+} & Omit<React.ComponentProps<"div">, "children">;
 
 export function DesignMetricCard({
   label,
@@ -38,6 +37,7 @@ export function DesignMetricCard({
   icon: Icon,
   gradient = "default",
   className,
+  ...props
 }: DesignMetricCardProps) {
   const hoverTintClass = hoverTintClasses.get(gradient) ?? "group-hover:bg-slate-500/[0.02]";
 
@@ -49,6 +49,7 @@ export function DesignMetricCard({
         "shadow-sm hover:shadow-md",
         className
       )}
+      {...props}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-foreground/[0.04] dark:from-foreground/[0.02] to-transparent pointer-events-none rounded-2xl" />
       <div

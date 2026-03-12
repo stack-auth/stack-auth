@@ -17,6 +17,7 @@ export type ToolName =
 
 export type ToolContext = {
   auth: SmartRequestAuth | null,
+  targetProjectId?: string | null,
 };
 
 export async function getTools(
@@ -34,7 +35,7 @@ export async function getTools(
       }
 
       case "sql-query": {
-        const sqlTool = createSqlQueryTool(context.auth);
+        const sqlTool = createSqlQueryTool(context.auth, context.targetProjectId);
         if (sqlTool != null) {
           tools["queryAnalytics"] = sqlTool;
         }

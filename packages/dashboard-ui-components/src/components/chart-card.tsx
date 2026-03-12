@@ -16,10 +16,14 @@ const hoverTintClasses = new Map<DesignChartCardGradient, string>([
 
 export type DesignChartCardProps = {
   gradient?: DesignChartCardGradient,
-} & React.ComponentProps<"div">;
+  title?: React.ReactNode,
+  description?: React.ReactNode,
+} & Omit<React.ComponentProps<"div">, "title">;
 
 export function DesignChartCard({
   gradient = "default",
+  title,
+  description,
   className,
   children,
   ...props
@@ -53,7 +57,13 @@ export function DesignChartCard({
             hoverTintClass
           )}
         />
-        <div className="relative h-full flex flex-col">
+        <div className="relative h-full flex flex-col p-4">
+          {(title || description) && (
+            <div className="mb-3">
+              {title && <h3 className="text-sm font-semibold text-foreground">{title}</h3>}
+              {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+            </div>
+          )}
           {children}
         </div>
       </div>

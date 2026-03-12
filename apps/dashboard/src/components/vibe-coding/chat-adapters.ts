@@ -110,8 +110,6 @@ export async function generateDashboardCode(
   messages: Array<{ role: string, content: unknown }>,
   options?: {
     currentTsxSource?: string,
-    editingWidgetId?: string,
-    addingWidgetPosition?: { x: number, y: number, width: number, height: number },
     abortSignal?: AbortSignal,
     enabledAppIds?: AppId[],
   },
@@ -121,17 +119,15 @@ export async function generateDashboardCode(
     currentUser,
     messages,
     options?.currentTsxSource,
-    options?.editingWidgetId,
-    options?.addingWidgetPosition,
     options?.enabledAppIds,
   );
-
+  console.log("contextMessages", [...contextMessages, ...messages]);
   const rawContent = await sendAiRequest(
     backendBaseUrl,
     currentUser,
     {
-      quality: "smartest",
-      speed: "fast",
+      quality: "smart",
+      speed: "slow",
       systemPrompt: "create-dashboard",
       tools: ["update-dashboard"],
       messages: [...contextMessages, ...messages],
@@ -215,8 +211,6 @@ export function createDashboardChatAdapter(
   currentTsxSource: string,
   onToolCall: (toolCall: ToolCallContent) => void,
   currentUser?: CurrentUser,
-  editingWidgetId?: string | null,
-  addingWidgetPosition?: { x: number, y: number, width: number, height: number } | null,
   enabledAppIds?: AppId[],
 ): ChatModelAdapter {
   return {
@@ -236,8 +230,6 @@ export function createDashboardChatAdapter(
           formattedMessages,
           {
             currentTsxSource,
-            editingWidgetId: editingWidgetId ?? undefined,
-            addingWidgetPosition: addingWidgetPosition ?? undefined,
             abortSignal,
             enabledAppIds,
           },

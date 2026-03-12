@@ -55,7 +55,51 @@ async function main() {
       const content = await fs.readFile(dtsFile, 'utf8');
       parts.push(content);
     }
-    dashboardUITypes = parts.join('\n');
+    let raw = parts.join('\n');
+
+    // Deduplicate #region blocks
+    const seenRegions = new Set<string>();
+    const lines = raw.split('\n');
+    const dedupedLines: string[] = [];
+    let skipUntilEndRegion = false;
+    let currentRegionKey = '';
+    for (const line of lines) {
+      const regionMatch = line.match(/^\/\/\s*#region\s+(.+)/);
+      if (regionMatch) {
+        currentRegionKey = regionMatch[1].trim();
+        if (seenRegions.has(currentRegionKey)) {
+          skipUntilEndRegion = true;
+          continue;
+        }
+        seenRegions.add(currentRegionKey);
+      }
+      if (skipUntilEndRegion) {
+        if (/^\/\/\s*#endregion/.test(line)) {
+          skipUntilEndRegion = false;
+        }
+        continue;
+      }
+      dedupedLines.push(line);
+    }
+    raw = dedupedLines.join('\n');
+
+    // Strip imports, exports, sourcemap comments
+    raw = raw
+      .replace(/^import\s+\*\s+as\s+.*$/gm, '')
+      .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
+      .replace(/^\/\/#\s*sourceMappingURL=.*$/gm, '');
+
+    // Remove internal-only component type files
+    const internalComponents = ['cursor-blast-effect.d.ts', 'edit-mode.d.ts', 'resize-handle.d.ts'];
+    for (const internal of internalComponents) {
+      const regex = new RegExp(`\\/\\/\\s*#region\\s+${internal.replace('.', '\\.')}[\\s\\S]*?\\/\\/\\s*#endregion[^\\n]*`, 'g');
+      raw = raw.replace(regex, '');
+    }
+
+    // Collapse multiple blank lines
+    raw = raw.replace(/\n{3,}/g, '\n\n').trim();
+
+    dashboardUITypes = raw;
     console.log(`[Bundle Type Definitions] Loaded dashboard-ui-components types from ${dtsFiles.length} .d.ts files (${(dashboardUITypes.length / 1024).toFixed(2)} KB)`);
   } catch {
     console.warn('[Bundle Type Definitions] Warning: dashboard-ui-components dist not found. Run the package build first.');
