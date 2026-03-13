@@ -12,7 +12,7 @@
     "bundle-type-definitions": "tsx scripts/bundle-type-definitions.ts",
     "bundle-type-definitions:watch": "tsx watch --clear-screen=false scripts/bundle-type-definitions.ts",
     "build": "pnpm run bundle-type-definitions && next build",
-    "docker-build": "next build --experimental-build-mode compile",
+    "docker-build": "pnpm run bundle-type-definitions && next build --experimental-build-mode compile",
     "analyze-bundle": "next experimental-analyze",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01",
     "psql": "pnpm run with-env bash -c 'psql $STACK_DATABASE_CONNECTION_STRING'",
