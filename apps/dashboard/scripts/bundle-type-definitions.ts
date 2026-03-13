@@ -86,6 +86,7 @@ async function main() {
     // Strip imports, exports, sourcemap comments
     raw = raw
       .replace(/^import\s+\*\s+as\s+.*$/gm, '')
+      .replace(/^import\s+\{[^}]*\}\s+from\s+["'][^"']*["']\s*;?\s*$/gm, '')
       .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
       .replace(/^\/\/#\s*sourceMappingURL=.*$/gm, '');
 

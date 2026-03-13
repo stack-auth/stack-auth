@@ -6,11 +6,16 @@ export async function forwardToProduction(
   body: RequestBody,
 ): Promise<Response> {
   const productionUrl = `https://api.stack-auth.com/api/latest/ai/query/${mode}`;
+  const allowedHeaders = new Set([
+    "x-stack-access-token",
+    "x-stack-publishable-client-key",
+  ]);
+
   const forwardHeaders = new Headers();
   for (const [key, values] of Object.entries(requestHeaders)) {
     if (values == null) continue;
     const lowerKey = key.toLowerCase();
-    if (!lowerKey.startsWith("x-stack-")) continue;
+    if (!allowedHeaders.has(lowerKey)) continue;
     forwardHeaders.set(lowerKey, values[0] ?? "");
   }
 
