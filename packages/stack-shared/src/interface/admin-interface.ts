@@ -20,6 +20,14 @@ import type {
   AdminListSessionReplaysOptions,
   AdminListSessionReplaysResponse
 } from "./crud/session-replays";
+import type {
+  AdminFindSimilarReplaysOptions,
+  AdminFindSimilarReplaysResponse,
+  AdminGetReplayAiSummaryResponse,
+  AdminListReplayIssueClustersOptions,
+  AdminListReplayIssueClustersResponse,
+  AdminTriggerReplayReanalysisResponse,
+} from "./crud/replay-ai";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
@@ -906,6 +914,48 @@ export class StackAdminInterface extends StackServerInterface {
     const response = await this.sendAdminRequest(
       `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
       { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listReplayIssueClusters(params?: AdminListReplayIssueClustersOptions): Promise<AdminListReplayIssueClustersResponse> {
+    const qs = new URLSearchParams();
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    if (params?.severity) qs.set("severity", params.severity);
+    if (params?.search) qs.set("search", params.search);
+    const response = await this.sendAdminRequest(
+      `/internal/analytics/issues${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getReplayAiSummary(sessionReplayId: string): Promise<AdminGetReplayAiSummaryResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/analytics/replays/${encodeURIComponent(sessionReplayId)}/summary`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async findSimilarReplays(sessionReplayId: string, options?: AdminFindSimilarReplaysOptions): Promise<AdminFindSimilarReplaysResponse> {
+    const qs = new URLSearchParams();
+    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/analytics/replays/${encodeURIComponent(sessionReplayId)}/similar${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async triggerReplayReanalysis(sessionReplayId: string): Promise<AdminTriggerReplayReanalysisResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/analytics/replays/${encodeURIComponent(sessionReplayId)}/reanalyze`,
+      { method: "POST" },
       null,
     );
     return await response.json();

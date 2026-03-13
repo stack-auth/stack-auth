@@ -4,9 +4,20 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { convertToModelMessages, streamText, tool, stepCountIs, UIMessage } from "ai";
 import { z } from "zod/v4";
 
-const openai = createOpenAI({
-  apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
-});
+const openRouterApiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+const openai = createOpenAI(
+  openRouterApiKey.length > 0
+    ? {
+      apiKey: openRouterApiKey,
+      baseURL: getEnvVariable("STACK_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+    }
+    : {
+      apiKey: getEnvVariable("STACK_OPENAI_API_KEY", "MISSING_OPENAI_API_KEY"),
+    },
+);
+const SEARCH_MODEL = openRouterApiKey.length > 0
+  ? getEnvVariable("STACK_AI_MODEL", "google/gemini-2.5-flash")
+  : "gpt-5.2-2025-12-11";
 
 const SYSTEM_PROMPT = `You are a Stack Auth assistant in a dashboard search bar. Answer questions using ONLY the documentation provided below.
 
@@ -41,12 +52,12 @@ FORMAT:
 - Keep responses short and scannable
 
 ANALYTICS CAPABILITIES:
-You have access to a queryAnalytics tool to run ClickHouse SQL queries against the project's analytics database.
+You have grounded access to replay AI summaries, clustered replay issues, similar replays, and ClickHouse SQL queries against the project's analytics database.
 
 Available tables:
 
 **events** - User activity events
-- event_type: LowCardinality(String) - $token-refresh is the only valid event_type right now, it occurs whenever an access token is refreshed
+- event_type: LowCardinality(String) - includes auto-captured replay analytics events like $page-view, $click, $input, $submit, $error, and $network-error
 - event_at: DateTime64(3, 'UTC') - When the event occurred
 - data: JSON - Additional event data
 - user_id: Nullable(String) - Associated user ID
@@ -63,6 +74,10 @@ Available tables:
 - client_read_only_metadata: JSON - Read-only client metadata
 - server_metadata: JSON - Server-side metadata
 - is_anonymous: UInt8 - Whether user is anonymous (0/1)
+
+REPLAY TOOL GUIDELINES:
+- Prefer replay issue / replay summary tools when the user asks why something is broken, what the main replay issues are, or which replays are similar.
+- Use queryAnalytics for raw counts, ad hoc exploration, or when the user explicitly asks for SQL-like data questions.
 
 SQL QUERY GUIDELINES:
 - Only SELECT queries are allowed (no INSERT, UPDATE, DELETE)
@@ -124,11 +139,65 @@ export async function POST(req: Request) {
     },
   }) : undefined;
 
-  const tools = queryAnalyticsTool ? { queryAnalytics: queryAnalyticsTool } : undefined;
+  const listReplayIssuesTool = adminApp ? tool({
+    description: "List clustered replay issues detected for this project.",
+    inputSchema: z.object({
+      search: z.string().optional(),
+      limit: z.number().int().min(1).max(20).optional(),
+    }),
+    execute: async ({ search, limit }) => {
+      const result = await adminApp!.listReplayIssueClusters({
+        search,
+        limit,
+      });
+      return {
+        count: result.items.length,
+        items: result.items.map((item) => ({
+          id: item.id,
+          title: item.title,
+          severity: item.severity,
+          confidence: item.confidence,
+          occurrenceCount: item.occurrenceCount,
+          affectedUserCount: item.affectedUserCount,
+          summary: item.summary,
+        })),
+      };
+    },
+  }) : undefined;
+
+  const getReplaySummaryTool = adminApp ? tool({
+    description: "Fetch the AI summary for a specific session replay.",
+    inputSchema: z.object({
+      sessionReplayId: z.string(),
+    }),
+    execute: async ({ sessionReplayId }) => {
+      return await adminApp!.getReplayAiSummary(sessionReplayId);
+    },
+  }) : undefined;
+
+  const findSimilarReplaysTool = adminApp ? tool({
+    description: "Find session replays similar to a specific replay.",
+    inputSchema: z.object({
+      sessionReplayId: z.string(),
+      limit: z.number().int().min(1).max(10).optional(),
+    }),
+    execute: async ({ sessionReplayId, limit }) => {
+      return {
+        items: await adminApp!.findSimilarReplays(sessionReplayId, { limit }),
+      };
+    },
+  }) : undefined;
+
+  const tools = queryAnalyticsTool ? {
+    queryAnalytics: queryAnalyticsTool,
+    listReplayIssues: listReplayIssuesTool!,
+    getReplaySummary: getReplaySummaryTool!,
+    findSimilarReplays: findSimilarReplaysTool!,
+  } : undefined;
   const systemPrompt = adminApp ? ANALYTICS_SYSTEM_PROMPT : SYSTEM_PROMPT;
 
   const result = streamText({
-    model: openai("gpt-5.2-2025-12-11"),
+    model: openai(SEARCH_MODEL),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
     tools,

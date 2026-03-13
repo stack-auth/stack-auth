@@ -308,6 +308,7 @@ export const ALL_APPS_FRONTEND = {
     icon: ChartLineIcon,
     href: "analytics",
     navigationItems: [
+      { displayName: "Issues", href: "./issues" },
       { displayName: "Tables", href: "./tables" },
       { displayName: "Replays", href: "./replays" },
       { displayName: "Queries", href: "./queries" },
@@ -315,8 +316,8 @@ export const ALL_APPS_FRONTEND = {
     screenshots: [],
     storeDescription: (
       <>
-        <p>Analytics provides direct access to your project&apos;s analytics data stored in ClickHouse.</p>
-        <p>Browse tables, explore event data, and gain insights into user behavior and system performance.</p>
+        <p>Analytics combines ClickHouse data, session replays, and AI issue detection in one workspace.</p>
+        <p>Review clustered replay issues, inspect raw event tables, and drill all the way down into individual sessions.</p>
       </>
     ),
   },
@@ -438,4 +439,3 @@ async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>,
     },
   ];
 }
-

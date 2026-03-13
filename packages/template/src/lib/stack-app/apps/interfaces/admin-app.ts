@@ -56,6 +56,8 @@ export type ManagedEmailProviderListItem = {
 
 import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
+import type { ListReplayIssueClustersOptions, ListReplayIssueClustersResult, ReplayAiSummary, SimilarReplayResult } from "../../replay-ai";
+export type { ListReplayIssueClustersOptions, ListReplayIssueClustersResult, ReplayAiSummary, ReplayIssueCluster, ReplayIssueEvidence, ReplayIssueSeverity, ReplayVisualArtifact, ReplayEmbeddingVectorRef, SimilarReplayResult } from "../../replay-ai";
 
 
 export type StackAdminAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = (
@@ -168,6 +170,10 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult>,
     getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse>,
     getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<SessionReplayAllEventsResult>,
+    listReplayIssueClusters(options?: ListReplayIssueClustersOptions): Promise<ListReplayIssueClustersResult>,
+    getReplayAiSummary(sessionReplayId: string): Promise<ReplayAiSummary>,
+    findSimilarReplays(sessionReplayId: string, options?: { limit?: number }): Promise<SimilarReplayResult[]>,
+    triggerReplayReanalysis(sessionReplayId: string): Promise<void>,
 
     // Email Outbox methods
     listOutboxEmails(options?: EmailOutboxListOptions): Promise<EmailOutboxListResult>,

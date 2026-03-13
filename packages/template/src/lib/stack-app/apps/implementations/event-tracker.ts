@@ -14,7 +14,7 @@ export type EventTrackerDeps = {
 };
 
 type TrackedEvent = {
-  event_type: "$page-view" | "$click",
+  event_type: "$page-view" | "$click" | "$input" | "$submit" | "$error" | "$network-error",
   event_at_ms: number,
   data: Record<string, unknown>,
 };
@@ -33,6 +33,7 @@ export class EventTracker {
 
   private _originalPushState: typeof history.pushState | null = null;
   private _originalReplaceState: typeof history.replaceState | null = null;
+  private _originalFetch: typeof fetch | null = null;
 
   constructor(deps: EventTrackerDeps) {
     this._deps = deps;
@@ -46,6 +47,10 @@ export class EventTracker {
 
     this._setupPageViewCapture();
     this._setupClickCapture();
+    this._setupInputCapture();
+    this._setupSubmitCapture();
+    this._setupErrorCapture();
+    this._setupFetchCapture();
     this._setupPageHideListeners();
 
     this._flushTimer = setInterval(() => this._tick(), FLUSH_INTERVAL_MS);
@@ -177,12 +182,133 @@ export class EventTracker {
         page_y: event.pageY,
         viewport_width: window.innerWidth,
         viewport_height: window.innerHeight,
+        path: window.location.pathname,
       },
     });
   };
 
   private _setupClickCapture() {
     document.addEventListener("click", this._onClickCapture, { capture: true });
+  }
+
+  private readonly _onInputCapture = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return;
+
+    this._pushEvent({
+      event_type: "$input",
+      event_at_ms: Date.now(),
+      data: {
+        selector: this._buildSelector(target),
+        field_name: target.getAttribute("name"),
+        tag_name: target.tagName.toLowerCase(),
+        input_type: target instanceof HTMLInputElement ? target.type : target.tagName.toLowerCase(),
+        path: window.location.pathname,
+      },
+    });
+  };
+
+  private _setupInputCapture() {
+    document.addEventListener("input", this._onInputCapture, { capture: true });
+  }
+
+  private readonly _onSubmitCapture = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLFormElement)) return;
+
+    this._pushEvent({
+      event_type: "$submit",
+      event_at_ms: Date.now(),
+      data: {
+        selector: this._buildSelector(target),
+        path: window.location.pathname,
+        action: target.getAttribute("action"),
+        method: target.getAttribute("method")?.toLowerCase() ?? "get",
+      },
+    });
+  };
+
+  private _setupSubmitCapture() {
+    document.addEventListener("submit", this._onSubmitCapture, { capture: true });
+  }
+
+  private readonly _onErrorCapture = (event: ErrorEvent) => {
+    this._pushEvent({
+      event_type: "$error",
+      event_at_ms: Date.now(),
+      data: {
+        path: window.location.pathname,
+        message: event.message,
+        source: event.filename,
+        line: event.lineno,
+        column: event.colno,
+      },
+    });
+  };
+
+  private readonly _onUnhandledRejection = (event: PromiseRejectionEvent) => {
+    this._pushEvent({
+      event_type: "$error",
+      event_at_ms: Date.now(),
+      data: {
+        path: window.location.pathname,
+        message: String(event.reason),
+        source: "unhandledrejection",
+      },
+    });
+  };
+
+  private _setupErrorCapture() {
+    window.addEventListener("error", this._onErrorCapture, { capture: true });
+    window.addEventListener("unhandledrejection", this._onUnhandledRejection);
+  }
+
+  private _setupFetchCapture() {
+    this._originalFetch = window.fetch.bind(window);
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      try {
+        const response = await this._originalFetch!(...args);
+        if (!response.ok && response.status >= 500) {
+          const urlValue = typeof args[0] === "string"
+            ? args[0]
+            : args[0] instanceof URL
+              ? args[0].toString()
+              : args[0] instanceof Request
+                ? args[0].url
+                : null;
+          this._pushEvent({
+            event_type: "$network-error",
+            event_at_ms: Date.now(),
+            data: {
+              path: window.location.pathname,
+              url: urlValue,
+              status: response.status,
+              method: args[1]?.method ?? (args[0] instanceof Request ? args[0].method : "GET"),
+            },
+          });
+        }
+        return response;
+      } catch (error) {
+        const urlValue = typeof args[0] === "string"
+          ? args[0]
+          : args[0] instanceof URL
+            ? args[0].toString()
+            : args[0] instanceof Request
+              ? args[0].url
+              : null;
+        this._pushEvent({
+          event_type: "$network-error",
+          event_at_ms: Date.now(),
+          data: {
+            path: window.location.pathname,
+            url: urlValue,
+            message: error instanceof Error ? error.message : String(error),
+            method: args[1]?.method ?? (args[0] instanceof Request ? args[0].method : "GET"),
+          },
+        });
+        throw error;
+      }
+    };
   }
 
   private readonly _onPageHide = () => {
@@ -216,6 +342,14 @@ export class EventTracker {
 
     window.removeEventListener("popstate", this._onPopState);
     document.removeEventListener("click", this._onClickCapture, { capture: true });
+    document.removeEventListener("input", this._onInputCapture, { capture: true });
+    document.removeEventListener("submit", this._onSubmitCapture, { capture: true });
+    window.removeEventListener("error", this._onErrorCapture, { capture: true });
+    window.removeEventListener("unhandledrejection", this._onUnhandledRejection);
+    if (this._originalFetch) {
+      window.fetch = this._originalFetch;
+      this._originalFetch = null;
+    }
 
     this._events = [];
     this._approxBytes = 0;

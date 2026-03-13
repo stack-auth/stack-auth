@@ -9,11 +9,12 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MAX_EVENTS = 500;
+const ALLOWED_EVENT_TYPES = ["$page-view", "$click", "$input", "$submit", "$error", "$network-error"] as const;
 
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Upload analytics event batch",
-    description: "Uploads a batch of auto-captured analytics events ($page-view, $click).",
+    description: "Uploads a batch of auto-captured analytics events for replay analysis and behavior insights.",
     tags: ["Analytics Events"],
     hidden: true,
   },
@@ -30,7 +31,7 @@ export const POST = createSmartRouteHandler({
       sent_at_ms: yupNumber().defined().integer().min(0),
       events: yupArray(
         yupObject({
-          event_type: yupString().defined().oneOf(["$page-view", "$click"]),
+          event_type: yupString().defined().oneOf(ALLOWED_EVENT_TYPES),
           event_at_ms: yupNumber().defined().integer().min(0),
           data: yupMixed().defined(),
         }).defined(),
@@ -86,6 +87,7 @@ export const POST = createSmartRouteHandler({
       clickhouse_settings: {
         date_time_input_format: "best_effort",
         async_insert: 1,
+        wait_for_async_insert: 1,
       },
     });
 
