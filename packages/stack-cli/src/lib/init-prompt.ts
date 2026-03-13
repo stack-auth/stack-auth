@@ -35,6 +35,9 @@ In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so t
 
 The tokenStore should be "nextjs-cookie" for Next.js, or "cookie" for all other frameworks.
 
+Make sure to set redirectMethod on non next.js frameworks. For example for tanstack router import like so:
+import { useNavigate } from '@tanstack/react-router'
+
 \`\`\`ts
 // src/stack/client.ts
 import { StackClientApp } from "@stackframe/stack"; // or "@stackframe/react" or "@stackframe/js"
@@ -44,7 +47,8 @@ export const stackClientApp = new StackClientApp({
   // Other frameworks: pass explicitly, e.g. for Vite:
   //   projectId: import.meta.env.VITE_STACK_PROJECT_ID,
   //   publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
-  tokenStore: "nextjs-cookie", // or "cookie" for non-Next.js
+  tokenStore: "nextjs-cookie", // or "cookie" for non-Next.js,
+  // redirectMethod: { useNavigate } // or "window"
 });
 \`\`\`
 
