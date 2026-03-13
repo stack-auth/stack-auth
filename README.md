@@ -75,12 +75,7 @@ To install Stack Auth in your Next.js project (for React, JavaScript, or other f
 
 1. Run Stack Auth's installation wizard with the following command:
     ```bash
-    npx @stackframe/init-stack@latest
-    ```
-   
-   If you prefer not to open a browser during setup (useful for CI/CD environments or restricted environments):
-    ```bash
-    npx @stackframe/init-stack@latest --no-browser
+    npx @stackframe/stack-cli@latest init
     ```
 
 2. Then, create an account on the [Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its environment variables into the .env.local file of your Next.js project:
