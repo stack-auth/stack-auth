@@ -180,7 +180,7 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
 
   const project = projects.find((p) => p.id === projectId)!;
   const apiKey = await project.app.createInternalApiKey({
-    description: "Created by stack init",
+    description: "Created by CLI init script",
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200), // 200 years
     hasPublishableClientKey: true,
     hasSecretServerKey: true,

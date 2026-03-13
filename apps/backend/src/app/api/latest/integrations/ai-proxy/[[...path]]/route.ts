@@ -6,14 +6,6 @@ import { NextRequest } from "next/server";
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6";
 
-function getApiKey(): string {
-  const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
-  if (!apiKey) {
-    throw new StatusError(503, "AI proxy not configured");
-  }
-  return apiKey;
-}
-
 function sanitizeBody(raw: ArrayBuffer): Uint8Array {
   const text = new TextDecoder().decode(raw);
   let parsed;
@@ -38,7 +30,7 @@ function sanitizeBody(raw: ArrayBuffer): Uint8Array {
 }
 
 async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ path?: string[] }> }) {
-  const apiKey = getApiKey();
+  const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";
   const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${req.nextUrl.search}`;
