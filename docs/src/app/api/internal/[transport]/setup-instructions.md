@@ -24,11 +24,11 @@ Before proceeding, you MUST identify the project framework:
 - Call the tool or run the command:
   - **For Next.js projects**: 
     ```bash
-    npx @stackframe/init-stack@latest --on-question error
+    npx @stackframe/stack-cli@latest init
     ```
-  - **For React projects**: 
+  - **For React projects**:
     ```bash
-    npx @stackframe/init-stack@latest --react --on-question error
+    npx @stackframe/stack-cli@latest init
     ```
 - Accept defaults for Next.js (App Router) or React.
 - Add all generated files to the repo.
