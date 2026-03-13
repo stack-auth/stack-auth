@@ -550,8 +550,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._sessionRecorder.start();
     }
 
-    // for now we only track events for internal project
-    if (isBrowserLike() && this.projectId === "internal") {
+    if (isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         getAccessToken: getAnalyticsAccessToken,
