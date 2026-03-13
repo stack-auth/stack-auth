@@ -63,6 +63,7 @@ import {
 import { AdminOwnedProject, AuthPage, useStackApp, useUser } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -1278,6 +1279,7 @@ export default function PageClient() {
   const redirectToNeonConfirmWith = searchParams.get("redirect_to_neon_confirm_with");
   const redirectToConfirmWith = searchParams.get("redirect_to_confirm_with");
   const mode = searchParams.get("mode");
+  const linkExistingBaitCapturedRef = useRef(false);
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
@@ -1319,6 +1321,15 @@ export default function PageClient() {
     const query = params.toString();
     router.replace(query.length > 0 ? `/new-project?${query}` : "/new-project");
   }, [router, searchParams]);
+
+  useEffect(() => {
+    if (mode !== "link-existing" || linkExistingBaitCapturedRef.current) {
+      return;
+    }
+
+    linkExistingBaitCapturedRef.current = true;
+    captureError("new-project-link-existing-bait-engaged", new Error("bait engaged"));
+  }, [mode]);
 
   useEffect(() => {
     let cancelled = false;
