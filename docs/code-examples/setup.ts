@@ -6,7 +6,7 @@ export const setupExamples = {
       {
         language: 'JavaScript',
         framework: 'Next.js',
-        code: `npx @stackframe/init-stack@latest`,
+        code: `npx @stackframe/stack-cli@latest init`,
         highlightLanguage: 'bash',
         filename: 'Terminal'
       }

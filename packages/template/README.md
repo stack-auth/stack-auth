@@ -12,7 +12,7 @@ We support Next.js frontends, along with any backend that can use our [REST API]
 
 1. Run Stack Auth's installation wizard with the following command:
     ```bash
-    npx @stackframe/init-stack@latest
+    npx @stackframe/stack-cli@latest init
     ```
 2. Then, create an account on the [Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project with an API key, and copy its environment variables into the .env.local file of your Next.js project:
     ```
