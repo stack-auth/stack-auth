@@ -33,7 +33,7 @@ export type SignUpRiskAssessment = {
 };
 
 export type SignUpRiskRecentStatsRequest = {
-  signUpAt: Date,
+  signedUpAt: Date,
   signUpIp: string | null,
   signUpEmailBase: string | null,
   recentWindowHours: number,
@@ -176,7 +176,7 @@ async function loadRecentSignUpStats(
 ): Promise<SignUpRiskRecentStats> {
   const prisma = await getPrismaClientForTenancy(tenancy);
   const schema = await getPrismaSchemaForTenancy(tenancy);
-  const windowStart = new Date(request.signUpAt.getTime() - request.recentWindowHours * 60 * 60 * 1000);
+  const windowStart = new Date(request.signedUpAt.getTime() - request.recentWindowHours * 60 * 60 * 1000);
 
   const [sameIpRows, similarEmailRows] = await Promise.all([
     request.signUpIp == null || request.sameIpLimit === 0
@@ -185,7 +185,7 @@ async function loadRecentSignUpStats(
           SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "signUpAt" >= ${windowStart}
+            AND "signedUpAt" >= ${windowStart}
             AND "signUpIp" = ${request.signUpIp}
           LIMIT ${request.sameIpLimit}
         `,
@@ -196,7 +196,7 @@ async function loadRecentSignUpStats(
           SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "signUpAt" >= ${windowStart}
+            AND "signedUpAt" >= ${windowStart}
             AND "signUpEmailBase" = ${request.signUpEmailBase}
           LIMIT ${request.similarEmailLimit}
         `,

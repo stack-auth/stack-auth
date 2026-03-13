@@ -27,7 +27,7 @@ export type SignUpRuleOptions = {
 async function persistSignUpHeuristicFacts(params: {
   tenancy: Tenancy,
   userId: string,
-  signUpAt: Date,
+  signedUpAt: Date,
   signUpIp: string | null,
   signUpIpTrusted: boolean | null,
   signUpEmailNormalized: string | null,
@@ -38,7 +38,7 @@ async function persistSignUpHeuristicFacts(params: {
   await prisma.$executeRaw`
     UPDATE ${sqlQuoteIdent(schema)}."ProjectUser"
     SET
-      "signUpAt" = ${params.signUpAt},
+      "signedUpAt" = ${params.signedUpAt},
       "signUpIp" = ${params.signUpIp},
       "signUpIpTrusted" = ${params.signUpIpTrusted},
       "signUpEmailNormalized" = ${params.signUpEmailNormalized},
@@ -181,7 +181,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
 
   const signUpHeuristicFactsToPersist = {
     tenancy,
-    signUpAt: riskAssessment.heuristicFacts.signUpAt,
+    signedUpAt: riskAssessment.heuristicFacts.signedUpAt,
     signUpIp: riskAssessment.heuristicFacts.signUpIp,
     signUpIpTrusted: riskAssessment.heuristicFacts.signUpIpTrusted,
     signUpEmailNormalized: riskAssessment.heuristicFacts.signUpEmailNormalized,

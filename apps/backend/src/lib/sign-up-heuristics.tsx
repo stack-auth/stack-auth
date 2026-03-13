@@ -1,5 +1,5 @@
 export type DerivedSignUpHeuristicFacts = {
-  signUpAt: Date,
+  signedUpAt: Date,
   signUpIp: string | null,
   signUpIpTrusted: boolean | null,
   signUpEmailNormalized: string | null,
@@ -10,7 +10,7 @@ export type DerivedSignUpHeuristicFacts = {
 
 export function createNeutralSignUpHeuristicFacts(recordedAt: Date = new Date()): DerivedSignUpHeuristicFacts {
   return {
-    signUpAt: recordedAt,
+    signedUpAt: recordedAt,
     signUpIp: null,
     signUpIpTrusted: null,
     signUpEmailNormalized: null,
@@ -24,7 +24,7 @@ import.meta.vitest?.test("createNeutralSignUpHeuristicFacts(...)", ({ expect }) 
   const recordedAt = new Date("2026-03-11T00:00:00.000Z");
 
   expect(createNeutralSignUpHeuristicFacts(recordedAt)).toEqual({
-    signUpAt: recordedAt,
+    signedUpAt: recordedAt,
     signUpIp: null,
     signUpIpTrusted: null,
     signUpEmailNormalized: null,

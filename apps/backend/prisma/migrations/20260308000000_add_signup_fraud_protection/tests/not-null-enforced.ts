@@ -19,7 +19,7 @@ export const postMigration = async (sql: Sql) => {
       "createdAt",
       "updatedAt",
       "lastActiveAt",
-      "signUpAt",
+      "signedUpAt",
       "signUpRiskScoreBot",
       "signUpRiskScoreFreeTrialAbuse"
     ) VALUES (

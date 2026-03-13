@@ -37,6 +37,7 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: yupString().optional(),
+      response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
       ...turnstileFlowRequestSchemaFields,
 
       // oauth parameters
@@ -52,6 +53,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   response: yupObject({
+    // note: usually, we redirect with the `redirect` function, although this is the other option
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
@@ -151,7 +153,7 @@ export const GET = createSmartRouteHandler({
       }
     );
 
-    if (fullReq.headers["accept"]?.[0]?.includes("application/json")) {
+    if (query.response_mode === "json") {
       return {
         statusCode: 200,
         bodyType: "json",

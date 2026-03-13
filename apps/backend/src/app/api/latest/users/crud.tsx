@@ -61,11 +61,11 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 const personalTeamDefaultDisplayName = "Personal Team";
 
 function getSignedUpAt(params: {
-  signUpAt: Date,
+  signedUpAt: Date,
   createdAt: Date,
   isAnonymous: boolean,
 }): Date {
-  return params.signUpAt;
+  return params.signedUpAt;
 }
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
@@ -170,7 +170,7 @@ export const userPrismaToCrud = (
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
     signed_up_at_millis: getSignedUpAt({
-      signUpAt: prisma.signUpAt,
+      signedUpAt: prisma.signedUpAt,
       createdAt: prisma.createdAt,
       isAnonymous: prisma.isAnonymous,
     }).getTime(),
@@ -196,7 +196,7 @@ export const userPrismaToCrud = (
     restricted_by_admin: prisma.restrictedByAdmin,
     restricted_by_admin_reason: prisma.restrictedByAdminReason,
     restricted_by_admin_private_details: prisma.restrictedByAdminPrivateDetails,
-    country_code: prisma.countryCode,
+    country_code: prisma.signUpCountryCode,
     risk_scores: {
       sign_up: {
         bot: prisma.signUpRiskScoreBot,
@@ -391,7 +391,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
         signed_up_at_millis: getSignedUpAt({
-          signUpAt: new Date(row.signUpAt + "Z"),
+          signedUpAt: new Date(row.signedUpAt + "Z"),
           createdAt: new Date(row.createdAt + "Z"),
           isAnonymous: row.isAnonymous,
         }).getTime(),
@@ -425,7 +425,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         restricted_by_admin: row.restrictedByAdmin,
         restricted_by_admin_reason: row.restrictedByAdminReason,
         restricted_by_admin_private_details: row.restrictedByAdminPrivateDetails,
-        country_code: row.countryCode,
+        country_code: row.signUpCountryCode,
         risk_scores: {
           sign_up: {
             bot: row.signUpRiskScoreBot,
@@ -593,7 +593,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       include: userFullInclude,
       orderBy: {
         [({
-          signed_up_at: 'signUpAt',
+          signed_up_at: 'signedUpAt',
         } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
       },
       // +1 because we need to know if there is a next page
@@ -672,8 +672,8 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin,
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
-          countryCode: data.country_code,
-          signUpAt: new Date(),
+          signUpCountryCode: data.country_code,
+          signedUpAt: new Date(),
           signUpRiskScoreBot: data.risk_scores?.sign_up.bot ?? 0,
           signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse ?? 0,
         },
@@ -1178,7 +1178,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
-          countryCode: data.country_code,
+          signUpCountryCode: data.country_code,
           signUpRiskScoreBot: data.risk_scores?.sign_up.bot,
           signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse,
         }),
