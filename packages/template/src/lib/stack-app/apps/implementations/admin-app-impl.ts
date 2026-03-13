@@ -26,9 +26,7 @@ import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, 
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -698,33 +696,12 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailDraftsCache.refresh([]);
   }
 
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    return await this._interface.sendChatMessage(threadId, contextType, messages, abortSignal);
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this._interface.saveChatMessage(threadId, message);
   }
 
   async listChatMessages(threadId: string): Promise<{ messages: Array<any> }> {
     return await this._interface.listChatMessages(threadId);
-  }
-
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    return await this._interface.applyWysiwygEdit(options);
   }
 
   async rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsxSource: string }> {

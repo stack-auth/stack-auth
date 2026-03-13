@@ -1,6 +1,6 @@
 'use client';
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { DesignDataTable } from "@/components/design-components/table";
+import { DesignDataTable } from "@/components/design-components";
 import { DataTableColumnHeader, Input, Skeleton, TextCell } from "@/components/ui";
 import { ServerUser } from '@stackframe/stack';
 import { ColumnDef } from "@tanstack/react-table";
