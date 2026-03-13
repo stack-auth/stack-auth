@@ -39,8 +39,17 @@ export type ServerAuthApplicationOptions = (
 );
 
 export class StackServerInterface extends StackClientInterface {
+  protected _secretServerKeyOverride?: string;
+
   constructor(public override options: ServerAuthApplicationOptions) {
     super(options);
+  }
+
+  override _updateEmulatorCredentials(opts: { projectId?: string, publishableClientKey?: string, secretServerKey?: string }) {
+    super._updateEmulatorCredentials(opts);
+    if (opts.secretServerKey) {
+      this._secretServerKeyOverride = opts.secretServerKey;
+    }
   }
 
   protected async sendServerRequest(path: string, options: RequestInit, session: InternalSession | null, requestType: "server" | "admin" = "server") {
@@ -49,7 +58,7 @@ export class StackServerInterface extends StackClientInterface {
       {
         ...options,
         headers: {
-          "x-stack-secret-server-key": "secretServerKey" in this.options ? this.options.secretServerKey : "",
+          "x-stack-secret-server-key": this._secretServerKeyOverride ?? ("secretServerKey" in this.options ? this.options.secretServerKey : ""),
           ...options.headers,
         },
       },

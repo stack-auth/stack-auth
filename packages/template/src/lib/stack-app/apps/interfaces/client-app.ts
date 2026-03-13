@@ -20,6 +20,13 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   inheritsFrom?: StackClientApp<any, any>,
 
   /**
+   * Path to the local emulator config file. When set, connects to the local
+   * emulator and automatically fetches project credentials.
+   * Defaults to NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH env var.
+   */
+  localEmulatorConfigFilePath?: string,
+
+  /**
    * By default, the Stack app will automatically prefetch some data from Stack's server when this app is first
    * constructed. This improves the performance of your app, but will create network requests that are unnecessary if
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.

@@ -6,6 +6,10 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
 
+export const LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY = "local-emulator-publishable-client-key";
+export const LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY = "local-emulator-secret-server-key";
+export const LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY = "local-emulator-super-secret-admin-key";
+
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
 export const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
 export const LOCAL_EMULATOR_ADMIN_EMAIL = "local-emulator@stack-auth.com";
