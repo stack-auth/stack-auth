@@ -1554,9 +1554,14 @@ export default function PageClient() {
                     const newProject = await user.createProject({
                       displayName: trimmedProjectName,
                       teamId,
+                      onboardingStatus: "config_choice",
                     });
 
-                    await setSelectedProjectStatus(newProject, "config_choice");
+                    setProjectStatuses((previous) => {
+                      const next = new Map(previous);
+                      next.set(newProject.id, "config_choice");
+                      return next;
+                    });
 
                     if (redirectToNeonConfirmWith != null) {
                       const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
