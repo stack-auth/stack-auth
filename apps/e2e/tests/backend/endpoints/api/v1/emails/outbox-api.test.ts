@@ -38,8 +38,8 @@ const slowTemplate = deindent`
 
   // Artificial delay to make the email slow to render
   const startTime = performance.now();
-  while (performance.now() - startTime < 500) {
-    // Busy wait - 500ms delay
+  while (performance.now() - startTime < 2000) {
+    // Busy wait - 2000ms delay
   }
 
   export function EmailTemplate({ user, project }) {
@@ -626,6 +626,9 @@ describe("email outbox API", () => {
               "status": 200,
               "body": {
                 "created_at_millis": <stripped field 'created_at_millis'>,
+                "created_with": "draft",
+                "email_draft_id": "<stripped UUID>",
+                "email_programmatic_call_template_id": null,
                 "has_delivered": false,
                 "has_rendered": false,
                 "id": "<stripped UUID>",
@@ -648,8 +651,8 @@ describe("email outbox API", () => {
                   
                   // Artificial delay to make the email slow to render
                   const startTime = performance.now();
-                  while (performance.now() - startTime < 500) {
-                    // Busy wait - 500ms delay
+                  while (performance.now() - startTime < 2000) {
+                    // Busy wait - 2000ms delay
                   }
                   
                   export function EmailTemplate({ user, project }) {
@@ -670,12 +673,12 @@ describe("email outbox API", () => {
           `);
           break;
         } else {
-          if (i >= 20) {
+          if (i >= 50) {
             throw new StackAssertionError(`Timeout waiting for email in the outbox`, {
               outboxEmails: await getOutboxEmails(),
             });
           }
-          await wait(25);
+          await wait(100);
         }
       }
 
@@ -884,7 +887,7 @@ describe("email outbox API", () => {
       let emailId: string | null = null;
       let pauseSucceeded = false;
 
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 50; i++) {
         const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
           method: "GET",
           accessType: "server",
@@ -908,7 +911,7 @@ describe("email outbox API", () => {
           }
         }
 
-        await wait(25);
+        await wait(100);
       }
 
       // These assertions must always run - test fails if we couldn't pause
@@ -937,15 +940,20 @@ describe("email outbox API", () => {
       // After unpausing, the email should go back to processing (preparing/rendering/scheduled/etc)
       expect(unpauseResponse.body.status).not.toBe("paused");
 
-      // Wait for the email to be sent (since we unpaused it)
-      await wait(7_000);
-
-      // Verify the email was eventually sent
-      const finalGetResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
-        method: "GET",
-        accessType: "server",
-      });
-      expect(finalGetResponse.body.status).toBe("sent");
+      // Poll until the email is sent (since we unpaused it)
+      for (let i = 0; ; i++) {
+        const finalGetResponse = await niceBackendFetch(`/api/v1/emails/outbox/${emailId}`, {
+          method: "GET",
+          accessType: "server",
+        });
+        if (finalGetResponse.body.status === "sent") break;
+        if (i >= 50) {
+          throw new StackAssertionError(`Timed out waiting for email to be sent after unpause`, {
+            status: finalGetResponse.body.status,
+          });
+        }
+        await wait(500);
+      }
     });
 
     it("should cancel email with MANUALLY_CANCELLED reason", async ({ expect }) => {
@@ -1000,7 +1008,7 @@ describe("email outbox API", () => {
       let emailId: string | null = null;
       let pauseSucceeded = false;
 
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 50; i++) {
         const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
           method: "GET",
           accessType: "server",
@@ -1024,7 +1032,7 @@ describe("email outbox API", () => {
           }
         }
 
-        await wait(25);
+        await wait(100);
       }
 
       // We need to have successfully paused the email to test cancel

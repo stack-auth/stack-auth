@@ -37,7 +37,12 @@ fi
 
 # ============= MIGRATIONS =============
 
-if [ "$STACK_SKIP_MIGRATIONS" = "true" ]; then
+should_run_migrations=true
+if [ "$STACK_SKIP_MIGRATIONS" = "true" ] || [ "$STACK_RUN_MIGRATIONS" = "false" ]; then
+  should_run_migrations=false
+fi
+
+if [ "$should_run_migrations" = "false" ]; then
   echo "Skipping migrations."
 else
   echo "Running migrations..."
@@ -46,7 +51,12 @@ else
   cd ../..
 fi
 
-if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ]; then
+should_run_seed_script=true
+if [ "$STACK_SKIP_SEED_SCRIPT" = "true" ] || [ "$STACK_RUN_SEED_SCRIPT" = "false" ]; then
+  should_run_seed_script=false
+fi
+
+if [ "$should_run_seed_script" = "false" ]; then
   echo "Skipping seed script."
 else
   echo "Running seed script..."
