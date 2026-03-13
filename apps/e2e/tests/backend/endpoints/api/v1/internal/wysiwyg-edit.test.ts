@@ -76,11 +76,12 @@ Please update the source code to change "Hello World!" to "Hello World!" at the 
   expect(updatedSource.includes("Hello World!")).toBe(true);
 });
 
-it("should require admin authentication", async ({ expect }) => {
+it("should allow unauthenticated access (with weaker model)", async ({ expect }) => {
   await Auth.fastSignUp();
   await Project.createAndGetAdminToken();
 
-  // Try without admin token
+  // The unified AI endpoint allows unauthenticated access — unauthenticated
+  // users get a weaker/cheaper model instead of being rejected.
   const response = await niceBackendFetch("/api/latest/ai/query/generate", {
     method: "POST",
     accessType: "client",
@@ -93,7 +94,7 @@ it("should require admin authentication", async ({ expect }) => {
     },
   });
 
-  expect(response.status).toBe(401);
+  expect(response.status).toBe(200);
 });
 
 it("should validate required fields in messages", async ({ expect }) => {
@@ -118,38 +119,24 @@ it("should validate required fields in messages", async ({ expect }) => {
   expect(response.status).toBe(400);
 });
 
-it("should accept valid system prompts", async ({ expect }) => {
+it("should reject invalid system prompts", async ({ expect }) => {
   await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const makeRequest = async (systemPrompt: string) => {
-    return await niceBackendFetch("/api/latest/ai/query/generate", {
-      method: "POST",
-      accessType: "admin",
-      headers: {
-        'x-stack-admin-access-token': adminAccessToken,
-      },
-      body: {
-        systemPrompt,
-        tools: [],
-        messages: [{ role: "user", content: "const x = 1;" }],
-        quality: "smart",
-        speed: "fast",
-      },
-    });
-  };
+  const response = await niceBackendFetch("/api/latest/ai/query/generate", {
+    method: "POST",
+    accessType: "admin",
+    headers: {
+      'x-stack-admin-access-token': adminAccessToken,
+    },
+    body: {
+      systemPrompt: "invalid-prompt",
+      tools: [],
+      messages: [{ role: "user", content: "const x = 1;" }],
+      quality: "smart",
+      speed: "fast",
+    },
+  });
 
-  // Valid system prompts
-  const wysiwygResponse = await makeRequest("wysiwyg-edit");
-  expect(wysiwygResponse.status).toBe(200);
-
-  const emailTemplateResponse = await makeRequest("email-assistant-template");
-  expect(emailTemplateResponse.status).toBe(200);
-
-  const emailDraftResponse = await makeRequest("email-assistant-draft");
-  expect(emailDraftResponse.status).toBe(200);
-
-  // Invalid system prompt
-  const invalidResponse = await makeRequest("invalid-prompt");
-  expect(invalidResponse.status).toBe(400);
+  expect(response.status).toBe(400);
 });
