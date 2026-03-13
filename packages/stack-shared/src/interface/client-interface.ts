@@ -15,6 +15,7 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
+import { type TurnstileRetryResult } from '../utils/turnstile';
 import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
@@ -46,6 +47,51 @@ export type ClientInterfaceOptions = {
 } | {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
+
+function getTurnstileRequestFields(turnstile: {
+  token?: string,
+  phase?: "invisible" | "visible",
+  previousResult?: TurnstileRetryResult,
+} | undefined, context: string) {
+  const turnstileToken = turnstile?.token?.trim() || undefined;
+  if (turnstile?.phase === "visible") {
+    if (turnstileToken == null) {
+      throw new StackAssertionError(`${context} visible Turnstile retries require a token.`);
+    }
+    if (turnstile.previousResult == null) {
+      throw new StackAssertionError(`${context} visible Turnstile retries require previousResult.`);
+    }
+
+    return {
+      turnstile_token: turnstileToken,
+      turnstile_phase: "visible" as const,
+      turnstile_previous_result: turnstile.previousResult,
+    };
+  }
+
+  if (turnstile?.previousResult != null) {
+    throw new StackAssertionError(`${context} previousResult is only allowed for visible Turnstile retries.`);
+  }
+
+  if (turnstileToken == null) {
+    if (turnstile?.phase != null) {
+      throw new StackAssertionError(`${context} Turnstile phase options require a token.`);
+    }
+
+    return {};
+  }
+
+  if (turnstile?.phase == null) {
+    return {
+      turnstile_token: turnstileToken,
+    };
+  }
+
+  return {
+    turnstile_token: turnstileToken,
+    turnstile_phase: "invisible" as const,
+  };
+}
 
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
@@ -590,7 +636,12 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
-  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+    turnstile?: {
+      token?: string,
+      phase?: "invisible" | "visible",
+      previousResult?: TurnstileRetryResult,
+    },
+  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
       {
@@ -601,10 +652,11 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
+          ...getTurnstileRequestFields(turnstile, "Magic link sign-in"),
         }),
       },
       null,
-      [KnownErrors.RedirectUrlNotWhitelisted]
+      [KnownErrors.RedirectUrlNotWhitelisted, KnownErrors.TurnstileChallengeRequired]
     );
 
     if (res.status === "error") {
@@ -906,7 +958,12 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
+    turnstile?: {
+      token?: string,
+      phase?: "invisible" | "visible",
+      previousResult?: TurnstileRetryResult,
+    },
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -918,10 +975,11 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
+          ...getTurnstileRequestFields(turnstile, "Credential sign-up"),
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, KnownErrors.TurnstileChallengeRequired]
     );
 
     if (res.status === "error") {
@@ -1049,6 +1107,11 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
+      turnstile?: {
+        token?: string,
+        phase?: "invisible" | "visible",
+        previousResult?: TurnstileRetryResult,
+      },
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1091,8 +1154,74 @@ export class StackClientInterface {
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
     }
+    for (const [key, value] of Object.entries(getTurnstileRequestFields(options.turnstile, `OAuth ${options.type}`))) {
+      url.searchParams.set(key, value);
+    }
 
     return url.toString();
+  }
+
+  async authorizeOAuth(options: {
+    provider: string,
+    redirectUrl: string,
+    errorRedirectUrl: string,
+    afterCallbackRedirectUrl?: string,
+    codeChallenge: string,
+    state: string,
+    type: "authenticate" | "link",
+    providerScope?: string,
+    turnstile?: {
+      token?: string,
+      phase?: "invisible" | "visible",
+      previousResult?: TurnstileRetryResult,
+    },
+    session: InternalSession,
+  }): Promise<Result<string, KnownErrors["TurnstileChallengeRequired"]>> {
+    if (typeof window === "undefined") {
+      throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
+    }
+
+    await this.options.prepareRequest?.();
+
+    const url = new URL(await this.getOAuthUrl(options));
+    url.searchParams.set("response_mode", "json");
+
+    let rawRes;
+    try {
+      rawRes = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw await this._createNetworkError(error, options.session, "client");
+      }
+      throw error;
+    }
+
+    const processedResponse = await this._processResponse(rawRes);
+    if (processedResponse.status === "error") {
+      if (KnownErrors.TurnstileChallengeRequired.isInstance(processedResponse.error)) {
+        return Result.error(processedResponse.error);
+      }
+      throw processedResponse.error;
+    }
+
+    if (processedResponse.data.status !== 200) {
+      throw new StackAssertionError(`OAuth authorize returned an unexpected status: ${processedResponse.data.status}`);
+    }
+
+    const body = await processedResponse.data.json();
+    if (body == null || typeof body !== "object" || Array.isArray(body)) {
+      throw new StackAssertionError("OAuth authorize response body must be an object", { body });
+    }
+
+    const location = body.location;
+    if (typeof location !== "string") {
+      throw new StackAssertionError("OAuth authorize response is missing a redirect location", { body });
+    }
+
+    return Result.ok(location);
   }
 
   async callOAuthCallback(options: {

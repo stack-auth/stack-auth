@@ -3,12 +3,12 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label, Typography } from "@stackframe/stack-ui";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp } from "..";
+import { useStackApp } from "../lib/hooks";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -88,6 +88,7 @@ export function MagicLinkSignIn() {
   const { register, handleSubmit, setError, formState: { errors } } = useForm({
     resolver: yupResolver(schema)
   });
+  const registerEmail = register('email');
 
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
     setLoading(true);
@@ -125,7 +126,10 @@ export function MagicLinkSignIn() {
           id="email"
           type="email"
           autoComplete="email"
-          {...register('email')}
+          {...registerEmail}
+          onChange={(e) => {
+            runAsynchronously(registerEmail.onChange(e));
+          }}
         />
         <FormWarningText text={errors.email?.message?.toString()} />
 

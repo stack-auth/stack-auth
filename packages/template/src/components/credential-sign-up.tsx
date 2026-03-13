@@ -8,7 +8,7 @@ import { Button, Input, Label, PasswordInput } from "@stackframe/stack-ui";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp } from "..";
+import { useStackApp } from "../lib/hooks";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 
@@ -52,6 +52,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     }
   };
 
+  const registerEmail = register('email');
   const registerPassword = register('password');
   const registerPasswordRepeat = register('passwordRepeat');
 
@@ -62,7 +63,15 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
       noValidate
     >
       <Label htmlFor="email" className="mb-1">{t('Email')}</Label>
-      <Input id="email" type="email" autoComplete="email" {...register('email')}/>
+      <Input
+        id="email"
+        type="email"
+        autoComplete="email"
+        {...registerEmail}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+          runAsynchronously(registerEmail.onChange(e));
+        }}
+      />
       <FormWarningText text={errors.email?.message?.toString()} />
 
       <Label htmlFor="password" className="mt-4 mb-1">{t('Password')}</Label>

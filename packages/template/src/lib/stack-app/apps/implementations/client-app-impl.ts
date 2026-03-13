@@ -37,9 +37,11 @@ import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
+import { withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
@@ -77,6 +79,7 @@ const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFOR
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
+
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
   /**
@@ -2128,6 +2131,28 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return clientVersion;
   }
 
+  private _getTurnstileSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
+    if (typeof window === "undefined") return null;
+
+    const isDev = (() => {
+      try {
+        return (globalThis as any).process?.env?.NODE_ENV !== "production";
+      } catch {
+        return false;
+      }
+    })();
+
+    const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY
+      ?? (isDev ? turnstileDevelopmentKeys.visibleSiteKey : undefined);
+    if (!visibleSiteKey) return null;
+
+    const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY
+      ?? (isDev ? turnstileDevelopmentKeys.invisibleSiteKey : undefined)
+      ?? visibleSiteKey;
+
+    return { visibleSiteKey, invisibleSiteKey };
+  }
+
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
@@ -2244,8 +2269,37 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
-  async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"));
+  async sendMagicLinkEmail(email: string, options?: {
+    callbackUrl?: string,
+  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+    const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
+    const siteKeys = this._getTurnstileSiteKeys();
+
+    if (siteKeys) {
+      return await withTurnstileFlow({
+        ...siteKeys,
+        action: "send_magic_link_email",
+        execute: async (turnstile) => {
+          return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
+            token: turnstile.token,
+            phase: turnstile.phase,
+            previousResult: turnstile.previousResult,
+          });
+        },
+        isChallengeRequired: (result) => {
+          if (result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
+            return result.error.constructorArgs[0];
+          }
+          return null;
+        },
+      // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+      // and never reaches the caller, so we narrow the error type
+      }) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
+    }
+
+    // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+    // and never reaches the caller, so we narrow the error type
+    return await this._interface.sendMagicLinkEmail(email, callbackUrl) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2504,23 +2558,56 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
+  async signInWithOAuth(provider: ProviderType, options?: {
+    returnTo?: string,
+  }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
 
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    await signInWithOAuth(
-      this._interface,
-      {
+    const siteKeys = this._getTurnstileSiteKeys();
+    const { codeChallenge, state } = await saveVerifierAndState();
+
+    const executeOAuth = async (turnstile: { token?: string, phase?: "invisible" | "visible", previousResult?: import("@stackframe/stack-shared/dist/utils/turnstile").TurnstileRetryResult }) => {
+      return await this._interface.authorizeOAuth({
         provider,
-        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
-        errorRedirectUrl: this.urls.error,
+        redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
+        errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
+        type: "authenticate",
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-      },
-      session,
-    );
+        codeChallenge,
+        state,
+        turnstile: {
+          token: turnstile.token,
+          phase: turnstile.phase,
+          previousResult: turnstile.previousResult,
+        },
+        session,
+      });
+    };
+
+    let authorizeResult;
+    if (siteKeys) {
+      authorizeResult = await withTurnstileFlow({
+        ...siteKeys,
+        action: "oauth_authenticate",
+        execute: executeOAuth,
+        isChallengeRequired: (result) => {
+          if (result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
+            return result.error.constructorArgs[0];
+          }
+          return null;
+        },
+      });
+    } else {
+      authorizeResult = await executeOAuth({});
+    }
+
+    const location = Result.orThrow(authorizeResult);
+    window.location.assign(location);
+    await neverResolve();
   }
 
   /**
@@ -2596,28 +2683,52 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
+    const siteKeys = this._getTurnstileSiteKeys();
 
-    let result = await this._interface.signUpWithCredential(
-      options.email,
-      options.password,
-      emailVerificationRedirectUrl,
-      session
-    );
-
-    // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
-    // retry with undefined (no email verification) and log a warning
-    if (result.status === 'error' &&
-      result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
-      !options.noVerificationCallback &&
-      emailVerificationRedirectUrl !== undefined) {
-      console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
-
-      result = await this._interface.signUpWithCredential(
+    const executeSignUp = async (turnstile: { token?: string, phase?: "invisible" | "visible", previousResult?: import("@stackframe/stack-shared/dist/utils/turnstile").TurnstileRetryResult }) => {
+      let result = await this._interface.signUpWithCredential(
         options.email,
         options.password,
-        undefined, // No email verification
-        session
+        emailVerificationRedirectUrl,
+        session,
+        { token: turnstile.token, phase: turnstile.phase, previousResult: turnstile.previousResult },
       );
+
+      // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
+      // retry with undefined (no email verification) and log a warning
+      if (result.status === 'error' &&
+        result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
+        !options.noVerificationCallback &&
+        emailVerificationRedirectUrl !== undefined) {
+        console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
+
+        result = await this._interface.signUpWithCredential(
+          options.email,
+          options.password,
+          undefined, // No email verification
+          session,
+          { token: turnstile.token, phase: turnstile.phase, previousResult: turnstile.previousResult },
+        );
+      }
+
+      return result;
+    };
+
+    let result;
+    if (siteKeys) {
+      result = await withTurnstileFlow({
+        ...siteKeys,
+        action: "sign_up_with_credential",
+        execute: executeSignUp,
+        isChallengeRequired: (r) => {
+          if (r.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(r.error)) {
+            return r.error.constructorArgs[0];
+          }
+          return null;
+        },
+      });
+    } else {
+      result = await executeSignUp({});
     }
 
     if (result.status === 'ok') {
@@ -2627,7 +2738,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       return Result.ok(undefined);
     } else {
-      return Result.error(result.error);
+      // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+      // and never reaches the caller, so we narrow the error type
+      return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>;
     }
   }
 

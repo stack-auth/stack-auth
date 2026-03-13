@@ -53,8 +53,68 @@ const simulatedRefreshErrors = new Map<string, { error: string, error_descriptio
 // Storage for simulating errors by grant ID (since we can't easily get refresh tokens)
 const simulatedRefreshErrorsByGrant = new Map<string, { error: string, error_description: string }>();
 
+// These prefixes must match mockTurnstileTokens in apps/e2e/tests/backend/backend-helpers.ts
+function getMockTurnstileVerificationResponse(token: unknown): {
+  statusCode: number,
+  body: {
+    success: boolean,
+    action?: string,
+  },
+} | null {
+  const normalizedToken = typeof token === "string" ? token.trim() : "";
+
+  if (normalizedToken === "mock-turnstile-error") {
+    return {
+      statusCode: 503,
+      body: {
+        success: false,
+      },
+    };
+  }
+
+  if (normalizedToken === "mock-turnstile-invalid") {
+    return {
+      statusCode: 200,
+      body: {
+        success: false,
+      },
+    };
+  }
+
+  for (const prefix of ["mock-turnstile-ok:", "mock-turnstile-visible-ok:"]) {
+    if (normalizedToken.startsWith(prefix)) {
+      return {
+        statusCode: 200,
+        body: {
+          success: true,
+          action: normalizedToken.slice(prefix.length),
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json()); // Add JSON parsing middleware
+
+// Local-only Turnstile stub so tests still exercise the HTTP siteverify boundary without a backend bypass.
+// Only mock tokens (prefixed with "mock-turnstile-") are handled here. For real tokens, configure the
+// STACK_TURNSTILE_SITEVERIFY_URL envvar to point directly to Cloudflare instead of this mock server.
+app.post('/turnstile/siteverify', async (req: express.Request, res: express.Response) => {
+  const verification = getMockTurnstileVerificationResponse(req.body.response);
+  if (verification) {
+    res.status(verification.statusCode).json(verification.body);
+    return;
+  }
+
+  // In development, non-mock tokens come from Cloudflare's development site keys.
+  // Always return success for these so the Turnstile flow doesn't block local development.
+  res.status(200).json({
+    success: true,
+  });
+});
 
 // Middleware to intercept token refresh requests and return simulated errors
 app.post('/token', async (req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -8,32 +8,24 @@
  * - email == "value" / email != "value"
  * - email.endsWith("@domain.com")
  * - email.matches("regex")
+ * - countryCode == "US" / countryCode in ["US", "CA"]
  * - emailDomain == "domain.com" / emailDomain in ["d1", "d2"]
  * - authMethod == "password" / authMethod in ["password", "otp"]
  * - oauthProvider == "google" / oauthProvider in ["google", "github"]
+ * - riskScores.bot > 80 / riskScores.free_trial_abuse >= 60
  */
 
-export type ConditionOperator =
-  | 'equals'
-  | 'not_equals'
-  | 'matches'  // regex
-  | 'ends_with'
-  | 'starts_with'
-  | 'contains'
-  | 'in_list';
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { type ConditionField, type ConditionOperator, escapeCelString, isNumericField, unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
-export type ConditionField =
-  | 'email'
-  | 'emailDomain'
-  | 'authMethod'
-  | 'oauthProvider';
+export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
 export type ConditionNode = {
   type: 'condition',
   id: string,
   field: ConditionField,
   operator: ConditionOperator,
-  value: string | string[],
+  value: string | number | string[],
 };
 
 export type GroupNode = {
@@ -63,27 +55,52 @@ export function visualTreeToCel(node: RuleNode): string {
   }
 }
 
-/**
- * Escapes special characters in string values for use in CEL expressions.
- * Backslashes must be escaped first to avoid double-escaping.
- */
-function escapeCelString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
+function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {
+  if (condition.field !== 'countryCode') {
+    return condition.value;
+  }
 
-function unescapeCelString(value: string): string {
-  return value.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+  if (Array.isArray(condition.value)) {
+    return condition.value.map(normalizeCountryCode);
+  }
+
+  if (typeof condition.value === 'number') {
+    return condition.value;
+  }
+
+  return normalizeCountryCode(condition.value);
 }
 
 function conditionToCel(condition: ConditionNode): string {
-  const { field, operator, value } = condition;
+  const { field, operator } = condition;
+  const value = normalizeConditionValue(condition);
+  const valueAsNumber = typeof value === 'number' ? value : Number(value);
+  const useNumericValue = isNumericField(field) && Number.isFinite(valueAsNumber);
 
   switch (operator) {
     case 'equals': {
+      if (useNumericValue) {
+        return `${field} == ${valueAsNumber}`;
+      }
       return `${field} == "${escapeCelString(String(value))}"`;
     }
     case 'not_equals': {
+      if (useNumericValue) {
+        return `${field} != ${valueAsNumber}`;
+      }
       return `${field} != "${escapeCelString(String(value))}"`;
+    }
+    case 'greater_than': {
+      return `${field} > ${useNumericValue ? valueAsNumber : 0}`;
+    }
+    case 'greater_or_equal': {
+      return `${field} >= ${useNumericValue ? valueAsNumber : 0}`;
+    }
+    case 'less_than': {
+      return `${field} < ${useNumericValue ? valueAsNumber : 0}`;
+    }
+    case 'less_or_equal': {
+      return `${field} <= ${useNumericValue ? valueAsNumber : 0}`;
     }
     case 'matches': {
       return `${field}.matches("${escapeCelString(String(value))}")`;
@@ -122,7 +139,6 @@ function groupToCel(group: GroupNode): string {
   const celOperator = group.operator === 'and' ? ' && ' : ' || ';
   const childExpressions = group.children.map(child => {
     const expr = visualTreeToCel(child);
-    // Wrap child groups in parentheses if they have a different operator
     if (child.type === 'group' && child.operator !== group.operator) {
       return `(${expr})`;
     }
@@ -260,8 +276,33 @@ function splitByOperator(expr: string, operator: string): string[] {
 function parseCondition(expr: string): ConditionNode | null {
   const trimmed = expr.trim();
 
+  // Match numeric comparison patterns like: field >= 42, field < 10, field == 5
+  // Order matters: >= before >, <= before <
+  const numericOperators = [
+    { symbol: '>=', operator: 'greater_or_equal' },
+    { symbol: '<=', operator: 'less_or_equal' },
+    { symbol: '>', operator: 'greater_than' },
+    { symbol: '<', operator: 'less_than' },
+    { symbol: '==', operator: 'equals' },
+    { symbol: '!=', operator: 'not_equals' },
+  ] as const;
+
+  for (const { symbol, operator } of numericOperators) {
+    const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = trimmed.match(new RegExp(`^([\\w.]+)\\s*${escapedSymbol}\\s*(-?\\d+(?:\\.\\d+)?)$`));
+    if (match) {
+      return {
+        type: 'condition',
+        id: generateNodeId(),
+        field: match[1] as ConditionField,
+        operator,
+        value: Number(match[2]),
+      };
+    }
+  }
+
   // Match patterns like: field == "value"
-  const equalsMatch = trimmed.match(/^(\w+)\s*==\s*"((?:\\.|[^"\\])*)"$/);
+  const equalsMatch = trimmed.match(/^([\w.]+)\s*==\s*"((?:\\.|[^"\\])*)"$/);
   if (equalsMatch) {
     return {
       type: 'condition',
@@ -273,7 +314,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field != "value"
-  const notEqualsMatch = trimmed.match(/^(\w+)\s*!=\s*"((?:\\.|[^"\\])*)"$/);
+  const notEqualsMatch = trimmed.match(/^([\w.]+)\s*!=\s*"((?:\\.|[^"\\])*)"$/);
   if (notEqualsMatch) {
     return {
       type: 'condition',
@@ -285,7 +326,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.matches("regex")
-  const matchesMatch = trimmed.match(/^(\w+)\.matches\("((?:\\.|[^"\\])*)"\)$/);
+  const matchesMatch = trimmed.match(/^([\w.]+)\.matches\("((?:\\.|[^"\\])*)"\)$/);
   if (matchesMatch) {
     return {
       type: 'condition',
@@ -297,7 +338,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.endsWith("value")
-  const endsWithMatch = trimmed.match(/^(\w+)\.endsWith\("((?:\\.|[^"\\])*)"\)$/);
+  const endsWithMatch = trimmed.match(/^([\w.]+)\.endsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (endsWithMatch) {
     return {
       type: 'condition',
@@ -309,7 +350,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.startsWith("value")
-  const startsWithMatch = trimmed.match(/^(\w+)\.startsWith\("((?:\\.|[^"\\])*)"\)$/);
+  const startsWithMatch = trimmed.match(/^([\w.]+)\.startsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (startsWithMatch) {
     return {
       type: 'condition',
@@ -321,7 +362,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field.contains("value")
-  const containsMatch = trimmed.match(/^(\w+)\.contains\("((?:\\.|[^"\\])*)"\)$/);
+  const containsMatch = trimmed.match(/^([\w.]+)\.contains\("((?:\\.|[^"\\])*)"\)$/);
   if (containsMatch) {
     return {
       type: 'condition',
@@ -333,7 +374,7 @@ function parseCondition(expr: string): ConditionNode | null {
   }
 
   // Match patterns like: field in ["a", "b", "c"]
-  const inListMatch = trimmed.match(/^(\w+)\s+in\s+\[([^\]]*)\]$/);
+  const inListMatch = trimmed.match(/^([\w.]+)\s+in\s+\[([^\]]*)\]$/);
   if (inListMatch) {
     const listStr = inListMatch[2];
     const items = listStr
@@ -382,4 +423,3 @@ export function createEmptyGroup(operator: 'and' | 'or' = 'and'): GroupNode {
     children: [],
   };
 }
-

@@ -273,6 +273,16 @@ model ProjectUser {
   restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
+  // Sign-up risk scores (0-100, set at sign-up time)
+  signUpRiskScoreBot              Int @db.SmallInt
+  signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
+  signUpCountryCode               String?
+  signedUpAt                      DateTime
+  signUpIp                        String?
+  signUpIpTrusted                 Boolean?
+  signUpEmailNormalized           String?
+  signUpEmailBase                 String?
+
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
@@ -297,6 +307,10 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
+  @@index([tenancyId, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
+  @@index([tenancyId, signedUpAt(sort: Desc)], name: "ProjectUser_signedUpAt_desc")
+  @@index([tenancyId, signUpIp, signedUpAt], name: "ProjectUser_signUpIp_recent_idx")
+  @@index([tenancyId, signUpEmailBase, signedUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
   @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
   @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUser_shouldUpdateSequenceId_idx")
 }

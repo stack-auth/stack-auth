@@ -442,7 +442,8 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
         insert_users AS (
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-             "displayName", "createdAt", "updatedAt", "isAnonymous")
+             "displayName", "createdAt", "updatedAt", "isAnonymous",
+             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -451,7 +452,9 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
             'HV User ' || idx,
             ts,
             ts,
-            false
+            false,
+            0,
+            0
           FROM generated
           RETURNING "tenancyId", "projectUserId"
         )
@@ -1020,7 +1023,8 @@ $$;`);
         insert_users AS (
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-             "displayName", "createdAt", "updatedAt", "isAnonymous")
+             "displayName", "createdAt", "updatedAt", "isAnonymous",
+             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -1029,7 +1033,9 @@ $$;`);
             'Interleave User ' || idx,
             ts,
             ts,
-            false
+            false,
+            0,
+            0
           FROM generated
           RETURNING "projectUserId"
         ),
@@ -1100,7 +1106,8 @@ $$;`);
         insert_users AS (
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
-             "displayName", "createdAt", "updatedAt", "isAnonymous")
+             "displayName", "createdAt", "updatedAt", "isAnonymous",
+             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -1109,7 +1116,9 @@ $$;`);
             'Replacement ' || idx,
             ts,
             ts,
-            false
+            false,
+            0,
+            0
           FROM generated
           RETURNING "projectUserId"
         ),

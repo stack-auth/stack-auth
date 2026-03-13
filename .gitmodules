@@ -1,0 +1,3 @@
+[submodule "packages/private"]
+	path = packages/private
+	url = https://github.com/stack-auth/private.git

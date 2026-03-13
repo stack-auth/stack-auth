@@ -1,4 +1,6 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
@@ -24,7 +26,7 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
   tenancyId: string,
   providerId: string,
   providerAccountId: string,
-  email?: string | null,
+  email: string | null,
   projectUserId: string,
 }) {
   return await prisma.projectUserOAuthAccount.create({
@@ -248,7 +250,7 @@ const handler = createSmartRouteHandler({
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
-                      email: userInfo.email,
+                      email: userInfo.email ?? null,
                       projectUserId,
                     });
 
@@ -288,7 +290,7 @@ const handler = createSmartRouteHandler({
                     tenancyId: outerInfo.tenancyId,
                     providerId: provider.id,
                     providerAccountId: userInfo.accountId,
-                    email: userInfo.email ?? undefined,
+                    email: userInfo.email ?? null,
                     projectUserId: linkedUserId,
                   });
 
@@ -321,24 +323,28 @@ const handler = createSmartRouteHandler({
                   }
                 }
 
+                const requestContext = await getBestEffortEndUserRequestContext();
                 const { projectUserId: newUserId, oauthAccountId } = await createOAuthUserAndAccount(
                   prisma,
                   tenancy,
                   {
                     providerId: provider.id,
                     providerAccountId: userInfo.accountId,
-                    email: userInfo.email ?? undefined,
+                    email: userInfo.email ?? null,
                     emailVerified: userInfo.emailVerified,
                     primaryEmailAuthEnabled,
                     currentUser,
-                    displayName: userInfo.displayName ?? undefined,
-                    profileImageUrl: userInfo.profileImageUrl ?? undefined,
-                    signUpRuleOptions: {
+                    displayName: userInfo.displayName ?? null,
+                    profileImageUrl: userInfo.profileImageUrl ?? null,
+                    signUpRuleOptions: buildSignUpRuleOptions({
                       authMethod: 'oauth',
                       oauthProvider: provider.id,
-                      // Note: Request context not easily available in OAuth callback
-                      // TODO: Pass IP and user agent from stored OAuth state if needed
-                    },
+                      requestContext,
+                      turnstileAssessment: reconstructTurnstileAssessment(
+                        outerInfo.turnstileResult,
+                        outerInfo.turnstileVisibleChallengeResult,
+                      ),
+                    }),
                   }
                 );
 

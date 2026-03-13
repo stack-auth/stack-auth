@@ -6,9 +6,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-
 export default function PageClient() {
-  const user = useUser();
+  const user = useUser({ includeRestricted: true });
   const router = useRouter();
   const app = useStackApp();
 
@@ -18,6 +17,28 @@ export default function PageClient() {
       <Typography type='h3'>Welcome to the Stack demo app!</Typography>
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
+      <Card className='max-w-xl w-full text-left'>
+        <CardHeader>
+          <Typography type='h4'>Fraud protection</Typography>
+        </CardHeader>
+        <CardContent className='space-y-2'>
+          <Typography>
+            Turnstile fraud protection is handled transparently by the SDK — no consumer code required.
+          </Typography>
+          <Typography className='text-sm'>
+            Status: enabled
+          </Typography>
+        </CardContent>
+        <CardFooter>
+          <div className='flex gap-2'>
+            <Button onClick={() => router.push(app.urls.signUp)}>Open hosted sign-up</Button>
+            <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open hosted sign-in</Button>
+            <Button variant='secondary' onClick={() => router.push('/turnstile-signup')}>
+              Debug demo
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
       <div className='flex gap-2'>
         <Button onClick={() => router.push(app.urls.signIn)}>Sign In</Button>
         <Button onClick={() => router.push(app.urls.signUp)}>Sign Up</Button>
@@ -35,7 +56,14 @@ export default function PageClient() {
                 <UserAvatar user={user} size={100} />
                 <div>
                   <Typography className='text-sm'>logged in as</Typography>
-                  <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                  <div className="flex items-center gap-2">
+                    <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                    {user.isRestricted && (
+                      <span className="rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-2 py-0.5 text-sm font-medium">
+                        Restricted
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -54,6 +82,10 @@ export default function PageClient() {
                       <div>{user.primaryEmail}</div>
                     </div>
                   )}
+                  <div className="flex">
+                    <div className="w-32 font-semibold">Restricted:</div>
+                    <div>{user.isRestricted ? `Yes${user.restrictedReason ? ` (${user.restrictedReason.type})` : ''}` : 'No'}</div>
+                  </div>
                 </div>
               </div>
             </CardContent>

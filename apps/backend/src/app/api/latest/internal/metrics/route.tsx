@@ -92,7 +92,7 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
       SUM(COALESCE(COUNT(pu."projectUserId"), 0)) OVER (ORDER BY ds.registration_day) AS "cumUsers"
     FROM date_series ds
     LEFT JOIN ${sqlQuoteIdent(schema)}."ProjectUser" pu
-    ON DATE(pu."createdAt") = ds.registration_day 
+    ON DATE(pu."signedUpAt") = ds.registration_day 
       AND pu."tenancyId" = ${tenancy.id}::UUID
       AND (${includeAnonymous} OR pu."isAnonymous" = false)
     GROUP BY ds.registration_day

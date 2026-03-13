@@ -2,6 +2,7 @@ import { StackAssertionError, StatusError, throwErr } from "./utils/errors";
 import { identityArgs } from "./utils/functions";
 import { Json } from "./utils/json";
 import { deindent } from "./utils/strings";
+import type { TurnstileRetryResult } from "./utils/turnstile";
 
 export type KnownErrorJson = {
   code: string,
@@ -750,6 +751,19 @@ const SignUpRejected = createKnownErrorConstructor(
     },
   ] as const,
   (json: any) => [json.message] as const,
+);
+
+const TurnstileChallengeRequired = createKnownErrorConstructor(
+  KnownError,
+  "TURNSTILE_CHALLENGE_REQUIRED",
+  (invisibleResult: TurnstileRetryResult) => [
+    409,
+    "An additional Turnstile challenge is required before sign-up can continue.",
+    {
+      invisible_result: invisibleResult,
+    },
+  ] as const,
+  (json: any) => [json.invisible_result] as const,
 );
 
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
@@ -1879,6 +1893,7 @@ export const KnownErrors = {
   BranchDoesNotExist,
   SignUpNotEnabled,
   SignUpRejected,
+  TurnstileChallengeRequired,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,

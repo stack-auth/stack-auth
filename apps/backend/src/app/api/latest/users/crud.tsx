@@ -16,8 +16,8 @@ import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -59,6 +59,14 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 };
 
 const personalTeamDefaultDisplayName = "Personal Team";
+
+function getSignedUpAt(params: {
+  signedUpAt: Date,
+  createdAt: Date,
+  isAnonymous: boolean,
+}): Date {
+  return params.signedUpAt;
+}
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
   if (tenancy.config.teams.createPersonalTeamOnSignUp) {
@@ -161,7 +169,11 @@ export const userPrismaToCrud = (
     primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
-    signed_up_at_millis: prisma.createdAt.getTime(),
+    signed_up_at_millis: getSignedUpAt({
+      signedUpAt: prisma.signedUpAt,
+      createdAt: prisma.createdAt,
+      isAnonymous: prisma.isAnonymous,
+    }).getTime(),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
     server_metadata: prisma.serverMetadata,
@@ -184,6 +196,13 @@ export const userPrismaToCrud = (
     restricted_by_admin: prisma.restrictedByAdmin,
     restricted_by_admin_reason: prisma.restrictedByAdminReason,
     restricted_by_admin_private_details: prisma.restrictedByAdminPrivateDetails,
+    country_code: prisma.signUpCountryCode,
+    risk_scores: {
+      sign_up: {
+        bot: prisma.signUpRiskScoreBot,
+        free_trial_abuse: prisma.signUpRiskScoreFreeTrialAbuse,
+      },
+    },
   };
   return result;
 };
@@ -371,7 +390,11 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
-        signed_up_at_millis: new Date(row.createdAt + "Z").getTime(),
+        signed_up_at_millis: getSignedUpAt({
+          signedUpAt: new Date(row.signedUpAt + "Z"),
+          createdAt: new Date(row.createdAt + "Z"),
+          isAnonymous: row.isAnonymous,
+        }).getTime(),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
         server_metadata: row.serverMetadata,
@@ -402,6 +425,13 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         restricted_by_admin: row.restrictedByAdmin,
         restricted_by_admin_reason: row.restrictedByAdminReason,
         restricted_by_admin_private_details: row.restrictedByAdminPrivateDetails,
+        country_code: row.signUpCountryCode,
+        risk_scores: {
+          sign_up: {
+            bot: row.signUpRiskScoreBot,
+            free_trial_abuse: row.signUpRiskScoreFreeTrialAbuse,
+          },
+        },
       };
     },
   };
@@ -563,7 +593,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       include: userFullInclude,
       orderBy: {
         [({
-          signed_up_at: 'createdAt',
+          signed_up_at: 'signedUpAt',
         } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
       },
       // +1 because we need to know if there is a next page
@@ -642,6 +672,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin,
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
+          signUpCountryCode: data.country_code,
+          signedUpAt: new Date(),
+          signUpRiskScoreBot: data.risk_scores?.sign_up.bot ?? 0,
+          signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse ?? 0,
         },
         include: userFullInclude,
       });
@@ -1144,6 +1178,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
+          signUpCountryCode: data.country_code,
+          signUpRiskScoreBot: data.risk_scores?.sign_up.bot,
+          signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse,
         }),
         include: userFullInclude,
       });

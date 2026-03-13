@@ -13,21 +13,9 @@ import { headers } from "next/headers";
 
 
 /**
- * Tries to guess the end user's IP address based on the current request's headers. Returns `undefined` if the end
- * user IP can't be determined.
- *
- * This value can be spoofed by any user to any value; do not trust the value for security purposes (use the
- * `getExactEndUserIp` function for that). It is useful for derived data like location analytics, which can be spoofed
- * with VPNs anyways. However, for legitimate users, this function is guaranteed to either return the IP address
- * (potentially of a VPN/proxy) or `undefined`.
- *
- * Note that the "end user" refers to the user sitting behind a computer screen; for example, if my-stack-app.com is
- * using Stack Auth, and person A is on my-stack-app.com and sends a server action to server B of my-stack-app.com,
- * then the end user IP address is the address of the computer of person A, not server B.
- *
- * If we can determine that the request is coming from a browser, we try to read the IP address from the proxy headers.
- * Otherwise, we can read the `X-Stack-Requester` header to find information about the end user's IP address. (We don't
- * do this currently, see the TODO in the implementation.)
+ * Returns the end user's IP address from the current request's headers, or `undefined` if it can't be determined.
+ * Falls back to spoofable headers (x-forwarded-for) if no trusted proxy header (cf-connecting-ip,
+ * x-vercel-forwarded-for) is available.
  */
 export async function getSpoofableEndUserIp(): Promise<string | undefined> {
   const endUserInfo = await getEndUserInfo();
@@ -36,7 +24,8 @@ export async function getSpoofableEndUserIp(): Promise<string | undefined> {
 
 
 /**
- * Tries to guess the end user's IP address based on the current request's headers. If
+ * Returns the end user's IP only if it came from a trusted proxy header (cf-connecting-ip or x-vercel-forwarded-for).
+ * Returns `undefined` if the IP could only be determined from spoofable headers.
  */
 export async function getExactEndUserIp(): Promise<string | undefined> {
   const endUserInfo = await getEndUserInfo();
@@ -54,11 +43,44 @@ type EndUserLocation = {
 
 export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | null> {
   const endUserInfo = await getEndUserInfo();
-  return endUserInfo?.maybeSpoofed === false ? pick(endUserInfo.exactInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]) : null;
+  if (!endUserInfo) {
+    return null;
+  }
+
+  const locationInfo = getLocationInfo(endUserInfo);
+  return pick(locationInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]);
+}
+
+export type BestEffortEndUserRequestContext = {
+  ipAddress: string | null,
+  ipTrusted: boolean | null,
+  location: EndUserLocation | null,
+};
+
+export async function getBestEffortEndUserRequestContext(): Promise<BestEffortEndUserRequestContext> {
+  const endUserInfo = await getEndUserInfo();
+  if (!endUserInfo) {
+    return {
+      ipAddress: null,
+      ipTrusted: null,
+      location: null,
+    };
+  }
+
+  const locationInfo = getLocationInfo(endUserInfo);
+  return {
+    ipAddress: locationInfo.ip,
+    ipTrusted: !endUserInfo.maybeSpoofed,
+    location: pick(locationInfo, ["countryCode", "regionCode", "cityName", "latitude", "longitude", "tzIdentifier"]),
+  };
 }
 
 
 type EndUserInfoInner = EndUserLocation & { ip: string }
+
+function getLocationInfo(endUserInfo: { maybeSpoofed: true, spoofedInfo: EndUserInfoInner } | { maybeSpoofed: false, exactInfo: EndUserInfoInner }) {
+  return endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
+}
 
 export async function getEndUserInfo(): Promise<
   // discriminated union to make sure the user is really explicit about checking the maybeSpoofed field
@@ -78,37 +100,32 @@ export async function getEndUserInfo(): Promise<
   const isClaimingToBeBrowser = ["Mozilla", "Chrome", "Safari"].some(header => allHeaders.get("User-Agent")?.includes(header));
 
   if (isClaimingToBeBrowser) {
-    // this case is easy, we just read the IP from the headers
-    const ip =
-      allHeaders.get("cf-connecting-ip")
-      ?? allHeaders.get("x-vercel-forwarded-for")
-      ?? allHeaders.get("x-real-ip")
-      ?? allHeaders.get("x-forwarded-for")?.split(",").at(0)
-      ?? undefined;
+    // cf-connecting-ip and x-vercel-forwarded-for are set by the proxy (Cloudflare/Vercel) based on the actual TCP
+    // connection — they cannot be spoofed by the client as long as the origin is only reachable through the proxy,
+    // which is the case for Vercel deployments.
+    const trustedIp = allHeaders.get("x-vercel-forwarded-for") ?? allHeaders.get("cf-connecting-ip") ?? undefined;
+    const spoofableIp = allHeaders.get("x-real-ip") ?? allHeaders.get("x-forwarded-for")?.split(",").at(0) ?? undefined;
+    const ip = trustedIp ?? spoofableIp;
+
     if (!ip || !isIpAddress(ip)) {
       console.warn("getEndUserIp() found IP address in headers, but is invalid. This is most likely a misconfigured client", { ip, headers: Object.fromEntries(allHeaders) });
       return null;
     }
 
-    return ip ? {
-      // currently we just trust all headers (including X-Forwarded-For), so this is easy to spoof
-      // hence, we set maybeSpoofed to true
-      // TODO be smarter about this (eg. use x-vercel-signature and CF request validation to make sure they pass through
-      // those proxies before trusting the values)
-      maybeSpoofed: true,
+    // TODO use our own geoip data so we can get better accuracy, and also support non-Vercel/Cloudflare setups
+    const location: EndUserLocation = {
+      countryCode: (allHeaders.get("x-vercel-ip-country") ?? allHeaders.get("cf-ipcountry")) || undefined,
+      regionCode: allHeaders.get("x-vercel-ip-country-region") || undefined,
+      cityName: allHeaders.get("x-vercel-ip-city") || undefined,
+      latitude: allHeaders.get("x-vercel-ip-latitude") ? parseFloat(allHeaders.get("x-vercel-ip-latitude")!) : undefined,
+      longitude: allHeaders.get("x-vercel-ip-longitude") ? parseFloat(allHeaders.get("x-vercel-ip-longitude")!) : undefined,
+      tzIdentifier: allHeaders.get("x-vercel-ip-timezone") || undefined,
+    };
 
-      spoofedInfo: {
-        ip,
-
-        // TODO use our own geoip data so we can get better accuracy, and also support non-Vercel/Cloudflare setups
-        countryCode: (allHeaders.get("cf-ipcountry") ?? allHeaders.get("x-vercel-ip-country")) || undefined,
-        regionCode: allHeaders.get("x-vercel-ip-country-region") || undefined,
-        cityName: allHeaders.get("x-vercel-ip-city") || undefined,
-        latitude: allHeaders.get("x-vercel-ip-latitude") ? parseFloat(allHeaders.get("x-vercel-ip-latitude")!) : undefined,
-        longitude: allHeaders.get("x-vercel-ip-longitude") ? parseFloat(allHeaders.get("x-vercel-ip-longitude")!) : undefined,
-        tzIdentifier: allHeaders.get("x-vercel-ip-timezone") || undefined,
-      },
-    } : null;
+    if (trustedIp) {
+      return { maybeSpoofed: false, exactInfo: { ip, ...location } };
+    }
+    return { maybeSpoofed: true, spoofedInfo: { ip, ...location } };
   }
 
   /**

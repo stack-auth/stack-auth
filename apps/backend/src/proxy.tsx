@@ -49,6 +49,7 @@ const corsAllowedRequestHeaders = [
 
 const corsAllowedResponseHeaders = [
   'content-type',
+  'location',
   'x-stack-actual-status',
   'x-stack-known-error',
 ];
@@ -66,15 +67,20 @@ export async function proxy(request: NextRequest) {
     }
   }
   const isApiRequest = url.pathname.startsWith('/api/');
+  const isOAuthAuthorizeRequest = /^\/api\/(?:latest|v1)\/auth\/oauth\/authorize\//.test(url.pathname);
+  const requestOrigin = request.headers.get('origin');
 
   const corsHeadersInit = isApiRequest ? {
     // CORS headers
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": isOAuthAuthorizeRequest && requestOrigin ? requestOrigin : "*",
+    ...(isOAuthAuthorizeRequest && requestOrigin ? {
+      "Access-Control-Allow-Credentials": "true",
+    } : {}),
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Max-Age": "86400",  // 1 day (capped to lower values, eg. 10min, by some browsers)
     "Access-Control-Allow-Headers": corsAllowedRequestHeaders.join(', '),
     "Access-Control-Expose-Headers": corsAllowedResponseHeaders.join(', '),
-    "Vary": corsAllowedRequestHeaders.join(', '),
+    "Vary": `origin, ${corsAllowedRequestHeaders.join(', ')}`,
   } : undefined;
 
   // ensure our clients can handle 429 responses
