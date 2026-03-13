@@ -417,6 +417,12 @@ function UserDetails({ user }: UserDetailsProps) {
       <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
       </UserInfo>
+      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
+        <EditableInput value={String(user.riskScores.signUp.bot)} readOnly />
+      </UserInfo>
+      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
+        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} readOnly />
+      </UserInfo>
       <RestrictedStatusRow user={user} />
     </div>
   );

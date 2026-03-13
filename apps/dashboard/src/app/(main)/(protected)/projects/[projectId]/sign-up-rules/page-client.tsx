@@ -87,6 +87,10 @@ type SignUpRulesTestResult = {
     email_domain: string,
     auth_method: 'password' | 'otp' | 'oauth' | 'passkey',
     oauth_provider: string,
+    risk_scores: {
+      bot: number,
+      free_trial_abuse: number,
+    },
   },
   evaluations: SignUpRulesTestEvaluation[],
   outcome: {
@@ -521,6 +525,8 @@ function TestRulesCard({
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
+  const [riskScoreBot, setRiskScoreBot] = useState<number>(0);
+  const [riskScoreFreeTrialAbuse, setRiskScoreFreeTrialAbuse] = useState<number>(0);
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
 
   const [runTest, isRunning] = useAsyncCallback(async () => {
@@ -532,6 +538,10 @@ function TestRulesCard({
           email: email || undefined,
           auth_method: authMethod,
           oauth_provider: authMethod === 'oauth' ? (oauthProvider || undefined) : undefined,
+          risk_scores: {
+            bot: riskScoreBot,
+            free_trial_abuse: riskScoreFreeTrialAbuse,
+          },
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -546,7 +556,7 @@ function TestRulesCard({
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, email, oauthProvider, stackAdminApp]);
+  }, [authMethod, email, oauthProvider, riskScoreBot, riskScoreFreeTrialAbuse, stackAdminApp]);
 
   const handleAuthMethodChange = (value: string) => {
     if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
@@ -651,6 +661,35 @@ function TestRulesCard({
               <option key={provider} value={provider} />
             ))}
           </datalist>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Risk score: bot
+            </Typography>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={String(riskScoreBot)}
+              onChange={(e) => setRiskScoreBot(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Risk score: free trial abuse
+            </Typography>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={String(riskScoreFreeTrialAbuse)}
+              onChange={(e) => setRiskScoreFreeTrialAbuse(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -803,6 +842,12 @@ function TestRulesCard({
               </Typography>
               <Typography variant="secondary" className="text-xs">
                 OAuth provider: {result.context.oauth_provider || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Risk score (bot): {result.context.risk_scores.bot}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Risk score (free trial abuse): {result.context.risk_scores.free_trial_abuse}
               </Typography>
             </div>
           </>

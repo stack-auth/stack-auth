@@ -273,6 +273,10 @@ model ProjectUser {
   restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
+  // Sign-up risk scores (0-100, set at sign-up time)
+  signUpRiskScoreBot              Int @db.SmallInt
+  signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
+
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]

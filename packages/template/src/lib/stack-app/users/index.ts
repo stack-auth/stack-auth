@@ -360,6 +360,13 @@ export type ServerBaseUser = {
   readonly restrictedByAdminReason: string | null,
   /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
   readonly restrictedByAdminPrivateDetails: string | null,
+  /** Server-only risk scores used during sign-up risk evaluation. */
+  readonly riskScores: {
+    readonly signUp: {
+      readonly bot: number,
+      readonly freeTrialAbuse: number,
+    },
+  },
 
   createTeam(data: Omit<ServerTeamCreateOptions, "creatorUserId">): Promise<ServerTeam>,
 

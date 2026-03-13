@@ -81,4 +81,49 @@ describe("with admin access", () => {
       action: { type: "reject" },
     });
   });
+
+  it("evaluates risk score conditions", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await Project.updateConfig({
+      "auth.signUpRules.block-high-bot-score": {
+        enabled: true,
+        displayName: "Block high bot score",
+        priority: 1,
+        condition: "riskScores.bot >= 80",
+        action: {
+          type: "reject",
+          message: "High bot risk",
+        },
+      },
+      "auth.signUpRulesDefaultAction": "allow",
+    });
+
+    const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-test", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        email: "risk@example.com",
+        auth_method: "password",
+        risk_scores: {
+          bot: 90,
+          free_trial_abuse: 10,
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      context: {
+        risk_scores: {
+          bot: 90,
+          free_trial_abuse: 10,
+        },
+      },
+      outcome: {
+        should_allow: false,
+        decision: "reject",
+        decision_rule_id: "block-high-bot-score",
+      },
+    });
+  });
 });
