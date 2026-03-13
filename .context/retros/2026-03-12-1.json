@@ -1,0 +1,24 @@
+{
+  "date": "2026-03-12",
+  "window": "7d",
+  "metrics": {
+    "commits": 7,
+    "prs_merged": 2,
+    "insertions": 3003,
+    "deletions": 165,
+    "net_loc": 2838,
+    "test_loc": 473,
+    "test_ratio": 0.16,
+    "active_days": 3,
+    "sessions": 6,
+    "deep_sessions": 0,
+    "avg_session_minutes": 7,
+    "loc_per_session_hour": 4200,
+    "feat_pct": 0.29,
+    "fix_pct": 0.57,
+    "peak_hour": 10
+  },
+  "version_range": ["package-bump", "package-bump"],
+  "streak_days": 0,
+  "tweetable": "Week of Mar 5: 7 commits, 3.0k LOC, 16% tests, 2 PRs, peak: 10am | Streak: 0d"
+}

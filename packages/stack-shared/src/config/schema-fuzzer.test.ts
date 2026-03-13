@@ -261,6 +261,27 @@ const environmentSchemaFuzzerConfig = [{
         }],
       }],
     }],
+    ai: [{
+      enabled: [false, true],
+      provider: ["gemini", "openrouter"] as const,
+      geminiApiKey: ["", "test-gemini-key"],
+      openRouterApiKey: ["", "test-openrouter-key"],
+      openRouterBaseUrl: ["https://openrouter.ai/api/v1", "https://openrouter.ai/api/custom"],
+      geminiReasoningModel: ["gemini-2.5-pro"],
+      geminiInteractiveModel: ["gemini-2.5-flash"],
+      textEmbeddingModel: ["gemini-embedding-001"],
+      multimodalEmbeddingModel: ["multimodalembedding@001"],
+      vertexProjectId: ["", "stack-auth-test"],
+      vertexLocation: ["us-central1", "us-west1"],
+      vertexAccessToken: ["", "test-access-token"],
+      screenshotGenerationEnabled: [false, true],
+      reanalysisOnReplayUpload: [false, true],
+      clusterSimilarityThreshold: [0.1, 0.82, 1],
+      privacy: [{
+        redactTextInputs: [false, true],
+        redactTextContent: [false, true],
+      }],
+    }],
   }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 

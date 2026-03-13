@@ -160,6 +160,33 @@ it("accepts valid $click events", async ({ expect }) => {
   `);
 });
 
+it("accepts replay-ai signal events like $input, $submit, $error, and $network-error", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: now,
+    events: [
+      { event_type: "$input", event_at_ms: now - 400, data: { selector: "form input[name=email]", path: "/sign-in" } },
+      { event_type: "$submit", event_at_ms: now - 300, data: { selector: "form", path: "/sign-in" } },
+      { event_type: "$error", event_at_ms: now - 200, data: { path: "/sign-in", message: "Boom" } },
+      { event_type: "$network-error", event_at_ms: now - 100, data: { path: "/sign-in", url: "https://example.com/api/login", status: 500 } },
+    ],
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 4 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("rejects empty events array", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
@@ -342,12 +369,12 @@ it("rejects invalid event_type", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - body.events[0].event_type must be one of the following values: $page-view, $click
+              - body.events[0].event_type must be one of the following values: $page-view, $click, $input, $submit, $error, $network-error
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - body.events[0].event_type must be one of the following values: $page-view, $click
+            - body.events[0].event_type must be one of the following values: $page-view, $click, $input, $submit, $error, $network-error
         \`,
       },
       "headers": Headers {

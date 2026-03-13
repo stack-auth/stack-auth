@@ -284,6 +284,27 @@ const environmentAnalyticsSchema = yupObject({
       ),
     }),
   ),
+  ai: yupObject({
+    enabled: yupBoolean(),
+    provider: yupString().oneOf(["gemini", "openrouter"]).optional(),
+    geminiApiKey: yupString().optional(),
+    openRouterApiKey: yupString().optional(),
+    openRouterBaseUrl: yupString().optional(),
+    geminiReasoningModel: yupString().optional(),
+    geminiInteractiveModel: yupString().optional(),
+    textEmbeddingModel: yupString().optional(),
+    multimodalEmbeddingModel: yupString().optional(),
+    vertexProjectId: yupString().optional(),
+    vertexLocation: yupString().optional(),
+    vertexAccessToken: yupString().optional(),
+    screenshotGenerationEnabled: yupBoolean(),
+    reanalysisOnReplayUpload: yupBoolean(),
+    clusterSimilarityThreshold: yupNumber().min(0).max(1),
+    privacy: yupObject({
+      redactTextInputs: yupBoolean(),
+      redactTextContent: yupBoolean(),
+    }),
+  }),
 });
 // --- END Analytics Schema ---
 
@@ -722,6 +743,27 @@ const organizationConfigDefaults = {
         description: undefined,
       }),
     }),
+    ai: {
+      enabled: false,
+      provider: "gemini",
+      geminiApiKey: undefined,
+      openRouterApiKey: undefined,
+      openRouterBaseUrl: "https://openrouter.ai/api/v1",
+      geminiReasoningModel: "gemini-2.5-pro",
+      geminiInteractiveModel: "gemini-2.5-flash",
+      textEmbeddingModel: "gemini-embedding-001",
+      multimodalEmbeddingModel: "multimodalembedding@001",
+      vertexProjectId: undefined,
+      vertexLocation: "us-central1",
+      vertexAccessToken: undefined,
+      screenshotGenerationEnabled: false,
+      reanalysisOnReplayUpload: true,
+      clusterSimilarityThreshold: 0.82,
+      privacy: {
+        redactTextInputs: true,
+        redactTextContent: true,
+      },
+    },
   },
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 

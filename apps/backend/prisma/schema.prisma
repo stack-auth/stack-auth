@@ -73,6 +73,8 @@ model Tenancy {
   emailOutboxes     EmailOutbox[]
   sessionReplays SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
+  replayAiSummaries ReplayAiSummary[]
+  replayIssueClusters ReplayIssueCluster[]
   managedEmailDomains ManagedEmailDomain[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
@@ -349,6 +351,7 @@ model SessionReplay {
   tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   chunks SessionReplayChunk[]
+  replayAiSummary ReplayAiSummary?
 
   @@id([tenancyId, id])
   @@map("SessionReplay")
@@ -388,6 +391,86 @@ model SessionReplayChunk {
   @@unique([tenancyId, sessionReplayId, batchId])
   @@map("SessionReplayChunk")
   @@index([tenancyId, sessionReplayId, createdAt])
+}
+
+enum ReplayAiAnalysisStatus {
+  PENDING
+  READY
+  ERROR
+}
+
+enum ReplayIssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model ReplayIssueCluster {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenancyId String @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  fingerprint String
+  title       String
+  summary     String?
+  severity    ReplayIssueSeverity
+  confidence  Float
+
+  occurrenceCount   Int
+  affectedUserCount Int
+
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+
+  topEvidence     Json
+  textEmbedding   Json?
+  visualEmbedding Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  replayAiSummaries ReplayAiSummary[]
+
+  @@unique([tenancyId, fingerprint])
+}
+
+model ReplayAiSummary {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenancyId       String @db.Uuid
+  sessionReplayId String @db.Uuid
+  issueClusterId  String? @db.Uuid
+
+  tenancy        Tenancy          @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  sessionReplay  SessionReplay    @relation(fields: [tenancyId, sessionReplayId], references: [tenancyId, id], onDelete: Cascade)
+  issueCluster   ReplayIssueCluster? @relation(fields: [issueClusterId], references: [id], onDelete: SetNull)
+
+  status           ReplayAiAnalysisStatus
+  issueFingerprint String?
+  issueTitle       String?
+  summary          String?
+  whyLikely        String?
+  severity         ReplayIssueSeverity?
+  confidence       Float?
+
+  evidence         Json
+  visualArtifacts  Json
+  relatedReplayIds Json
+  textEmbedding    Json?
+  visualEmbedding  Json?
+  providerMetadata Json
+
+  errorMessage           String?
+  analyzedAt             DateTime?
+  lastAnalyzedChunkCount Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenancyId, sessionReplayId])
+  @@index([tenancyId, issueClusterId])
 }
 
 enum ContactChannelType {

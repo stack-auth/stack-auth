@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon, SparkleIcon, XIcon } from "@phosphor-icons/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserSearchPicker } from "@/components/data-table/user-search-picker";
@@ -91,6 +91,37 @@ type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
     chunks: ChunkRow[],
     chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
   }>,
+  getReplayAiSummary: (sessionReplayId: string) => Promise<{
+    issueClusterId: string | null,
+    issueTitle: string | null,
+    issueFingerprint: string | null,
+    status: "pending" | "ready" | "error",
+    summary: string | null,
+    whyLikely: string | null,
+    severity: "low" | "medium" | "high" | "critical" | null,
+    confidence: number | null,
+    evidence: Array<{
+      label: string,
+      reason: string,
+      startOffsetMs: number,
+      endOffsetMs: number,
+      eventType: string | null,
+    }>,
+    visualArtifacts: Array<{
+      id: string,
+      displayName: string,
+      altText: string,
+    }>,
+    errorMessage: string | null,
+  }>,
+  findSimilarReplays: (sessionReplayId: string, options?: { limit?: number }) => Promise<Array<{
+    sessionReplayId: string,
+    score: number,
+    summary: string | null,
+    severity: "low" | "medium" | "high" | "critical" | null,
+    issueTitle: string | null,
+  }>>,
+  triggerReplayReanalysis: (sessionReplayId: string) => Promise<void>,
 };
 
 type ReplayFilters = {
@@ -475,6 +506,10 @@ export default function PageClient() {
   const [draftFilters, setDraftFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
   const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [replayAiSummary, setReplayAiSummary] = useState<Awaited<ReturnType<AdminAppWithSessionReplays["getReplayAiSummary"]>> | null>(null);
+  const [similarReplays, setSimilarReplays] = useState<Awaited<ReturnType<AdminAppWithSessionReplays["findSimilarReplays"]>>>([]);
+  const [replayAiLoading, setReplayAiLoading] = useState(false);
+  const [replayAiError, setReplayAiError] = useState<string | null>(null);
 
   const listBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -1173,6 +1208,40 @@ export default function PageClient() {
   }, [selectedRecordingId, adminApp]);
 
   useEffect(() => {
+    if (!selectedRecordingId) {
+      setReplayAiSummary(null);
+      setSimilarReplays([]);
+      setReplayAiError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setReplayAiLoading(true);
+    setReplayAiError(null);
+
+    runAsynchronously(async () => {
+      try {
+        const [summary, similar] = await Promise.all([
+          adminApp.getReplayAiSummary(selectedRecordingId),
+          adminApp.findSimilarReplays(selectedRecordingId, { limit: 5 }),
+        ]);
+        if (cancelled) return;
+        setReplayAiSummary(summary);
+        setSimilarReplays(similar);
+      } catch (error) {
+        if (cancelled) return;
+        setReplayAiError(error instanceof Error ? error.message : "Failed to load replay AI summary.");
+      } finally {
+        if (!cancelled) setReplayAiLoading(false);
+      }
+    }, { noErrorLogging: true });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminApp, selectedRecordingId]);
+
+  useEffect(() => {
     return () => {
       genCounterRef.current += 1;
       destroyReplayers();
@@ -1757,6 +1826,137 @@ export default function PageClient() {
                   onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
                 />
               </div>
+
+              {selectedRecording && (
+                <div className="shrink-0 border-b border-border/30 px-3 py-3 bg-muted/10">
+                  {replayAiError && <Alert variant="destructive">{replayAiError}</Alert>}
+
+                  {replayAiLoading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-44" />
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-4/5" />
+                    </div>
+                  ) : replayAiSummary && (
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div className="rounded-full bg-blue-500/10 text-blue-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]">
+                              Replay AI
+                            </div>
+                            {replayAiSummary.severity && (
+                              <div className={cn(
+                                "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase",
+                                replayAiSummary.severity === "critical" && "bg-red-500/10 text-red-600",
+                                replayAiSummary.severity === "high" && "bg-orange-500/10 text-orange-600",
+                                replayAiSummary.severity === "medium" && "bg-amber-500/10 text-amber-600",
+                                replayAiSummary.severity === "low" && "bg-emerald-500/10 text-emerald-600",
+                              )}>
+                                {replayAiSummary.severity}
+                              </div>
+                            )}
+                            {replayAiSummary.confidence != null && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {(replayAiSummary.confidence * 100).toFixed(0)}% confidence
+                              </span>
+                            )}
+                          </div>
+                          <Typography className="text-sm font-semibold">
+                            {replayAiSummary.issueTitle ?? (replayAiSummary.status === "pending" ? "Analyzing replay…" : "Replay AI summary")}
+                          </Typography>
+                          {replayAiSummary.summary && (
+                            <Typography className="text-xs text-muted-foreground">
+                              {replayAiSummary.summary}
+                            </Typography>
+                          )}
+                          {replayAiSummary.whyLikely && (
+                            <Typography className="text-xs text-foreground/80">
+                              {replayAiSummary.whyLikely}
+                            </Typography>
+                          )}
+                          {replayAiSummary.status === "error" && replayAiSummary.errorMessage && (
+                            <Typography className="text-xs text-destructive">
+                              {replayAiSummary.errorMessage}
+                            </Typography>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {replayAiSummary.issueClusterId && (
+                            <Button asChild variant="secondary" size="sm">
+                              <StyledLink href={`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/issues`}>
+                                Issues
+                              </StyledLink>
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              if (!selectedRecordingId) return;
+                              await adminApp.triggerReplayReanalysis(selectedRecordingId);
+                              setReplayAiSummary((current) => current ? { ...current, status: "pending" } : current);
+                            }}
+                          >
+                            Reanalyze
+                          </Button>
+                        </div>
+                      </div>
+
+                      {replayAiSummary.evidence.length > 0 && (
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {replayAiSummary.evidence.slice(0, 4).map((evidence, index) => (
+                            <div key={`${evidence.label}-${index}`} className="rounded-xl border border-border/40 bg-background/70 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <Typography className="text-xs font-medium">{evidence.label}</Typography>
+                                <Typography className="text-[11px] text-muted-foreground">
+                                  {formatTimelineMs(evidence.startOffsetMs)} - {formatTimelineMs(evidence.endOffsetMs)}
+                                </Typography>
+                              </div>
+                              <Typography className="mt-1 text-xs text-muted-foreground">
+                                {evidence.reason}
+                              </Typography>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {similarReplays.length > 0 && (
+                        <div className="space-y-2">
+                          <Typography className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                            Similar replays
+                          </Typography>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            {similarReplays.map((item) => (
+                              <button
+                                key={item.sessionReplayId}
+                                type="button"
+                                onClick={() => setSelectedRecordingId(item.sessionReplayId)}
+                                className="rounded-xl border border-border/40 bg-background/70 p-3 text-left transition-colors hover:transition-none hover:bg-background"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <Typography className="text-xs font-medium truncate">
+                                    {item.issueTitle ?? item.sessionReplayId}
+                                  </Typography>
+                                  <Typography className="text-[11px] text-muted-foreground">
+                                    {(item.score * 100).toFixed(0)}%
+                                  </Typography>
+                                </div>
+                                {item.summary && (
+                                  <Typography className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                                    {item.summary}
+                                  </Typography>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {selectedRecording ? (
                 <div className="flex-1 overflow-hidden flex flex-col">

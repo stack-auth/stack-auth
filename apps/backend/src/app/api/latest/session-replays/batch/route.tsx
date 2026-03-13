@@ -1,6 +1,8 @@
 import { getPrismaClientForTenancy } from "@/prisma-client";
+import { analyzeReplayForTenancy } from "@/lib/replay-ai";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
 import { Prisma } from "@/generated/prisma/client";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -195,6 +197,13 @@ export const POST = createSmartRouteHandler({
         };
       }
       throw e;
+    }
+
+    if (auth.tenancy.config.analytics.ai.enabled && auth.tenancy.config.analytics.ai.reanalysisOnReplayUpload !== false) {
+      runAsynchronouslyAndWaitUntil(analyzeReplayForTenancy({
+        tenancy: auth.tenancy,
+        sessionReplayId: replayId,
+      }));
     }
 
     return {

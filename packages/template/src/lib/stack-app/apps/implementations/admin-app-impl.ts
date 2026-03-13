@@ -5,6 +5,7 @@ import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import type { ReplayAiSummary as CrudReplayAiSummary } from "@stackframe/stack-shared/dist/interface/crud/replay-ai";
 import type { AdminGetSessionReplayChunkEventsResponse } from "@stackframe/stack-shared/dist/interface/crud/session-replays";
 import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
@@ -20,6 +21,7 @@ import { AdminEmailTemplate } from "../../email-templates";
 import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, InternalApiKeyCreateOptions, InternalApiKeyFirstView, internalApiKeyCreateOptionsToCrud } from "../../internal-api-keys";
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
+import type { ListReplayIssueClustersOptions, ListReplayIssueClustersResult, ReplayAiSummary, ReplayEmbeddingVectorRef, ReplayIssueCluster, ReplayIssueEvidence, ReplayVisualArtifact, SimilarReplayResult } from "../../replay-ai";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
@@ -1203,6 +1205,49 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     };
   }
 
+  async listReplayIssueClusters(options?: ListReplayIssueClustersOptions): Promise<ListReplayIssueClustersResult> {
+    const response = await this._interface.listReplayIssueClusters({
+      limit: options?.limit,
+      severity: options?.severity,
+      search: options?.search,
+    });
+    return {
+      items: response.items.map((item) => ({
+        id: item.id,
+        fingerprint: item.fingerprint,
+        title: item.title,
+        summary: item.summary,
+        severity: item.severity,
+        confidence: item.confidence,
+        occurrenceCount: item.occurrence_count,
+        affectedUserCount: item.affected_user_count,
+        firstSeenAt: new Date(item.first_seen_at_millis),
+        lastSeenAt: new Date(item.last_seen_at_millis),
+        topEvidence: item.top_evidence.map(mapReplayIssueEvidence),
+      })),
+    };
+  }
+
+  async getReplayAiSummary(sessionReplayId: string): Promise<ReplayAiSummary> {
+    const response = await this._interface.getReplayAiSummary(sessionReplayId);
+    return mapReplayAiSummary(response);
+  }
+
+  async findSimilarReplays(sessionReplayId: string, options?: { limit?: number }): Promise<SimilarReplayResult[]> {
+    const response = await this._interface.findSimilarReplays(sessionReplayId, options);
+    return response.items.map((item) => ({
+      sessionReplayId: item.session_replay_id,
+      score: item.score,
+      summary: item.summary,
+      severity: item.severity,
+      issueTitle: item.issue_title,
+    }));
+  }
+
+  async triggerReplayReanalysis(sessionReplayId: string): Promise<void> {
+    await this._interface.triggerReplayReanalysis(sessionReplayId);
+  }
+
   async previewAffectedUsersByOnboardingChange(
     onboarding: { requireEmailVerification?: boolean },
     limit?: number,
@@ -1229,4 +1274,80 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       totalAffectedCount: result.total_affected_count,
     };
   }
+}
+
+function mapReplayIssueEvidence(evidence: {
+  label: string,
+  reason: string,
+  start_offset_ms: number,
+  end_offset_ms: number,
+  event_type: string | null,
+}): ReplayIssueEvidence {
+  return {
+    label: evidence.label,
+    reason: evidence.reason,
+    startOffsetMs: evidence.start_offset_ms,
+    endOffsetMs: evidence.end_offset_ms,
+    eventType: evidence.event_type,
+  };
+}
+
+function mapReplayVisualArtifact(artifact: {
+  id: string,
+  display_name: string,
+  kind: "timeline-card",
+  start_offset_ms: number,
+  mime_type: string | null,
+  data_url: string | null,
+  alt_text: string,
+}): ReplayVisualArtifact {
+  return {
+    id: artifact.id,
+    displayName: artifact.display_name,
+    kind: artifact.kind,
+    startOffsetMs: artifact.start_offset_ms,
+    mimeType: artifact.mime_type,
+    dataUrl: artifact.data_url,
+    altText: artifact.alt_text,
+  };
+}
+
+function mapReplayEmbedding(embedding: {
+  provider: string,
+  model: string,
+  dimensions: number,
+  generated_at_millis: number,
+  values: number[],
+} | null): ReplayEmbeddingVectorRef | null {
+  if (!embedding) return null;
+  return {
+    provider: embedding.provider,
+    model: embedding.model,
+    dimensions: embedding.dimensions,
+    generatedAt: new Date(embedding.generated_at_millis),
+    values: embedding.values,
+  };
+}
+
+function mapReplayAiSummary(summary: CrudReplayAiSummary): ReplayAiSummary {
+  return {
+    sessionReplayId: summary.session_replay_id,
+    issueClusterId: summary.issue_cluster_id,
+    issueFingerprint: summary.issue_fingerprint,
+    issueTitle: summary.issue_title,
+    status: summary.status,
+    summary: summary.summary,
+    whyLikely: summary.why_likely,
+    severity: summary.severity,
+    confidence: summary.confidence,
+    evidence: summary.evidence.map(mapReplayIssueEvidence),
+    visualArtifacts: summary.visual_artifacts.map(mapReplayVisualArtifact),
+    relatedReplayIds: summary.related_replay_ids,
+    textEmbedding: mapReplayEmbedding(summary.text_embedding),
+    visualEmbedding: mapReplayEmbedding(summary.visual_embedding),
+    providerMetadata: summary.provider_metadata,
+    errorMessage: summary.error_message,
+    analyzedAt: summary.analyzed_at_millis == null ? null : new Date(summary.analyzed_at_millis),
+    lastAnalyzedChunkCount: summary.last_analyzed_chunk_count,
+  };
 }

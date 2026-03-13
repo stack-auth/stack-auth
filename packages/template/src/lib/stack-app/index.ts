@@ -17,6 +17,17 @@ export type {
   EmailOutboxListResult,
   EmailOutboxUpdateOptions
 } from "./apps/interfaces/admin-app";
+export type {
+  ListReplayIssueClustersOptions,
+  ListReplayIssueClustersResult,
+  ReplayAiSummary,
+  ReplayEmbeddingVectorRef,
+  ReplayIssueCluster,
+  ReplayIssueEvidence,
+  ReplayIssueSeverity,
+  ReplayVisualArtifact,
+  SimilarReplayResult,
+} from "./apps/interfaces/admin-app";
 
 export type {
   ProjectConfig
@@ -117,4 +128,3 @@ export type {
   ServerUser,
   User
 } from "./users";
-

@@ -78,3 +78,12 @@ Q: What is the reliable way to lint a single dashboard file in this monorepo?
 A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx"`), because running root `pnpm lint -- <file>` fans out through Turbo packages where that path does not exist.
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: How should gstack be configured for repo-level Claude instructions?
+A: Add a `gstack` section to `CLAUDE.md` that says to use the `/browse` skill for all web browsing, never use `mcp__claude-in-chrome__*` tools, and lists these available skills: `/plan-ceo-review`, `/plan-eng-review`, `/review`, `/ship`, `/browse`, `/retro`.
+
+Q: Why should replay-triggered analytics event inserts wait for ClickHouse async insert completion?
+A: Replay AI reanalysis can run immediately after `/api/v1/analytics/events/batch`, so ClickHouse inserts in `apps/backend/src/app/api/latest/analytics/events/batch/route.tsx` and `apps/backend/src/lib/events.tsx` should set `wait_for_async_insert: 1` alongside `async_insert: 1`; otherwise the replay analysis query can miss the freshly uploaded `$error`/`$network-error` events and fall back to generic friction.
+
+Q: How should analytics AI use Gemini through OpenRouter in this repo?
+A: Add `analytics.ai.provider: "openrouter"` support in config, but also let replay AI fall back to OpenRouter automatically when `STACK_OPENROUTER_API_KEY` is present and no direct Gemini key is configured. Normalize bare Gemini model names like `gemini-2.5-pro` to OpenRouter IDs like `google/gemini-2.5-pro`, and point dashboard AI search at OpenRouter via `STACK_OPENROUTER_API_KEY` plus `STACK_AI_MODEL`.
