@@ -47,4 +47,10 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     )
     VALUES (${invalidProjectId}, NOW(), NOW(), 'Invalid Status Project', '', false, 'invalid_status')
   `).rejects.toThrow(/Project_onboardingStatus_valid/);
+
+  await expect(sql`
+    UPDATE "Project"
+    SET "onboardingStatus" = 'invalid_status'
+    WHERE "id" = ${ctx.projectId}
+  `).rejects.toThrow(/Project_onboardingStatus_valid/);
 };

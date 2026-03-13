@@ -112,6 +112,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description ?? "",
           isProductionMode: options.data.is_production_mode ?? false,
+          onboardingStatus: options.data.onboarding_status,
           ownerTeamId: options.data.owner_team_id,
           logoUrl: logoUrls['logo_url'],
           logoFullUrl: logoUrls['logo_full_url'],
@@ -119,14 +120,6 @@ export async function createOrUpdateProjectWithLegacyConfig(
           logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
         },
       });
-
-      if (options.data.onboarding_status !== undefined) {
-        await tx.$executeRaw`
-          UPDATE "Project"
-          SET "onboardingStatus" = ${options.data.onboarding_status}
-          WHERE "id" = ${project.id}
-        `;
-      }
 
       await tx.tenancy.create({
         data: {
@@ -155,20 +148,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
           displayName: options.data.display_name,
           description: options.data.description === null ? "" : options.data.description,
           isProductionMode: options.data.is_production_mode,
+          onboardingStatus: options.data.onboarding_status,
           logoUrl: logoUrls['logo_url'],
           logoFullUrl: logoUrls['logo_full_url'],
           logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
           logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
         },
       });
-
-      if (options.data.onboarding_status !== undefined) {
-        await tx.$executeRaw`
-          UPDATE "Project"
-          SET "onboardingStatus" = ${options.data.onboarding_status}
-          WHERE "id" = ${project.id}
-        `;
-      }
       branchId = options.branchId;
     }
 

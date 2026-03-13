@@ -8,9 +8,9 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectOnboardingStatusValues, strictEmailSchema, type ProjectOnboardingStatus, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -22,17 +22,7 @@ type StackAppInternals = {
   refreshOwnedProjects: () => Promise<void>,
 };
 
-const PROJECT_ONBOARDING_STATUSES = [
-  "config_choice",
-  "apps_selection",
-  "auth_setup",
-  "domain_setup",
-  "email_theme_setup",
-  "payments_setup",
-  "completed",
-] as const;
-
-type ProjectOnboardingStatus = (typeof PROJECT_ONBOARDING_STATUSES)[number];
+const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
 function isStackAppInternals(value: unknown): value is StackAppInternals {
   return (
@@ -86,7 +76,7 @@ export default function PageClient() {
 
   useEffect(() => {
     let cancelled = false;
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       setLoadingProjectStatuses(true);
       try {
         const response = await appInternals.sendRequest("/internal/projects", {}, "client");
@@ -106,7 +96,10 @@ export default function PageClient() {
           }
 
           const onboardingStatus = "onboarding_status" in item ? item.onboarding_status : undefined;
-          statusMap.set(item.id, isProjectOnboardingStatus(onboardingStatus) ? onboardingStatus : "completed");
+          if (!isProjectOnboardingStatus(onboardingStatus)) {
+            throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
+          }
+          statusMap.set(item.id, onboardingStatus);
         }
 
         if (!cancelled) {
@@ -308,7 +301,10 @@ export default function PageClient() {
             </div>
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
               {projects.map((project) => {
-                const onboardingStatus = projectStatuses.get(project.id) ?? "completed";
+                const onboardingStatus = projectStatuses.get(project.id);
+                if (!loadingProjectStatuses && onboardingStatus == null) {
+                  throw new Error(`Missing onboarding status for project ${project.id}.`);
+                }
                 const projectHref = onboardingStatus === "completed"
                   ? `/projects/${encodeURIComponent(project.id)}`
                   : `/new-project?project_id=${encodeURIComponent(project.id)}`;

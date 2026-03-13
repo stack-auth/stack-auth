@@ -63,6 +63,7 @@ import {
 import { AdminOwnedProject, AuthPage, useStackApp, useUser } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
@@ -71,17 +72,7 @@ import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const PROJECT_ONBOARDING_STATUSES = [
-  "config_choice",
-  "apps_selection",
-  "auth_setup",
-  "domain_setup",
-  "email_theme_setup",
-  "payments_setup",
-  "completed",
-] as const;
-
-type ProjectOnboardingStatus = (typeof PROJECT_ONBOARDING_STATUSES)[number];
+const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
 type SignInMethod = "credential" | "magicLink" | "passkey" | "google" | "github" | "microsoft";
 
@@ -187,12 +178,7 @@ function buildTimeline(includePayments: boolean): TimelineStep[] {
 
 function deriveInitialSignInMethods(project: AdminOwnedProject): Set<SignInMethod> {
   const config = project.config;
-  const methods = new Set<SignInMethod>([
-    "credential",
-    "magicLink",
-    "google",
-    "github",
-  ]);
+  const methods = new Set<SignInMethod>();
 
   if (config.credentialEnabled) {
     methods.add("credential");
@@ -443,24 +429,10 @@ function OnboardingEmailThemePreview(props: {
     templateTsxSource: previewTemplateSource,
   });
 
-  const inertPreviewHtml = previewHtml ? `${previewHtml}
-    <script>
-      document.addEventListener('click', function(e) {
-        var target = e.target;
-        while (target && target.tagName !== 'A') {
-          target = target.parentNode;
-        }
-        if (target && target.tagName === 'A') {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }, true);
-    </script>
-  ` : previewHtml;
-
   return (
     <iframe
-      srcDoc={inertPreviewHtml}
+      srcDoc={previewHtml}
+      sandbox=""
       className="pointer-events-none h-full w-full border-0"
       title="Email theme preview"
     />
@@ -801,7 +773,7 @@ function ProjectOnboardingWizard(props: {
               className="rounded-xl"
               loading={saving}
               onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                const appConfigUpdates = Object.fromEntries(
+                const appConfigUpdateEntries = new Map(
                   ALL_APP_IDS.map((appId) => [
                     `apps.installed.${appId}.enabled`,
                     selectedApps.has(appId),
@@ -810,7 +782,7 @@ function ProjectOnboardingWizard(props: {
 
                 const configUpdated = await updateConfig({
                   adminApp: props.project.app,
-                  configUpdate: appConfigUpdates,
+                  configUpdate: Object.fromEntries(appConfigUpdateEntries),
                   pushable: true,
                 });
                 if (!configUpdated) {
@@ -1160,7 +1132,6 @@ function ProjectOnboardingWizard(props: {
                 variant="outline"
                 loading={saving}
                 onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                  await props.project.app.setupPayments();
                   await finalizeOnboarding();
                 }))}
               >
@@ -1172,7 +1143,11 @@ function ProjectOnboardingWizard(props: {
                   loading={saving}
                   onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
                     const setup = await props.project.app.setupPayments();
-                    window.location.href = setup.url;
+                    const redirectUrl = new URL(setup.url);
+                    if (redirectUrl.protocol !== "https:") {
+                      throw new Error("Payments setup redirect URL must use HTTPS.");
+                    }
+                    window.location.href = redirectUrl.toString();
                   }))}
                 >
                   Continue Onboarding
@@ -1353,7 +1328,10 @@ export default function PageClient() {
           }
 
           const onboardingStatus = "onboarding_status" in item ? item.onboarding_status : undefined;
-          statusMap.set(item.id, isProjectOnboardingStatus(onboardingStatus) ? onboardingStatus : "completed");
+          if (!isProjectOnboardingStatus(onboardingStatus)) {
+            throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
+          }
+          statusMap.set(item.id, onboardingStatus);
         }
 
         if (!cancelled) {
@@ -1382,7 +1360,7 @@ export default function PageClient() {
     if (selectedProjectId == null) {
       return null;
     }
-    return projectStatuses.get(selectedProjectId) ?? "completed";
+    return projectStatuses.get(selectedProjectId) ?? null;
   }, [projectStatuses, selectedProjectId]);
 
   useEffect(() => {
@@ -1472,6 +1450,10 @@ export default function PageClient() {
         <Spinner size={24} />
       </div>
     );
+  }
+
+  if (selectedProject != null && !loadingStatuses && selectedProjectStatus == null) {
+    throw new Error(`Missing onboarding status for project ${selectedProject.id}.`);
   }
 
   if (selectedProject == null) {

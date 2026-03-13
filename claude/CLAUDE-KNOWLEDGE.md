@@ -90,3 +90,6 @@ A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project
 
 Q: What is the expected lightweight loading state when reopening an in-progress onboarding project?
 A: On `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client.tsx`, the "loading onboarding" state should be just a centered `Spinner` with no card chrome or explanatory copy.
+
+Q: How should dashboard project onboarding status responses be handled to avoid silently bypassing onboarding?
+A: Import `ProjectOnboardingStatus`/`projectOnboardingStatusValues` from `@stackframe/stack-shared/dist/schema-fields`, validate every `onboarding_status` from `/internal/projects`, and throw on invalid/missing values instead of defaulting to `"completed"`.
