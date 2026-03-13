@@ -75,6 +75,7 @@ it("should be able to provision a new project if client details are correct", as
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": null,
       },
       "headers": Headers { <some fields may have been hidden> },
