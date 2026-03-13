@@ -7,6 +7,7 @@ export async function forwardToProduction(
 ): Promise<Response> {
   const productionUrl = `https://api.stack-auth.com/api/latest/ai/query/${mode}`;
   const allowedHeaders = new Set([
+    "x-stack-access-type",
     "x-stack-access-token",
     "x-stack-publishable-client-key",
   ]);
