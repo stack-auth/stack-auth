@@ -1,20 +1,21 @@
 "use client";
 
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
-import { DesignBadge, DesignBadgeColor } from "@/components/design-components/badge";
-import { DesignButton } from "@/components/design-components/button";
-import { DesignCard } from "@/components/design-components/card";
-import { DesignDataTable } from "@/components/design-components/table";
+import { DesignButton } from "@/components/design-components";
+import { DesignCard } from "@/components/design-components";
 import EmailPreview, { type OnWysiwygEditCommit } from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
 import { useRouter, useRouterConfirm } from "@/components/router";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Spinner, Typography } from "@/components/ui";
 import { AssistantChat, CodeEditor, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
-import { ToolCallContent, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
+import { ToolCallContent, applyWysiwygEdit, createChatAdapter, createHistoryAdapter } from "@/components/vibe-coding/chat-adapters";
 import { EmailDraftUI } from "@/components/vibe-coding/draft-tool-components";
+import { useUser } from "@stackframe/stack";
+import { getPublicEnvVar } from "@/lib/env";
 import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -34,6 +35,8 @@ function isValidStage(stage: string | null): stage is DraftStage {
 
 export default function PageClient({ draftId }: { draftId: string }) {
   const stackAdminApp = useAdminApp();
+  const currentUser = useUser({ or: "redirect" });
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setNeedConfirm } = useRouterConfirm();
@@ -151,7 +154,8 @@ export default function PageClient({ draftId }: { draftId: string }) {
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
-    const result = await stackAdminApp.applyWysiwygEdit({
+    const result = await applyWysiwygEdit(backendBaseUrl, {
+      currentUser,
       sourceType: 'draft',
       sourceCode: currentCode,
       oldText: data.oldText,
@@ -162,7 +166,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
     });
     setCurrentCode(result.updatedSource);
     return result.updatedSource;
-  }, [stackAdminApp, currentCode]);
+  }, [backendBaseUrl, currentCode, currentUser]);
 
   return (
     <AppEnabledGuard appId="emails">
@@ -229,7 +233,7 @@ export default function PageClient({ draftId }: { draftId: string }) {
                 chatComponent={
                   <AssistantChat
                     historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-                    chatAdapter={createChatAdapter(stackAdminApp, draftId, "email-draft", handleToolUpdate)}
+                    chatAdapter={createChatAdapter(backendBaseUrl, "email-draft", handleToolUpdate, () => currentCode, currentUser)}
                     toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                     useOffWhiteLightMode
                   />

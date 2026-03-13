@@ -4,7 +4,7 @@ import { DataTable } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ColumnDef, ColumnFiltersState, SortingState, Table as TableType } from "@tanstack/react-table";
 import React from "react";
-import { DesignCard, useGlassmorphicDefault, useInsideDesignCard } from "./card";
+import { DesignCard, useGlassmorphicDefault, useInsideDesignCard } from "@stackframe/dashboard-ui-components";
 
 const borderReset = "[&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none";
 
