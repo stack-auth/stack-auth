@@ -6,8 +6,8 @@ export async function forwardToProduction(
 ): Promise<Response> {
   const productionUrl = `https://api.stack-auth.com/api/latest/ai/query/${mode}`;
   const forwardHeaders = new Headers();
-
   forwardHeaders.set("content-type", "application/json");
+  forwardHeaders.set("accept-encoding", "identity");
 
   return await fetch(productionUrl, {
     method: "POST",
