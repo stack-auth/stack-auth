@@ -173,7 +173,6 @@ function buildTimeline(includePayments: boolean): TimelineStep[] {
     { id: "config_choice", label: "Config" },
     { id: "apps_selection", label: "Apps" },
     { id: "auth_setup", label: "Auth" },
-    { id: "domain_setup", label: "Domains" },
     { id: "email_theme_setup", label: "Email Theme" },
   ];
 
@@ -544,8 +543,12 @@ function ProjectOnboardingWizard(props: {
       .map((entry) => ({ baseUrl: entry.baseUrl, handlerPath: entry.handlerPath }));
 
     if (trustedDomains[0]) {
-      setTrustedDomain(trustedDomains[0].baseUrl ?? "");
-      setDomainHandlerPath(trustedDomains[0].handlerPath ?? "/handler");
+      const trustedDomainEntry = trustedDomains[0];
+      if (trustedDomainEntry.baseUrl == null) {
+        throw new Error("Invariant violated: trusted domain entry is missing a baseUrl.");
+      }
+      setTrustedDomain(trustedDomainEntry.baseUrl);
+      setDomainHandlerPath(trustedDomainEntry.handlerPath);
     } else {
       setTrustedDomain("");
       setDomainHandlerPath("/handler");
@@ -578,6 +581,16 @@ function ProjectOnboardingWizard(props: {
       await setStatus(step);
     });
   }, [currentTimelineIndex, setMode, setStatus, timelineSteps]);
+
+  useEffect(() => {
+    if (status !== "domain_setup") {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(async () => {
+      await setStatus("email_theme_setup");
+    });
+  }, [setStatus, status]);
 
   const authPreviewProject = useMemo(() => {
     return {
@@ -644,7 +657,12 @@ function ProjectOnboardingWizard(props: {
           disabled={saving}
         />
         <div className="flex min-h-0 flex-1 flex-col">
-          <ModeNotImplementedCard onBack={() => { props.setMode(null); setSelectedConfigChoice("create-new"); }} />
+          <ModeNotImplementedCard
+            onBack={() => {
+              props.setMode(null);
+              setSelectedConfigChoice("create-new");
+            }}
+          />
         </div>
       </div>
     );
@@ -677,7 +695,7 @@ function ProjectOnboardingWizard(props: {
               onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
                 if (selectedConfigChoice === "create-new") {
                   await props.setStatus("apps_selection");
-                } else if (selectedConfigChoice === "link-existing") {
+                } else {
                   props.setMode("link-existing");
                 }
               }))}
@@ -946,7 +964,7 @@ function ProjectOnboardingWizard(props: {
                   return;
                 }
 
-                await props.setStatus("domain_setup");
+                await props.setStatus("email_theme_setup");
               }))}
             >
               Next
@@ -1006,119 +1024,8 @@ function ProjectOnboardingWizard(props: {
 
   if (props.status === "domain_setup") {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="domain_setup"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
-        <DesignCard
-          title="Domain Connector"
-          subtitle="Set trusted domains and optionally prepare managed email sending with a subdomain."
-          icon={GlobeIcon}
-          gradient="default"
-          glassmorphic
-          actions={
-            <DesignButton
-              className="rounded-xl"
-              loading={saving}
-              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                const normalizedTrustedDomain = normalizeTrustedDomain(trustedDomain);
-                if (normalizedTrustedDomain.length > 0) {
-                  if (!domainHandlerPath.startsWith("/")) {
-                    throw new Error("Handler path must start with /.");
-                  }
-
-                  const configUpdated = await updateConfig({
-                    adminApp: props.project.app,
-                    configUpdate: {
-                      [`domains.trustedDomains.${generateUuid()}`]: {
-                        baseUrl: normalizedTrustedDomain,
-                        handlerPath: domainHandlerPath,
-                      },
-                    },
-                    pushable: true,
-                  });
-                  if (!configUpdated) {
-                    return;
-                  }
-                }
-
-                await props.setStatus("email_theme_setup");
-              }))}
-            >
-              Add later
-            </DesignButton>
-          }
-        >
-          <div className="space-y-5">
-            <div className="space-y-3">
-              <Label htmlFor="trusted-domain">Trusted domain</Label>
-              <DesignInput
-                id="trusted-domain"
-                value={trustedDomain}
-                onChange={(event) => setTrustedDomain(event.target.value)}
-                placeholder="https://app.example.com"
-              />
-              <Label htmlFor="domain-handler-path">Handler path</Label>
-              <DesignInput
-                id="domain-handler-path"
-                value={domainHandlerPath}
-                onChange={(event) => setDomainHandlerPath(event.target.value)}
-                placeholder="/handler"
-              />
-            </div>
-
-            <div className="rounded-xl border border-border p-4 space-y-3">
-              <Typography type="h4">Managed Email Domain (Optional)</Typography>
-              <Label htmlFor="managed-subdomain">Subdomain</Label>
-              <DesignInput
-                id="managed-subdomain"
-                value={managedSubdomain}
-                onChange={(event) => setManagedSubdomain(event.target.value)}
-                placeholder="mail.example.com"
-              />
-              <Label htmlFor="managed-sender-local-part">Sender local-part</Label>
-              <DesignInput
-                id="managed-sender-local-part"
-                value={managedSenderLocalPart}
-                onChange={(event) => setManagedSenderLocalPart(event.target.value)}
-                placeholder="noreply"
-              />
-
-              <div className="flex justify-start">
-                <DesignButton
-                  className="rounded-xl"
-                  variant="outline"
-                  loading={saving}
-                  onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                    if (managedSubdomain.trim().length === 0 || managedSenderLocalPart.trim().length === 0) {
-                      throw new Error("Enter both subdomain and sender local-part to configure managed email.");
-                    }
-
-                    const setupResult = await props.project.app.setupManagedEmailProvider({
-                      subdomain: managedSubdomain.trim(),
-                      senderLocalPart: managedSenderLocalPart.trim(),
-                    });
-                    setManagedDomainSetupStatus(`Managed email setup created. Status: ${setupResult.status}.`);
-                  }))}
-                >
-                  Configure Managed Email
-                </DesignButton>
-              </div>
-            </div>
-
-            {managedDomainSetupStatus && (
-              <DesignAlert
-                variant="success"
-                title="Managed email setup"
-                description={managedDomainSetupStatus}
-                glassmorphic
-              />
-            )}
-          </div>
-        </DesignCard>
+      <div className="flex w-full min-h-[320px] items-center justify-center">
+        <Spinner size={24} />
       </div>
     );
   }
