@@ -118,7 +118,7 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
   const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = packageJson.version;
-  const esmFallbackVersion = "2.8.71";
+  const esmFallbackVersion = "2.8.76";
   const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
   const devConnectSrc = isDev ? ` ${dashboardUrl}` : '';
 
