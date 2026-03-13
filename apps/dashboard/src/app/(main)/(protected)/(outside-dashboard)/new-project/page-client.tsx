@@ -1,19 +1,19 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
-import { useRouter } from "@/components/router";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignBadge } from "@/components/design-components/badge";
 import { DesignButton } from "@/components/design-components/button";
 import { DesignCard } from "@/components/design-components/card";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { useRouter } from "@/components/router";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
   BrowserFrame,
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -26,12 +26,12 @@ import {
   DialogHeader,
   DialogTitle,
   Label,
-  Spinner,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Spinner,
   Switch,
   Tooltip,
   TooltipContent,
@@ -40,17 +40,14 @@ import {
   Typography,
   cn,
 } from "@/components/ui";
-import { getPublicEnvVar } from "@/lib/env";
 import { useUpdateConfig } from "@/lib/config-update";
+import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import {
   ArrowLeftIcon,
-  ArrowRightIcon,
   ArrowsClockwiseIcon,
   ChartBarIcon,
   CheckCircleIcon,
-  CircleIcon,
-  GlobeIcon,
   LightningIcon,
   LinkBreakIcon,
   PlusCircleIcon,
@@ -58,17 +55,16 @@ import {
   StripeLogoIcon,
   WalletIcon,
   WarningCircleIcon,
-  WebhooksLogoIcon,
+  WebhooksLogoIcon
 } from "@phosphor-icons/react";
 import { AdminOwnedProject, AuthPage, useStackApp, useUser } from "@stackframe/stack";
-import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { projectOnboardingStatusValues, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
+import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -176,7 +172,7 @@ function buildTimeline(includePayments: boolean): TimelineStep[] {
   return timeline;
 }
 
-function deriveInitialSignInMethods(project: AdminOwnedProject): Set<SignInMethod> {
+function deriveInitialSignInMethods(project: AdminOwnedProject, status: ProjectOnboardingStatus): Set<SignInMethod> {
   const config = project.config;
   const methods = new Set<SignInMethod>();
 
@@ -194,6 +190,23 @@ function deriveInitialSignInMethods(project: AdminOwnedProject): Set<SignInMetho
     if (provider.id === "google" || provider.id === "github" || provider.id === "microsoft") {
       methods.add(provider.id);
     }
+  }
+
+  const hasDefaultUntouchedAuthConfig = (
+    config.credentialEnabled
+    && !config.magicLinkEnabled
+    && !config.passkeyEnabled
+    && config.oauthProviders.length === 0
+  );
+  const isInEarlyOnboardingStep = (
+    status === "config_choice"
+    || status === "apps_selection"
+    || status === "auth_setup"
+  );
+  if (hasDefaultUntouchedAuthConfig && isInEarlyOnboardingStep) {
+    methods.add("credential");
+    methods.add("magicLink");
+    methods.add("google");
   }
 
   return methods;
@@ -481,7 +494,7 @@ function ProjectOnboardingWizard(props: {
   const finishProjectOnboarding = onComplete;
   const [saving, setSaving] = useState(false);
   const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => deriveInitialApps(completeConfig));
-  const [signInMethods, setSignInMethods] = useState<Set<SignInMethod>>(() => deriveInitialSignInMethods(project));
+  const [signInMethods, setSignInMethods] = useState<Set<SignInMethod>>(() => deriveInitialSignInMethods(project, status));
   const [trustedDomain, setTrustedDomain] = useState("");
   const [domainHandlerPath, setDomainHandlerPath] = useState("/handler");
   const [managedSubdomain, setManagedSubdomain] = useState("");
@@ -509,7 +522,7 @@ function ProjectOnboardingWizard(props: {
     previousProjectId.current = project.id;
 
     setSelectedApps(deriveInitialApps(completeConfig));
-    setSignInMethods(deriveInitialSignInMethods(project));
+    setSignInMethods(deriveInitialSignInMethods(project, status));
 
     const trustedDomains = Object.values(completeConfig.domains.trustedDomains)
       .filter((entry) => entry.baseUrl != null)
@@ -534,7 +547,7 @@ function ProjectOnboardingWizard(props: {
     setManagedDomainSetupStatus(null);
     setRequiredAppsNotice(null);
     setSelectedConfigChoice("create-new");
-  }, [completeConfig, project, project.id]);
+  }, [completeConfig, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
   const includePayments = selectedApps.has("payments") || status === "payments_setup" || completeConfig.apps.installed.payments?.enabled === true;
