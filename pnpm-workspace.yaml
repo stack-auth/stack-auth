@@ -8,6 +8,7 @@ packages:
 
 minimumReleaseAge: 2880
 minimumReleaseAgeExclude:
+- '@anthropic-ai/claude-agent-sdk'
 - ai
 - '@ai-sdk/anthropic'
 - '@ai-sdk/openai'
