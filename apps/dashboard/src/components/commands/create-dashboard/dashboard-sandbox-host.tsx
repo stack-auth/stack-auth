@@ -107,13 +107,20 @@ function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, da
     </script>`;
 }
 
+function escapeScriptContent(code: string): string {
+  return code
+    .replace(/<\/script/gi, "<\\/script")
+    .replace(/<!--/g, "<\\!--")
+    .replace(/-->/g, "--\\>");
+}
+
 function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
-  const sourceCode = artifact.runtimeCodegen.uiRuntimeSourceCode;
+  const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
   const darkClass = initialTheme === "dark" ? "dark" : "";
   const esmVersion = packageJson.version;
   const esmFallbackVersion = "2.8.71";
   const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
-  const devConnectSrc = isDev ? ` ${dashboardUrl} http://127.0.0.1:7322` : '';
+  const devConnectSrc = isDev ? ` ${dashboardUrl}` : '';
 
   return html`<!doctype html>
 <html class="${darkClass}">
@@ -445,7 +452,9 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   const { resolvedTheme } = useTheme();
 
   const baseUrl = useMemo(() => {
-    return getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? 'http://localhost:8102';
+    const url = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL");
+    if (!url) throw new Error("NEXT_PUBLIC_STACK_API_URL is not set");
+    return url;
   }, []);
 
   const dashboardUrl = useMemo(() => {
