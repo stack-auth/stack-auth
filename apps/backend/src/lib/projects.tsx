@@ -66,6 +66,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
         owner_team_id: row.ownerTeamId,
+        onboarding_status: row.onboardingStatus,
       };
     },
   };
@@ -119,6 +120,14 @@ export async function createOrUpdateProjectWithLegacyConfig(
         },
       });
 
+      if (options.data.onboarding_status !== undefined) {
+        await tx.$executeRaw`
+          UPDATE "Project"
+          SET "onboardingStatus" = ${options.data.onboarding_status}
+          WHERE "id" = ${project.id}
+        `;
+      }
+
       await tx.tenancy.create({
         data: {
           projectId: project.id,
@@ -152,6 +161,14 @@ export async function createOrUpdateProjectWithLegacyConfig(
           logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
         },
       });
+
+      if (options.data.onboarding_status !== undefined) {
+        await tx.$executeRaw`
+          UPDATE "Project"
+          SET "onboardingStatus" = ${options.data.onboarding_status}
+          WHERE "id" = ${project.id}
+        `;
+      }
       branchId = options.branchId;
     }
 

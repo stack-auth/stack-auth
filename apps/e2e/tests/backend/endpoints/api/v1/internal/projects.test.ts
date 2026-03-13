@@ -100,6 +100,7 @@ it("creates a new project", async ({ expect }) => {
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -156,6 +157,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -214,6 +216,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -263,6 +266,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -326,6 +330,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -391,6 +396,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -439,6 +445,7 @@ it("lists the current projects after creating a new project", async ({ expect })
             "logo_full_url": null,
             "logo_url": null,
             "owner_team_id": "<stripped UUID>",
+            "onboarding_status": "completed",
           },
         ],
       },
@@ -493,6 +500,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -536,6 +544,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -589,6 +598,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -645,6 +655,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "logo_full_url": null,
         "logo_url": null,
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -718,6 +729,7 @@ it("lets user update logo_url to a valid image", async ({ expect }) => {
         "logo_full_url": null,
         "logo_url": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
         "owner_team_id": "<stripped UUID>",
+        "onboarding_status": "completed",
       },
       "headers": Headers { <some fields may have been hidden> },
     }
