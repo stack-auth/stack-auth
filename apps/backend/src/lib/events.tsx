@@ -1,9 +1,12 @@
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
+import { getStackServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
 import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
@@ -264,6 +267,27 @@ export async function logEvent<T extends EventType[]>(
 
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
+    // Resolve billing team for analytics event quota enforcement
+    let billingTeamId: string | null = null;
+    if (projectId) {
+      const project = await globalPrismaClient.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, ownerTeamId: true },
+      });
+      if (project != null) {
+        billingTeamId = getBillingTeamId(project);
+      }
+    }
+
+    if (billingTeamId != null) {
+      const app = getStackServerApp();
+      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+      const isDebited = await eventsItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        return;
+      }
+    }
+
     // log event in DB
     await globalPrismaClient.event.create({
       data: {

@@ -182,7 +182,6 @@ import.meta.vitest?.describe("resolveProductFromStripeMetadata", (test) => {
     });
   });
 });
-
 export const getStackStripe = (overrides?: StripeOverridesMap) => {
   if (!stripeSecretKey) {
     throw new StackAssertionError("STACK_STRIPE_SECRET_KEY environment variable is not set");
