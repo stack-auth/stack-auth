@@ -93,3 +93,6 @@ A: On `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project
 
 Q: How should dashboard project onboarding status responses be handled to avoid silently bypassing onboarding?
 A: Import `ProjectOnboardingStatus`/`projectOnboardingStatusValues` from `@stackframe/stack-shared/dist/schema-fields`, validate every `onboarding_status` from `/internal/projects`, and throw on invalid/missing values instead of defaulting to `"completed"`.
+
+Q: What E2E updates are required after adding `onboarding_status` to project API responses?
+A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/**` to include `"onboarding_status": "completed"` in project payloads (for example projects, permissions, and integration provisioning/current endpoints), otherwise CI setup/restart E2E jobs fail with snapshot mismatches.
