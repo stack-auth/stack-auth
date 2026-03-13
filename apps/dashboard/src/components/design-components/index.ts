@@ -1,4 +1,5 @@
 export * from "./alert";
+export * from "./analytics-card";
 export * from "./badge";
 export * from "./button";
 export * from "./card";
