@@ -9,7 +9,8 @@ const AI_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_REWRITE_ATTEMPTS = 3;
 
 function isMockMode() {
-  return getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL) === MOCK_API_KEY_SENTINEL;
+  const key = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
+  return key === MOCK_API_KEY_SENTINEL || key === "FORWARD_TO_PRODUCTION";
 }
 
 async function rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource: string): Promise<Result<string, string>> {

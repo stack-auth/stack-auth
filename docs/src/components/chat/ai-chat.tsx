@@ -3,7 +3,7 @@
 import { useChat, type UIMessage } from '@ai-sdk/react';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { DefaultChatTransport, type DynamicToolUIPart } from 'ai';
+import { convertToModelMessages, DefaultChatTransport, type DynamicToolUIPart } from 'ai';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
@@ -361,11 +361,21 @@ export function AIChatDrawer() {
   } = useChat({
     transport: new DefaultChatTransport({
       api: `${apiBaseUrl}/api/latest/ai/query/stream`,
-      body: {
-        systemPrompt: "docs-ask-ai",
-        tools: ["docs"],
-        quality: "smart",
-        speed: "fast",
+      prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
+        const modelMessages = await convertToModelMessages(uiMessages);
+        return {
+          body: {
+            systemPrompt: "docs-ask-ai",
+            tools: ["docs"],
+            quality: "smart",
+            speed: "fast",
+            messages: modelMessages.map(m => ({
+              role: m.role,
+              content: m.content,
+            })),
+          },
+          headers,
+        };
       },
     }),
     onError: (error: Error) => {
