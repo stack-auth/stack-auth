@@ -163,8 +163,8 @@ export async function runClaudeAgent(options: {
         allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         permissionMode: "dontAsk",
         cwd: options.cwd,
-        // stripClaudeCodeEnv removes CLAUDECODE env var to prevent nested agent detection
-        env: { ...stripClaudeCodeEnv(), ANTHROPIC_BASE_URL: ANTHROPIC_PROXY_BASE_URL, ANTHROPIC_API_KEY: "" },
+        // stripClaudeCodeEnv removes CLAUDECODE env var to prevent nested agent detection. Anthropic api key cannot be empty otherwise users without claude code installed get a login error
+        env: { ...stripClaudeCodeEnv(), ANTHROPIC_BASE_URL: ANTHROPIC_PROXY_BASE_URL, ANTHROPIC_API_KEY: "stack-auth-proxy" },
         stderr: (data: string) => { process.stderr.write(data); },
       },
     })) {
