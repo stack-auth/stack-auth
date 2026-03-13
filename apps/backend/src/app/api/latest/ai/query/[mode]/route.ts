@@ -34,7 +34,7 @@ export const POST = createSmartRouteHandler({
 
 
     if (apiKey === "FORWARD_TO_PRODUCTION") {
-      const prodResponse = await forwardToProduction(fullReq.headers, mode, body);
+      const prodResponse = await forwardToProduction(mode, body);
       return {
         statusCode: prodResponse.status,
         bodyType: "response" as const,

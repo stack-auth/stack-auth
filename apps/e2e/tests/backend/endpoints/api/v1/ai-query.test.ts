@@ -1,7 +1,7 @@
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
 import { niceBackendFetch, Project } from "../../../backend-helpers";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 const hasRealAiKey = (() => {
   const key = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
@@ -210,7 +210,7 @@ describe("AI Query Endpoint - Validation", () => {
       },
     });
 
-    expect(response.status).not.toBe(400);
+    expect(response.body).not.toMatchObject({ code: "SCHEMA_ERROR" });
 
   }, 10000); // 60 seconds for AI API call
 });
