@@ -6,6 +6,7 @@ const config: UserConfig = {
   clean: false,
   dts: true,
   outDir: 'dist',
+  external: ['@anthropic-ai/claude-agent-sdk'],
   format: {
     esm: {
       outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
