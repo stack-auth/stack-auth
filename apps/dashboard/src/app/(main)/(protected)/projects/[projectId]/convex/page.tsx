@@ -1,0 +1,9 @@
+import { redirect } from "next/navigation";
+
+export const metadata = {
+  title: "Convex",
+};
+
+export default function Page() {
+  redirect("https://docs.stack-auth.com/others/convex");
+}
