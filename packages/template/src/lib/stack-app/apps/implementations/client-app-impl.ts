@@ -523,7 +523,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._tokenStoreInit = resolvedOptions.tokenStore;
-    this._redirectMethod = resolvedOptions.redirectMethod || "none";
+    this._redirectMethod = resolvedOptions.redirectMethod || "window";
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
