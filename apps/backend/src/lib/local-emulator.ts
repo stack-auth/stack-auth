@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { createJiti } from "jiti";
-import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
+import { isValidConfig, normalize } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
@@ -66,6 +66,19 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
-  const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
+  const content = renderConfigFile(config);
   await fs.writeFile(filePath, content, "utf-8");
+}
+
+function renderConfigFile(config: unknown): string {
+  if (!isValidConfig(config)) {
+    throw new StatusError(StatusError.BadRequest, "Invalid config. The file must export a 'config' object.");
+  }
+
+  const normalizedConfig = normalize(config, {
+    onDotIntoNonObject: "ignore",
+    onDotIntoNull: "empty-object",
+  });
+  return 'import { defineStackConfig } from "@stackframe/stack-shared/config";\n\n'
+    + `export const config = defineStackConfig(${JSON.stringify(normalizedConfig, null, 2)});\n`;
 }

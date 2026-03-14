@@ -12,6 +12,7 @@
   },
   "files": [
     "README.md",
+    "src/config-authoring.ts",
     "dist",
     "CHANGELOG.md",
     "LICENSE"
@@ -23,6 +24,13 @@
         "default": "./dist/index.js"
       },
       "default": "./dist/esm/index.js"
+    },
+    "./config": {
+      "types": "./src/config-authoring.ts",
+      "require": {
+        "default": "./src/config-authoring.ts"
+      },
+      "default": "./src/config-authoring.ts"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
