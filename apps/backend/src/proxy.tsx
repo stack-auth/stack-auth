@@ -70,10 +70,30 @@ export async function proxy(request: NextRequest) {
   const isOAuthAuthorizeRequest = /^\/api\/(?:latest|v1)\/auth\/oauth\/authorize\//.test(url.pathname);
   const requestOrigin = request.headers.get('origin');
 
+  // For OAuth authorize endpoints, we need Access-Control-Allow-Credentials so the browser
+  // accepts Set-Cookie headers from the cross-origin fetch (used for CSRF protection cookies).
+  // However, we must not reflect an arbitrary Origin — only reflect it if it matches the origin
+  // of the redirect_uri query parameter, which is later validated against the project's trusted
+  // domains by the route handler. This prevents untrusted sites from making credentialed requests.
+  let allowCredentialsOrigin: string | undefined;
+  if (isOAuthAuthorizeRequest && requestOrigin) {
+    const redirectUri = url.searchParams.get('redirect_uri');
+    if (redirectUri) {
+      try {
+        const redirectOrigin = new URL(redirectUri).origin;
+        if (redirectOrigin === requestOrigin) {
+          allowCredentialsOrigin = requestOrigin;
+        }
+      } catch {
+        // invalid redirect_uri, don't reflect origin
+      }
+    }
+  }
+
   const corsHeadersInit = isApiRequest ? {
     // CORS headers
-    "Access-Control-Allow-Origin": isOAuthAuthorizeRequest && requestOrigin ? requestOrigin : "*",
-    ...(isOAuthAuthorizeRequest && requestOrigin ? {
+    "Access-Control-Allow-Origin": allowCredentialsOrigin ?? "*",
+    ...(allowCredentialsOrigin ? {
       "Access-Control-Allow-Credentials": "true",
     } : {}),
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",

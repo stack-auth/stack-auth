@@ -11,6 +11,7 @@ import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -52,7 +53,8 @@ async function persistSignUpHeuristicFacts(params: {
 export function getDerivedSignUpCountryCode(requestCountryCode: string | null, email: string | null): string | null {
   // In testing/development, allow deriving country code from email tags
   // e.g. "user+CA@example.com" → "CA". Only works for @example.com addresses.
-  if (email != null) {
+  // Guarded to non-production environments to prevent user-controlled country code spoofing.
+  if (email != null && ["development", "test"].includes(getNodeEnvironment())) {
     const match = email.match(/^[^+]+\+([^@]+)@example\.com$/i);
     if (match) {
       const tag = match[1];

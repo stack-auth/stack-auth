@@ -2271,30 +2271,34 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async sendMagicLinkEmail(email: string, options?: {
     callbackUrl?: string,
-  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeFailed"]>> {
     const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
     const siteKeys = this._getTurnstileSiteKeys();
 
     if (siteKeys) {
-      return await withTurnstileFlow({
-        ...siteKeys,
-        action: "send_magic_link_email",
-        execute: async (turnstile) => {
-          return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
-            token: turnstile.token,
-            phase: turnstile.phase,
-            previousResult: turnstile.previousResult,
-          });
-        },
-        isChallengeRequired: (result) => {
-          if (result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-            return result.error.constructorArgs[0];
-          }
-          return null;
-        },
-      // TurnstileChallengeRequired is handled internally by withTurnstileFlow
-      // and never reaches the caller, so we narrow the error type
-      }) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
+      try {
+        return await withTurnstileFlow({
+          ...siteKeys,
+          action: "send_magic_link_email",
+          execute: async (turnstile) => {
+            return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
+              token: turnstile.token,
+              phase: turnstile.phase,
+              previousResult: turnstile.previousResult,
+            });
+          },
+          isChallengeRequired: (result) => {
+            if (result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
+              return result.error.constructorArgs[0];
+            }
+            return null;
+          },
+        // TurnstileChallengeRequired is handled internally by withTurnstileFlow
+        // and never reaches the caller, so we narrow the error type
+        }) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeFailed"]>;
+      } catch (e) {
+        return Result.error(new KnownErrors.TurnstileChallengeFailed(e instanceof Error ? e.message : "Turnstile challenge failed"));
+      }
     }
 
     // TurnstileChallengeRequired is handled internally by withTurnstileFlow
@@ -2676,7 +2680,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["TurnstileChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
@@ -2716,17 +2720,21 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     let result;
     if (siteKeys) {
-      result = await withTurnstileFlow({
-        ...siteKeys,
-        action: "sign_up_with_credential",
-        execute: executeSignUp,
-        isChallengeRequired: (r) => {
-          if (r.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(r.error)) {
-            return r.error.constructorArgs[0];
-          }
-          return null;
-        },
-      });
+      try {
+        result = await withTurnstileFlow({
+          ...siteKeys,
+          action: "sign_up_with_credential",
+          execute: executeSignUp,
+          isChallengeRequired: (r) => {
+            if (r.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(r.error)) {
+              return r.error.constructorArgs[0];
+            }
+            return null;
+          },
+        });
+      } catch (e) {
+        return Result.error(new KnownErrors.TurnstileChallengeFailed(e instanceof Error ? e.message : "Turnstile challenge failed"));
+      }
     } else {
       result = await executeSignUp({});
     }
@@ -2740,7 +2748,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else {
       // TurnstileChallengeRequired is handled internally by withTurnstileFlow
       // and never reaches the caller, so we narrow the error type
-      return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>;
+      return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["TurnstileChallengeFailed"]>;
     }
   }
 

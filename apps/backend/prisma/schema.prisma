@@ -273,10 +273,11 @@ model ProjectUser {
   restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
+  signUpCountryCode               String?
+
   // Sign-up risk scores (0-100, set at sign-up time)
   signUpRiskScoreBot              Int @db.SmallInt
   signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
-  signUpCountryCode               String?
   signedUpAt                      DateTime
   signUpIp                        String?
   signUpIpTrusted                 Boolean?

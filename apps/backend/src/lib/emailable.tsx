@@ -88,7 +88,11 @@ export async function checkEmailWithEmailable(
     retryExponentialDelayBaseMs?: number,
   },
 ): Promise<EmailableCheckResult> {
-  const apiKey = options?.apiKey ?? getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+  const rawApiKey = options?.apiKey ?? getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+  if (!rawApiKey) {
+    throw new StackAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
+  }
+  const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
   const onError = options?.onError ?? "return-error";
   const retryDelayBase = options?.retryExponentialDelayBaseMs ?? EMAILABLE_RETRY_BACKOFF_BASE_MS;
 
@@ -129,7 +133,7 @@ export async function checkEmailWithEmailable(
 import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   import.meta.vitest?.test("returns test-domain rejection when no API key is set", async ({ expect }) => {
     await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`, {
-      apiKey: "",
+      apiKey: "disable_email_validation",
     })).resolves.toMatchObject({
       status: "not-deliverable",
       emailableResponse: {
@@ -140,7 +144,8 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   });
 
   import.meta.vitest?.test("calls emailable API and returns a valid result when STACK_EMAILABLE_API_KEY is set", async ({ expect }) => {
-    if (!getEnvVariable("STACK_EMAILABLE_API_KEY", "")) {
+    const envKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+    if (!envKey || envKey === "disable_email_validation") {
       return;
     }
     const result = await checkEmailWithEmailable("test@gmail.com");

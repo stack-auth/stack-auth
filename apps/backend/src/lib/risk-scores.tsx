@@ -4,6 +4,7 @@ import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createJiti } from "jiti";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
 import { normalizeEmail } from "./emails";
@@ -277,7 +278,7 @@ import.meta.vitest?.test("loader falls back when private submodule is absent", a
 
 import.meta.vitest?.test("loader rethrows private engine import errors", async ({ expect }) => {
   resetEngineForTests();
-  const tempRoot = await fs.mkdtemp(path.join(process.cwd(), "tmp/private-risk-engine-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "private-risk-engine-"));
 
   try {
     await fs.mkdir(path.join(tempRoot, "dist"), { recursive: true });
