@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
+import { renderConfigFile } from "../lib/stack-config-file.js";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -22,6 +23,7 @@ export function registerConfigCommand(program: Command) {
     .command("pull")
     .description("Pull branch config to a local file")
     .requiredOption("--config-file <path>", "Path to write config file (.js or .ts)")
+    .option("--overwrite", "Overwrite an existing config file")
     .action(async (opts) => {
       const flags = program.opts();
       const auth = resolveAuth(flags);
@@ -35,10 +37,11 @@ export function registerConfigCommand(program: Command) {
         throw new CliError("Config file must have a .js or .ts extension.");
       }
 
-      const json = JSON.stringify(configOverride, null, 2);
-      const content = ext === ".ts"
-        ? `export const config = ${json} as const;\n`
-        : `export const config = ${json};\n`;
+      if (fs.existsSync(filePath) && !opts.overwrite) {
+        throw new CliError(`Config file already exists: ${filePath}. Re-run with --overwrite to replace it.`);
+      }
+
+      const content = renderConfigFile(configOverride);
 
       fs.writeFileSync(filePath, content);
       console.log(`Config written to ${filePath}`);
@@ -65,17 +68,13 @@ export function registerConfigCommand(program: Command) {
       }
 
       let configModule: { config?: unknown };
-      if (ext === ".ts") {
-        const { createJiti } = await import("jiti");
-        const jiti = createJiti(import.meta.url);
-        configModule = await jiti.import(filePath);
-      } else {
-        configModule = await import(filePath);
-      }
+      const { createJiti } = await import("jiti");
+      const jiti = createJiti(import.meta.url);
+      configModule = await jiti.import(filePath);
 
       const config = configModule.config;
       if (!isPlainObject(config)) {
-        throw new CliError("Config file must export a plain `config` object. Example: export const config = { ... };");
+        throw new CliError('Config file must export a plain `config` object. Example: import { defineStackConfig } from "@stackframe/stack-shared/config"; export const config = defineStackConfig({ ... });');
       }
 
       await project.replaceConfigOverride("branch", config);

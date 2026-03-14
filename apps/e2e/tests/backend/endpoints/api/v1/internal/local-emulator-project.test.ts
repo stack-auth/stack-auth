@@ -85,7 +85,8 @@ describe("local emulator project endpoint", () => {
     expect(JSON.parse(response.body.branch_config_override_string)).toEqual({});
 
     const fileContent = await fs.readFile(filePath, "utf-8");
-    expect(fileContent).toContain("export const config");
+    expect(fileContent).toContain('import { defineStackConfig } from "@stackframe/stack-shared/config";');
+    expect(fileContent).toContain("export const config = defineStackConfig(");
   });
 
   it.runIf(isLocalEmulator)("creates path-based projects, reuses mappings, and returns valid credentials", async ({ expect }) => {
