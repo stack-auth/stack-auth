@@ -22,15 +22,3 @@ WHERE "signedUpAt" IS NULL;
 
 ALTER TABLE "ProjectUser" ALTER COLUMN "signedUpAt" SET NOT NULL;
 
--- Indexes
-CREATE INDEX "ProjectUser_signedUpAt_asc"
-  ON "ProjectUser"("tenancyId", "signedUpAt" ASC);
-
-CREATE INDEX "ProjectUser_signedUpAt_desc"
-  ON "ProjectUser"("tenancyId", "signedUpAt" DESC);
-
-CREATE INDEX "ProjectUser_signUpIp_recent_idx"
-  ON "ProjectUser"("tenancyId", "signUpIp", "signedUpAt");
-
-CREATE INDEX "ProjectUser_signUpEmailBase_recent_idx"
-  ON "ProjectUser"("tenancyId", "signUpEmailBase", "signedUpAt");

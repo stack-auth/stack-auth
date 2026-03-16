@@ -1,4 +1,4 @@
-import { it } from "../../../../../../helpers";
+import { it, localRedirectUrl } from "../../../../../../helpers";
 import { localhostUrl } from "../../../../../../helpers/ports";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -69,10 +69,12 @@ it("should return the OAuth location as JSON when requested by the SDK flow", as
 });
 
 it("should return credentialed CORS headers for versioned OAuth authorize requests", async ({ expect }) => {
+  // Origin must match the redirect_uri origin for credentialed CORS to be reflected
+  const redirectOrigin = new URL(localRedirectUrl).origin;
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     redirect: "manual",
     headers: {
-      origin: localhostUrl("01"),
+      origin: redirectOrigin,
     },
     query: {
       ...await Auth.OAuth.getAuthorizeQuery(),
@@ -80,7 +82,7 @@ it("should return credentialed CORS headers for versioned OAuth authorize reques
     },
   });
 
-  expect(response.headers.get("access-control-allow-origin")).toBe(localhostUrl("01"));
+  expect(response.headers.get("access-control-allow-origin")).toBe(redirectOrigin);
   expect(response.headers.get("access-control-allow-credentials")).toBe("true");
 });
 

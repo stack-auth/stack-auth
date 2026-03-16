@@ -53,7 +53,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   response: yupObject({
-    // note: the handler also calls redirect() which throws and bypasses this schema
+    // note: usually, we redirect with the `redirect` function, although this is the other option
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
