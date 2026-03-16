@@ -282,8 +282,8 @@ model ProjectUser {
   signUpEmailBase                 String?
 
   // Sign-up risk scores (0-100, set at sign-up time)
-  signUpRiskScoreBot              Int @db.SmallInt
-  signUpRiskScoreFreeTrialAbuse   Int @db.SmallInt
+  signUpRiskScoreBot              Int @default(0) @db.SmallInt
+  signUpRiskScoreFreeTrialAbuse   Int @default(0) @db.SmallInt
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]

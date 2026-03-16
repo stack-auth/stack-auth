@@ -278,7 +278,9 @@ import.meta.vitest?.test("loader falls back when private submodule is absent", a
 
 import.meta.vitest?.test("loader rethrows private engine import errors", async ({ expect }) => {
   resetEngineForTests();
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "private-risk-engine-"));
+  const tmpBase = os.tmpdir();
+  await fs.mkdir(tmpBase, { recursive: true });
+  const tempRoot = await fs.mkdtemp(path.join(tmpBase, "private-risk-engine-"));
 
   try {
     await fs.mkdir(path.join(tempRoot, "dist"), { recursive: true });

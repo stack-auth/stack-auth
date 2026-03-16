@@ -79,7 +79,7 @@ generated AS (
 insert_users AS (
   INSERT INTO "ProjectUser"
     ("tenancyId","projectUserId","mirroredProjectId","mirroredBranchId","displayName",
-     "projectId","createdAt","updatedAt","signUpRiskScoreBot","signUpRiskScoreFreeTrialAbuse")
+     "projectId","createdAt","updatedAt","signedUpAt","signUpRiskScoreBot","signUpRiskScoreFreeTrialAbuse")
   SELECT
     tenancy_id,
     project_user_id,
@@ -87,6 +87,7 @@ insert_users AS (
     'main',
     'Perf Test User ' || idx,
     'internal',
+    ts,
     ts,
     ts,
     0,

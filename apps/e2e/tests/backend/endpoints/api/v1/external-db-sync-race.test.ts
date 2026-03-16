@@ -195,7 +195,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
              "displayName", "createdAt", "updatedAt", "isAnonymous",
-             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
+             "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -205,6 +205,7 @@ describe.sequential('External DB Sync - Race Condition Tests', () => {
             ts,
             ts,
             false,
+            ts,
             0,
             0
           FROM generated

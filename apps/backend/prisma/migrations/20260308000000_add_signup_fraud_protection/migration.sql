@@ -1,8 +1,6 @@
 -- Risk score columns
 ALTER TABLE "ProjectUser" ADD COLUMN "signUpRiskScoreBot" SMALLINT NOT NULL DEFAULT 0;
 ALTER TABLE "ProjectUser" ADD COLUMN "signUpRiskScoreFreeTrialAbuse" SMALLINT NOT NULL DEFAULT 0;
-ALTER TABLE "ProjectUser" ALTER COLUMN "signUpRiskScoreBot" DROP DEFAULT;
-ALTER TABLE "ProjectUser" ALTER COLUMN "signUpRiskScoreFreeTrialAbuse" DROP DEFAULT;
 
 -- Country code
 ALTER TABLE "ProjectUser" ADD COLUMN "signUpCountryCode" TEXT;

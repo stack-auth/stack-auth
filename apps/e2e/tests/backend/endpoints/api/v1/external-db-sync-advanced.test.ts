@@ -443,7 +443,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
              "displayName", "createdAt", "updatedAt", "isAnonymous",
-             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
+             "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -453,6 +453,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
             ts,
             ts,
             false,
+            ts,
             0,
             0
           FROM generated
@@ -1024,7 +1025,7 @@ $$;`);
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
              "displayName", "createdAt", "updatedAt", "isAnonymous",
-             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
+             "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -1034,6 +1035,7 @@ $$;`);
             ts,
             ts,
             false,
+            ts,
             0,
             0
           FROM generated
@@ -1107,7 +1109,7 @@ $$;`);
           INSERT INTO "ProjectUser"
             ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId",
              "displayName", "createdAt", "updatedAt", "isAnonymous",
-             "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
+             "signedUpAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
           SELECT
             tenancy_id,
             project_user_id,
@@ -1117,6 +1119,7 @@ $$;`);
             ts,
             ts,
             false,
+            ts,
             0,
             0
           FROM generated
