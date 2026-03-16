@@ -1,9 +1,19 @@
 import createEmailableClient from "emailable";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 
 export const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
+
+// RFC 2606 reserves example.com and its subdomains for testing — they will never have real
+// mailboxes, so sending them through emailable wastes API credits and returns misleading results.
+// Only skip in dev/test to prevent attackers from using example.com domains to bypass checks in prod.
+function isReservedTestDomain(emailDomain: string): boolean {
+  if (!["development", "test"].includes(getNodeEnvironment())) {
+    return false;
+  }
+  return emailDomain === "example.com" || emailDomain.endsWith(".example.com");
+}
 
 const EMAILABLE_RETRY_BACKOFF_BASE_MS = 4000;
 
@@ -96,16 +106,21 @@ export async function checkEmailWithEmailable(
   const onError = options?.onError ?? "return-error";
   const retryDelayBase = options?.retryExponentialDelayBaseMs ?? EMAILABLE_RETRY_BACKOFF_BASE_MS;
 
-  if (!apiKey) {
-    const emailDomain = email.split("@")[1]?.toLowerCase();
-    if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
-      const testResponse = createTestModeUndeliverableResponse(email);
-      return {
-        status: "not-deliverable" as const,
-        emailableResponse: testResponse,
-        emailableScore: testResponse.score,
-      };
-    }
+  const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
+
+  // Always reject the explicit test domain, regardless of API key
+  if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
+    const testResponse = createTestModeUndeliverableResponse(email);
+    return {
+      status: "not-deliverable" as const,
+      emailableResponse: testResponse,
+      emailableScore: testResponse.score,
+    };
+  }
+
+  // Skip API call for RFC 2606 reserved domains (example.com and subdomains) — they have
+  // no real mailboxes and emailable returns misleading undeliverable results for them.
+  if (!apiKey || isReservedTestDomain(emailDomain)) {
     return { status: "ok", emailableScore: null };
   }
 
