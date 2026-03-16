@@ -1120,4 +1120,140 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
+  "session_replays": {
+    sourceTables: { "SessionReplay": "SessionReplay" },
+    targetTable: "session_replays",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "session_replays" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "user_id" uuid NOT NULL,
+          "refresh_token_id" text NOT NULL,
+          "started_at" timestamp without time zone NOT NULL,
+          "last_event_at" timestamp without time zone NOT NULL,
+          "created_at" timestamp without time zone NOT NULL
+        );
+        REVOKE ALL ON "session_replays" FROM PUBLIC;
+        GRANT SELECT ON "session_replays" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.session_replays (
+          project_id String,
+          branch_id String,
+          id UUID,
+          user_id UUID,
+          refresh_token_id String,
+          started_at DateTime64(3, 'UTC'),
+          last_event_at DateTime64(3, 'UTC'),
+          created_at DateTime64(3, 'UTC'),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(started_at)
+        ORDER BY (project_id, branch_id, id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT
+          "Tenancy"."projectId" AS "project_id",
+          "Tenancy"."branchId" AS "branch_id",
+          "SessionReplay"."id" AS "id",
+          "SessionReplay"."projectUserId" AS "user_id",
+          "SessionReplay"."refreshTokenId" AS "refresh_token_id",
+          "SessionReplay"."startedAt" AS "started_at",
+          "SessionReplay"."lastEventAt" AS "last_event_at",
+          "SessionReplay"."createdAt" AS "created_at",
+          "SessionReplay"."sequenceId" AS "sync_sequence_id",
+          "SessionReplay"."tenancyId" AS "tenancyId",
+          false AS "sync_is_deleted"
+        FROM "SessionReplay"
+        JOIN "Tenancy" ON "Tenancy"."id" = "SessionReplay"."tenancyId"
+        WHERE "SessionReplay"."tenancyId" = $1::uuid
+          AND "SessionReplay"."sequenceId" IS NOT NULL
+          AND "SessionReplay"."sequenceId" > $2::bigint
+        ORDER BY "SessionReplay"."sequenceId" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT
+        "SessionReplay"."id" AS "id",
+        "SessionReplay"."projectUserId" AS "user_id",
+        "SessionReplay"."refreshTokenId" AS "refresh_token_id",
+        "SessionReplay"."startedAt" AS "started_at",
+        "SessionReplay"."lastEventAt" AS "last_event_at",
+        "SessionReplay"."createdAt" AS "created_at",
+        "SessionReplay"."sequenceId" AS "sequence_id",
+        "SessionReplay"."tenancyId",
+        false AS "is_deleted"
+      FROM "SessionReplay"
+      WHERE "SessionReplay"."tenancyId" = $1::uuid
+        AND "SessionReplay"."sequenceId" IS NOT NULL
+        AND "SessionReplay"."sequenceId" > $2::bigint
+      ORDER BY "SessionReplay"."sequenceId" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::uuid AS "user_id",
+            $3::text AS "refresh_token_id",
+            $4::timestamp without time zone AS "started_at",
+            $5::timestamp without time zone AS "last_event_at",
+            $6::timestamp without time zone AS "created_at",
+            $7::bigint AS "sequence_id",
+            $8::boolean AS "is_deleted",
+            $9::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "session_replays" sr
+          USING params p
+          WHERE p."is_deleted" = true AND sr."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "session_replays" (
+            "id",
+            "user_id",
+            "refresh_token_id",
+            "started_at",
+            "last_event_at",
+            "created_at"
+          )
+          SELECT
+            p."id",
+            p."user_id",
+            p."refresh_token_id",
+            p."started_at",
+            p."last_event_at",
+            p."created_at"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "user_id" = EXCLUDED."user_id",
+            "refresh_token_id" = EXCLUDED."refresh_token_id",
+            "started_at" = EXCLUDED."started_at",
+            "last_event_at" = EXCLUDED."last_event_at",
+            "created_at" = EXCLUDED."created_at"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
 } as const;

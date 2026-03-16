@@ -120,10 +120,12 @@ export const POST = createSmartRouteHandler({
         refreshTokenId,
         startedAt: new Date(firstMs),
         lastEventAt: new Date(newLastEventAtMs),
+        shouldUpdateSequenceId: true,
       },
       update: {
         startedAt: new Date(newStartedAtMs),
         lastEventAt: new Date(newLastEventAtMs),
+        shouldUpdateSequenceId: true,
       },
     });
 

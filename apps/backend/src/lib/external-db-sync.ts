@@ -569,6 +569,9 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
     is_paused: 'boolean',
     sync_is_deleted: 'boolean',
   },
+  session_replays: {
+    sync_is_deleted: 'boolean',
+  },
 };
 
 async function pushRowsToClickhouse(

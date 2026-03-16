@@ -24,6 +24,8 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: TEAM_MEMBERS_VIEW_SQL });
   await client.exec({ query: EMAIL_OUTBOXES_TABLE_BASE_SQL });
   await client.exec({ query: EMAIL_OUTBOXES_VIEW_SQL });
+  await client.exec({ query: SESSION_REPLAYS_TABLE_BASE_SQL });
+  await client.exec({ query: SESSION_REPLAYS_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -39,6 +41,7 @@ export async function runClickhouseMigrations() {
     "GRANT SELECT ON default.teams TO limited_user;",
     "GRANT SELECT ON default.team_members TO limited_user;",
     "GRANT SELECT ON default.email_outboxes TO limited_user;",
+    "GRANT SELECT ON default.session_replays TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
@@ -57,6 +60,9 @@ export async function runClickhouseMigrations() {
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS email_outboxes_project_isolation ON default.email_outboxes FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS session_replays_project_isolation ON default.session_replays FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -407,6 +413,36 @@ SELECT
   send_retries,
   is_paused
 FROM analytics_internal.email_outboxes
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const SESSION_REPLAYS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.session_replays (
+    project_id String,
+    branch_id String,
+    id UUID,
+    user_id UUID,
+    refresh_token_id String,
+    started_at DateTime64(3, 'UTC'),
+    last_event_at DateTime64(3, 'UTC'),
+    created_at DateTime64(3, 'UTC'),
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(started_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const SESSION_REPLAYS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.session_replays
+SQL SECURITY DEFINER
+AS
+SELECT project_id, branch_id, id, user_id, refresh_token_id,
+       started_at, last_event_at, created_at
+FROM analytics_internal.session_replays
 FINAL
 WHERE sync_is_deleted = 0;
 `;

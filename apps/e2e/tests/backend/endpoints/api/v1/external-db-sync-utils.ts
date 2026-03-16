@@ -327,6 +327,18 @@ export async function waitForSyncedEmailOutbox(client: Client, emailId: string, 
   );
 }
 
+export async function waitForSyncedSessionReplay(client: Client, replayId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "session_replays" WHERE "id" = $1`,
+    [replayId],
+    {
+      shouldExist: true,
+      description: `session replay "${replayId}" to appear in external DB`,
+    },
+  );
+}
+
 export async function waitForSyncedEmailOutboxByStatus(client: Client, status: string) {
   await waitForExternalDbRow(
     client,
