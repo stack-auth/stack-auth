@@ -46,7 +46,7 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
-  turnstileResult: yupString().oneOf(turnstileResultValues).defined(),
+  turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
   turnstileVisibleChallengeResult: yupString().oneOf(turnstileResultValues).optional(),
   responseMode: yupString().oneOf(['json', 'redirect']).optional(),
 });

@@ -13,10 +13,3 @@ ALTER TABLE "ProjectUser"
   ADD COLUMN "signUpEmailNormalized" TEXT,
   ADD COLUMN "signUpEmailBase" TEXT;
 
--- Backfill signedUpAt from createdAt
-UPDATE "ProjectUser"
-SET "signedUpAt" = "createdAt"
-WHERE "signedUpAt" IS NULL;
-
-ALTER TABLE "ProjectUser" ALTER COLUMN "signedUpAt" SET NOT NULL;
-

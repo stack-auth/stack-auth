@@ -91,16 +91,28 @@ function conditionToCel(condition: ConditionNode): string {
       return `${field} != "${escapeCelString(String(value))}"`;
     }
     case 'greater_than': {
-      return `${field} > ${useNumericValue ? valueAsNumber : 0}`;
+      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
+        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      }
+      return `${field} > ${valueAsNumber}`;
     }
     case 'greater_or_equal': {
-      return `${field} >= ${useNumericValue ? valueAsNumber : 0}`;
+      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
+        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      }
+      return `${field} >= ${valueAsNumber}`;
     }
     case 'less_than': {
-      return `${field} < ${useNumericValue ? valueAsNumber : 0}`;
+      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
+        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      }
+      return `${field} < ${valueAsNumber}`;
     }
     case 'less_or_equal': {
-      return `${field} <= ${useNumericValue ? valueAsNumber : 0}`;
+      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
+        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      }
+      return `${field} <= ${valueAsNumber}`;
     }
     case 'matches': {
       return `${field}.matches("${escapeCelString(String(value))}")`;

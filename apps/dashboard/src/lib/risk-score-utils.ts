@@ -5,9 +5,8 @@ export function validateRiskScore(value: string | null | undefined): boolean {
 }
 
 export function parseRiskScore(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
+  if (!RISK_SCORE_REGEX.test(value)) {
     throw new Error("Risk scores must be integers between 0 and 100");
   }
-  return parsed;
+  return Number(value);
 }

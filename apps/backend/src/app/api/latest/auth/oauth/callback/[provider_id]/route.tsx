@@ -346,7 +346,7 @@ const handler = createSmartRouteHandler({
                       oauthProvider: provider.id,
                       requestContext,
                       turnstileAssessment: reconstructTurnstileAssessment(
-                        outerInfo.turnstileResult,
+                        outerInfo.turnstileResult ?? "error",
                         outerInfo.turnstileVisibleChallengeResult,
                       ),
                     }),

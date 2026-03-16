@@ -1,0 +1,1 @@
+ALTER TABLE "ProjectUser" ALTER COLUMN "signedUpAt" SET NOT NULL;
