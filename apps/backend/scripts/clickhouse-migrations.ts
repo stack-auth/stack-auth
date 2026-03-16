@@ -16,6 +16,12 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: EVENTS_VIEW_SQL });
   await client.exec({ query: USERS_TABLE_BASE_SQL });
   await client.exec({ query: USERS_VIEW_SQL });
+  await client.exec({ query: CONTACT_CHANNELS_TABLE_BASE_SQL });
+  await client.exec({ query: CONTACT_CHANNELS_VIEW_SQL });
+  await client.exec({ query: TEAMS_TABLE_BASE_SQL });
+  await client.exec({ query: TEAMS_VIEW_SQL });
+  await client.exec({ query: TEAM_MEMBERS_TABLE_BASE_SQL });
+  await client.exec({ query: TEAM_MEMBERS_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -27,12 +33,24 @@ export async function runClickhouseMigrations() {
     "REVOKE ALL FROM limited_user;",
     "GRANT SELECT ON default.events TO limited_user;",
     "GRANT SELECT ON default.users TO limited_user;",
+    "GRANT SELECT ON default.contact_channels TO limited_user;",
+    "GRANT SELECT ON default.teams TO limited_user;",
+    "GRANT SELECT ON default.team_members TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS users_project_isolation ON default.users FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS contact_channels_project_isolation ON default.contact_channels FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS teams_project_isolation ON default.teams FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS team_members_project_isolation ON default.team_members FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -195,6 +213,121 @@ UPDATE refresh_token_id = data.refresh_token_id::Nullable(String)
 WHERE event_type = '$token-refresh'
   AND refresh_token_id IS NULL
   AND data.refresh_token_id::Nullable(String) IS NOT NULL;
+`;
+
+const CONTACT_CHANNELS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.contact_channels (
+    project_id String,
+    branch_id String,
+    id UUID,
+    user_id UUID,
+    type LowCardinality(String),
+    value String,
+    is_primary UInt8,
+    is_verified UInt8,
+    used_for_auth UInt8,
+    created_at DateTime64(3, 'UTC'),
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const CONTACT_CHANNELS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.contact_channels
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  user_id,
+  type,
+  value,
+  is_primary,
+  is_verified,
+  used_for_auth,
+  created_at
+FROM analytics_internal.contact_channels
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const TEAMS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.teams (
+    project_id String,
+    branch_id String,
+    id UUID,
+    display_name String,
+    profile_image_url Nullable(String),
+    created_at DateTime64(3, 'UTC'),
+    client_metadata String,
+    client_read_only_metadata String,
+    server_metadata String,
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const TEAMS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.teams
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  display_name,
+  profile_image_url,
+  created_at,
+  client_metadata,
+  client_read_only_metadata,
+  server_metadata
+FROM analytics_internal.teams
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const TEAM_MEMBERS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.team_members (
+    project_id String,
+    branch_id String,
+    team_id UUID,
+    user_id UUID,
+    display_name Nullable(String),
+    profile_image_url Nullable(String),
+    created_at DateTime64(3, 'UTC'),
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, team_id, user_id);
+`;
+
+const TEAM_MEMBERS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.team_members
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  team_id,
+  user_id,
+  display_name,
+  profile_image_url,
+  created_at
+FROM analytics_internal.team_members
+FINAL
+WHERE sync_is_deleted = 0;
 `;
 
 const EXTERNAL_ANALYTICS_DB_SQL = `

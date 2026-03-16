@@ -109,6 +109,63 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
+    const teamTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "teamId"
+        FROM "Team"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "Team" t
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE t."tenancyId" = r."tenancyId"
+          AND t."teamId"    = r."teamId"
+        RETURNING t."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
+
+    if (teamTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const teamMemberTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "projectUserId", "teamId"
+        FROM "TeamMember"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "TeamMember" tm
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE tm."tenancyId"     = r."tenancyId"
+          AND tm."projectUserId" = r."projectUserId"
+          AND tm."teamId"        = r."teamId"
+        RETURNING tm."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-member-tenants", teamMemberTenants.length);
+
+    if (teamMemberTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamMemberTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
     const deletedRowTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id", "tenancyId"
@@ -138,7 +195,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
     if (didUpdate) {
-      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, DR=${deletedRowTenants.length}`);
+      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, DR=${deletedRowTenants.length}`);
     }
 
     return didUpdate;

@@ -179,11 +179,16 @@ model Team {
   serverMetadata         Json?
   profileImageUrl        String?
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
+  @@index([tenancyId, sequenceId], name: "Team_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "Team_shouldUpdateSequenceId_idx")
 }
 
 // This is used for fields that are boolean but only the true value is part of a unique constraint.
@@ -205,6 +210,9 @@ model TeamMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   projectUser                 ProjectUser                  @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team                        Team                         @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
   isSelected                  BooleanTrue?
@@ -213,6 +221,8 @@ model TeamMember {
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
   @@index([tenancyId, projectUserId, isSelected], map: "TeamMember_projectUserId_isSelected_idx")
+  @@index([tenancyId, sequenceId], name: "TeamMember_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "TeamMember_shouldUpdateSequenceId_idx")
 }
 
 model ProjectUserDirectPermission {

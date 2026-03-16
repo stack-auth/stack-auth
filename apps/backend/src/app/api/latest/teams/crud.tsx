@@ -1,3 +1,4 @@
+import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamMemberDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -73,7 +74,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     const db = await retryTransaction(prisma, async (tx) => {
       const db = await tx.team.create({
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name,
           mirroredProjectId: auth.project.id,
           mirroredBranchId: auth.branchId,
@@ -81,8 +82,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
-        },
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images"),
+        }),
       });
 
       if (addUserId) {
@@ -160,13 +161,13 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
             teamId: params.team_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
-        },
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images"),
+        }),
       });
     });
 
@@ -193,6 +194,17 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
       await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id });
+
+      await recordExternalDbSyncTeamMemberDeletionsForTeam(tx, {
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "Team",
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
 
       await tx.team.delete({
         where: {

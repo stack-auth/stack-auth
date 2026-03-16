@@ -9,8 +9,14 @@ import {
   createProjectWithExternalDb as createProjectWithExternalDbRaw,
   verifyInExternalDb,
   verifyNotInExternalDb,
+  waitForSyncedContactChannel,
+  waitForSyncedContactChannelDeletion,
   waitForSyncedData,
   waitForSyncedDeletion,
+  waitForSyncedTeam,
+  waitForSyncedTeamDeletion,
+  waitForSyncedTeamMember,
+  waitForSyncedTeamMemberDeletion,
   waitForTable
 } from './external-db-sync-utils';
 
@@ -576,6 +582,260 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(seq2).toBeGreaterThan(seq1);
   }, TEST_TIMEOUT);
 
+
+  /**
+   * What it does:
+   * - Creates a team, verifies it in the external DB, updates it, verifies the update,
+   *   deletes it, and verifies the removal.
+   */
+  test('Team CRUD sync (Postgres)', async () => {
+    const dbName = 'team_crud_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    // Create a team
+    const createResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'Sync Test Team' },
+    });
+    expect(createResponse.status).toBe(201);
+    const teamId = createResponse.body.id;
+
+    await waitForSyncedTeam(client, 'Sync Test Team');
+
+    const res1 = await client.query(`SELECT * FROM "teams" WHERE "id" = $1`, [teamId]);
+    expect(res1.rows.length).toBe(1);
+    expect(res1.rows[0].display_name).toBe('Sync Test Team');
+
+    // Update the team
+    await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { display_name: 'Updated Team Name' },
+    });
+
+    await waitForSyncedTeam(client, 'Updated Team Name');
+
+    const res2 = await client.query(`SELECT * FROM "teams" WHERE "id" = $1`, [teamId]);
+    expect(res2.rows[0].display_name).toBe('Updated Team Name');
+
+    // Delete the team
+    await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamDeletion(client, teamId);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a team and verifies it appears via the ClickHouse analytics query API.
+   */
+  test('Team sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const createResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'CH Team Test' },
+    });
+    expect(createResponse.status).toBe(201);
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT display_name FROM teams WHERE display_name = {name:String}",
+        params: { name: 'CH Team Test' },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBe(1);
+    expect(response!.body.result[0].display_name).toBe('CH Team Test');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a user and team, adds the user as a member, verifies in external DB,
+   *   removes the member, and verifies removal.
+   */
+  test('TeamMember CRUD sync (Postgres)', async () => {
+    const dbName = 'team_member_crud_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'tm-crud@example.com' });
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'TM CRUD Team' },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    // Add user as team member
+    const addMemberResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+    expect(addMemberResponse.status).toBe(201);
+
+    await waitForSyncedTeamMember(client, teamId, user.userId);
+
+    const res1 = await client.query(`SELECT * FROM "team_members" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, user.userId]);
+    expect(res1.rows.length).toBe(1);
+
+    // Remove member
+    await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamMemberDeletion(client, teamId, user.userId);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a user with a primary email and verifies the contact channel appears
+   *   in the external DB contact_channels table.
+   */
+  test('ContactChannel sync (Postgres)', async () => {
+    const dbName = 'contact_channel_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'cc-sync@example.com' });
+
+    await waitForSyncedContactChannel(client, 'cc-sync@example.com');
+
+    const res = await client.query(`SELECT * FROM "contact_channels" WHERE "value" = $1`, ['cc-sync@example.com']);
+    expect(res.rows.length).toBe(1);
+    expect(res.rows[0].user_id).toBe(user.userId);
+    expect(res.rows[0].is_primary).toBe(true);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a user in a team, deletes the user, and verifies the team_member is gone.
+   */
+  test('Cascade: User delete removes team members from external DB', async () => {
+    const dbName = 'cascade_user_delete_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'cascade-user-del@example.com' });
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'Cascade User Team' },
+    });
+    const teamId = createTeamResponse.body.id;
+
+    await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await waitForSyncedTeamMember(client, teamId, user.userId);
+
+    // Delete the user — should cascade-delete the team member
+    await niceBackendFetch(`/api/v1/users/${user.userId}`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamMemberDeletion(client, teamId, user.userId);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a team with a member, deletes the team, and verifies both team and member are gone.
+   */
+  test('Cascade: Team delete removes team and members from external DB', async () => {
+    const dbName = 'cascade_team_delete_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'cascade-team-del@example.com' });
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'Cascade Team' },
+    });
+    const teamId = createTeamResponse.body.id;
+
+    await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await waitForSyncedTeamMember(client, teamId, user.userId);
+    await waitForSyncedTeam(client, 'Cascade Team');
+
+    // Delete the team — should cascade-delete the member too
+    await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamDeletion(client, teamId);
+    await waitForSyncedTeamMemberDeletion(client, teamId, user.userId);
+  }, TEST_TIMEOUT);
 
   /**
    * What it does:
