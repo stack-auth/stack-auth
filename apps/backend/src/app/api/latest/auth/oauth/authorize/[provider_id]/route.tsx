@@ -37,7 +37,7 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: yupString().optional(),
-      response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
+      x_stack_response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
       ...turnstileFlowRequestSchemaFields,
 
       // oauth parameters
@@ -53,7 +53,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   response: yupObject({
-    // note: usually, we redirect with the `redirect` function, although this is the other option
+    // The SDK uses x_stack_response_mode=json so it can intercept Turnstile challenges before navigating.
+    // The redirect path (default) is the legacy browser-direct flow.
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
@@ -136,13 +137,26 @@ export const GET = createSmartRouteHandler({
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
+          responseMode: query.x_stack_response_mode,
         } satisfies yup.InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },
     });
 
-    // prevent CSRF by keeping track of the inner state in cookies
-    // the callback route must ensure that the inner state cookie is set
+    if (query.x_stack_response_mode === "json") {
+      // In JSON mode the client controls the flow programmatically and PKCE
+      // already prevents CSRF, so we skip the cookie (which would require
+      // credentials: "include" and a non-wildcard CORS origin).
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          location: oauthUrl,
+        },
+      };
+    }
+
+    // For browser-redirect mode, set a CSRF cookie that the callback route checks.
     (await cookies()).set(
       "stack-oauth-inner-" + innerState,
       "true",
@@ -152,16 +166,6 @@ export const GET = createSmartRouteHandler({
         maxAge: 60 * outerOAuthFlowExpirationInMinutes,
       }
     );
-
-    if (query.response_mode === "json") {
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: {
-          location: oauthUrl,
-        },
-      };
-    }
 
     redirect(oauthUrl);
   },

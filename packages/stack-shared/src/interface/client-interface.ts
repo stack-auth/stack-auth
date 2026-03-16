@@ -1184,13 +1184,12 @@ export class StackClientInterface {
     await this.options.prepareRequest?.();
 
     const url = new URL(await this.getOAuthUrl(options));
-    url.searchParams.set("response_mode", "json");
+    url.searchParams.set("x_stack_response_mode", "json");
 
     let rawRes;
     try {
       rawRes = await fetch(url, {
         method: "GET",
-        credentials: "include",
       });
     } catch (error) {
       if (error instanceof TypeError) {

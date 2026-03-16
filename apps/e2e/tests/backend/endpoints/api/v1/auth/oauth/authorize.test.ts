@@ -52,7 +52,7 @@ it("should return the OAuth location as JSON when requested by the SDK flow", as
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     query: {
       ...await Auth.OAuth.getAuthorizeQuery(),
-      response_mode: "json",
+      x_stack_response_mode: "json",
     },
   });
 
@@ -66,24 +66,6 @@ it("should return the OAuth location as JSON when requested by the SDK flow", as
       },
     }
   `);
-});
-
-it("should return credentialed CORS headers for versioned OAuth authorize requests", async ({ expect }) => {
-  // Origin must match the redirect_uri origin for credentialed CORS to be reflected
-  const redirectOrigin = new URL(localRedirectUrl).origin;
-  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
-    redirect: "manual",
-    headers: {
-      origin: redirectOrigin,
-    },
-    query: {
-      ...await Auth.OAuth.getAuthorizeQuery(),
-      response_mode: "json",
-    },
-  });
-
-  expect(response.headers.get("access-control-allow-origin")).toBe(redirectOrigin);
-  expect(response.headers.get("access-control-allow-credentials")).toBe("true");
 });
 
 it("should not redirect the user to the OAuth provider with the right arguments when forcing a branch id that does not exist", async ({ expect }) => {

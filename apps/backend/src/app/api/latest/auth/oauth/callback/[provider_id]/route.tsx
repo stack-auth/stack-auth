@@ -77,12 +77,6 @@ const handler = createSmartRouteHandler({
   }),
   async handler({ params, query, body }, fullReq) {
     const innerState = query.state ?? (body as any)?.state ?? "";
-    const cookieInfo = (await cookies()).get("stack-oauth-inner-" + innerState);
-    (await cookies()).delete("stack-oauth-inner-" + innerState);
-
-    if (cookieInfo?.value !== 'true') {
-      throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
-    }
 
     const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
       where: {
@@ -91,7 +85,7 @@ const handler = createSmartRouteHandler({
     });
 
     if (!outerInfoDB) {
-      throw new StatusError(StatusError.BadRequest, "Invalid OAuth cookie. Please try signing in again.");
+      throw new StatusError(StatusError.BadRequest, "Invalid OAuth state. Please try signing in again.");
     }
 
     let outerInfo: Awaited<ReturnType<typeof oauthCookieSchema.validate>>;
@@ -99,6 +93,17 @@ const handler = createSmartRouteHandler({
       outerInfo = await oauthCookieSchema.validate(outerInfoDB.info);
     } catch (error) {
       throw new StackAssertionError("Invalid outer info");
+    }
+
+    // JSON-mode requests use PKCE for CSRF protection and don't set a cookie.
+    // Only check the CSRF cookie for browser-redirect mode requests.
+    if (outerInfo.responseMode !== 'json') {
+      const cookieInfo = (await cookies()).get("stack-oauth-inner-" + innerState);
+      (await cookies()).delete("stack-oauth-inner-" + innerState);
+
+      if (cookieInfo?.value !== 'true') {
+        throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
+      }
     }
 
     const {
