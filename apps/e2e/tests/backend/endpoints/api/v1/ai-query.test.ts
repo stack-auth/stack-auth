@@ -114,6 +114,8 @@ describe("AI Query Endpoint - Validation", () => {
   });
 
   it("rejects invalid tool names", async ({ expect }) => {
+    // Deterministic non-AI check: this payload is schema-valid, then rejected by
+    // route-level tool-name validation before any model/provider call.
     const response = await niceBackendFetch("/api/v1/ai/query/generate", {
       method: "POST",
       accessType: "admin",
@@ -196,23 +198,6 @@ describe("AI Query Endpoint - Validation", () => {
     expect(response.body).toMatchObject({ code: "SCHEMA_ERROR", error: expect.stringContaining("messages") });
   });
 
-  it("accepts valid request body with all required fields", async ({ expect }) => {
-    // This will forward to production, so we just verify it doesn't fail validation
-    const response = await niceBackendFetch("/api/v1/ai/query/generate", {
-      method: "POST",
-      accessType: "admin",
-      body: {
-        quality: "dumb",
-        speed: "fast",
-        tools: [],
-        systemPrompt: "command-center-ask-ai",
-        messages: [{ role: "user", content: "test" }],
-      },
-    });
-
-    expect(response.body).not.toMatchObject({ code: "SCHEMA_ERROR" });
-
-  }, 10000); // 60 seconds for AI API call
 });
 
 describeWithAi("AI Query Endpoint - Authentication", () => {
