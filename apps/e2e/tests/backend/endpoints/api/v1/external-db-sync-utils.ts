@@ -314,13 +314,38 @@ export async function waitForSyncedContactChannelDeletion(client: Client, value:
   });
 }
 
+export async function waitForSyncedEmailOutbox(client: Client, emailId: string, expectedStatus?: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "email_outboxes" WHERE "id" = $1`,
+    [emailId],
+    {
+      shouldExist: true,
+      description: `email outbox "${emailId}" to appear in external DB`,
+      checkRow: expectedStatus ? (row) => row.status === expectedStatus : undefined,
+    },
+  );
+}
+
+export async function waitForSyncedEmailOutboxByStatus(client: Client, status: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "email_outboxes" WHERE "status" = $1`,
+    [status],
+    {
+      shouldExist: true,
+      description: `email outbox with status "${status}" to appear in external DB`,
+    },
+  );
+}
+
 /**
  * Helper to create a project and update its config with external DB settings.
  * Tracks the project for cleanup later.
  */
 export async function createProjectWithExternalDb(
   externalDatabases: any,
-  projectOptions?: { display_name?: string, description?: string },
+  projectOptions?: { display_name?: string, description?: string, config?: Record<string, unknown> },
   options?: { projectTracker?: ProjectContext[] }
 ) {
   const project = await Project.createAndSwitch(projectOptions);

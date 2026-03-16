@@ -1004,6 +1004,9 @@ model EmailOutbox {
   unsubscribedAt DateTime?
   markedAsSpamAt DateTime?
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, id])
@@ -1011,6 +1014,8 @@ model EmailOutbox {
   @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
   @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
   @@index([isQueued], map: "EmailOutbox_isQueued_idx")
+  @@index([tenancyId, sequenceId], name: "EmailOutbox_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "EmailOutbox_shouldUpdateSequenceId_idx")
 }
 
 model EmailOutboxProcessingMetadata {

@@ -832,4 +832,292 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
+  "email_outboxes": {
+    sourceTables: { "EmailOutbox": "EmailOutbox" },
+    targetTable: "email_outboxes",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "email_outboxes" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "status" text NOT NULL,
+          "simple_status" text NOT NULL,
+          "created_with" text NOT NULL,
+          "email_draft_id" text,
+          "email_programmatic_call_template_id" text,
+          "is_high_priority" boolean NOT NULL DEFAULT false,
+          "rendered_is_transactional" boolean,
+          "rendered_subject" text,
+          "rendered_notification_category_id" text,
+          "scheduled_at" timestamp without time zone NOT NULL,
+          "created_at" timestamp without time zone NOT NULL,
+          "started_sending_at" timestamp without time zone,
+          "finished_sending_at" timestamp without time zone,
+          "sent_at" timestamp without time zone,
+          "delivered_at" timestamp without time zone,
+          "opened_at" timestamp without time zone,
+          "clicked_at" timestamp without time zone,
+          "unsubscribed_at" timestamp without time zone,
+          "marked_as_spam_at" timestamp without time zone,
+          "bounced_at" timestamp without time zone,
+          "can_have_delivery_info" boolean,
+          "skipped_reason" text,
+          "send_retries" integer NOT NULL DEFAULT 0,
+          "is_paused" boolean NOT NULL DEFAULT false
+        );
+        REVOKE ALL ON "email_outboxes" FROM PUBLIC;
+        GRANT SELECT ON "email_outboxes" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.email_outboxes (
+          project_id String,
+          branch_id String,
+          id UUID,
+          status LowCardinality(String),
+          simple_status LowCardinality(String),
+          created_with LowCardinality(String),
+          email_draft_id Nullable(String),
+          email_programmatic_call_template_id Nullable(String),
+          is_high_priority UInt8,
+          rendered_is_transactional Nullable(UInt8),
+          rendered_subject Nullable(String),
+          rendered_notification_category_id Nullable(String),
+          scheduled_at DateTime64(3, 'UTC'),
+          created_at DateTime64(3, 'UTC'),
+          started_sending_at Nullable(DateTime64(3, 'UTC')),
+          finished_sending_at Nullable(DateTime64(3, 'UTC')),
+          sent_at Nullable(DateTime64(3, 'UTC')),
+          delivered_at Nullable(DateTime64(3, 'UTC')),
+          opened_at Nullable(DateTime64(3, 'UTC')),
+          clicked_at Nullable(DateTime64(3, 'UTC')),
+          unsubscribed_at Nullable(DateTime64(3, 'UTC')),
+          marked_as_spam_at Nullable(DateTime64(3, 'UTC')),
+          bounced_at Nullable(DateTime64(3, 'UTC')),
+          can_have_delivery_info Nullable(UInt8),
+          skipped_reason LowCardinality(Nullable(String)),
+          send_retries Int32,
+          is_paused UInt8,
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT
+          "Tenancy"."projectId" AS "project_id",
+          "Tenancy"."branchId" AS "branch_id",
+          "EmailOutbox"."id" AS "id",
+          "EmailOutbox"."status"::text AS "status",
+          "EmailOutbox"."simpleStatus"::text AS "simple_status",
+          "EmailOutbox"."createdWith"::text AS "created_with",
+          "EmailOutbox"."emailDraftId" AS "email_draft_id",
+          "EmailOutbox"."emailProgrammaticCallTemplateId" AS "email_programmatic_call_template_id",
+          "EmailOutbox"."isHighPriority" AS "is_high_priority",
+          "EmailOutbox"."renderedIsTransactional" AS "rendered_is_transactional",
+          "EmailOutbox"."renderedSubject" AS "rendered_subject",
+          "EmailOutbox"."renderedNotificationCategoryId" AS "rendered_notification_category_id",
+          "EmailOutbox"."scheduledAt" AS "scheduled_at",
+          "EmailOutbox"."createdAt" AS "created_at",
+          "EmailOutbox"."startedSendingAt" AS "started_sending_at",
+          "EmailOutbox"."finishedSendingAt" AS "finished_sending_at",
+          "EmailOutbox"."sentAt" AS "sent_at",
+          "EmailOutbox"."deliveredAt" AS "delivered_at",
+          "EmailOutbox"."openedAt" AS "opened_at",
+          "EmailOutbox"."clickedAt" AS "clicked_at",
+          "EmailOutbox"."unsubscribedAt" AS "unsubscribed_at",
+          "EmailOutbox"."markedAsSpamAt" AS "marked_as_spam_at",
+          "EmailOutbox"."bouncedAt" AS "bounced_at",
+          "EmailOutbox"."canHaveDeliveryInfo" AS "can_have_delivery_info",
+          "EmailOutbox"."skippedReason"::text AS "skipped_reason",
+          "EmailOutbox"."sendRetries" AS "send_retries",
+          "EmailOutbox"."isPaused" AS "is_paused",
+          "EmailOutbox"."sequenceId" AS "sync_sequence_id",
+          "EmailOutbox"."tenancyId" AS "tenancyId",
+          false AS "sync_is_deleted"
+        FROM "EmailOutbox"
+        JOIN "Tenancy" ON "Tenancy"."id" = "EmailOutbox"."tenancyId"
+        WHERE "EmailOutbox"."tenancyId" = $1::uuid
+          AND "EmailOutbox"."sequenceId" IS NOT NULL
+          AND "EmailOutbox"."sequenceId" > $2::bigint
+        ORDER BY "EmailOutbox"."sequenceId" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT
+        "EmailOutbox"."id" AS "id",
+        "EmailOutbox"."status"::text AS "status",
+        "EmailOutbox"."simpleStatus"::text AS "simple_status",
+        "EmailOutbox"."createdWith"::text AS "created_with",
+        "EmailOutbox"."emailDraftId" AS "email_draft_id",
+        "EmailOutbox"."emailProgrammaticCallTemplateId" AS "email_programmatic_call_template_id",
+        "EmailOutbox"."isHighPriority" AS "is_high_priority",
+        "EmailOutbox"."renderedIsTransactional" AS "rendered_is_transactional",
+        "EmailOutbox"."renderedSubject" AS "rendered_subject",
+        "EmailOutbox"."renderedNotificationCategoryId" AS "rendered_notification_category_id",
+        "EmailOutbox"."scheduledAt" AS "scheduled_at",
+        "EmailOutbox"."createdAt" AS "created_at",
+        "EmailOutbox"."startedSendingAt" AS "started_sending_at",
+        "EmailOutbox"."finishedSendingAt" AS "finished_sending_at",
+        "EmailOutbox"."sentAt" AS "sent_at",
+        "EmailOutbox"."deliveredAt" AS "delivered_at",
+        "EmailOutbox"."openedAt" AS "opened_at",
+        "EmailOutbox"."clickedAt" AS "clicked_at",
+        "EmailOutbox"."unsubscribedAt" AS "unsubscribed_at",
+        "EmailOutbox"."markedAsSpamAt" AS "marked_as_spam_at",
+        "EmailOutbox"."bouncedAt" AS "bounced_at",
+        "EmailOutbox"."canHaveDeliveryInfo" AS "can_have_delivery_info",
+        "EmailOutbox"."skippedReason"::text AS "skipped_reason",
+        "EmailOutbox"."sendRetries" AS "send_retries",
+        "EmailOutbox"."isPaused" AS "is_paused",
+        "EmailOutbox"."sequenceId" AS "sequence_id",
+        "EmailOutbox"."tenancyId",
+        false AS "is_deleted"
+      FROM "EmailOutbox"
+      WHERE "EmailOutbox"."tenancyId" = $1::uuid
+        AND "EmailOutbox"."sequenceId" IS NOT NULL
+        AND "EmailOutbox"."sequenceId" > $2::bigint
+      ORDER BY "EmailOutbox"."sequenceId" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::text AS "status",
+            $3::text AS "simple_status",
+            $4::text AS "created_with",
+            $5::text AS "email_draft_id",
+            $6::text AS "email_programmatic_call_template_id",
+            $7::boolean AS "is_high_priority",
+            $8::boolean AS "rendered_is_transactional",
+            $9::text AS "rendered_subject",
+            $10::text AS "rendered_notification_category_id",
+            $11::timestamp without time zone AS "scheduled_at",
+            $12::timestamp without time zone AS "created_at",
+            $13::timestamp without time zone AS "started_sending_at",
+            $14::timestamp without time zone AS "finished_sending_at",
+            $15::timestamp without time zone AS "sent_at",
+            $16::timestamp without time zone AS "delivered_at",
+            $17::timestamp without time zone AS "opened_at",
+            $18::timestamp without time zone AS "clicked_at",
+            $19::timestamp without time zone AS "unsubscribed_at",
+            $20::timestamp without time zone AS "marked_as_spam_at",
+            $21::timestamp without time zone AS "bounced_at",
+            $22::boolean AS "can_have_delivery_info",
+            $23::text AS "skipped_reason",
+            $24::integer AS "send_retries",
+            $25::boolean AS "is_paused",
+            $26::bigint AS "sequence_id",
+            $27::boolean AS "is_deleted",
+            $28::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "email_outboxes" eo
+          USING params p
+          WHERE p."is_deleted" = true AND eo."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "email_outboxes" (
+            "id",
+            "status",
+            "simple_status",
+            "created_with",
+            "email_draft_id",
+            "email_programmatic_call_template_id",
+            "is_high_priority",
+            "rendered_is_transactional",
+            "rendered_subject",
+            "rendered_notification_category_id",
+            "scheduled_at",
+            "created_at",
+            "started_sending_at",
+            "finished_sending_at",
+            "sent_at",
+            "delivered_at",
+            "opened_at",
+            "clicked_at",
+            "unsubscribed_at",
+            "marked_as_spam_at",
+            "bounced_at",
+            "can_have_delivery_info",
+            "skipped_reason",
+            "send_retries",
+            "is_paused"
+          )
+          SELECT
+            p."id",
+            p."status",
+            p."simple_status",
+            p."created_with",
+            p."email_draft_id",
+            p."email_programmatic_call_template_id",
+            p."is_high_priority",
+            p."rendered_is_transactional",
+            p."rendered_subject",
+            p."rendered_notification_category_id",
+            p."scheduled_at",
+            p."created_at",
+            p."started_sending_at",
+            p."finished_sending_at",
+            p."sent_at",
+            p."delivered_at",
+            p."opened_at",
+            p."clicked_at",
+            p."unsubscribed_at",
+            p."marked_as_spam_at",
+            p."bounced_at",
+            p."can_have_delivery_info",
+            p."skipped_reason",
+            p."send_retries",
+            p."is_paused"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "status" = EXCLUDED."status",
+            "simple_status" = EXCLUDED."simple_status",
+            "created_with" = EXCLUDED."created_with",
+            "email_draft_id" = EXCLUDED."email_draft_id",
+            "email_programmatic_call_template_id" = EXCLUDED."email_programmatic_call_template_id",
+            "is_high_priority" = EXCLUDED."is_high_priority",
+            "rendered_is_transactional" = EXCLUDED."rendered_is_transactional",
+            "rendered_subject" = EXCLUDED."rendered_subject",
+            "rendered_notification_category_id" = EXCLUDED."rendered_notification_category_id",
+            "scheduled_at" = EXCLUDED."scheduled_at",
+            "created_at" = EXCLUDED."created_at",
+            "started_sending_at" = EXCLUDED."started_sending_at",
+            "finished_sending_at" = EXCLUDED."finished_sending_at",
+            "sent_at" = EXCLUDED."sent_at",
+            "delivered_at" = EXCLUDED."delivered_at",
+            "opened_at" = EXCLUDED."opened_at",
+            "clicked_at" = EXCLUDED."clicked_at",
+            "unsubscribed_at" = EXCLUDED."unsubscribed_at",
+            "marked_as_spam_at" = EXCLUDED."marked_as_spam_at",
+            "bounced_at" = EXCLUDED."bounced_at",
+            "can_have_delivery_info" = EXCLUDED."can_have_delivery_info",
+            "skipped_reason" = EXCLUDED."skipped_reason",
+            "send_retries" = EXCLUDED."send_retries",
+            "is_paused" = EXCLUDED."is_paused"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
 } as const;

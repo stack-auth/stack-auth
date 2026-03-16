@@ -22,6 +22,8 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: TEAMS_VIEW_SQL });
   await client.exec({ query: TEAM_MEMBERS_TABLE_BASE_SQL });
   await client.exec({ query: TEAM_MEMBERS_VIEW_SQL });
+  await client.exec({ query: EMAIL_OUTBOXES_TABLE_BASE_SQL });
+  await client.exec({ query: EMAIL_OUTBOXES_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -36,6 +38,7 @@ export async function runClickhouseMigrations() {
     "GRANT SELECT ON default.contact_channels TO limited_user;",
     "GRANT SELECT ON default.teams TO limited_user;",
     "GRANT SELECT ON default.team_members TO limited_user;",
+    "GRANT SELECT ON default.email_outboxes TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
@@ -51,6 +54,9 @@ export async function runClickhouseMigrations() {
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS team_members_project_isolation ON default.team_members FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS email_outboxes_project_isolation ON default.email_outboxes FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -326,6 +332,81 @@ SELECT
   profile_image_url,
   created_at
 FROM analytics_internal.team_members
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const EMAIL_OUTBOXES_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.email_outboxes (
+    project_id String,
+    branch_id String,
+    id UUID,
+    status LowCardinality(String),
+    simple_status LowCardinality(String),
+    created_with LowCardinality(String),
+    email_draft_id Nullable(String),
+    email_programmatic_call_template_id Nullable(String),
+    is_high_priority UInt8,
+    rendered_is_transactional Nullable(UInt8),
+    rendered_subject Nullable(String),
+    rendered_notification_category_id Nullable(String),
+    scheduled_at DateTime64(3, 'UTC'),
+    created_at DateTime64(3, 'UTC'),
+    started_sending_at Nullable(DateTime64(3, 'UTC')),
+    finished_sending_at Nullable(DateTime64(3, 'UTC')),
+    sent_at Nullable(DateTime64(3, 'UTC')),
+    delivered_at Nullable(DateTime64(3, 'UTC')),
+    opened_at Nullable(DateTime64(3, 'UTC')),
+    clicked_at Nullable(DateTime64(3, 'UTC')),
+    unsubscribed_at Nullable(DateTime64(3, 'UTC')),
+    marked_as_spam_at Nullable(DateTime64(3, 'UTC')),
+    bounced_at Nullable(DateTime64(3, 'UTC')),
+    can_have_delivery_info Nullable(UInt8),
+    skipped_reason LowCardinality(Nullable(String)),
+    send_retries Int32,
+    is_paused UInt8,
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const EMAIL_OUTBOXES_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.email_outboxes
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  status,
+  simple_status,
+  created_with,
+  email_draft_id,
+  email_programmatic_call_template_id,
+  is_high_priority,
+  rendered_is_transactional,
+  rendered_subject,
+  rendered_notification_category_id,
+  scheduled_at,
+  created_at,
+  started_sending_at,
+  finished_sending_at,
+  sent_at,
+  delivered_at,
+  opened_at,
+  clicked_at,
+  unsubscribed_at,
+  marked_as_spam_at,
+  bounced_at,
+  can_have_delivery_info,
+  skipped_reason,
+  send_retries,
+  is_paused
+FROM analytics_internal.email_outboxes
 FINAL
 WHERE sync_is_deleted = 0;
 `;

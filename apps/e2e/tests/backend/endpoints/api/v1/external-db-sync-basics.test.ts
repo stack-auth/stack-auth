@@ -2,7 +2,8 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
 import { test } from '../../../../helpers';
-import { InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
+import { withPortPrefix } from '../../../../helpers/ports';
+import { backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import {
   TEST_TIMEOUT,
   TestDbManager,
@@ -13,6 +14,8 @@ import {
   waitForSyncedContactChannelDeletion,
   waitForSyncedData,
   waitForSyncedDeletion,
+  waitForSyncedEmailOutbox,
+  waitForSyncedEmailOutboxByStatus,
   waitForSyncedTeam,
   waitForSyncedTeamDeletion,
   waitForSyncedTeamMember,
@@ -87,7 +90,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   let dbManager: TestDbManager;
   const createProjectWithExternalDb = (
     externalDatabases: any,
-    projectOptions?: { display_name?: string, description?: string }
+    projectOptions?: { display_name?: string, description?: string, config?: Record<string, unknown> }
   ) => {
     return createProjectWithExternalDbRaw(
       externalDatabases,
@@ -835,6 +838,227 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     await waitForSyncedTeamDeletion(client, teamId);
     await waitForSyncedTeamMemberDeletion(client, teamId, user.userId);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a project with email config, sends an email, and verifies
+   *   the email outbox row is synced to the external Postgres DB.
+   */
+  test('EmailOutbox sync (Postgres)', async () => {
+    const dbName = 'email_outbox_pg_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, {
+      display_name: 'Email Outbox Sync Test',
+      config: {
+        email_config: {
+          type: "standard",
+          host: "localhost",
+          port: Number(withPortPrefix("29")),
+          username: "test",
+          password: "test",
+          sender_name: "Test Project",
+          sender_email: "test@example.com",
+        },
+      },
+    });
+
+    // Create a user
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: backendContext.value.mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+    const userId = createUserResponse.body.id;
+
+    // Send an email
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        html: "<p>Sync test email</p>",
+        subject: "DB Sync Test Email",
+        notification_category_name: "Transactional",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Wait for the email to be processed (rendered + sent)
+    await wait(8_000);
+
+    // Get the email ID from the outbox API
+    const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+      method: "GET",
+      accessType: "server",
+    });
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.items.length).toBeGreaterThanOrEqual(1);
+    const emailId = listResponse.body.items[0].id;
+
+    const client = dbManager.getClient(dbName);
+
+    // Wait for the email outbox row to appear in external DB
+    await waitForSyncedEmailOutbox(client, emailId);
+
+    // Verify the synced row has expected columns
+    const res = await client.query(`SELECT * FROM "email_outboxes" WHERE "id" = $1`, [emailId]);
+    expect(res.rows.length).toBe(1);
+    const row = res.rows[0];
+    expect(row.created_with).toBe('PROGRAMMATIC_CALL');
+    expect(row.is_high_priority).toBe(false);
+    expect(row.is_paused).toBe(false);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a project, sends an email, and verifies the email outbox row
+   *   is synced to ClickHouse.
+   */
+  test('EmailOutbox sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        magic_link_enabled: true,
+        email_config: {
+          type: "standard",
+          host: "localhost",
+          port: Number(withPortPrefix("29")),
+          username: "test",
+          password: "test",
+          sender_name: "Test Project",
+          sender_email: "test@example.com",
+        },
+      },
+    });
+
+    // Create a user
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: backendContext.value.mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+    const userId = createUserResponse.body.id;
+
+    // Send an email
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        html: "<p>ClickHouse sync test email</p>",
+        subject: "CH Sync Test Email",
+        notification_category_name: "Transactional",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Wait for the email to be processed
+    await wait(8_000);
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    // Poll ClickHouse until the email_outboxes row appears
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT id, status, simple_status, created_with, is_high_priority FROM email_outboxes LIMIT 10",
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length >= 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBeGreaterThanOrEqual(1);
+    const row = response!.body.result[0];
+    expect(row.created_with).toBe('PROGRAMMATIC_CALL');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Sends an email, waits for it to reach a terminal state, then verifies
+   *   the status update is reflected in the external Postgres DB.
+   */
+  test('EmailOutbox status updates are synced (Postgres)', async () => {
+    const dbName = 'email_outbox_status_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, {
+      config: {
+        email_config: {
+          type: "standard",
+          host: "localhost",
+          port: Number(withPortPrefix("29")),
+          username: "test",
+          password: "test",
+          sender_name: "Test Project",
+          sender_email: "test@example.com",
+        },
+      },
+    });
+
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        primary_email: backendContext.value.mailbox.emailAddress,
+        primary_email_verified: true,
+      },
+    });
+    expect(createUserResponse.status).toBe(201);
+    const userId = createUserResponse.body.id;
+
+    const sendResponse = await niceBackendFetch("/api/v1/emails/send-email", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_ids: [userId],
+        html: "<p>Status sync test</p>",
+        subject: "Status Sync Test",
+        notification_category_name: "Transactional",
+      },
+    });
+    expect(sendResponse.status).toBe(200);
+
+    // Wait for the email to finish sending
+    await wait(8_000);
+
+    const client = dbManager.getClient(dbName);
+
+    // The email should eventually reach SENT status in the external DB
+    await waitForSyncedEmailOutboxByStatus(client, 'SENT');
+
+    const res = await client.query(`SELECT * FROM "email_outboxes" WHERE "status" = 'SENT'`);
+    expect(res.rows.length).toBeGreaterThanOrEqual(1);
+    const row = res.rows[0];
+    expect(row.simple_status).toBe('OK');
+    expect(row.finished_sending_at).not.toBeNull();
+    expect(row.sent_at).not.toBeNull();
+    expect(row.send_retries).toBe(0);
   }, TEST_TIMEOUT);
 
   /**

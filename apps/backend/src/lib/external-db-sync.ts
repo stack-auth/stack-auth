@@ -499,6 +499,13 @@ function normalizeClickhouseBoolean(value: unknown, label: string): number {
   throw new StackAssertionError(`${label} must be a boolean or 0/1. Received: ${JSON.stringify(value)}`);
 }
 
+function normalizeClickhouseNullableBoolean(value: unknown, label: string): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return normalizeClickhouseBoolean(value, label);
+}
+
 function parseSequenceId(value: unknown, mappingId: string): number | null {
   if (value == null) {
     return null;
@@ -530,7 +537,7 @@ async function ensureClickhouseSchema(
 
 // Map of target table name -> column normalizers for ClickHouse
 // 'json' columns get JSON.stringify, 'boolean' columns get normalizeClickhouseBoolean
-const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean'>> = {
+const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean' | 'nullable_boolean'>> = {
   users: {
     client_metadata: 'json',
     client_read_only_metadata: 'json',
@@ -553,6 +560,13 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
     sync_is_deleted: 'boolean',
   },
   team_members: {
+    sync_is_deleted: 'boolean',
+  },
+  email_outboxes: {
+    is_high_priority: 'boolean',
+    rendered_is_transactional: 'nullable_boolean',
+    can_have_delivery_info: 'nullable_boolean',
+    is_paused: 'boolean',
     sync_is_deleted: 'boolean',
   },
 };
@@ -626,6 +640,8 @@ async function pushRowsToClickhouse(
       if (col in normalized) {
         if (type === 'json') {
           normalized[col] = JSON.stringify(normalized[col]);
+        } else if (type === 'nullable_boolean') {
+          normalized[col] = normalizeClickhouseNullableBoolean(normalized[col], col);
         } else {
           normalized[col] = normalizeClickhouseBoolean(normalized[col], col);
         }
