@@ -1,7 +1,7 @@
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
--- Validate CHECK constraints added in migration 000004 (scans table but does not hold ACCESS EXCLUSIVE lock).
+-- Validate CHECK constraints added in migration 000000 (scans table but does not hold ACCESS EXCLUSIVE lock).
 ALTER TABLE "ProjectUser" VALIDATE CONSTRAINT "ProjectUser_risk_score_bot_range";
 
 -- SPLIT_STATEMENT_SENTINEL

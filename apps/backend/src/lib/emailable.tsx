@@ -117,6 +117,9 @@ export async function checkEmailWithEmailable(
   }
 
   if (!rawApiKey) {
+    if (["development", "test"].includes(getNodeEnvironment())) {
+      return { status: "ok", emailableScore: null };
+    }
     throw new StackAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
   }
   const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;

@@ -88,6 +88,7 @@ export function MagicLinkSignIn() {
   const { register, handleSubmit, setError, formState: { errors } } = useForm({
     resolver: yupResolver(schema)
   });
+
   const onSubmit = async (data: yup.InferType<typeof schema>) => {
     setLoading(true);
     try {

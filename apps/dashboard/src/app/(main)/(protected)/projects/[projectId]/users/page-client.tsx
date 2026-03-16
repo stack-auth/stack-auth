@@ -41,6 +41,11 @@ export default function PageClient() {
   }>({ includeRestricted: false, includeAnonymous: false });
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const handleRefresh = async () => {
+    await (stackAdminApp as any)._refreshUsers();
+    setRefreshKey((k) => k + 1);
+  };
+
   return (
     <AppEnabledGuard appId="authentication">
       <PageLayout
@@ -54,10 +59,7 @@ export default function PageClient() {
         actions={
           <div className="flex gap-2">
             <SimpleTooltip tooltip="Refresh">
-              <Button variant="outline" size="icon" onClick={async () => {
-                await (stackAdminApp as any)._refreshUsers();
-                setRefreshKey((k) => k + 1);
-              }}>
+              <Button variant="outline" size="icon" onClick={handleRefresh}>
                 <ArrowsClockwiseIcon className="h-4 w-4" />
               </Button>
             </SimpleTooltip>

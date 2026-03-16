@@ -119,16 +119,50 @@ function extractEngine(mod: unknown): SignUpRiskEngine {
   throw new Error("Private sign-up risk module does not export a valid signUpRiskEngine");
 }
 
-async function loadEngine(): Promise<SignUpRiskEngine> {
-  const root = _testOverrides.rootPath ?? path.resolve(process.cwd(), "packages/private");
-  const fullPath = path.join(root, PRIVATE_MODULE_PATH);
-
-  try {
-    const importer = _testOverrides.importer ?? ((p: string) => import(p));
-    return extractEngine(await importer(fullPath));
-  } catch {
-    return fallbackSignUpRiskEngine;
+function getPrivateModuleFallbackPaths(): string[] {
+  if (_testOverrides.rootPath != null) {
+    return [path.join(_testOverrides.rootPath, PRIVATE_MODULE_PATH)];
   }
+
+  const cwd = process.cwd();
+  return [
+    // When cwd is the monorepo root (e.g. running node directly)
+    path.join(cwd, "packages/private", PRIVATE_MODULE_PATH),
+    // When cwd is a workspace directory (e.g. apps/backend via turbo)
+    path.join(cwd, "../../packages/private", PRIVATE_MODULE_PATH),
+  ];
+}
+
+const PRIVATE_PACKAGE_IMPORT = "@stackframe/private/dist/sign-up-risk-engine.js";
+
+// Native dynamic import that bypasses webpack/turbopack bundling.
+// The webpackIgnore comment ensures the import is left as a native Node.js
+// dynamic import at runtime, rather than being transformed by the bundler.
+function nativeImport(modulePath: string): Promise<unknown> {
+  return import(/* webpackIgnore: true */ modulePath);
+}
+
+async function loadEngine(): Promise<SignUpRiskEngine> {
+  const importer = _testOverrides.importer ?? nativeImport;
+
+  // Prefer package-name resolution (works when @stackframe/private is a proper dependency)
+  try {
+    return extractEngine(await importer(PRIVATE_PACKAGE_IMPORT));
+  } catch {
+    // Not installed as a dependency — fall back to path-based resolution
+  }
+
+  // Fall back to path-based resolution for monorepo setups
+  for (const fullPath of getPrivateModuleFallbackPaths()) {
+    try {
+      return extractEngine(await importer(fullPath));
+    } catch {
+      continue;
+    }
+  }
+
+  console.warn("[risk-scores] Private sign-up risk engine not found — using fallback (zero scores). Searched:", [PRIVATE_PACKAGE_IMPORT, ...getPrivateModuleFallbackPaths()]);
+  return fallbackSignUpRiskEngine;
 }
 
 function getEngine(): Promise<SignUpRiskEngine> {

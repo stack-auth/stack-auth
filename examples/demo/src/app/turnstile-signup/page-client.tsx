@@ -25,7 +25,7 @@ type FlowResult = {
 };
 
 type SignupResult =
-  | { ok: true }
+  | { ok: true, accessToken: string, refreshToken: string }
   | { ok: false, code: string, message: string };
 
 /**
@@ -63,7 +63,8 @@ async function debugSignup(
       body: JSON.stringify(bodyObj),
     });
     if (res.ok) {
-      return { ok: true };
+      const resBody = await res.json().catch(() => ({}));
+      return { ok: true, accessToken: resBody.access_token, refreshToken: resBody.refresh_token };
     }
     const resBody = await res.json().catch(() => ({}));
     return { ok: false, code: resBody.code ?? `HTTP_${res.status}`, message: resBody.message ?? res.statusText };
@@ -89,7 +90,7 @@ function isChallengeRequired(result: SignupResult): boolean {
 
 export default function TurnstileSignupPageClient() {
   const app = useStackApp();
-  const user = useUser();
+  const user = useUser({ includeRestricted: true });
   const [email, setEmail] = useState(() => createSuggestedEmail());
   const [password, setPassword] = useState("Demo-password-123!");
 
@@ -103,6 +104,7 @@ export default function TurnstileSignupPageClient() {
 
   const internals = app[stackAppInternalsSymbol] as any;
   const sendRequest: (path: string, init: RequestInit) => Promise<Response> = internals.sendRequest;
+  const signInWithTokens: (tokens: { accessToken: string, refreshToken: string }) => Promise<void> = internals.signInWithTokens;
 
   function freshEmail() {
     const e = createSuggestedEmail();
@@ -196,6 +198,7 @@ export default function TurnstileSignupPageClient() {
       turnstilePhase: "invisible",
     });
     if (res.ok) {
+      await signInWithTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
       return { status: "success", message: "Signup succeeded. Invisible token was accepted." };
     }
     return { status: "error", message: `Signup failed: ${res.code} — ${res.message}` };
@@ -227,6 +230,7 @@ export default function TurnstileSignupPageClient() {
     });
 
     if (secondRes.ok) {
+      await signInWithTokens({ accessToken: secondRes.accessToken, refreshToken: secondRes.refreshToken });
       return { status: "success", message: "Signup succeeded after visible challenge." };
     }
     return { status: "error", message: `Retry failed: ${secondRes.code} — ${secondRes.message}` };
@@ -261,6 +265,7 @@ export default function TurnstileSignupPageClient() {
   async function flowNoToken(signupEmail: string): Promise<FlowResult> {
     const res = await debugSignup(sendRequest, { email: signupEmail, password });
     if (res.ok) {
+      await signInWithTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
       return { status: "success", message: "Signup succeeded without any token. Backend accepted it." };
     }
     return { status: "error", message: `Signup failed: ${res.code} — ${res.message}` };
@@ -289,6 +294,7 @@ export default function TurnstileSignupPageClient() {
     });
 
     if (result.ok) {
+      await signInWithTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
       return { status: "success", message: "Signup succeeded via withTurnstileFlow orchestrator." };
     }
     return { status: "error", message: `Signup failed: ${result.code} — ${result.message}` };
@@ -306,6 +312,7 @@ export default function TurnstileSignupPageClient() {
         turnstilePhase: "invisible",
       });
       if (res.ok) {
+        await signInWithTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
         return { status: "success", message: "[Random: invisible pass] Signup succeeded." };
       }
       return { status: "error", message: `[Random: invisible pass] Failed: ${res.code}` };
@@ -327,6 +334,7 @@ export default function TurnstileSignupPageClient() {
         turnstilePreviousResult: "invalid",
       });
       if (secondRes.ok) {
+        await signInWithTokens({ accessToken: secondRes.accessToken, refreshToken: secondRes.refreshToken });
         return { status: "success", message: "[Random: challenge -> pass] Signup succeeded after challenge." };
       }
       return { status: "error", message: `[Random: challenge -> pass] Retry failed: ${secondRes.code}` };
@@ -354,6 +362,7 @@ export default function TurnstileSignupPageClient() {
       // 10%: no token
       const res = await debugSignup(sendRequest, { email: signupEmail, password });
       if (res.ok) {
+        await signInWithTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
         return { status: "success", message: "[Random: no token] Signup succeeded." };
       }
       return { status: "error", message: `[Random: no token] Failed: ${res.code}` };

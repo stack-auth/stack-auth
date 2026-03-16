@@ -31,13 +31,13 @@ import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
+import { withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
-import { withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
@@ -1036,6 +1036,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
+
+    // Pre-fetch the current user for the new session so the cache is already
+    // populated when useUser() re-renders, avoiding a stale-cache render cycle.
+    const newSession = this._getSessionFromTokenStore(tokenStore);
+    this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
   }
 
   protected _hasPersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): this is StackClientApp<true, ProjectId> {
@@ -3237,6 +3242,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
+      },
+      signInWithTokens: async (tokens: { accessToken: string, refreshToken: string }) => {
+        await this._signInToAccountWithTokens(tokens);
       },
     };
   };

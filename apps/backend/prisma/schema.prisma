@@ -267,6 +267,7 @@ model ProjectUser {
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
+  signUpCountryCode      String?
 
   // Admin restriction fields - can be set by signup rules or manually by admins
   restrictedByAdmin               Boolean @default(false)
@@ -274,7 +275,6 @@ model ProjectUser {
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   // Sign-up metadata
-  signUpCountryCode               String?
   signedUpAt                      DateTime?
   signUpIp                        String?
   signUpIpTrusted                 Boolean?
