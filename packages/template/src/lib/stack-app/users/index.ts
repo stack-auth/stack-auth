@@ -469,7 +469,6 @@ export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions):
     profile_image_url: options.profileImageUrl,
     totp_secret_base64: options.totpMultiFactorSecret != null ? encodeBase64(options.totpMultiFactorSecret) : options.totpMultiFactorSecret,
   };
-  // Add admin restriction fields (may not be in generated types yet but will be at runtime)
   return {
     ...baseUpdate,
     restricted_by_admin: options.restrictedByAdmin,
@@ -482,7 +481,7 @@ export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions):
         free_trial_abuse: options.riskScores.signUp.freeTrialAbuse,
       },
     } : undefined,
-  } as CurrentUserCrud["Server"]["Update"];
+  };
 }
 
 

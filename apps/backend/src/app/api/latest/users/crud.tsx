@@ -1174,6 +1174,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
+          signedUpAt: oldUser.isAnonymous && data.is_anonymous === false ? new Date() : undefined,
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,

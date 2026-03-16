@@ -772,6 +772,9 @@ const TurnstileChallengeFailed = createKnownErrorConstructor(
   (message: string) => [
     400,
     message,
+    {
+      message,
+    },
   ] as const,
   (json: any) => [json.message] as const,
 );

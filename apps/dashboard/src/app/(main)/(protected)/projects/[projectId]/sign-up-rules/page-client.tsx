@@ -522,6 +522,8 @@ function DefaultActionCard({
   );
 }
 
+const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
+
 function TestRulesCard({
   stackAdminApp,
 }: {
@@ -531,7 +533,7 @@ function TestRulesCard({
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
   const [countryCodeOverride, setCountryCodeOverride] = useState('');
-  const [turnstileResultOverride, setTurnstileResultOverride] = useState<'ok' | 'invalid' | 'error' | ''>('');
+  const [turnstileResultOverride, setTurnstileResultOverride] = useState<'ok' | 'invalid' | 'error' | typeof DEFAULT_TURNSTILE_OVERRIDE>(DEFAULT_TURNSTILE_OVERRIDE);
   const [botRiskScoreOverride, setBotRiskScoreOverride] = useState('');
   const [freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride] = useState('');
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
@@ -564,7 +566,7 @@ function TestRulesCard({
             ? (oauthProvider === '' ? null : oauthProvider)
             : null,
           country_code: normalizedCountryCodeOverride === '' ? null : normalizedCountryCodeOverride,
-          ...(turnstileResultOverride === ''
+          ...(turnstileResultOverride === DEFAULT_TURNSTILE_OVERRIDE
             ? {}
             : {
               turnstile_result: turnstileResultOverride,
@@ -735,7 +737,7 @@ function TestRulesCard({
               Turnstile override
             </Typography>
             <Select value={turnstileResultOverride} onValueChange={(value) => {
-              if (value === "" || value === "ok" || value === "invalid" || value === "error") {
+              if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
                 setTurnstileResultOverride(value);
               }
             }}>
@@ -743,7 +745,7 @@ function TestRulesCard({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Default (use real result)</SelectItem>
+                <SelectItem value={DEFAULT_TURNSTILE_OVERRIDE}>Default (use real result)</SelectItem>
                 <SelectItem value="ok">OK</SelectItem>
                 <SelectItem value="invalid">Invalid</SelectItem>
                 <SelectItem value="error">Error</SelectItem>

@@ -37,7 +37,12 @@ export function TurnstileVisibleWidget(props: {
     const loadPromise = (async () => {
       await loadTurnstileScript();
       const turnstileApi = getTurnstileApi();
-      if (state.cancelled || !turnstileApi) {
+      if (state.cancelled) {
+        return;
+      }
+      if (!turnstileApi) {
+        onErrorRef.current?.("Failed to initialize Turnstile");
+        onTokenChangeRef.current(null);
         return;
       }
 

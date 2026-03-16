@@ -16,7 +16,7 @@
  */
 
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { type ConditionField, type ConditionOperator, escapeCelString, isNumericField, unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
+import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
 export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
@@ -65,7 +65,7 @@ function normalizeConditionValue(condition: ConditionNode): ConditionNode['value
   }
 
   if (typeof condition.value === 'number') {
-    return condition.value;
+    throw new Error(`Invalid numeric value for countryCode: ${condition.value}. Country codes must be strings.`);
   }
 
   return normalizeCountryCode(condition.value);
@@ -75,17 +75,22 @@ function conditionToCel(condition: ConditionNode): string {
   const { field, operator } = condition;
   const value = normalizeConditionValue(condition);
   const valueAsNumber = typeof value === 'number' ? value : Number(value);
-  const useNumericValue = isNumericField(field) && Number.isFinite(valueAsNumber);
 
   switch (operator) {
     case 'equals': {
-      if (useNumericValue) {
+      if (isNumericField(field)) {
+        if (!Number.isFinite(valueAsNumber)) {
+          throw new Error(`Expected a finite number for numeric field "${field}", got "${value}"`);
+        }
         return `${field} == ${valueAsNumber}`;
       }
       return `${field} == "${escapeCelString(String(value))}"`;
     }
     case 'not_equals': {
-      if (useNumericValue) {
+      if (isNumericField(field)) {
+        if (!Number.isFinite(valueAsNumber)) {
+          throw new Error(`Expected a finite number for numeric field "${field}", got "${value}"`);
+        }
         return `${field} != ${valueAsNumber}`;
       }
       return `${field} != "${escapeCelString(String(value))}"`;
@@ -285,6 +290,15 @@ function splitByOperator(expr: string, operator: string): string[] {
   return parts;
 }
 
+function isConditionField(field: string): field is ConditionField {
+  return (conditionFields as string[]).includes(field);
+}
+
+function isValidFieldOperator(field: string, operator: ConditionOperator): field is ConditionField {
+  if (!isConditionField(field)) return false;
+  return fieldMetadata[field].operators.includes(operator);
+}
+
 function parseCondition(expr: string): ConditionNode | null {
   const trimmed = expr.trim();
 
@@ -303,10 +317,14 @@ function parseCondition(expr: string): ConditionNode | null {
     const escapedSymbol = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const match = trimmed.match(new RegExp(`^([\\w.]+)\\s*${escapedSymbol}\\s*(-?\\d+(?:\\.\\d+)?)$`));
     if (match) {
+      if (!isConditionField(match[1])) return null;
+      const field = match[1];
+      if (!isNumericField(field)) return null;
+      if (!isValidFieldOperator(field, operator)) return null;
       return {
         type: 'condition',
         id: generateNodeId(),
-        field: match[1] as ConditionField,
+        field,
         operator,
         value: Number(match[2]),
       };
@@ -316,10 +334,13 @@ function parseCondition(expr: string): ConditionNode | null {
   // Match patterns like: field == "value"
   const equalsMatch = trimmed.match(/^([\w.]+)\s*==\s*"((?:\\.|[^"\\])*)"$/);
   if (equalsMatch) {
+    if (!isConditionField(equalsMatch[1])) return null;
+    const field = equalsMatch[1];
+    if (!isValidFieldOperator(field, 'equals')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: equalsMatch[1] as ConditionField,
+      field,
       operator: 'equals',
       value: unescapeCelString(equalsMatch[2]),
     };
@@ -328,10 +349,13 @@ function parseCondition(expr: string): ConditionNode | null {
   // Match patterns like: field != "value"
   const notEqualsMatch = trimmed.match(/^([\w.]+)\s*!=\s*"((?:\\.|[^"\\])*)"$/);
   if (notEqualsMatch) {
+    if (!isConditionField(notEqualsMatch[1])) return null;
+    const field = notEqualsMatch[1];
+    if (!isValidFieldOperator(field, 'not_equals')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: notEqualsMatch[1] as ConditionField,
+      field,
       operator: 'not_equals',
       value: unescapeCelString(notEqualsMatch[2]),
     };
@@ -340,10 +364,13 @@ function parseCondition(expr: string): ConditionNode | null {
   // Match patterns like: field.matches("regex")
   const matchesMatch = trimmed.match(/^([\w.]+)\.matches\("((?:\\.|[^"\\])*)"\)$/);
   if (matchesMatch) {
+    if (!isConditionField(matchesMatch[1])) return null;
+    const field = matchesMatch[1];
+    if (!isValidFieldOperator(field, 'matches')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: matchesMatch[1] as ConditionField,
+      field,
       operator: 'matches',
       value: unescapeCelString(matchesMatch[2]),
     };
@@ -352,10 +379,13 @@ function parseCondition(expr: string): ConditionNode | null {
   // Match patterns like: field.endsWith("value")
   const endsWithMatch = trimmed.match(/^([\w.]+)\.endsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (endsWithMatch) {
+    if (!isConditionField(endsWithMatch[1])) return null;
+    const field = endsWithMatch[1];
+    if (!isValidFieldOperator(field, 'ends_with')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: endsWithMatch[1] as ConditionField,
+      field,
       operator: 'ends_with',
       value: unescapeCelString(endsWithMatch[2]),
     };
@@ -364,10 +394,13 @@ function parseCondition(expr: string): ConditionNode | null {
   // Match patterns like: field.startsWith("value")
   const startsWithMatch = trimmed.match(/^([\w.]+)\.startsWith\("((?:\\.|[^"\\])*)"\)$/);
   if (startsWithMatch) {
+    if (!isConditionField(startsWithMatch[1])) return null;
+    const field = startsWithMatch[1];
+    if (!isValidFieldOperator(field, 'starts_with')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: startsWithMatch[1] as ConditionField,
+      field,
       operator: 'starts_with',
       value: unescapeCelString(startsWithMatch[2]),
     };
@@ -376,10 +409,13 @@ function parseCondition(expr: string): ConditionNode | null {
   // Match patterns like: field.contains("value")
   const containsMatch = trimmed.match(/^([\w.]+)\.contains\("((?:\\.|[^"\\])*)"\)$/);
   if (containsMatch) {
+    if (!isConditionField(containsMatch[1])) return null;
+    const field = containsMatch[1];
+    if (!isValidFieldOperator(field, 'contains')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: containsMatch[1] as ConditionField,
+      field,
       operator: 'contains',
       value: unescapeCelString(containsMatch[2]),
     };
@@ -398,10 +434,13 @@ function parseCondition(expr: string): ConditionNode | null {
         const match = s.match(/^["']((?:\\.|[^"\\])*)["']$/);
         return match ? unescapeCelString(match[1]) : s;
       });
+    if (!isConditionField(inListMatch[1])) return null;
+    const field = inListMatch[1];
+    if (!isValidFieldOperator(field, 'in_list')) return null;
     return {
       type: 'condition',
       id: generateNodeId(),
-      field: inListMatch[1] as ConditionField,
+      field,
       operator: 'in_list',
       value: items,
     };

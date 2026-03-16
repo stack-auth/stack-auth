@@ -30,7 +30,7 @@ function createJsonResponse(body: unknown): Response {
   });
 }
 
-function getRequestBody(fetchMock: { mock: { calls: unknown[][] } }): object {
+function getRequestBody(fetchMock: { mock: { calls: unknown[][] } }): Record<string, unknown> {
   const requestInit = fetchMock.mock.calls[0]?.[1];
   if (requestInit == null || typeof requestInit !== "object" || !("body" in requestInit)) {
     throw new Error("Expected request init to include a body");

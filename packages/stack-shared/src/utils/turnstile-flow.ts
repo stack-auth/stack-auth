@@ -210,7 +210,8 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
   try {
     invisibleToken = await executeTurnstileInvisible(options.invisibleSiteKey, options.action);
   } catch {
-    // If invisible execution fails, proceed without a token
+    // If invisible execution fails, fall back to the visible challenge
+    invisibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
   }
 
   const firstResult = await options.execute({

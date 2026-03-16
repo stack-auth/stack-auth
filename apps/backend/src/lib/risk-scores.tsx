@@ -2,9 +2,6 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } f
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { createJiti } from "jiti";
-import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
 import { normalizeEmail } from "./emails";
@@ -80,10 +77,7 @@ const fallbackSignUpRiskEngine: SignUpRiskEngine = {
 
 // ── Private engine loader ──────────────────────────────────────────────
 
-const CANDIDATE_SUBPATHS = [
-  "dist/sign-up-risk-engine.js",
-  "src/sign-up-risk-engine.ts",
-] as const;
+const PRIVATE_MODULE_PATH = "dist/sign-up-risk-engine.js";
 
 const _testOverrides = {
   rootPath: null as string | null,
@@ -91,18 +85,6 @@ const _testOverrides = {
 };
 
 let cachedEngine: Promise<SignUpRiskEngine> | null = null;
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch (error: any) {
-    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
-      return false;
-    }
-    throw error;
-  }
-}
 
 function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
   return typeof value === "object"
@@ -139,25 +121,14 @@ function extractEngine(mod: unknown): SignUpRiskEngine {
 
 async function loadEngine(): Promise<SignUpRiskEngine> {
   const root = _testOverrides.rootPath ?? path.resolve(process.cwd(), "packages/private");
-  if (!await fileExists(root)) {
+  const fullPath = path.join(root, PRIVATE_MODULE_PATH);
+
+  try {
+    const importer = _testOverrides.importer ?? ((p: string) => import(p));
+    return extractEngine(await importer(fullPath));
+  } catch {
     return fallbackSignUpRiskEngine;
   }
-
-  for (const subpath of CANDIDATE_SUBPATHS) {
-    const fullPath = path.join(root, subpath);
-    if (!await fileExists(fullPath)) {
-      continue;
-    }
-
-    const importer = _testOverrides.importer ?? (async (p: string) => {
-      const jiti = createJiti(import.meta.url, { cache: false });
-      return await jiti.import(p);
-    });
-
-    return extractEngine(await importer(fullPath));
-  }
-
-  return fallbackSignUpRiskEngine;
 }
 
 function getEngine(): Promise<SignUpRiskEngine> {
@@ -279,24 +250,17 @@ import.meta.vitest?.test("loader falls back when private submodule is absent", a
   }
 });
 
-import.meta.vitest?.test("loader rethrows private engine import errors", async ({ expect }) => {
+import.meta.vitest?.test("loader falls back when private engine import fails", async ({ expect }) => {
   resetEngineForTests();
-  const tmpBase = os.tmpdir();
-  await fs.mkdir(tmpBase, { recursive: true });
-  const tempRoot = await fs.mkdtemp(path.join(tmpBase, "private-risk-engine-"));
+
+  _testOverrides.rootPath = path.join(process.cwd(), "packages", "private");
+  _testOverrides.importer = async () => {
+    throw new Error("private engine exploded");
+  };
 
   try {
-    await fs.mkdir(path.join(tempRoot, "dist"), { recursive: true });
-    await fs.writeFile(path.join(tempRoot, "dist", "sign-up-risk-engine.js"), "export {};\n");
-
-    _testOverrides.rootPath = tempRoot;
-    _testOverrides.importer = async () => {
-      throw new Error("private engine exploded");
-    };
-
-    await expect(getEngine()).rejects.toThrow("private engine exploded");
+    expect(await getEngine()).toBe(fallbackSignUpRiskEngine);
   } finally {
     resetEngineForTests();
-    await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });

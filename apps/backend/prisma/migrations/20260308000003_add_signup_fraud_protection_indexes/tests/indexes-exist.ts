@@ -9,7 +9,6 @@ export const postMigration = async (sql: Sql) => {
       AND tablename = 'ProjectUser'
       AND indexname IN (
         'ProjectUser_signedUpAt_asc',
-        'ProjectUser_signedUpAt_desc',
         'ProjectUser_signUpIp_recent_idx',
         'ProjectUser_signUpEmailBase_recent_idx'
       )
@@ -20,6 +19,5 @@ export const postMigration = async (sql: Sql) => {
     'ProjectUser_signUpEmailBase_recent_idx',
     'ProjectUser_signUpIp_recent_idx',
     'ProjectUser_signedUpAt_asc',
-    'ProjectUser_signedUpAt_desc',
   ]);
 };

@@ -246,7 +246,7 @@ function ConditionRow({
               const items = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
               handleValueChange(items);
             }}
-            placeholder="value1, value2, ..."
+            placeholder="value1, value2, ... (values cannot contain commas)"
             className={cn(
               "h-8 px-2 text-sm bg-background/60 border rounded-md w-full",
               countryCodeError !== null

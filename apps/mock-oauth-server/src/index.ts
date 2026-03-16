@@ -61,7 +61,10 @@ function getMockTurnstileVerificationResponse(token: unknown): {
     action?: string,
   },
 } | null {
-  const normalizedToken = typeof token === "string" ? token.trim() : "";
+  if (typeof token !== "string" || token.trim() === "") {
+    return null;
+  }
+  const normalizedToken = token.trim();
 
   if (normalizedToken === "mock-turnstile-error") {
     return {
@@ -103,7 +106,16 @@ app.use(express.json()); // Add JSON parsing middleware
 // Only mock tokens (prefixed with "mock-turnstile-") are handled here. For real tokens, configure the
 // STACK_TURNSTILE_SITEVERIFY_URL envvar to point directly to Cloudflare instead of this mock server.
 app.post('/turnstile/siteverify', async (req: express.Request, res: express.Response) => {
-  const verification = getMockTurnstileVerificationResponse(req.body.response);
+  const token = req.body.response;
+  if (typeof token !== "string" || token.trim() === "") {
+    res.status(400).json({
+      success: false,
+      "error-codes": ["missing-input-response"],
+    });
+    return;
+  }
+
+  const verification = getMockTurnstileVerificationResponse(token);
   if (verification) {
     res.status(verification.statusCode).json(verification.body);
     return;

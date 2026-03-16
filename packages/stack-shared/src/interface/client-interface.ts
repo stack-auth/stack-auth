@@ -48,11 +48,13 @@ export type ClientInterfaceOptions = {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
-function getTurnstileRequestFields(turnstile: {
+type TurnstileInput = {
   token?: string,
   phase?: "invisible" | "visible",
   previousResult?: TurnstileRetryResult,
-} | undefined, context: string) {
+};
+
+function getTurnstileRequestFields(turnstile: TurnstileInput | undefined, context: string) {
   const turnstileToken = turnstile?.token?.trim() || undefined;
   if (turnstile?.phase === "visible") {
     if (turnstileToken == null) {
@@ -636,11 +638,7 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
-    turnstile?: {
-      token?: string,
-      phase?: "invisible" | "visible",
-      previousResult?: TurnstileRetryResult,
-    },
+    turnstile?: TurnstileInput,
   ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
@@ -958,11 +956,7 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
-    turnstile?: {
-      token?: string,
-      phase?: "invisible" | "visible",
-      previousResult?: TurnstileRetryResult,
-    },
+    turnstile?: TurnstileInput,
   ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["TurnstileChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
@@ -1107,11 +1101,7 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
-      turnstile?: {
-        token?: string,
-        phase?: "invisible" | "visible",
-        previousResult?: TurnstileRetryResult,
-      },
+      turnstile?: TurnstileInput,
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1170,11 +1160,7 @@ export class StackClientInterface {
     state: string,
     type: "authenticate" | "link",
     providerScope?: string,
-    turnstile?: {
-      token?: string,
-      phase?: "invisible" | "visible",
-      previousResult?: TurnstileRetryResult,
-    },
+    turnstile?: TurnstileInput,
     session: InternalSession,
   }): Promise<Result<string, KnownErrors["TurnstileChallengeRequired"]>> {
     if (typeof window === "undefined") {

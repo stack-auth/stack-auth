@@ -143,30 +143,20 @@ export const GET = createSmartRouteHandler({
       },
     });
 
-    if (query.x_stack_response_mode === "json") {
-      // In JSON mode the client controls the flow programmatically and PKCE
-      // already prevents CSRF, so we skip the cookie (which would require
-      // credentials: "include" and a non-wildcard CORS origin).
-      return {
-        statusCode: 200,
-        bodyType: "json",
-        body: {
-          location: oauthUrl,
-        },
-      };
+    const responseMode = query.x_stack_response_mode;
+    if (responseMode !== "json") {
+      redirect(oauthUrl);
     }
 
-    // For browser-redirect mode, set a CSRF cookie that the callback route checks.
-    (await cookies()).set(
-      "stack-oauth-inner-" + innerState,
-      "true",
-      {
-        httpOnly: true,
-        secure: getNodeEnvironment() !== "development",
-        maxAge: 60 * outerOAuthFlowExpirationInMinutes,
-      }
-    );
-
-    redirect(oauthUrl);
+    // In JSON mode the client controls the flow programmatically and PKCE
+    // already prevents CSRF, so we skip the cookie (which would require
+    // credentials: "include" and a non-wildcard CORS origin).
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: {
+        location: oauthUrl,
+      },
+    };
   },
 });

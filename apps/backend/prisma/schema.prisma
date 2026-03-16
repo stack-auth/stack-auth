@@ -310,7 +310,6 @@ model ProjectUser {
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
   @@index([tenancyId, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
-  @@index([tenancyId, signedUpAt(sort: Desc)], name: "ProjectUser_signedUpAt_desc")
   @@index([tenancyId, signUpIp, signedUpAt], name: "ProjectUser_signUpIp_recent_idx")
   @@index([tenancyId, signUpEmailBase, signedUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
   @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
