@@ -310,7 +310,7 @@ function transformUserData(
         break;
       }
       case "signedUpAt": {
-        data["Signed Up At"] = new Date(user.signedUpAt).toISOString();
+        data["Signed Up At"] = user.signedUpAt ? new Date(user.signedUpAt).toISOString() : "";
         break;
       }
       case "lastActiveAt": {

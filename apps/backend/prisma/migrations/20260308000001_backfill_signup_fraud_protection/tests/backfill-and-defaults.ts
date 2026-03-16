@@ -5,10 +5,13 @@ import { expect } from 'vitest';
 export const preMigration = async (sql: Sql) => {
   const projectId = `test-${randomUUID()}`;
   const tenancyId = randomUUID();
-  const userId = randomUUID();
+  const regularUserId = randomUUID();
+  const anonUserId = randomUUID();
 
   await sql`INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode") VALUES (${projectId}, NOW(), NOW(), 'Test', '', false)`;
   await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${tenancyId}::uuid, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")`;
+
+  // Regular (non-anonymous) user
   await sql`
     INSERT INTO "ProjectUser" (
       "projectUserId",
@@ -19,7 +22,7 @@ export const preMigration = async (sql: Sql) => {
       "updatedAt",
       "lastActiveAt"
     ) VALUES (
-      ${userId}::uuid,
+      ${regularUserId}::uuid,
       ${tenancyId}::uuid,
       ${projectId},
       'main',
@@ -29,32 +32,61 @@ export const preMigration = async (sql: Sql) => {
     )
   `;
 
-  return { projectId, tenancyId, userId };
+  // Anonymous user
+  await sql`
+    INSERT INTO "ProjectUser" (
+      "projectUserId",
+      "tenancyId",
+      "mirroredProjectId",
+      "mirroredBranchId",
+      "createdAt",
+      "updatedAt",
+      "lastActiveAt",
+      "isAnonymous"
+    ) VALUES (
+      ${anonUserId}::uuid,
+      ${tenancyId}::uuid,
+      ${projectId},
+      'main',
+      NOW(),
+      NOW(),
+      NOW(),
+      true
+    )
+  `;
+
+  return { projectId, tenancyId, regularUserId, anonUserId };
 };
 
 export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof preMigration>>) => {
-  const rows = await sql`
+  // Regular user: signedUpAt should be backfilled from createdAt
+  const regularRows = await sql`
     SELECT
       "signedUpAt",
       "createdAt",
-      "signUpIp",
-      "signUpIpTrusted",
-      "signUpEmailNormalized",
-      "signUpEmailBase",
-      "signUpCountryCode",
       "signUpRiskScoreBot",
       "signUpRiskScoreFreeTrialAbuse"
     FROM "ProjectUser"
-    WHERE "projectUserId" = ${ctx.userId}::uuid
+    WHERE "projectUserId" = ${ctx.regularUserId}::uuid
   `;
 
-  expect(rows).toHaveLength(1);
-  expect(rows[0].signedUpAt.toISOString()).toBe(rows[0].createdAt.toISOString());
-  expect(rows[0].signUpIp).toBeNull();
-  expect(rows[0].signUpIpTrusted).toBeNull();
-  expect(rows[0].signUpEmailNormalized).toBeNull();
-  expect(rows[0].signUpEmailBase).toBeNull();
-  expect(rows[0].signUpCountryCode).toBeNull();
-  expect(rows[0].signUpRiskScoreBot).toBe(0);
-  expect(rows[0].signUpRiskScoreFreeTrialAbuse).toBe(0);
+  expect(regularRows).toHaveLength(1);
+  expect(regularRows[0].signedUpAt.toISOString()).toBe(regularRows[0].createdAt.toISOString());
+  expect(regularRows[0].signUpRiskScoreBot).toBe(0);
+  expect(regularRows[0].signUpRiskScoreFreeTrialAbuse).toBe(0);
+
+  // Anonymous user: signedUpAt should remain NULL
+  const anonRows = await sql`
+    SELECT
+      "signedUpAt",
+      "signUpRiskScoreBot",
+      "signUpRiskScoreFreeTrialAbuse"
+    FROM "ProjectUser"
+    WHERE "projectUserId" = ${ctx.anonUserId}::uuid
+  `;
+
+  expect(anonRows).toHaveLength(1);
+  expect(anonRows[0].signedUpAt).toBeNull();
+  expect(anonRows[0].signUpRiskScoreBot).toBe(0);
+  expect(anonRows[0].signUpRiskScoreFreeTrialAbuse).toBe(0);
 };

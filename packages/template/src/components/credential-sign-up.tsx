@@ -52,7 +52,6 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
     }
   };
 
-  const registerEmail = register('email');
   const registerPassword = register('password');
   const registerPasswordRepeat = register('passwordRepeat');
 
@@ -63,15 +62,7 @@ export function CredentialSignUp(props: { noPasswordRepeat?: boolean }) {
       noValidate
     >
       <Label htmlFor="email" className="mb-1">{t('Email')}</Label>
-      <Input
-        id="email"
-        type="email"
-        autoComplete="email"
-        {...registerEmail}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          runAsynchronously(registerEmail.onChange(e));
-        }}
-      />
+      <Input id="email" type="email" autoComplete="email" {...register('email')}/>
       <FormWarningText text={errors.email?.message?.toString()} />
 
       <Label htmlFor="password" className="mt-4 mb-1">{t('Password')}</Label>

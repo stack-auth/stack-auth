@@ -113,7 +113,8 @@ export type BaseUser = {
   readonly primaryEmailVerified: boolean,
   readonly profileImageUrl: string | null,
 
-  readonly signedUpAt: Date,
+  /** Null for anonymous users who have not yet upgraded to full users. */
+  readonly signedUpAt: Date | null,
 
   readonly clientMetadata: any,
   readonly clientReadOnlyMetadata: any,

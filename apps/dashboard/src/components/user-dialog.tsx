@@ -32,7 +32,7 @@ export function UserDialog(props: {
       displayName: props.user.displayName || undefined,
       primaryEmail: props.user.primaryEmail || undefined,
       primaryEmailVerified: props.user.primaryEmailVerified,
-      signedUpAt: props.user.signedUpAt,
+      signedUpAt: props.user.signedUpAt ?? new Date(),
       clientMetadata: props.user.clientMetadata == null ? "" : JSON.stringify(props.user.clientMetadata, null, 2),
       clientReadOnlyMetadata: props.user.clientReadOnlyMetadata == null ? "" : JSON.stringify(props.user.clientReadOnlyMetadata, null, 2),
       serverMetadata: props.user.serverMetadata == null ? "" : JSON.stringify(props.user.serverMetadata, null, 2),

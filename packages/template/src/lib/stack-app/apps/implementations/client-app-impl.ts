@@ -1501,7 +1501,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmail: crud.primary_email,
       primaryEmailVerified: crud.primary_email_verified,
       profileImageUrl: crud.profile_image_url,
-      signedUpAt: new Date(crud.signed_up_at_millis),
+      signedUpAt: crud.signed_up_at_millis != null ? new Date(crud.signed_up_at_millis) : null,
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
       hasPassword: crud.has_password,

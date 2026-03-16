@@ -91,7 +91,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
               ),
               false
             ) AS "primary_email_verified",
-            "ProjectUser"."signedUpAt" AS "signed_up_at",
+            COALESCE("ProjectUser"."signedUpAt", "ProjectUser"."createdAt") AS "signed_up_at",
             COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb) AS "client_metadata",
             COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
             COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",
@@ -167,7 +167,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             ),
             false
           ) AS "primary_email_verified",
-          "ProjectUser"."signedUpAt" AS "signed_up_at",
+          COALESCE("ProjectUser"."signedUpAt", "ProjectUser"."createdAt") AS "signed_up_at",
           COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb) AS "client_metadata",
           COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb) AS "client_read_only_metadata",
           COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb) AS "server_metadata",

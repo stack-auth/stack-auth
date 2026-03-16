@@ -1,1 +1,3 @@
-ALTER TABLE "ProjectUser" ALTER COLUMN "signedUpAt" SET NOT NULL;
+-- signedUpAt is intentionally nullable: anonymous users have NULL until they
+-- upgrade to full users, at which point the risk scoring pipeline sets it.
+-- No NOT NULL constraint is added here.

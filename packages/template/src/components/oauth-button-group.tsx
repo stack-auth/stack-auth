@@ -22,9 +22,6 @@ export function OAuthButtonGroup({
       {project.config.oauthProviders.map(p => (
         <OAuthButton key={p.id} provider={p.id} type={type}
           isMock={!!mockProject}
-          onAuthenticate={!mockProject ? async () => {
-            await stackApp.signInWithOAuth(p.id);
-          } : undefined}
         />
       ))}
     </div>

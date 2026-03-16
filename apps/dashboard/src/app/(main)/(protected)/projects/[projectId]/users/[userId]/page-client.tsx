@@ -421,7 +421,7 @@ function UserDetails({ user }: UserDetailsProps) {
         <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
       </UserInfo>
       <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
-        <EditableInput value={user.signedUpAt.toDateString()} readOnly />
+        <EditableInput value={user.signedUpAt?.toDateString() ?? ''} readOnly />
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
         <EditableInput value={String(user.riskScores.signUp.bot)} onUpdate={async (newValue) => {
