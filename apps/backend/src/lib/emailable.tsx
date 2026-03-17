@@ -1,7 +1,7 @@
-import createEmailableClient from "emailable";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
+import createEmailableClient from "emailable";
 
 export const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
 
@@ -93,15 +93,12 @@ function createTestModeUndeliverableResponse(email: string) {
 export async function checkEmailWithEmailable(
   email: string,
   options?: {
-    apiKey?: string,
-    onError?: "return-error" | "return-ok",
     retryExponentialDelayBaseMs?: number,
     /** @internal — used by tests to inject a fake client */
     _clientFactory?: (apiKey: string) => { verify: (email: string) => Promise<unknown> },
   },
 ): Promise<EmailableCheckResult> {
-  const rawApiKey = options?.apiKey ?? getEnvVariable("STACK_EMAILABLE_API_KEY", "");
-  const onError = options?.onError ?? "return-error";
+  const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
   const retryDelayBase = options?.retryExponentialDelayBaseMs ?? EMAILABLE_RETRY_BACKOFF_BASE_MS;
 
   const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
@@ -140,9 +137,6 @@ export async function checkEmailWithEmailable(
       response = validateVerifyResponse(raw);
     } catch (error) {
       captureError("emailable-api-error", error);
-      if (onError === "return-ok") {
-        return { status: "ok", emailableScore: null };
-      }
       return { status: "error", error, emailableScore: null };
     }
 
@@ -172,50 +166,43 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     },
   });
 
-  import.meta.vitest?.test("returns test-domain rejection when no API key is set", async ({ expect }) => {
-    await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`, {
-      apiKey: "disable_email_validation",
-    })).resolves.toMatchObject({
-      status: "not-deliverable",
-      emailableResponse: {
-        state: "undeliverable",
-        reason: "test_domain_rejection",
-      },
-    });
+  import.meta.vitest?.beforeEach(() => {
+    import.meta.vitest!.vi.stubEnv("STACK_EMAILABLE_API_KEY", "test_api_key");
+    return () => import.meta.vitest!.vi.unstubAllEnvs();
+  });
+
+  import.meta.vitest?.test("returns test-domain rejection regardless of API key", async ({ expect }) => {
+    await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
+      .resolves.toMatchObject({
+        status: "not-deliverable",
+        emailableResponse: {
+          state: "undeliverable",
+          reason: "test_domain_rejection",
+        },
+      });
   });
 
   import.meta.vitest?.test("returns test-domain rejection even when API key is unset", async ({ expect }) => {
-    await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`, {
-      apiKey: "",
-    })).resolves.toMatchObject({
-      status: "not-deliverable",
-      emailableResponse: {
-        state: "undeliverable",
-        reason: "test_domain_rejection",
-      },
-    });
+    import.meta.vitest!.vi.stubEnv("STACK_EMAILABLE_API_KEY", "");
+    await expect(checkEmailWithEmailable(`user@${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN}`))
+      .resolves.toMatchObject({
+        status: "not-deliverable",
+        emailableResponse: {
+          state: "undeliverable",
+          reason: "test_domain_rejection",
+        },
+      });
   });
 
   import.meta.vitest?.test("returns ok for deliverable email using fake client", async ({ expect }) => {
     const result = await checkEmailWithEmailable("test@gmail.com", {
-      apiKey: "fake_test_key",
       _clientFactory: fakeDeliverableClient,
     });
     expect(result.status).toBe("ok");
   });
 
-  import.meta.vitest?.test("returns ok on API error with onError=return-ok", async ({ expect }) => {
+  import.meta.vitest?.test("returns error on API error", async ({ expect }) => {
     const result = await checkEmailWithEmailable("test@gmail.com", {
-      apiKey: "fake_test_key",
-      onError: "return-ok",
-      _clientFactory: fakeErrorClient,
-    });
-    expect(result.status).toBe("ok");
-  });
-
-  import.meta.vitest?.test("returns error on API error with default onError", async ({ expect }) => {
-    const result = await checkEmailWithEmailable("test@gmail.com", {
-      apiKey: "fake_test_key",
       _clientFactory: fakeErrorClient,
     });
     expect(result.status).toBe("error");

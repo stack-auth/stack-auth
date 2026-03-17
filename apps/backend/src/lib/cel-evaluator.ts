@@ -104,9 +104,12 @@ function preprocessExpression(
         try {
           const regex = new RegExp(unescapedArg);
           result = regex.test(varValue);
-        } catch {
-          // Invalid regex pattern - treat as non-match
-          result = false;
+        } catch (e) {
+          throw new CelEvaluationError(
+            `Invalid regex pattern in matches(): "${unescapedArg}"`,
+            expression,
+            e,
+          );
         }
         break;
       }
@@ -145,10 +148,17 @@ export function evaluateCelExpression(
     const { expression: transformedExpr, context: extendedContext } = preprocessExpression(expression, context);
 
     const result = evaluate(transformedExpr, extendedContext);
-    return Boolean(result);
+    if (typeof result !== "boolean") {
+      throw new CelEvaluationError(
+        `CEL expression must evaluate to a boolean, got ${typeof result}: ${JSON.stringify(result)}`,
+        expression,
+      );
+    }
+    return result;
   } catch (e) {
-    // Wrap CEL evaluation errors with context and rethrow
-    // Callers should catch CelEvaluationError specifically
+    if (e instanceof CelEvaluationError) {
+      throw e;
+    }
     throw new CelEvaluationError(
       `Failed to evaluate CEL expression: ${expression}`,
       expression,

@@ -125,6 +125,12 @@ export async function verifyTurnstileToken(params: {
   const siteverifyData = verificationResult.data;
 
   if (!siteverifyData.success) {
+    captureError("turnstile-siteverify-rejected", new StackAssertionError("Turnstile siteverify returned success=false", {
+      errorCodes: siteverifyData["error-codes"],
+      expectedAction: params.expectedAction,
+      receivedAction: siteverifyData.action,
+      hostname: siteverifyData.hostname,
+    }));
     return { status: "invalid" };
   }
 

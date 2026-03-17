@@ -64,13 +64,8 @@ const personalTeamDefaultDisplayName = "Personal Team";
 // it's set at upgrade time by the risk scoring pipeline to ensure correct
 // recent-signup windows (sameIpCount, similarEmailCount). Backfilled users
 // that were anonymous pre-migration also have NULL to avoid skewing risk data.
-// TODO: remove createdAt and isAnonymous compatibility params once all call sites are updated
-function getSignedUpAtMillis(params: {
-  signedUpAt: Date | null,
-  createdAt: Date,
-  isAnonymous: boolean,
-}): number | null {
-  return params.signedUpAt?.getTime() ?? null;
+function getSignedUpAtMillis(signedUpAt: Date | null): number | null {
+  return signedUpAt?.getTime() ?? null;
 }
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
@@ -174,11 +169,7 @@ export const userPrismaToCrud = (
     primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
-    signed_up_at_millis: getSignedUpAtMillis({
-      signedUpAt: prisma.signedUpAt,
-      createdAt: prisma.createdAt,
-      isAnonymous: prisma.isAnonymous,
-    }),
+    signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
     server_metadata: prisma.serverMetadata,
@@ -395,11 +386,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
-        signed_up_at_millis: getSignedUpAtMillis({
-          signedUpAt: row.signedUpAt ? new Date(row.signedUpAt + "Z") : null,
-          createdAt: new Date(row.createdAt + "Z"),
-          isAnonymous: row.isAnonymous,
-        }),
+        signed_up_at_millis: getSignedUpAtMillis(row.signedUpAt ? new Date(row.signedUpAt + "Z") : null),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
         server_metadata: row.serverMetadata,
@@ -1180,6 +1167,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
+          // Set signedUpAt when upgrading anonymous → non-anonymous (first real sign-up).
+          // We intentionally do NOT clear signedUpAt on non-anonymous → anonymous because:
+          // (a) that transition is admin-only and rare, and (b) preserving the original
+          // sign-up timestamp keeps risk/audit data intact.
           signedUpAt: oldUser.isAnonymous && data.is_anonymous === false ? new Date() : undefined,
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
           restrictedByAdmin: data.restricted_by_admin ?? undefined,

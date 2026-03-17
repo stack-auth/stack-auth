@@ -144,29 +144,64 @@ function nativeImport(modulePath: string): Promise<unknown> {
 
 async function loadEngine(): Promise<SignUpRiskEngine> {
   const importer = _testOverrides.importer ?? nativeImport;
+  const searchedPaths = [PRIVATE_PACKAGE_IMPORT, ...getPrivateModuleFallbackPaths()];
 
   // Prefer package-name resolution (works when @stackframe/private is a proper dependency)
   try {
-    return extractEngine(await importer(PRIVATE_PACKAGE_IMPORT));
-  } catch {
-    // Not installed as a dependency — fall back to path-based resolution
+    const engine = extractEngine(await importer(PRIVATE_PACKAGE_IMPORT));
+    console.info("[risk-scores] Loaded private sign-up risk engine via package import");
+    return engine;
+  } catch (e: unknown) {
+    if (!isModuleNotFoundError(e)) {
+      // Packaging or runtime bug — report to Sentry so it's visible, but don't
+      // crash the process. Fall through to path-based resolution.
+      captureError("sign-up-risk-engine-load", new StackAssertionError(
+        "Failed to load private sign-up risk engine via package import",
+        { importPath: PRIVATE_PACKAGE_IMPORT, cause: e },
+      ));
+    }
   }
 
   // Fall back to path-based resolution for monorepo setups
   for (const fullPath of getPrivateModuleFallbackPaths()) {
     try {
-      return extractEngine(await importer(fullPath));
-    } catch {
+      const engine = extractEngine(await importer(fullPath));
+      console.info("[risk-scores] Loaded private sign-up risk engine from path:", fullPath);
+      return engine;
+    } catch (e: unknown) {
+      if (!isModuleNotFoundError(e)) {
+        captureError("sign-up-risk-engine-load", new StackAssertionError(
+          "Failed to load private sign-up risk engine from path",
+          { fullPath, cause: e },
+        ));
+      }
       continue;
     }
   }
 
-  console.warn("[risk-scores] Private sign-up risk engine not found — using fallback (zero scores). Searched:", [PRIVATE_PACKAGE_IMPORT, ...getPrivateModuleFallbackPaths()]);
+  captureError("sign-up-risk-engine-not-found", new StackAssertionError(
+    "Private sign-up risk engine not found — using fallback (zero scores)",
+    { searchedPaths },
+  ));
   return fallbackSignUpRiskEngine;
 }
 
+function isModuleNotFoundError(e: unknown): boolean {
+  if (typeof e === "object" && e !== null && "code" in e) {
+    const code = (e as { code: unknown }).code;
+    return code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
+  }
+  return false;
+}
+
 function getEngine(): Promise<SignUpRiskEngine> {
-  cachedEngine ??= loadEngine();
+  if (cachedEngine == null) {
+    cachedEngine = loadEngine().catch((e) => {
+      // Clear the cache so the next call retries instead of locking in the failure
+      cachedEngine = null;
+      throw e;
+    });
+  }
   return cachedEngine;
 }
 

@@ -63,6 +63,7 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
   }
 }
 
+const VISIBLE_CHALLENGE_TIMEOUT_MS = 120_000;
 const TURNSTILE_OVERLAY_Z_INDEX = "999999";
 
 let activeOverlay: { cleanup: () => void, reject: (err: Error) => void } | null = null;
@@ -75,6 +76,11 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
   }
 
   return new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Visible Turnstile challenge timed out"));
+    }, VISIBLE_CHALLENGE_TIMEOUT_MS);
+
     const overlay = document.createElement("div");
     overlay.setAttribute("data-stack-turnstile-overlay", "true");
     Object.assign(overlay.style, {
@@ -151,6 +157,7 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
     document.body.appendChild(overlay);
 
     function cleanup() {
+      clearTimeout(timeout);
       overlay.remove();
       if (activeOverlay?.cleanup === cleanup) {
         activeOverlay = null;

@@ -69,9 +69,12 @@ async function verifyEmailDeliverability(
     return { status: "ok", emailableScore: null };
   }
 
-  return await checkEmailWithEmailable(email, {
-    onError: "return-ok",
-  });
+  const result = await checkEmailWithEmailable(email);
+  // Email queue should not block on emailable failures — treat errors as deliverable
+  if (result.status === "error") {
+    return { status: "ok", emailableScore: null };
+  }
+  return result;
 }
 
 type TenancySendBatch = {
