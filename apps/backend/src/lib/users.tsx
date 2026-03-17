@@ -74,6 +74,7 @@ export function getDerivedSignUpCountryCode(requestCountryCode: string | null, e
   }
   return null;
 }
+
 import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
   expect(getDerivedSignUpCountryCode(" us ", null)).toBe("US");
   expect(getDerivedSignUpCountryCode("usa", null)).toBeNull();

@@ -9,7 +9,10 @@ export class TurnstileUserCancelledError extends Error {
   }
 }
 
-const INVISIBLE_CHALLENGE_TIMEOUT_MS = 30_000;
+
+// ── Invisible challenge ────────────────────────────────────────────────
+
+const INVISIBLE_TIMEOUT_MS = 30_000;
 
 export async function executeTurnstileInvisible(siteKey: string, action: TurnstileAction): Promise<string> {
   await loadTurnstileScript();
@@ -17,19 +20,17 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
   if (!api) throw new StackAssertionError("Turnstile API not available after loadTurnstileScript() resolved");
 
   const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-9999px";
-  container.style.top = "-9999px";
+  Object.assign(container.style, { position: "fixed", left: "-9999px", top: "-9999px" });
   document.body.appendChild(container);
 
   let widgetId: string | undefined;
-
   try {
-    const token = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error("Turnstile invisible challenge timed out"));
-      }, INVISIBLE_CHALLENGE_TIMEOUT_MS);
-      const clearAnd = (fn: () => void) => {
+    return await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Turnstile invisible challenge timed out")),
+        INVISIBLE_TIMEOUT_MS,
+      );
+      const settle = (fn: () => void) => {
         clearTimeout(timeout);
         fn();
       };
@@ -40,17 +41,14 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
         size: "invisible",
         execution: "execute",
         appearance: "execute",
-        callback: (t) => clearAnd(() => resolve(t)),
-        "error-callback": () => clearAnd(() => reject(new Error("Turnstile invisible verification failed"))),
-        "expired-callback": () => clearAnd(() => reject(new Error("Turnstile token expired"))),
-        "timeout-callback": () => clearAnd(() => reject(new Error("Turnstile challenge timed out"))),
+        callback: (t) => settle(() => resolve(t)),
+        "error-callback": () => settle(() => reject(new Error("Turnstile invisible verification failed"))),
+        "expired-callback": () => settle(() => reject(new Error("Turnstile token expired"))),
+        "timeout-callback": () => settle(() => reject(new Error("Turnstile challenge timed out"))),
       });
 
-      if (api.execute) {
-        api.execute(widgetId);
-      }
+      api.execute?.(widgetId);
     });
-    return token;
   } finally {
     if (widgetId != null) {
       try {
@@ -63,10 +61,28 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
   }
 }
 
-const VISIBLE_CHALLENGE_TIMEOUT_MS = 120_000;
-const TURNSTILE_OVERLAY_Z_INDEX = "999999";
+
+// ── Visible challenge overlay ──────────────────────────────────────────
+
+const VISIBLE_TIMEOUT_MS = 120_000;
+const OVERLAY_Z_INDEX = "999999";
 
 let activeOverlay: { cleanup: () => void, reject: (err: Error) => void } | null = null;
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  style: Partial<CSSStyleDeclaration>,
+  props?: Record<string, string>,
+): HTMLElementTagNameMap[K] {
+  const element = document.createElement(tag);
+  Object.assign(element.style, style);
+  if (props) {
+    for (const [k, v] of Object.entries(props)) {
+      element.setAttribute(k, v);
+    }
+  }
+  return element;
+}
 
 export function showTurnstileVisibleChallenge(siteKey: string, action: TurnstileAction): Promise<string> {
   if (activeOverlay) {
@@ -79,80 +95,42 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error("Visible Turnstile challenge timed out"));
-    }, VISIBLE_CHALLENGE_TIMEOUT_MS);
+    }, VISIBLE_TIMEOUT_MS);
 
-    const overlay = document.createElement("div");
-    overlay.setAttribute("data-stack-turnstile-overlay", "true");
-    Object.assign(overlay.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: TURNSTILE_OVERLAY_Z_INDEX,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      background: "rgba(0,0,0,0.5)",
-      backdropFilter: "blur(2px)",
-    });
+    const overlay = el("div", {
+      position: "fixed", inset: "0", zIndex: OVERLAY_Z_INDEX,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)",
+    }, { "data-stack-turnstile-overlay": "true" });
 
-    const card = document.createElement("div");
-    Object.assign(card.style, {
-      background: "white",
-      borderRadius: "12px",
-      padding: "24px",
-      maxWidth: "400px",
-      width: "90%",
-      textAlign: "center",
+    const card = el("div", {
+      background: "white", borderRadius: "12px", padding: "24px",
+      maxWidth: "400px", width: "90%", textAlign: "center",
       boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     });
 
-    const title = document.createElement("p");
+    const title = el("p", { margin: "0 0 16px", fontSize: "16px", fontWeight: "600", color: "#333" });
     title.textContent = "Please complete the security check";
-    Object.assign(title.style, {
-      margin: "0 0 16px",
-      fontSize: "16px",
-      fontWeight: "600",
-      color: "#333",
-    });
-    card.appendChild(title);
 
-    const widgetContainer = document.createElement("div");
-    Object.assign(widgetContainer.style, {
-      display: "flex",
-      justifyContent: "center",
-      minHeight: "65px",
-    });
-    card.appendChild(widgetContainer);
+    const widgetContainer = el("div", { display: "flex", justifyContent: "center", minHeight: "65px" });
 
-    const errorText = document.createElement("p");
-    Object.assign(errorText.style, {
-      margin: "8px 0 0",
-      fontSize: "14px",
-      color: "#dc2626",
-      display: "none",
-    });
-    card.appendChild(errorText);
+    const errorText = el("p", { margin: "8px 0 0", fontSize: "14px", color: "#dc2626", display: "none" });
 
-    const cancelBtn = document.createElement("button");
+    const cancelBtn = el("button", {
+      marginTop: "16px", padding: "8px 20px", border: "1px solid #ddd",
+      borderRadius: "6px", background: "transparent", cursor: "pointer",
+      fontSize: "14px", color: "#666",
+    });
     cancelBtn.textContent = "Cancel";
-    Object.assign(cancelBtn.style, {
-      marginTop: "16px",
-      padding: "8px 20px",
-      border: "1px solid #ddd",
-      borderRadius: "6px",
-      background: "transparent",
-      cursor: "pointer",
-      fontSize: "14px",
-      color: "#666",
-    });
     cancelBtn.onmouseover = () => {
       cancelBtn.style.background = "#f5f5f5";
     };
     cancelBtn.onmouseout = () => {
       cancelBtn.style.background = "transparent";
     };
-    card.appendChild(cancelBtn);
 
+    card.append(title, widgetContainer, errorText, cancelBtn);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
@@ -165,7 +143,6 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
     }
 
     activeOverlay = { cleanup, reject };
-
     cancelBtn.onclick = () => {
       cleanup();
       reject(new TurnstileUserCancelledError());
@@ -205,6 +182,9 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
   });
 }
 
+
+// ── Flow orchestrator ──────────────────────────────────────────────────
+
 export type TurnstileExecuteParams = {
   token?: string,
   phase?: "invisible" | "visible",
@@ -219,7 +199,6 @@ export type WithTurnstileFlowOptions<T> = {
 };
 
 export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>): Promise<T> {
-  // server safe: just call execute with no turnstile params
   if (typeof window === "undefined") {
     return await options.execute({});
   }
@@ -230,15 +209,11 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
     invisibleToken = await executeTurnstileInvisible(options.invisibleSiteKey, options.action);
   } catch {
     try {
-      // If invisible execution fails, fall back to the visible challenge.
       invisibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
     } catch (e) {
-      // If both fail (e.g. Cloudflare is down), proceed without a token.
-      // The backend will treat the missing token as "invalid" for risk scoring
-      // but won't block the signup.
-      if (e instanceof TurnstileUserCancelledError) {
-        throw e;
-      }
+      if (e instanceof TurnstileUserCancelledError) throw e;
+      // Both challenges failed (e.g. Cloudflare down) — proceed without token.
+      // Backend treats missing token as "invalid" for risk scoring but won't block signup.
       captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
       return await options.execute({});
     }
@@ -253,21 +228,15 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
     return firstResult;
   }
 
-  // Phase 2: visible challenge overlay (single retry)
+  // Phase 2: visible challenge (single retry)
   let visibleToken: string | undefined;
   try {
     visibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
   } catch (e) {
-    if (e instanceof TurnstileUserCancelledError) {
-      throw e;
-    }
-    // Visible challenge failed — proceed without token rather than blocking signup
+    if (e instanceof TurnstileUserCancelledError) throw e;
     captureError("turnstile-flow-visible-challenge-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during visible Turnstile challenge", { cause: e }));
     return await options.execute({});
   }
 
-  return await options.execute({
-    token: visibleToken,
-    phase: "visible",
-  });
+  return await options.execute({ token: visibleToken, phase: "visible" });
 }
