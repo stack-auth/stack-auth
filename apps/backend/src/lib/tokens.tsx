@@ -46,6 +46,7 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
+  // TODO next-release: make these .defined() once all deployments write these fields into the cookie
   turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
   turnstileVisibleChallengeResult: yupString().oneOf(turnstileResultValues).optional(),
   responseMode: yupString().oneOf(['json', 'redirect']).optional(),

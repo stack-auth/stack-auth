@@ -74,7 +74,6 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // hack to make sure process is defined in non-node environments
 const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
-
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
@@ -2134,11 +2133,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return clientVersion;
   }
 
+  private _turnstileSiteKeysWarned = false;
   private _getTurnstileSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
     const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY;
-    if (!visibleSiteKey) return null;
+    if (!visibleSiteKey) {
+      if (!this._turnstileSiteKeysWarned) {
+        this._turnstileSiteKeysWarned = true;
+        console.warn("[stack-auth] NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY is not set — Turnstile fraud protection is disabled. Set the env variable to enable it.");
+      }
+      return null;
+    }
 
     const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
 
@@ -2273,19 +2279,27 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     // Run the send through the Turnstile invisible → visible challenge flow
-    const flowResult = await withTurnstileFlow({
-      ...siteKeys,
-      action: "send_magic_link_email",
-      execute: async (turnstile) => {
-        return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
-          token: turnstile.token,
-          phase: turnstile.phase,
-        });
-      },
-      isChallengeRequired: (result) => {
-        return result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error);
-      },
-    });
+    let flowResult;
+    try {
+      flowResult = await withTurnstileFlow({
+        ...siteKeys,
+        action: "send_magic_link_email",
+        execute: async (turnstile) => {
+          return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
+            token: turnstile.token,
+            phase: turnstile.phase,
+          });
+        },
+        isChallengeRequired: (result) => {
+          return result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error);
+        },
+      });
+    } catch (e) {
+      if (e instanceof TurnstileUserCancelledError) {
+        return Result.error(new KnownErrors.TurnstileChallengeFailed("Turnstile challenge cancelled by user"));
+      }
+      throw e;
+    }
 
     // TurnstileChallengeRequired should have been consumed by withTurnstileFlow;
     // if it leaks through, convert to TurnstileChallengeFailed and preserve the original error for debugging
@@ -2593,6 +2607,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           },
         });
       } else {
+        // Server safe: just call execute with no turnstile params
         authorizeResult = await executeOAuth({});
       }
     } catch (e) {
@@ -2724,6 +2739,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
       });
     } else {
+      // Server safe: just call execute with no turnstile params
       result = await executeSignUp({});
     }
 

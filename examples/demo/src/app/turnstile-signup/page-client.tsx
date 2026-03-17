@@ -91,7 +91,6 @@ export default function TurnstileSignupPageClient() {
   const [password, setPassword] = useState("Demo-password-123!");
 
   // SDK signup state
-  const [sdkLoading, setSdkLoading] = useState(false);
   const [sdkResult, setSdkResult] = useState<FlowResult | null>(null);
 
   // Debug card state
@@ -138,7 +137,6 @@ export default function TurnstileSignupPageClient() {
 
   // ── SDK signup ──
   async function handleSdkSignUp() {
-    setSdkLoading(true);
     setSdkResult(null);
     try {
       const result = await app.signUpWithCredential({
@@ -158,8 +156,6 @@ export default function TurnstileSignupPageClient() {
       } else {
         setSdkResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
       }
-    } finally {
-      setSdkLoading(false);
     }
   }
 
@@ -423,7 +419,7 @@ export default function TurnstileSignupPageClient() {
           )}
         </CardContent>
         <CardFooter>
-          <Button loading={sdkLoading} onClick={handleSdkSignUp}>Sign up with SDK</Button>
+          <Button onClick={handleSdkSignUp}>Sign up with SDK</Button>
         </CardFooter>
       </Card>
 

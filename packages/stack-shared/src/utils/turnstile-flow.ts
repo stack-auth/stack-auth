@@ -67,6 +67,10 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
 const VISIBLE_TIMEOUT_MS = 120_000;
 const OVERLAY_Z_INDEX = "999999";
 
+// Module-level singleton: only one visible overlay can be active at a time.
+// If a second challenge is requested while one is showing (e.g. user clicks another
+// auth flow), the previous overlay is cancelled with TurnstileUserCancelledError
+// and cleaned up before the new one renders.
 let activeOverlay: { cleanup: () => void, reject: (err: Error) => void } | null = null;
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -198,7 +202,14 @@ export type WithTurnstileFlowOptions<T> = {
   isChallengeRequired: (result: T) => boolean,
 };
 
+// We use separate invisible + visible flows (rather than Turnstile's "managed" mode) because:
+// 1. Managed mode auto-decides visibility, but we need deterministic server-side logic:
+//    invisible-fail → require visible challenge → fail = block.
+// 2. Invisible + visible use different site keys so the server can tell which phase passed.
+// 3. Managed mode doesn't expose an API to programmatically trigger a retry with a
+//    different widget type, which our two-phase challenge escalation requires.
 export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>): Promise<T> {
+  // Server safe: no Turnstile in SSR — just call execute with no turnstile params
   if (typeof window === "undefined") {
     return await options.execute({});
   }
