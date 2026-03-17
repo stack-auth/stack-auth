@@ -77,7 +77,7 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   selected_team: teamsCrudServerReadSchema.nullable().defined(),
   selected_team_id: fieldSchema.selectedTeamIdSchema.nullable().defined(),
   profile_image_url: fieldSchema.profileImageUrlSchema.nullable().defined(),
-  signed_up_at_millis: fieldSchema.signedUpAtMillisSchema.nullable().defined(),
+  signed_up_at_millis: fieldSchema.signedUpAtMillisSchema.defined(),
   has_password: fieldSchema.userHasPasswordSchema.defined(),
   otp_auth_enabled: fieldSchema.userOtpAuthEnabledSchema.defined(),
   passkey_auth_enabled: fieldSchema.userOtpAuthEnabledSchema.defined(),

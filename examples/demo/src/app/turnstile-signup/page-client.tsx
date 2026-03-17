@@ -3,7 +3,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { stackAppInternalsSymbol, useStackApp, useUser } from "@stackframe/stack";
 import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
-import { executeTurnstileInvisible, showTurnstileVisibleChallenge, TurnstileUserCancelledError, withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import { executeTurnstileInvisible, showTurnstileVisibleChallenge, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@stackframe/stack-ui";
 import Link from "next/link";
 import { useState } from "react";
@@ -46,10 +46,10 @@ async function debugSignup(
     password: options.password,
   };
   if (options.turnstileToken) {
-    bodyObj.turnstile_token = options.turnstileToken;
+    bodyObj.bot_challenge_token = options.turnstileToken;
   }
   if (options.turnstilePhase) {
-    bodyObj.turnstile_phase = options.turnstilePhase;
+    bodyObj.bot_challenge_phase = options.turnstilePhase;
   }
 
   try {
@@ -66,8 +66,8 @@ async function debugSignup(
     return { ok: false, code: resBody.code ?? `HTTP_${res.status}`, message: resBody.message ?? res.statusText };
   } catch (e: unknown) {
     // sendClientRequest throws KnownErrors instead of returning error responses
-    if (e instanceof KnownErrors.TurnstileChallengeRequired) {
-      return { ok: false, code: "TURNSTILE_CHALLENGE_REQUIRED", message: e.message };
+    if (e instanceof KnownErrors.BotChallengeRequired) {
+      return { ok: false, code: "BOT_CHALLENGE_REQUIRED", message: e.message };
     }
     if (e instanceof KnownErrors.UserWithEmailAlreadyExists) {
       return { ok: false, code: "USER_EMAIL_ALREADY_EXISTS", message: e.message };
@@ -81,7 +81,7 @@ async function debugSignup(
 }
 
 function isChallengeRequired(result: SignupResult): boolean {
-  return !result.ok && result.code === "TURNSTILE_CHALLENGE_REQUIRED";
+  return !result.ok && result.code === "BOT_CHALLENGE_REQUIRED";
 }
 
 export default function TurnstileSignupPageClient() {
@@ -151,7 +151,7 @@ export default function TurnstileSignupPageClient() {
         setSdkResult({ status: "success", message: "Signup succeeded. Turnstile was handled transparently by the SDK." });
       }
     } catch (e) {
-      if (e instanceof TurnstileUserCancelledError) {
+      if (e instanceof BotChallengeUserCancelledError) {
         setSdkResult({ status: "error", message: "Turnstile challenge cancelled by user." });
       } else {
         setSdkResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
@@ -171,7 +171,7 @@ export default function TurnstileSignupPageClient() {
       const result = await fn(signupEmail);
       setLastResult(result);
     } catch (e) {
-      if (e instanceof TurnstileUserCancelledError) {
+      if (e instanceof BotChallengeUserCancelledError) {
         setLastResult({ status: "error", message: "User cancelled the visible challenge — signup blocked." });
       } else {
         setLastResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
@@ -209,7 +209,7 @@ export default function TurnstileSignupPageClient() {
     }
 
     if (!isChallengeRequired(firstRes)) {
-      return { status: "error", message: `Expected TURNSTILE_CHALLENGE_REQUIRED, got: ${firstRes.code}` };
+      return { status: "error", message: `Expected BOT_CHALLENGE_REQUIRED, got: ${firstRes.code}` };
     }
 
     const visibleToken = await showTurnstileVisibleChallenge(testKeys.forceChallenge, "sign_up_with_credential");
@@ -236,7 +236,7 @@ export default function TurnstileSignupPageClient() {
     });
 
     if (!isChallengeRequired(firstRes)) {
-      return { status: "error", message: `Expected TURNSTILE_CHALLENGE_REQUIRED, got: ${firstRes.ok ? "ok" : firstRes.code}` };
+      return { status: "error", message: `Expected BOT_CHALLENGE_REQUIRED, got: ${firstRes.ok ? "ok" : firstRes.code}` };
     }
 
     const secondRes = await debugSignup(sendRequest, {
@@ -261,9 +261,9 @@ export default function TurnstileSignupPageClient() {
     return { status: "error", message: `Signup failed: ${res.code} — ${res.message}` };
   }
 
-  // Flow: withTurnstileFlow orchestrator
+  // Flow: withBotChallengeFlow orchestrator
   async function flowOrchestrator(signupEmail: string): Promise<FlowResult> {
-    const result = await withTurnstileFlow({
+    const result = await withBotChallengeFlow({
       invisibleSiteKey: testKeys.invisiblePass,
       visibleSiteKey: testKeys.forceChallenge,
       action: "sign_up_with_credential",
@@ -275,13 +275,13 @@ export default function TurnstileSignupPageClient() {
         });
       },
       isChallengeRequired: (res) => {
-        return !res.ok && res.code === "TURNSTILE_CHALLENGE_REQUIRED";
+        return !res.ok && res.code === "BOT_CHALLENGE_REQUIRED";
       },
     });
 
     if (result.ok) {
       await signInWithTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
-      return { status: "success", message: "Signup succeeded via withTurnstileFlow orchestrator." };
+      return { status: "success", message: "Signup succeeded via withBotChallengeFlow orchestrator." };
     }
     return { status: "error", message: `Signup failed: ${result.code} — ${result.message}` };
   }
@@ -517,14 +517,14 @@ export default function TurnstileSignupPageClient() {
             </CardFooter>
           </Card>
 
-          {/* withTurnstileFlow orchestrator */}
+          {/* withBotChallengeFlow orchestrator */}
           <Card>
             <CardHeader>
-              <Typography type="h4">withTurnstileFlow orchestrator</Typography>
+              <Typography type="h4">withBotChallengeFlow orchestrator</Typography>
             </CardHeader>
             <CardContent>
               <Typography className="text-sm text-gray-500">
-                Uses <span className="font-mono">withTurnstileFlow()</span> to automatically handle invisible → visible fallback.
+                Uses <span className="font-mono">withBotChallengeFlow()</span> to automatically handle invisible → visible fallback.
               </Typography>
             </CardContent>
             <CardFooter>

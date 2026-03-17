@@ -752,19 +752,19 @@ const SignUpRejected = createKnownErrorConstructor(
   (json: any) => [json.message] as const,
 );
 
-const TurnstileChallengeRequired = createKnownErrorConstructor(
+const BotChallengeRequired = createKnownErrorConstructor(
   KnownError,
-  "TURNSTILE_CHALLENGE_REQUIRED",
+  "BOT_CHALLENGE_REQUIRED",
   () => [
     409,
-    "An additional Turnstile challenge is required before sign-up can continue.",
+    "An additional bot challenge is required before sign-up can continue.",
   ] as const,
   () => [] as const,
 );
 
-const TurnstileChallengeFailed = createKnownErrorConstructor(
+const BotChallengeFailed = createKnownErrorConstructor(
   KnownError,
-  "TURNSTILE_CHALLENGE_FAILED",
+  "BOT_CHALLENGE_FAILED",
   (message: string) => [
     400,
     message,
@@ -1902,8 +1902,8 @@ export const KnownErrors = {
   BranchDoesNotExist,
   SignUpNotEnabled,
   SignUpRejected,
-  TurnstileChallengeRequired,
-  TurnstileChallengeFailed,
+  BotChallengeRequired,
+  BotChallengeFailed,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,

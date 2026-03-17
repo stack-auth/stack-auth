@@ -54,8 +54,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("StackClientInterface Turnstile compatibility", () => {
-  it("omits Turnstile from magic link requests when no token is provided", async () => {
+describe("StackClientInterface bot challenge compatibility", () => {
+  it("omits bot challenge from magic link requests when no token is provided", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({ nonce: "nonce" }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -68,7 +68,7 @@ describe("StackClientInterface Turnstile compatibility", () => {
     });
   });
 
-  it("serializes visible Turnstile retry fields for magic link requests", async () => {
+  it("serializes visible bot challenge retry fields for magic link requests", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({ nonce: "nonce" }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -81,12 +81,12 @@ describe("StackClientInterface Turnstile compatibility", () => {
     expect(getRequestBody(fetchMock)).toStrictEqual({
       email: "user@example.com",
       callback_url: "https://app.example.com/callback",
-      turnstile_token: "visible-token",
-      turnstile_phase: "visible",
+      bot_challenge_token: "visible-token",
+      bot_challenge_phase: "visible",
     });
   });
 
-  it("omits Turnstile from credential signup requests when no token is provided", async () => {
+  it("omits bot challenge from credential signup requests when no token is provided", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({
       access_token: "access-token",
       refresh_token: "refresh-token",
@@ -108,7 +108,7 @@ describe("StackClientInterface Turnstile compatibility", () => {
     });
   });
 
-  it("omits Turnstile from OAuth URLs when no token is provided", async () => {
+  it("omits bot challenge from OAuth URLs when no token is provided", async () => {
     const iface = createClientInterface();
     const oauthUrl = await iface.getOAuthUrl({
       provider: "github",
@@ -120,10 +120,10 @@ describe("StackClientInterface Turnstile compatibility", () => {
       session: createSession(),
     });
 
-    expect(new URL(oauthUrl).searchParams.has("turnstile_token")).toBe(false);
+    expect(new URL(oauthUrl).searchParams.has("bot_challenge_token")).toBe(false);
   });
 
-  it("serializes visible Turnstile retry fields in OAuth URLs", async () => {
+  it("serializes visible bot challenge retry fields in OAuth URLs", async () => {
     const iface = createClientInterface();
     const oauthUrl = await iface.getOAuthUrl({
       provider: "github",
@@ -132,7 +132,7 @@ describe("StackClientInterface Turnstile compatibility", () => {
       codeChallenge: "code-challenge",
       state: "state",
       type: "authenticate",
-      turnstile: {
+      botChallenge: {
         token: "visible-token",
         phase: "visible",
       },
@@ -140,8 +140,8 @@ describe("StackClientInterface Turnstile compatibility", () => {
     });
 
     expect(Object.fromEntries(new URL(oauthUrl).searchParams.entries())).toMatchObject({
-      turnstile_token: "visible-token",
-      turnstile_phase: "visible",
+      bot_challenge_token: "visible-token",
+      bot_challenge_phase: "visible",
     });
   });
 
@@ -173,14 +173,14 @@ describe("StackClientInterface Turnstile compatibility", () => {
     if (!(typeof requestUrl === "string" || requestUrl instanceof URL)) {
       throw new Error("Expected authorizeOAuth to call fetch with a URL");
     }
-    expect(new URL(requestUrl.toString()).searchParams.get("x_stack_response_mode")).toBe("json");
+    expect(new URL(requestUrl.toString()).searchParams.get("stack_response_mode")).toBe("json");
     expect(requestInit).toMatchObject({
       method: "GET",
     });
     expect(requestInit).not.toHaveProperty("credentials");
   });
 
-  it("still requires a token for visible credential Turnstile retries", async () => {
+  it("still requires a token for visible credential bot challenge retries", async () => {
     const iface = createClientInterface();
 
     await expect(iface.signUpWithCredential(
@@ -191,6 +191,6 @@ describe("StackClientInterface Turnstile compatibility", () => {
       {
         phase: "visible",
       },
-    )).rejects.toThrowError("Credential sign-up visible Turnstile retries require a token.");
+    )).rejects.toThrowError("Credential sign-up visible bot challenge retries require a token.");
   });
 });

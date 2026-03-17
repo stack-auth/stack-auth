@@ -60,12 +60,12 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 
 const personalTeamDefaultDisplayName = "Personal Team";
 
-// signedUpAt is nullable because anonymous users haven't truly "signed up" yet —
+// signedUpAt is nullable in the DB because anonymous users haven't truly "signed up" yet —
 // it's set at upgrade time by the risk scoring pipeline to ensure correct
-// recent-signup windows (sameIpCount, similarEmailCount). Backfilled users
-// that were anonymous pre-migration also have NULL to avoid skewing risk data.
-function getSignedUpAtMillis(signedUpAt: Date | null): number | null {
-  return signedUpAt?.getTime() ?? null;
+// recent-signup windows (sameIpCount, similarEmailCount). For the API, we
+// fall back to createdAt to maintain backward compatibility (non-nullable).
+function getSignedUpAtMillis(signedUpAt: Date | null, createdAt: Date): number {
+  return (signedUpAt ?? createdAt).getTime();
 }
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
@@ -169,7 +169,7 @@ export const userPrismaToCrud = (
     primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
-    signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt),
+    signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt, prisma.createdAt),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
     server_metadata: prisma.serverMetadata,
@@ -386,7 +386,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
-        signed_up_at_millis: getSignedUpAtMillis(row.signedUpAt ? new Date(row.signedUpAt + "Z") : null),
+        signed_up_at_millis: getSignedUpAtMillis(row.signedUpAt ? new Date(row.signedUpAt + "Z") : null, new Date(row.createdAt + "Z")),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
         server_metadata: row.serverMetadata,

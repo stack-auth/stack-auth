@@ -2,10 +2,10 @@ import { StackAssertionError, captureError } from "./errors";
 import { loadTurnstileScript, getTurnstileApi } from "./turnstile-browser";
 import type { TurnstileAction } from "./turnstile";
 
-export class TurnstileUserCancelledError extends Error {
+export class BotChallengeUserCancelledError extends Error {
   constructor() {
-    super("User cancelled the Turnstile challenge");
-    this.name = "TurnstileUserCancelledError";
+    super("User cancelled the bot challenge");
+    this.name = "BotChallengeUserCancelledError";
   }
 }
 
@@ -69,7 +69,7 @@ const OVERLAY_Z_INDEX = "999999";
 
 // Module-level singleton: only one visible overlay can be active at a time.
 // If a second challenge is requested while one is showing (e.g. user clicks another
-// auth flow), the previous overlay is cancelled with TurnstileUserCancelledError
+// auth flow), the previous overlay is cancelled with BotChallengeUserCancelledError
 // and cleaned up before the new one renders.
 let activeOverlay: { cleanup: () => void, reject: (err: Error) => void } | null = null;
 
@@ -90,7 +90,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 export function showTurnstileVisibleChallenge(siteKey: string, action: TurnstileAction): Promise<string> {
   if (activeOverlay) {
-    activeOverlay.reject(new TurnstileUserCancelledError());
+    activeOverlay.reject(new BotChallengeUserCancelledError());
     activeOverlay.cleanup();
     activeOverlay = null;
   }
@@ -149,7 +149,7 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
     activeOverlay = { cleanup, reject };
     cancelBtn.onclick = () => {
       cleanup();
-      reject(new TurnstileUserCancelledError());
+      reject(new BotChallengeUserCancelledError());
     };
 
     loadTurnstileScript().then(() => {
@@ -189,16 +189,16 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
 
 // ── Flow orchestrator ──────────────────────────────────────────────────
 
-export type TurnstileExecuteParams = {
+export type BotChallengeExecuteParams = {
   token?: string,
   phase?: "invisible" | "visible",
 };
 
-export type WithTurnstileFlowOptions<T> = {
+export type WithBotChallengeFlowOptions<T> = {
   visibleSiteKey: string,
   invisibleSiteKey: string,
   action: TurnstileAction,
-  execute: (turnstile: TurnstileExecuteParams) => Promise<T>,
+  execute: (challenge: BotChallengeExecuteParams) => Promise<T>,
   isChallengeRequired: (result: T) => boolean,
 };
 
@@ -208,7 +208,7 @@ export type WithTurnstileFlowOptions<T> = {
 // 2. Invisible + visible use different site keys so the server can tell which phase passed.
 // 3. Managed mode doesn't expose an API to programmatically trigger a retry with a
 //    different widget type, which our two-phase challenge escalation requires.
-export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>): Promise<T> {
+export async function withBotChallengeFlow<T>(options: WithBotChallengeFlowOptions<T>): Promise<T> {
   // Server safe: no Turnstile in SSR — just call execute with no turnstile params
   if (typeof window === "undefined") {
     return await options.execute({});
@@ -224,7 +224,7 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
       invisibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
       usedVisibleFallback = true;
     } catch (e) {
-      if (e instanceof TurnstileUserCancelledError) throw e;
+      if (e instanceof BotChallengeUserCancelledError) throw e;
       // Both challenges failed (e.g. Cloudflare down) — proceed without token.
       // Backend treats missing token as "invalid" for risk scoring but won't block signup.
       captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
@@ -246,7 +246,7 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
   try {
     visibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
   } catch (e) {
-    if (e instanceof TurnstileUserCancelledError) throw e;
+    if (e instanceof BotChallengeUserCancelledError) throw e;
     captureError("turnstile-flow-visible-challenge-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during visible Turnstile challenge", { cause: e }));
     return await options.execute({});
   }

@@ -52,7 +52,7 @@ it("should return the OAuth location as JSON when requested by the SDK flow", as
   const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
     query: {
       ...await Auth.OAuth.getAuthorizeQuery(),
-      x_stack_response_mode: "json",
+      stack_response_mode: "json",
     },
   });
 

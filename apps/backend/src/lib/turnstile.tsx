@@ -22,14 +22,14 @@ export type SignUpTurnstileAssessment = {
   visibleChallengeResult?: TurnstileResult,
 };
 
-export type TurnstileFlowRequest = {
-  turnstile_token?: string,
-  turnstile_phase?: TurnstilePhase,
+export type BotChallengeFlowRequest = {
+  bot_challenge_token?: string,
+  bot_challenge_phase?: TurnstilePhase,
 };
 
-export const turnstileFlowRequestSchemaFields = {
-  turnstile_token: yupString().optional(),
-  turnstile_phase: yupString().oneOf(turnstilePhaseValues).optional(),
+export const botChallengeFlowRequestSchemaFields = {
+  bot_challenge_token: yupString().optional(),
+  bot_challenge_phase: yupString().oneOf(turnstilePhaseValues).optional(),
 } as const;
 
 type SiteverifyResponse = {
@@ -174,13 +174,13 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
     }
     case "invisible": {
       if (assessment.status !== "ok") {
-        throw new KnownErrors.TurnstileChallengeRequired();
+        throw new KnownErrors.BotChallengeRequired();
       }
       return assessment;
     }
     case "visible": {
       if (assessment.status !== "ok") {
-        throw new KnownErrors.TurnstileChallengeFailed("Visible Turnstile challenge verification failed");
+        throw new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed");
       }
       // Visible passed but invisible failed — always record "invalid" rather than
       // trusting a client-supplied value (a malicious client could claim "error"
@@ -193,8 +193,8 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
 
 // ── Convenience ────────────────────────────────────────────────────────
 
-export async function getRequestContextAndTurnstileAssessment(
-  turnstile: TurnstileFlowRequest,
+export async function getRequestContextAndBotChallengeAssessment(
+  botChallenge: BotChallengeFlowRequest,
   expectedAction: TurnstileAction,
   tenancy: Tenancy,
 ): Promise<{
@@ -203,11 +203,11 @@ export async function getRequestContextAndTurnstileAssessment(
 }> {
   const requestContext = await getBestEffortEndUserRequestContext();
   const turnstileAssessment = await verifyTurnstileTokenWithOptionalVisibleChallenge({
-    token: turnstile.turnstile_token,
+    token: botChallenge.bot_challenge_token,
     remoteIp: requestContext.ipAddress,
     expectedAction,
     isAllowedHostname: (hostname) => isAllowedTurnstileHostname(hostname, tenancy),
-    phase: turnstile.turnstile_phase,
+    phase: botChallenge.bot_challenge_phase,
   });
   return { requestContext, turnstileAssessment };
 }
@@ -358,7 +358,7 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
       status: 200, headers: { "Content-Type": "application/json" },
     }));
     await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({ ...baseParams, token: "bad", phase: "invisible" }))
-      .rejects.toThrowError("An additional Turnstile challenge is required before sign-up can continue.");
+      .rejects.toThrowError("An additional bot challenge is required before sign-up can continue.");
   });
 
   test("returns recovered assessment after successful visible retry", async ({ expect }) => {

@@ -1,7 +1,7 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
-import { getRequestContextAndTurnstileAssessment, turnstileFlowRequestSchemaFields } from "@/lib/turnstile";
+import { getRequestContextAndBotChallengeAssessment, botChallengeFlowRequestSchemaFields } from "@/lib/turnstile";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -37,8 +37,8 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: yupString().optional(),
-      x_stack_response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
-      ...turnstileFlowRequestSchemaFields,
+      stack_response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
+      ...botChallengeFlowRequestSchemaFields,
 
       // oauth parameters
       client_id: yupString().defined(),
@@ -53,7 +53,7 @@ export const GET = createSmartRouteHandler({
     }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
   response: yupObject({
-    // The SDK uses x_stack_response_mode=json so it can intercept Turnstile challenges before navigating.
+    // The SDK uses stack_response_mode=json so it can intercept bot challenges before navigating.
     // The redirect path (default) is the legacy browser-direct flow.
     statusCode: yupNumber().oneOf([200]).defined(),
     bodyType: yupString().oneOf(["json"]).defined(),
@@ -83,7 +83,7 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
     }
 
-    const { turnstileAssessment } = await getRequestContextAndTurnstileAssessment(query, "oauth_authenticate", tenancy);
+    const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(query, "oauth_authenticate", tenancy);
 
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
@@ -137,13 +137,13 @@ export const GET = createSmartRouteHandler({
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
-          responseMode: query.x_stack_response_mode,
+          responseMode: query.stack_response_mode,
         } satisfies yup.InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },
     });
 
-    if (query.x_stack_response_mode === "json") {
+    if (query.stack_response_mode === "json") {
       // In JSON mode the client controls the flow programmatically and PKCE
       // already prevents CSRF, so we skip the cookie (which would require
       // credentials: "include" and a non-wildcard CORS origin).

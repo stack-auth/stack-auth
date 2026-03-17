@@ -27,4 +27,9 @@ export const postMigration = async (sql: Sql) => {
   expect(indexDefByName['ProjectUser_signedUpAt_asc']).toContain('"tenancyId", "signedUpAt"');
   expect(indexDefByName['ProjectUser_signUpIp_recent_idx']).toContain('"tenancyId", "signUpIp", "signedUpAt"');
   expect(indexDefByName['ProjectUser_signUpEmailBase_recent_idx']).toContain('"tenancyId", "signUpEmailBase", "signedUpAt"');
+
+  // Verify all indexes are partial (exclude anonymous users)
+  for (const [name, def] of Object.entries(indexDefByName)) {
+    expect(def, `${name} should be a partial index`).toContain('("isAnonymous" = false)');
+  }
 };

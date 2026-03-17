@@ -202,6 +202,7 @@ async function loadRecentSignUpStats(
           SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "isAnonymous" = false
             AND "signedUpAt" >= ${windowStart}
             AND "signUpIp" = ${request.signUpIp}
           LIMIT ${request.sameIpLimit}
@@ -213,6 +214,7 @@ async function loadRecentSignUpStats(
           SELECT 1 AS "matched"
           FROM ${sqlQuoteIdent(schema)}."ProjectUser"
           WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "isAnonymous" = false
             AND "signedUpAt" >= ${windowStart}
             AND "signUpEmailBase" = ${request.signUpEmailBase}
           LIMIT ${request.similarEmailLimit}

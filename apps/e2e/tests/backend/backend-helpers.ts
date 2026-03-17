@@ -456,8 +456,8 @@ export namespace Auth {
         body: filterUndefined({
           email: mailbox.emailAddress,
           callback_url: "http://localhost:12345/some-callback-url",
-          turnstile_token: options.turnstileToken ?? mockTurnstileTokens.magicLinkOk,
-          turnstile_phase: options.turnstilePhase,
+          bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.magicLinkOk,
+          bot_challenge_phase: options.turnstilePhase,
         }),
       });
       expect(response).toMatchInlineSnapshot(`
@@ -552,7 +552,7 @@ export namespace Auth {
           email,
           password,
           verification_callback_url: "http://localhost:12345/some-callback-url",
-          turnstile_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
+          bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
         }),
       });
       expect(response).toMatchObject({
@@ -751,8 +751,8 @@ export namespace Auth {
         code_challenge: "some-code-challenge",
         code_challenge_method: "plain",
         token: userAuth?.accessToken ?? undefined,
-        turnstile_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
-        turnstile_phase: options.turnstilePhase,
+        bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
+        bot_challenge_phase: options.turnstilePhase,
 
       });
     }

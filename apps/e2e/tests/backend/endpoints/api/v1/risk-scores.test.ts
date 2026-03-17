@@ -37,7 +37,7 @@ async function passwordSignUp(options: {
     body: {
       email,
       password: generateSecureRandomString(),
-      ...(options.turnstileToken == null ? {} : { turnstile_token: options.turnstileToken }),
+      ...(options.turnstileToken == null ? {} : { bot_challenge_token: options.turnstileToken }),
     },
   });
 

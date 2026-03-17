@@ -47,41 +47,41 @@ export type ClientInterfaceOptions = {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
-type TurnstileInput = {
+type BotChallengeInput = {
   token?: string,
   phase?: "invisible" | "visible",
 };
 
-function getTurnstileRequestFields(turnstile: TurnstileInput | undefined, context: string) {
-  const turnstileToken = turnstile?.token?.trim() || undefined;
-  if (turnstile?.phase === "visible") {
-    if (turnstileToken == null) {
-      throw new StackAssertionError(`${context} visible Turnstile retries require a token.`);
+function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefined, context: string) {
+  const challengeToken = botChallenge?.token?.trim() || undefined;
+  if (botChallenge?.phase === "visible") {
+    if (challengeToken == null) {
+      throw new StackAssertionError(`${context} visible bot challenge retries require a token.`);
     }
 
     return {
-      turnstile_token: turnstileToken,
-      turnstile_phase: "visible" as const,
+      bot_challenge_token: challengeToken,
+      bot_challenge_phase: "visible" as const,
     };
   }
 
-  if (turnstileToken == null) {
-    if (turnstile?.phase != null) {
-      throw new StackAssertionError(`${context} Turnstile phase options require a token.`);
+  if (challengeToken == null) {
+    if (botChallenge?.phase != null) {
+      throw new StackAssertionError(`${context} bot challenge phase options require a token.`);
     }
 
     return {};
   }
 
-  if (turnstile?.phase == null) {
+  if (botChallenge?.phase == null) {
     return {
-      turnstile_token: turnstileToken,
+      bot_challenge_token: challengeToken,
     };
   }
 
   return {
-    turnstile_token: turnstileToken,
-    turnstile_phase: "invisible" as const,
+    bot_challenge_token: challengeToken,
+    bot_challenge_phase: "invisible" as const,
   };
 }
 
@@ -628,8 +628,8 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
-    turnstile?: TurnstileInput,
-  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeRequired"]>> {
+    botChallenge?: BotChallengeInput,
+  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
       {
@@ -640,11 +640,11 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
-          ...getTurnstileRequestFields(turnstile, "Magic link sign-in"),
+          ...getBotChallengeRequestFields(botChallenge, "Magic link sign-in"),
         }),
       },
       null,
-      [KnownErrors.RedirectUrlNotWhitelisted, KnownErrors.TurnstileChallengeRequired]
+      [KnownErrors.RedirectUrlNotWhitelisted, KnownErrors.BotChallengeRequired]
     );
 
     if (res.status === "error") {
@@ -946,8 +946,8 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
-    turnstile?: TurnstileInput,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["TurnstileChallengeRequired"]>> {
+    botChallenge?: BotChallengeInput,
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -959,11 +959,11 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
-          ...getTurnstileRequestFields(turnstile, "Credential sign-up"),
+          ...getBotChallengeRequestFields(botChallenge, "Credential sign-up"),
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, KnownErrors.TurnstileChallengeRequired]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, KnownErrors.BotChallengeRequired]
     );
 
     if (res.status === "error") {
@@ -1091,7 +1091,7 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
-      turnstile?: TurnstileInput,
+      botChallenge?: BotChallengeInput,
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1134,7 +1134,7 @@ export class StackClientInterface {
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
     }
-    for (const [key, value] of Object.entries(getTurnstileRequestFields(options.turnstile, `OAuth ${options.type}`))) {
+    for (const [key, value] of Object.entries(getBotChallengeRequestFields(options.botChallenge, `OAuth ${options.type}`))) {
       url.searchParams.set(key, value);
     }
 
@@ -1150,9 +1150,9 @@ export class StackClientInterface {
     state: string,
     type: "authenticate" | "link",
     providerScope?: string,
-    turnstile?: TurnstileInput,
+    botChallenge?: BotChallengeInput,
     session: InternalSession,
-  }): Promise<Result<string, KnownErrors["TurnstileChallengeRequired"]>> {
+  }): Promise<Result<string, KnownErrors["BotChallengeRequired"]>> {
     if (typeof window === "undefined") {
       throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
     }
@@ -1160,7 +1160,7 @@ export class StackClientInterface {
     await this.options.prepareRequest?.();
 
     const url = new URL(await this.getOAuthUrl(options));
-    url.searchParams.set("x_stack_response_mode", "json");
+    url.searchParams.set("stack_response_mode", "json");
 
     let rawRes;
     try {
@@ -1176,7 +1176,7 @@ export class StackClientInterface {
 
     const processedResponse = await this._processResponse(rawRes);
     if (processedResponse.status === "error") {
-      if (KnownErrors.TurnstileChallengeRequired.isInstance(processedResponse.error)) {
+      if (KnownErrors.BotChallengeRequired.isInstance(processedResponse.error)) {
         return Result.error(processedResponse.error);
       }
       throw processedResponse.error;

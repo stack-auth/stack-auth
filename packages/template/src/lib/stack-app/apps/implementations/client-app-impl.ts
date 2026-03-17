@@ -31,7 +31,7 @@ import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { TurnstileUserCancelledError, withTurnstileFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import { BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -1503,7 +1503,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmail: crud.primary_email,
       primaryEmailVerified: crud.primary_email_verified,
       profileImageUrl: crud.profile_image_url,
-      signedUpAt: crud.signed_up_at_millis != null ? new Date(crud.signed_up_at_millis) : null,
+      signedUpAt: new Date(crud.signed_up_at_millis),
       clientMetadata: crud.client_metadata,
       clientReadOnlyMetadata: crud.client_read_only_metadata,
       hasPassword: crud.has_password,
@@ -2132,20 +2132,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return clientVersion;
   }
 
-  private _turnstileSiteKeysWarned = false;
-  private _getTurnstileSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
+  private _botChallengeSiteKeysWarned = false;
+  private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
-    const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY;
+    const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
-      if (!this._turnstileSiteKeysWarned) {
-        this._turnstileSiteKeysWarned = true;
-        console.warn("[stack-auth] NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY is not set — Turnstile fraud protection is disabled. Set the env variable to enable it.");
+      if (!this._botChallengeSiteKeysWarned) {
+        this._botChallengeSiteKeysWarned = true;
+        console.warn("[stack-auth] NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
       }
       return null;
     }
 
-    const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_TURNSTILE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+    const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
 
     return { visibleSiteKey, invisibleSiteKey };
   }
@@ -2268,45 +2268,45 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async sendMagicLinkEmail(email: string, options?: {
     callbackUrl?: string,
-  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeFailed"]>> {
+  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>> {
     const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
-    const siteKeys = this._getTurnstileSiteKeys();
+    const siteKeys = this._getBotChallengeSiteKeys();
 
-    // When Turnstile is not configured, send directly without challenge flow
+    // When bot challenge is not configured, send directly without challenge flow
     if (!siteKeys) {
       return await this._interface.sendMagicLinkEmail(email, callbackUrl) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
     }
 
-    // Run the send through the Turnstile invisible → visible challenge flow
+    // Run the send through the bot challenge invisible → visible flow
     let flowResult;
     try {
-      flowResult = await withTurnstileFlow({
+      flowResult = await withBotChallengeFlow({
         ...siteKeys,
         action: "send_magic_link_email",
-        execute: async (turnstile) => {
+        execute: async (challenge) => {
           return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
-            token: turnstile.token,
-            phase: turnstile.phase,
+            token: challenge.token,
+            phase: challenge.phase,
           });
         },
         isChallengeRequired: (result) => {
-          return result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error);
+          return result.status === "error" && KnownErrors.BotChallengeRequired.isInstance(result.error);
         },
       });
     } catch (e) {
-      if (e instanceof TurnstileUserCancelledError) {
-        return Result.error(new KnownErrors.TurnstileChallengeFailed("Turnstile challenge cancelled by user"));
+      if (e instanceof BotChallengeUserCancelledError) {
+        return Result.error(new KnownErrors.BotChallengeFailed("Bot challenge cancelled by user"));
       }
       throw e;
     }
 
-    // TurnstileChallengeRequired should have been consumed by withTurnstileFlow;
-    // if it leaks through, convert to TurnstileChallengeFailed and preserve the original error for debugging
-    if (flowResult.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(flowResult.error)) {
-      captureError("turnstile-unexpected-challenge-after-flow", flowResult.error);
-      return Result.error(new KnownErrors.TurnstileChallengeFailed("Unexpected Turnstile challenge after flow completion"));
+    // BotChallengeRequired should have been consumed by withBotChallengeFlow;
+    // if it leaks through, convert to BotChallengeFailed and preserve the original error for debugging
+    if (flowResult.status === "error" && KnownErrors.BotChallengeRequired.isInstance(flowResult.error)) {
+      captureError("bot-challenge-unexpected-after-flow", flowResult.error);
+      return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
     }
-    return flowResult as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["TurnstileChallengeFailed"]>;
+    return flowResult as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>;
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2574,10 +2574,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    const siteKeys = this._getTurnstileSiteKeys();
+    const siteKeys = this._getBotChallengeSiteKeys();
     const { codeChallenge, state } = await saveVerifierAndState();
 
-    const executeOAuth = async (turnstile: { token?: string, phase?: "invisible" | "visible" }) => {
+    const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible" }) => {
       return await this._interface.authorizeOAuth({
         provider,
         redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
@@ -2586,9 +2586,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
         codeChallenge,
         state,
-        turnstile: {
-          token: turnstile.token,
-          phase: turnstile.phase,
+        botChallenge: {
+          token: challenge.token,
+          phase: challenge.phase,
         },
         session,
       });
@@ -2597,20 +2597,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     let authorizeResult;
     try {
       if (siteKeys) {
-        authorizeResult = await withTurnstileFlow({
+        authorizeResult = await withBotChallengeFlow({
           ...siteKeys,
           action: "oauth_authenticate",
           execute: executeOAuth,
           isChallengeRequired: (result) => {
-            return result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error);
+            return result.status === "error" && KnownErrors.BotChallengeRequired.isInstance(result.error);
           },
         });
       } else {
-        // Server safe: just call execute with no turnstile params
+        // Server safe: just call execute with no bot challenge params
         authorizeResult = await executeOAuth({});
       }
     } catch (e) {
-      if (e instanceof TurnstileUserCancelledError) {
+      if (e instanceof BotChallengeUserCancelledError) {
         return;
       }
       throw e;
@@ -2687,22 +2687,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["TurnstileChallengeFailed"]>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
-    const siteKeys = this._getTurnstileSiteKeys();
+    const siteKeys = this._getBotChallengeSiteKeys();
 
-    const executeSignUp = async (turnstile: { token?: string, phase?: "invisible" | "visible" }) => {
+    const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible" }) => {
       let result = await this._interface.signUpWithCredential(
         options.email,
         options.password,
         emailVerificationRedirectUrl,
         session,
-        { token: turnstile.token, phase: turnstile.phase },
+        { token: challenge.token, phase: challenge.phase },
       );
 
       // If the auto-constructed redirect URL is not whitelisted, gracefully fall back
@@ -2719,7 +2719,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             options.password,
             undefined, // No email verification
             session,
-            { token: turnstile.token, phase: turnstile.phase },
+            { token: challenge.token, phase: challenge.phase },
           );
         }
       }
@@ -2729,16 +2729,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     let result;
     if (siteKeys) {
-      result = await withTurnstileFlow({
+      result = await withBotChallengeFlow({
         ...siteKeys,
         action: "sign_up_with_credential",
         execute: executeSignUp,
         isChallengeRequired: (r) => {
-          return r.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(r.error);
+          return r.status === "error" && KnownErrors.BotChallengeRequired.isInstance(r.error);
         },
       });
     } else {
-      // Server safe: just call execute with no turnstile params
+      // Server safe: just call execute with no bot challenge params
       result = await executeSignUp({});
     }
 
@@ -2749,13 +2749,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       return Result.ok(undefined);
     } else {
-      // TurnstileChallengeRequired should have been consumed by withTurnstileFlow;
-      // if it leaks through, capture for debugging and convert to TurnstileChallengeFailed
-      if (KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-        captureError("turnstile-unexpected-challenge-after-flow", result.error);
-        return Result.error(new KnownErrors.TurnstileChallengeFailed("Unexpected Turnstile challenge after flow completion"));
+      // BotChallengeRequired should have been consumed by withBotChallengeFlow;
+      // if it leaks through, capture for debugging and convert to BotChallengeFailed
+      if (KnownErrors.BotChallengeRequired.isInstance(result.error)) {
+        captureError("bot-challenge-unexpected-after-flow", result.error);
+        return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
       }
-      return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["TurnstileChallengeFailed"]>;
+      return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>;
     }
   }
 
