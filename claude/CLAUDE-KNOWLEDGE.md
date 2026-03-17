@@ -78,3 +78,39 @@ Q: What is the reliable way to lint a single dashboard file in this monorepo?
 A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx"`), because running root `pnpm lint -- <file>` fans out through Turbo packages where that path does not exist.
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: How do cross-domain auth handoffs avoid creating extra refresh-token sessions?
+A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. We encode handoff metadata (`afterCallbackRedirectUrl`, `refreshTokenId`) into a prefixed payload stored in `afterCallbackRedirectUrl`, decode it in `OAuthModel._getOrCreateRefreshTokenObj`, and sanitize `after_callback_redirect_url` in `saveToken` so clients only receive the original redirect URL.
+
+Q: Is there a manual demo page for cross-domain auth handoff verification?
+A: Yes — `examples/demo/src/app/cross-domain-handoff/page.tsx` provides one-click triggers for client sign-in/sign-up redirects, server protected-page redirects, and OAuth provider sign-in, plus runtime URL visibility for manual verification.
+
+Q: Why did the demo still use `*.built-with-stack-auth.com` in local dev?
+A: The demo app needs `NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX` in `examples/demo/.env.development`; set it to `.localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09` so hosted handler URLs resolve to the local hosted-components instance.
+
+Q: How should SDK code read environment variables to work across bundlers?
+A: Read from `packages/template/src/lib/env.ts` via `envVars` only. That file uses explicit `typeof process !== "undefined" ? process.env.KEY : undefined` getters so bundlers like Next.js can inline `process.env.KEY` at build time while still being safe if `process` is unavailable at runtime. Direct `process.env` usage is banned in `packages/template/.eslintrc.cjs` everywhere except `src/lib/env.ts`.
+
+Q: What if hosted auth rewrites `after_auth_return_to` into a same-origin relative callback URL?
+A: Cross-domain handoff should still run when handoff params indicate a different final callback origin. In that case, reconstruct the cross-domain redirect URI on the `afterCallbackRedirectUrl` origin while preserving callback path/query/hash, then continue through `/auth/oauth/cross-domain/authorize`.
+
+Q: How should `app.urls.signIn`/`signOut` behave for hosted cross-domain flows?
+A: In browser contexts, `app.urls` should return redirect-ready handler URLs for `signIn`, `signUp`, `onboarding`, and `signOut`: include `after_auth_return_to`, preserve existing cross-domain handoff params, and for hosted sign-in/up/onboarding populate cross-domain callback targets (`/handler/oauth-callback` with `stack_cross_domain_auth=1`) so plain `router.push(app.urls.signIn)` / `<Link href={app.urls.signOut}>` keeps return-to-domain behavior.
+
+Q: How do we avoid duplicating redirect-back URL logic between `app.urls` and `redirectTo*`?
+A: Keep redirect math and handler policy decisions in `redirect-page-urls.ts` (for example `resolveAppUrlsForCurrentPage`, `resolveRedirectBackAwareHandlerUrlForRedirect`, `getHandlerRedirectPolicy`) and keep `client-app-impl` as orchestration only (state/cookies/network/redirect side effects). Redirect execution should start from raw resolved URLs (not `this.urls`) so `noRedirectBack` still works as expected.
+
+Q: What is the cleanest split for `_redirectToHandler`?
+A: Put branching/policy into a pure planner (`planRedirectToHandler`) in `redirect-page-urls.ts` that returns either a direct redirect URL or a cross-domain authorize payload; keep `client-app-impl` as the executor for side effects (calling authorize endpoint and navigating).
+
+Q: Should query parsing like `_getCrossDomainHandoffParamsForUrlsGetter` live in client-app-impl?
+A: Prefer moving pure query parsing into `redirect-page-urls.ts` (for example `getCrossDomainHandoffParamsFromCurrentUrl`) and keep `client-app-impl` focused on fallback/prefetch/stateful concerns only.
+
+Q: How should we carry cross-domain refresh-token reuse data without corrupting URL semantics?
+A: Keep `afterCallbackRedirectUrl` as a URL-only field and persist refresh-token linkage in a dedicated DB column (`ProjectUserAuthorizationCode.grantedRefreshTokenId`). Then return that column as `user.refreshTokenId` in `getAuthorizationCode` so token issuance can safely reuse and ownership-check it.
+
+Q: How can cross-domain handoff require proof of refresh-token possession without adding extra body fields?
+A: Reuse the existing `X-Stack-Refresh-Token` header already sent by the client interface. In `/auth/oauth/cross-domain/authorize`, require this header, resolve the refresh-token row by token string, and verify it matches auth context (`auth.refreshTokenId`, `auth.user.id`, `auth.tenancy.id`) and validity before issuing the handoff code.
+
+Q: Why can cross-domain e2e tests fail after adding a new file under template implementations?
+A: E2E JS tests import `@stackframe/js` from built `dist`, so new helper files copied to `packages/js/src` still fail at runtime until package dist is rebuilt and includes the new module path.

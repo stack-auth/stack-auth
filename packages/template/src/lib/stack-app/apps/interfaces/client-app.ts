@@ -1,7 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, stackAppInternalsSymbol, TokenStoreInit } from "../../common";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
@@ -13,7 +13,7 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
   extraRequestHeaders?: Record<string, string>,
   projectId?: ProjectId,
   publishableClientKey?: string,
-  urls?: Partial<HandlerUrls>,
+  urls?: HandlerUrlOptions,
   oauthScopesOnSignIn?: Partial<OAuthScopesOnSignIn>,
   tokenStore?: TokenStoreInit<HasTokenStore>,
   redirectMethod?: RedirectMethod,
@@ -52,7 +52,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
      */
     readonly version: string,
 
-    readonly urls: Readonly<HandlerUrls>,
+    readonly urls: Readonly<ResolvedHandlerUrls>,
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,

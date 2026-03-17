@@ -8,7 +8,7 @@ import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefres
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
@@ -123,6 +123,12 @@ export class OAuthModel implements AuthorizationCodeModel {
           },
         },
       });
+      if (refreshTokenObj && refreshTokenObj.projectUserId !== user.id) {
+        throw new StackAssertionError("Cross-domain handoff refresh token does not belong to the authenticated user", {
+          refreshTokenProjectUserId: refreshTokenObj.projectUserId,
+          userId: user.id,
+        });
+      }
       if (refreshTokenObj && await isRefreshTokenValid({ tenancy, refreshTokenObj })) {
         return refreshTokenObj;
       }
@@ -145,6 +151,8 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
+    const afterCallbackRedirectUrl = user.afterCallbackRedirectUrl;
+
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));
       const prisma = await getPrismaClientForTenancy(tenancy);
@@ -199,8 +207,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       // TODO remove deprecated camelCase properties
       newUser: user.newUser,
       is_new_user: user.newUser,
-      afterCallbackRedirectUrl: user.afterCallbackRedirectUrl,
-      after_callback_redirect_url: user.afterCallbackRedirectUrl,
+      afterCallbackRedirectUrl: afterCallbackRedirectUrl,
+      after_callback_redirect_url: afterCallbackRedirectUrl,
     };
   }
 
@@ -297,6 +305,7 @@ export class OAuthModel implements AuthorizationCodeModel {
         projectUserId: user.id,
         newUser: user.newUser,
         afterCallbackRedirectUrl: user.afterCallbackRedirectUrl,
+        grantedRefreshTokenId: user.refreshTokenId,
         tenancyId: tenancy.id,
       },
     });
@@ -361,7 +370,8 @@ export class OAuthModel implements AuthorizationCodeModel {
       user: {
         id: code.projectUserId,
         newUser: code.newUser,
-        afterCallbackRedirectUrl: code.afterCallbackRedirectUrl,
+        afterCallbackRedirectUrl: code.afterCallbackRedirectUrl ?? undefined,
+        refreshTokenId: code.grantedRefreshTokenId ?? undefined,
       },
     };
   }

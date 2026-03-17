@@ -37,7 +37,10 @@ export type {
   GetCurrentUserOptions,
   /** @deprecated Use GetCurrentUserOptions instead */
   GetCurrentUserOptions as GetUserOptions,
+  HandlerUrlOptions,
+  HandlerUrlTarget,
   HandlerUrls,
+  ResolvedHandlerUrls,
   OAuthScopesOnSignIn
 } from "./common";
 

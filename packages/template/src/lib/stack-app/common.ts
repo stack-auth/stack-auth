@@ -86,25 +86,30 @@ export type TokenStoreInit<HasTokenStore extends boolean = boolean> =
   : TokenStoreInit<true> | TokenStoreInit<false>;
 
 export type HandlerUrls = {
-  handler: string,
-  signIn: string,
-  signUp: string,
-  afterSignIn: string,
-  afterSignUp: string,
-  signOut: string,
-  afterSignOut: string,
-  emailVerification: string,
-  passwordReset: string,
-  forgotPassword: string,
-  home: string,
-  oauthCallback: string,
-  magicLinkCallback: string,
-  accountSettings: string,
-  teamInvitation: string,
-  mfa: string,
-  error: string,
-  onboarding: string,
+  handler: HandlerUrlTarget,
+  signIn: HandlerUrlTarget,
+  signUp: HandlerUrlTarget,
+  afterSignIn: HandlerUrlTarget,
+  afterSignUp: HandlerUrlTarget,
+  signOut: HandlerUrlTarget,
+  afterSignOut: HandlerUrlTarget,
+  emailVerification: HandlerUrlTarget,
+  passwordReset: HandlerUrlTarget,
+  forgotPassword: HandlerUrlTarget,
+  home: HandlerUrlTarget,
+  oauthCallback: HandlerUrlTarget,
+  magicLinkCallback: HandlerUrlTarget,
+  accountSettings: HandlerUrlTarget,
+  teamInvitation: HandlerUrlTarget,
+  mfa: HandlerUrlTarget,
+  error: HandlerUrlTarget,
+  onboarding: HandlerUrlTarget,
 }
+export type HandlerUrlTarget = string | { type: "hosted" | "handler-component" };
+export type HandlerUrlOptions = Partial<HandlerUrls> & { default?: HandlerUrlTarget };
+export type ResolvedHandlerUrls = {
+  [K in keyof HandlerUrls]: string;
+};
 
 export type OAuthScopesOnSignIn = {
   [key in ProviderType]: string[];

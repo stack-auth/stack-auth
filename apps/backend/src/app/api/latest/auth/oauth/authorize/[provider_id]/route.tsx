@@ -1,4 +1,5 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
@@ -35,7 +36,7 @@ export const GET = createSmartRouteHandler({
        */
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
-      after_callback_redirect_url: yupString().optional(),
+      after_callback_redirect_url: urlSchema.optional(),
 
       // oauth parameters
       client_id: yupString().defined(),
@@ -74,6 +75,13 @@ export const GET = createSmartRouteHandler({
 
     if (query.type === "link" && !query.token) {
       throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
+    }
+    if (
+      query.after_callback_redirect_url
+      && !validateRedirectUrl(query.after_callback_redirect_url, tenancy)
+      && !isAcceptedNativeAppUrl(query.after_callback_redirect_url)
+    ) {
+      throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user

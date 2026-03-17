@@ -31,7 +31,7 @@ import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
+import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
@@ -39,9 +39,9 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -49,11 +49,14 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
+import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
+import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler, resolveAppUrlsForCurrentPage } from "./redirect-page-urls";
+import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
 // IF_PLATFORM react-like
@@ -69,9 +72,6 @@ isReactServer = sc.isReactServer;
 // NextNavigation.useRouter does not exist in react-server environments and some bundlers try to be helpful and throw a warning. Ignore the warning.
 const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
-
-// hack to make sure process is defined in non-node environments
-const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
 
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
@@ -94,7 +94,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _interface: StackClientInterface;
   protected readonly _tokenStoreInit: TokenStoreInit<HasTokenStore>;
   protected readonly _redirectMethod: RedirectMethod | undefined;
-  protected readonly _urlOptions: Partial<HandlerUrls>;
+  protected readonly _urlOptions: HandlerUrlOptions;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
 
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
@@ -373,6 +373,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   );
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
+  private _prefetchedCrossDomainHandoffParams: CrossDomainHandoffParams | null = null;
+  private _isPrefetchingCrossDomainHandoffParams = false;
 
   protected async _createCookieHelper(overrideTokenStoreInit?: TokenStoreInit): Promise<CookieHelper> {
     const tokenStoreInit = overrideTokenStoreInit === undefined ? this._tokenStoreInit : overrideTokenStoreInit;
@@ -527,6 +529,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._prefetchCrossDomainHandoffParamsIfNeeded();
 
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
@@ -2131,11 +2134,116 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
-    return isRelative(url) || (typeof window !== "undefined" && window.location.origin === new URL(url).origin);
+    if (isRelative(url)) {
+      return true;
+    }
+    if (typeof window !== "undefined" && window.location.origin === new URL(url).origin) {
+      return true;
+    }
+    return isHostedHandlerUrlForProject({ url, projectId: this.projectId });
   }
 
-  get urls(): Readonly<HandlerUrls> {
-    return getUrls(this._urlOptions);
+  get urls(): Readonly<ResolvedHandlerUrls> {
+    const resolved = getUrls(this._urlOptions, { projectId: this.projectId });
+    if (isReactServer || typeof window === "undefined") {
+      return resolved;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    const localOAuthCallbackUrl = this._getLocalOAuthCallbackHandlerUrl();
+    const crossDomainHandoffParams = this._getCrossDomainHandoffParamsForUrlsGetter(currentUrl);
+    return resolveAppUrlsForCurrentPage({
+      resolvedUrls: resolved,
+      currentUrl,
+      crossDomainHandoffParams,
+      localOAuthCallbackUrl,
+    });
+  }
+
+  protected _prefetchCrossDomainHandoffParamsIfNeeded() {
+    const canWriteOauthVerifierCookie = this._tokenStoreInit === "cookie" || this._tokenStoreInit === "nextjs-cookie";
+    if (
+      typeof window === "undefined"
+      || !canWriteOauthVerifierCookie
+      || this._isPrefetchingCrossDomainHandoffParams
+      || this._prefetchedCrossDomainHandoffParams != null
+    ) {
+      return;
+    }
+    this._isPrefetchingCrossDomainHandoffParams = true;
+    runAsynchronously(async () => {
+      try {
+        const { state, codeChallenge } = await saveVerifierAndState();
+        this._prefetchedCrossDomainHandoffParams = { state, codeChallenge };
+      } finally {
+        this._isPrefetchingCrossDomainHandoffParams = false;
+      }
+    });
+  }
+
+  protected _getCrossDomainHandoffParamsForUrlsGetter(currentUrl: URL): CrossDomainHandoffParams | null {
+    const fromQuery = getCrossDomainHandoffParamsFromCurrentUrl(currentUrl);
+    if (fromQuery != null) {
+      return fromQuery;
+    }
+
+    if (this._prefetchedCrossDomainHandoffParams != null) {
+      return this._prefetchedCrossDomainHandoffParams;
+    }
+
+    this._prefetchCrossDomainHandoffParamsIfNeeded();
+    return null;
+  }
+
+  protected async _getCrossDomainHandoffParamsForRedirect(currentUrl: URL): Promise<CrossDomainHandoffParams> {
+    const fromQuery = getCrossDomainHandoffParamsFromCurrentUrl(currentUrl);
+    if (fromQuery != null) {
+      return fromQuery;
+    }
+    const { state, codeChallenge } = await saveVerifierAndState();
+    this._prefetchedCrossDomainHandoffParams = { state, codeChallenge };
+    return { state, codeChallenge };
+  }
+
+  protected _getLocalOAuthCallbackHandlerUrl(): string {
+    return resolveHandlerUrls({
+      urls: {
+        ...this._urlOptions,
+        default: { type: "handler-component" },
+      },
+      projectId: this.projectId,
+    }).oauthCallback;
+  }
+
+  protected async _createCrossDomainAuthRedirectUrl(options: {
+    redirectUri: string,
+    state: string,
+    codeChallenge: string,
+    afterCallbackRedirectUrl: string,
+  }): Promise<string> {
+    const session = await this._getSession();
+    const response = await this._interface.sendClientRequest(
+      "/auth/oauth/cross-domain/authorize",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          redirect_uri: options.redirectUri,
+          state: options.state,
+          code_challenge: options.codeChallenge,
+          code_challenge_method: "S256",
+          after_callback_redirect_url: options.afterCallbackRedirectUrl,
+        }),
+      },
+      session,
+    );
+    const result = await response.json();
+    if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
+      throw new StackAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
+    }
+    return result.redirect_url;
   }
 
   protected async _getCurrentUrl() {
@@ -2189,37 +2297,36 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions) {
-    let url = this.urls[handlerName];
-    if (!url) {
+    const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
+    const rawHandlerUrl = rawUrls[handlerName];
+    if (!rawHandlerUrl) {
       throw new Error(`No URL for handler name ${handlerName}`);
     }
 
-    if (!options?.noRedirectBack) {
-      if (handlerName === "afterSignIn" || handlerName === "afterSignUp") {
-        if (isReactServer || typeof window === "undefined") {
-          // TODO implement this
-        } else {
-          const queryParams = new URLSearchParams(window.location.search);
-          url = queryParams.get("after_auth_return_to") || url;
-        }
-      } else if (handlerName === "signIn" || handlerName === "signUp" || handlerName === "onboarding") {
-        // For signIn, signUp, and onboarding, preserve the return URL so user can be redirected back after completing the flow
-        if (isReactServer || typeof window === "undefined") {
-          // TODO implement this
-        } else {
-          const currentUrl = new URL(window.location.href);
-          const nextUrl = new URL(url, currentUrl);
-          if (currentUrl.searchParams.has("after_auth_return_to")) {
-            nextUrl.searchParams.set("after_auth_return_to", currentUrl.searchParams.get("after_auth_return_to")!);
-          } else if (currentUrl.protocol === nextUrl.protocol && currentUrl.host === nextUrl.host) {
-            nextUrl.searchParams.set("after_auth_return_to", getRelativePart(currentUrl));
-          }
-          url = getRelativePart(nextUrl);
-        }
-      }
+    const currentUrl = isReactServer || typeof window === "undefined"
+      ? null
+      : new URL(window.location.href);
+    const plan = await planRedirectToHandler({
+      handlerName,
+      rawHandlerUrl,
+      noRedirectBack: options?.noRedirectBack === true,
+      currentUrl,
+      localOAuthCallbackUrl: this._getLocalOAuthCallbackHandlerUrl(),
+      getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
+    });
+
+    if (plan.type === "cross-domain-authorize") {
+      const crossDomainRedirectUrl = await this._createCrossDomainAuthRedirectUrl({
+        redirectUri: plan.redirectUri,
+        state: plan.state,
+        codeChallenge: plan.codeChallenge,
+        afterCallbackRedirectUrl: plan.afterCallbackRedirectUrl,
+      });
+      await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
+      return;
     }
 
-    await this._redirectIfTrusted(url, options);
+    await this._redirectIfTrusted(plan.url, options);
   }
 
   async redirectToSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("signIn", options); }
@@ -2511,12 +2618,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
+    const currentUrl = new URL(window.location.href);
+    const afterCallbackRedirectUrl = currentUrl.searchParams.has("after_auth_return_to")
+      ? currentUrl.toString()
+      : undefined;
     await signInWithOAuth(
       this._interface,
       {
         provider,
         redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
         errorRedirectUrl: this.urls.error,
+        afterCallbackRedirectUrl,
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
       },
       session,
@@ -2860,10 +2972,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       throw new Error("callOAuthCallback can currently only be called in a browser environment");
     }
     this._ensurePersistentTokenStore();
+    let oauthCallbackRedirectUri = this.urls.oauthCallback;
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
+      currentUrl.searchParams.delete("code");
+      currentUrl.searchParams.delete("state");
+      oauthCallbackRedirectUri = currentUrl.toString();
+    }
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await callOAuthCallback(this._interface, this.urls.oauthCallback);
+        return await callOAuthCallback(this._interface, oauthCallbackRedirectUri);
       });
     } catch (e) {
       if (KnownErrors.InvalidTotpCode.isInstance(e)) {

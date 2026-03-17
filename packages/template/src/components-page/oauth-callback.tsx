@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
+import { envVars } from "../lib/env";
 import { useTranslation } from "../lib/translations";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
@@ -26,7 +27,7 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
       captureError("<OAuthCallback />", e);
       setError(e);
     }
-    if (!hasRedirected && (!error || process.env.NODE_ENV === 'production')) {
+    if (!hasRedirected && (!error || envVars.NODE_ENV === 'production')) {
       await app.redirectToSignIn({ noRedirectBack: true });
     }
   }), []);
