@@ -566,6 +566,7 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
     is_high_priority: 'boolean',
     rendered_is_transactional: 'nullable_boolean',
     can_have_delivery_info: 'nullable_boolean',
+    skipped_details: 'json',
     is_paused: 'boolean',
     sync_is_deleted: 'boolean',
   },
