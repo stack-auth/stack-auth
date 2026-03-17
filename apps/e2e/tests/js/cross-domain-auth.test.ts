@@ -1,6 +1,6 @@
 import { StackClientApp } from "@stackframe/js";
-import { it, localRedirectUrl } from "../helpers";
 import { afterEach, vi } from "vitest";
+import { it, localRedirectUrl } from "../helpers";
 
 const withHostedDomainSuffix = async (callback: () => Promise<void>) => {
   const oldHostedHandlerDomainSuffix = process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX;
