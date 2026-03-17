@@ -60,12 +60,8 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 
 const personalTeamDefaultDisplayName = "Personal Team";
 
-// signedUpAt is nullable in the DB because anonymous users haven't truly "signed up" yet —
-// it's set at upgrade time by the risk scoring pipeline to ensure correct
-// recent-signup windows (sameIpCount, similarEmailCount). For the API, we
-// fall back to createdAt to maintain backward compatibility (non-nullable).
-function getSignedUpAtMillis(signedUpAt: Date | null, createdAt: Date): number {
-  return (signedUpAt ?? createdAt).getTime();
+function getSignedUpAtMillis(signedUpAt: Date): number {
+  return signedUpAt.getTime();
 }
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
@@ -169,7 +165,7 @@ export const userPrismaToCrud = (
     primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
-    signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt, prisma.createdAt),
+    signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
     server_metadata: prisma.serverMetadata,
@@ -386,7 +382,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
-        signed_up_at_millis: getSignedUpAtMillis(row.signedUpAt ? new Date(row.signedUpAt + "Z") : null, new Date(row.createdAt + "Z")),
+        signed_up_at_millis: getSignedUpAtMillis(new Date((row.signedUpAt ?? throwErr("signedUpAt should never be null — anonymous users get createdAt, and the backfill migration ensures all existing rows are populated")) + "Z")),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
         server_metadata: row.serverMetadata,
@@ -665,8 +661,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
           signUpCountryCode: data.country_code,
-          // Anonymous users get NULL — signedUpAt is set at upgrade time by the risk pipeline
-          signedUpAt: (data.is_anonymous ?? false) ? null : new Date(),
+          signedUpAt: new Date(),
           signUpRiskScoreBot: data.risk_scores?.sign_up.bot ?? 0,
           signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse ?? 0,
         },

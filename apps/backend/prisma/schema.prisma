@@ -276,7 +276,7 @@ model ProjectUser {
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   // Sign-up metadata
-  signedUpAt                      DateTime?
+  signedUpAt                      DateTime
   signUpIp                        String?
   signUpIpTrusted                 Boolean?
   signUpEmailNormalized           String?

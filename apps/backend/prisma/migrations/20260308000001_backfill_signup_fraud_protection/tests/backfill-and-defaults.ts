@@ -75,10 +75,11 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   expect(regularRows[0].signUpRiskScoreBot).toBe(0);
   expect(regularRows[0].signUpRiskScoreFreeTrialAbuse).toBe(0);
 
-  // Anonymous user: signedUpAt should remain NULL
+  // Anonymous user: signedUpAt should also be backfilled from createdAt
   const anonRows = await sql`
     SELECT
       "signedUpAt",
+      "createdAt",
       "signUpRiskScoreBot",
       "signUpRiskScoreFreeTrialAbuse"
     FROM "ProjectUser"
@@ -86,7 +87,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `;
 
   expect(anonRows).toHaveLength(1);
-  expect(anonRows[0].signedUpAt).toBeNull();
+  expect(anonRows[0].signedUpAt.toISOString()).toBe(anonRows[0].createdAt.toISOString());
   expect(anonRows[0].signUpRiskScoreBot).toBe(0);
   expect(anonRows[0].signUpRiskScoreFreeTrialAbuse).toBe(0);
 };

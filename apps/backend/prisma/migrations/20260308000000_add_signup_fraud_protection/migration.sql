@@ -22,3 +22,9 @@ ALTER TABLE "ProjectUser"
   ADD COLUMN "signUpIpTrusted" BOOLEAN,
   ADD COLUMN "signUpEmailNormalized" TEXT,
   ADD COLUMN "signUpEmailBase" TEXT;
+
+-- NOT NULL check for signedUpAt (NOT VALID to avoid full table scan now;
+-- backfilled in migration 000001, validated + enforced in migration 000003).
+ALTER TABLE "ProjectUser"
+  ADD CONSTRAINT "ProjectUser_signedUpAt_not_null"
+  CHECK ("signedUpAt" IS NOT NULL) NOT VALID;

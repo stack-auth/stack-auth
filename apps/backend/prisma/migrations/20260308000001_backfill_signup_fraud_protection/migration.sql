@@ -1,13 +1,11 @@
 -- SINGLE_STATEMENT_SENTINEL
 -- CONDITIONALLY_REPEAT_MIGRATION_SENTINEL
--- Backfill signedUpAt from createdAt in batches (non-anonymous users only).
--- Anonymous users have not truly "signed up" yet — signedUpAt is set at upgrade time
--- by the risk scoring pipeline, so we leave it NULL to avoid incorrect risk windows.
+-- Backfill signedUpAt from createdAt in batches for all users (including anonymous).
+-- Risk score queries filter by isAnonymous explicitly, so NULL signedUpAt is no longer needed.
 WITH to_update AS (
     SELECT "projectUserId", "tenancyId"
     FROM "ProjectUser"
     WHERE "signedUpAt" IS NULL
-      AND "isAnonymous" = false
     LIMIT 10000
 ),
 updated AS (
