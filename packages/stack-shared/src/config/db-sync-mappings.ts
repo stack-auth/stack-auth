@@ -1609,7 +1609,8 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "refresh_token_id" text NOT NULL,
           "started_at" timestamp without time zone NOT NULL,
           "last_event_at" timestamp without time zone NOT NULL,
-          "created_at" timestamp without time zone NOT NULL
+          "created_at" timestamp without time zone NOT NULL,
+          "chunk_count" bigint NOT NULL DEFAULT 0
         );
         REVOKE ALL ON "session_replays" FROM PUBLIC;
         GRANT SELECT ON "session_replays" TO PUBLIC;
@@ -1630,6 +1631,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           started_at DateTime64(3, 'UTC'),
           last_event_at DateTime64(3, 'UTC'),
           created_at DateTime64(3, 'UTC'),
+          chunk_count UInt64,
           sync_sequence_id Int64,
           sync_is_deleted UInt8,
           sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
@@ -1650,6 +1652,12 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "SessionReplay"."startedAt" AS "started_at",
           "SessionReplay"."lastEventAt" AS "last_event_at",
           "SessionReplay"."createdAt" AS "created_at",
+          (
+            SELECT COUNT(*)
+            FROM "SessionReplayChunk"
+            WHERE "SessionReplayChunk"."tenancyId" = "SessionReplay"."tenancyId"
+              AND "SessionReplayChunk"."sessionReplayId" = "SessionReplay"."id"
+          ) AS "chunk_count",
           "SessionReplay"."sequenceId" AS "sync_sequence_id",
           "SessionReplay"."tenancyId" AS "tenancyId",
           false AS "sync_is_deleted"
@@ -1670,6 +1678,12 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         "SessionReplay"."startedAt" AS "started_at",
         "SessionReplay"."lastEventAt" AS "last_event_at",
         "SessionReplay"."createdAt" AS "created_at",
+        (
+          SELECT COUNT(*)
+          FROM "SessionReplayChunk"
+          WHERE "SessionReplayChunk"."tenancyId" = "SessionReplay"."tenancyId"
+            AND "SessionReplayChunk"."sessionReplayId" = "SessionReplay"."id"
+        ) AS "chunk_count",
         "SessionReplay"."sequenceId" AS "sequence_id",
         "SessionReplay"."tenancyId",
         false AS "is_deleted"
@@ -1690,9 +1704,10 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             $4::timestamp without time zone AS "started_at",
             $5::timestamp without time zone AS "last_event_at",
             $6::timestamp without time zone AS "created_at",
-            $7::bigint AS "sequence_id",
-            $8::boolean AS "is_deleted",
-            $9::text AS "mapping_name"
+            $7::bigint AS "chunk_count",
+            $8::bigint AS "sequence_id",
+            $9::boolean AS "is_deleted",
+            $10::text AS "mapping_name"
         ),
         deleted AS (
           DELETE FROM "session_replays" sr
@@ -1707,7 +1722,8 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "refresh_token_id",
             "started_at",
             "last_event_at",
-            "created_at"
+            "created_at",
+            "chunk_count"
           )
           SELECT
             p."id",
@@ -1715,7 +1731,8 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             p."refresh_token_id",
             p."started_at",
             p."last_event_at",
-            p."created_at"
+            p."created_at",
+            p."chunk_count"
           FROM params p
           WHERE p."is_deleted" = false
           ON CONFLICT ("id") DO UPDATE SET
@@ -1723,7 +1740,8 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "refresh_token_id" = EXCLUDED."refresh_token_id",
             "started_at" = EXCLUDED."started_at",
             "last_event_at" = EXCLUDED."last_event_at",
-            "created_at" = EXCLUDED."created_at"
+            "created_at" = EXCLUDED."created_at",
+            "chunk_count" = EXCLUDED."chunk_count"
           RETURNING 1
         )
         INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")

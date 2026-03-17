@@ -1355,6 +1355,24 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
     expect(uploadRes.status).toBe(200);
     expect(uploadRes.body.deduped).toBe(false);
+    const replayId = uploadRes.body.session_replay_id;
+
+    const secondUploadRes = await niceBackendFetch("/api/v1/session-replays/batch", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        browser_session_id: browserSessionId,
+        session_replay_segment_id: randomUUID(),
+        batch_id: randomUUID(),
+        started_at_ms: now + 1_000,
+        sent_at_ms: now + 1_500,
+        events: [
+          { timestamp: now + 1_100, type: 2 },
+        ],
+      },
+    });
+    expect(secondUploadRes.status).toBe(200);
+    expect(secondUploadRes.body.session_replay_id).toBe(replayId);
 
     await InternalApiKey.createAndSetProjectKeys();
 
@@ -1366,21 +1384,27 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     let response;
     while (performance.now() - start < timeoutMs) {
       response = await runQueryForCurrentProject({
-        query: "SELECT id, user_id, refresh_token_id, started_at, last_event_at FROM session_replays LIMIT 10",
+        query: "SELECT id, user_id, refresh_token_id, started_at, last_event_at, chunk_count FROM session_replays LIMIT 10",
       });
       expect(response.status).toBe(200);
-      if (response.body.result.length >= 1) {
+      const syncedRow = response.body.result.find((resultRow: Record<string, unknown>) => resultRow.id === replayId);
+      if (syncedRow && Number(syncedRow.chunk_count) === 2) {
         break;
       }
       await wait(intervalMs);
     }
 
-    expect(response!.body.result.length).toBeGreaterThanOrEqual(1);
-    const row = response!.body.result[0];
+    const row = response!.body.result.find((resultRow: Record<string, unknown>) => resultRow.id === replayId);
+    expect(row).toBeDefined();
+    if (!row) {
+      throw new Error("Expected synced ClickHouse session replay row to be present.");
+    }
+    expect(row.id).toBe(replayId);
     expect(row.user_id).toBeDefined();
     expect(row.refresh_token_id).toBeDefined();
     expect(row.started_at).toBeDefined();
     expect(row.last_event_at).toBeDefined();
+    expect(Number(row.chunk_count)).toBe(2);
   }, TEST_TIMEOUT);
 
   /**
@@ -1431,7 +1455,24 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     const client = dbManager.getClient(dbName);
 
     // Wait for the session replay row to appear in external DB
-    await waitForSyncedSessionReplay(client, replayId);
+    const secondUploadRes = await niceBackendFetch("/api/v1/session-replays/batch", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        browser_session_id: browserSessionId,
+        session_replay_segment_id: randomUUID(),
+        batch_id: randomUUID(),
+        started_at_ms: now + 1_000,
+        sent_at_ms: now + 1_500,
+        events: [
+          { timestamp: now + 1_100, type: 2 },
+        ],
+      },
+    });
+    expect(secondUploadRes.status).toBe(200);
+    expect(secondUploadRes.body.session_replay_id).toBe(replayId);
+
+    await waitForSyncedSessionReplay(client, replayId, 2);
 
     // Verify the synced row has expected columns
     const res = await client.query(`SELECT * FROM "session_replays" WHERE "id" = $1`, [replayId]);
@@ -1439,8 +1480,13 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     const row = res.rows[0];
     expect(row.user_id).toBeDefined();
     expect(row.refresh_token_id).toBeDefined();
-    expect(row.started_at).toBeDefined();
-    expect(row.last_event_at).toBeDefined();
+    expect(row.created_at).toBeInstanceOf(Date);
+    expect(row.started_at).toBeInstanceOf(Date);
+    expect(row.last_event_at).toBeInstanceOf(Date);
+    expect(row).toMatchObject({
+      id: replayId,
+      chunk_count: "2",
+    });
   }, TEST_TIMEOUT);
 
   /**
@@ -1481,5 +1527,3 @@ describe.sequential('External DB Sync - Basic Tests', () => {
   }, TEST_TIMEOUT);
 
 });
-
-

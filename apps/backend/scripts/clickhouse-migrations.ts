@@ -525,6 +525,7 @@ CREATE TABLE IF NOT EXISTS analytics_internal.session_replays (
     started_at DateTime64(3, 'UTC'),
     last_event_at DateTime64(3, 'UTC'),
     created_at DateTime64(3, 'UTC'),
+    chunk_count UInt64,
     sync_sequence_id Int64,
     sync_is_deleted UInt8,
     sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
@@ -539,7 +540,7 @@ CREATE OR REPLACE VIEW default.session_replays
 SQL SECURITY DEFINER
 AS
 SELECT project_id, branch_id, id, user_id, refresh_token_id,
-       started_at, last_event_at, created_at
+       started_at, last_event_at, created_at, chunk_count
 FROM analytics_internal.session_replays
 FINAL
 WHERE sync_is_deleted = 0;

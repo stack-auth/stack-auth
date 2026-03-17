@@ -355,7 +355,7 @@ export async function waitForSyncedEmailOutbox(client: Client, emailId: string, 
   );
 }
 
-export async function waitForSyncedSessionReplay(client: Client, replayId: string) {
+export async function waitForSyncedSessionReplay(client: Client, replayId: string, expectedChunkCount?: number) {
   await waitForExternalDbRow(
     client,
     `SELECT * FROM "session_replays" WHERE "id" = $1`,
@@ -363,6 +363,7 @@ export async function waitForSyncedSessionReplay(client: Client, replayId: strin
     {
       shouldExist: true,
       description: `session replay "${replayId}" to appear in external DB`,
+      checkRow: expectedChunkCount == null ? undefined : (row) => Number(row.chunk_count) === expectedChunkCount,
     },
   );
 }

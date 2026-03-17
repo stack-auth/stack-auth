@@ -829,6 +829,7 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
     sync_is_deleted: 'boolean',
   },
   session_replays: {
+    chunk_count: 'bigint',
     sync_is_deleted: 'boolean',
   },
 };
