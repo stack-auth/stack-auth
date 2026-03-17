@@ -3,7 +3,7 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
-import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
+import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -25,7 +25,6 @@ import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
-
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -483,28 +482,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ context_type: contextType, messages }),
-        signal: abortSignal,
-      },
-      null,
-    );
-    return await response.json();
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/ai-chat/${threadId}`,
@@ -528,38 +505,6 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    const response = await this.sendAdminRequest(
-      `/internal/wysiwyg-edit`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          source_type: options.sourceType,
-          source_code: options.sourceCode,
-          old_text: options.oldText,
-          new_text: options.newText,
-          metadata: options.metadata,
-          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
-          html_context: options.htmlContext,
-        }),
-      },
-      null,
-    );
-    const result = await response.json();
-    return { updatedSource: result.updated_source };
-  }
-
   async renderEmailPreview(options: {
     themeId?: string | null | false,
     themeTsxSource?: string,
@@ -580,6 +525,19 @@ export class StackAdminInterface extends StackServerInterface {
         template_tsx_source: options.templateTsxSource,
         editable_markers: options.editableMarkers,
         editable_source: options.editableSource,
+      }),
+    }, null);
+    return await response.json();
+  }
+
+  async rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsx_source: string }> {
+    const response = await this.sendAdminRequest(`/internal/rewrite-template-source`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        template_tsx_source: templateTsxSource,
       }),
     }, null);
     return await response.json();

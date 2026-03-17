@@ -26,6 +26,7 @@ model Project {
   description      String  @default("")
   isProductionMode Boolean
   ownerTeamId      String? @db.Uuid
+  onboardingStatus String  @default("completed")
 
   logoUrl             String?
   logoFullUrl         String?
@@ -74,6 +75,9 @@ model Tenancy {
   sessionReplays      SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
+
+  // Email capacity boost - when set and in the future, email capacity is multiplied by 4
+  emailCapacityBoostExpiresAt DateTime?
 
   @@unique([projectId, branchId, organizationId])
   @@unique([projectId, branchId, hasNoOrganization])

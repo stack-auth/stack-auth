@@ -345,4 +345,121 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain("plain `config` object");
   });
+
+  // --- init command tests ---
+
+  // TODO: Re-enable these create-mode tests once init mode handling is finalized.
+  // We keep these skipped (instead of todo) so the test logic remains visible and easy to re-enable.
+  it.skip("init create writes stack.config.ts with selected apps", async ({ expect }) => {
+    const initDir = path.join(tmpDir, "init-create");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "create", "--apps", "authentication,teams", "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Config file written to");
+
+    const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
+    expect(content).toContain("export const config");
+    const configMatch = content.match(/export const config = (.+);/s);
+    expect(configMatch).toBeTruthy();
+    const parsed = JSON.parse(configMatch![1]);
+    expect(parsed.apps.installed.authentication).toEqual({ enabled: true });
+    expect(parsed.apps.installed.teams).toEqual({ enabled: true });
+  });
+
+  it.skip("init create with single app", async ({ expect }) => {
+    const initDir = path.join(tmpDir, "init-create-single");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Config file written to");
+
+    const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
+    const configMatch = content.match(/export const config = (.+);/s);
+    const parsed = JSON.parse(configMatch![1]);
+    expect(Object.keys(parsed.apps.installed)).toEqual(["authentication"]);
+  });
+
+  it("init link-config with valid path", async ({ expect }) => {
+    // Create a dummy config file to link to
+    const dummyConfig = path.join(tmpDir, "dummy-stack.config.ts");
+    fs.writeFileSync(dummyConfig, "export const config = {};\n");
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "link-config", "--config-file", dummyConfig,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Linked to config file");
+    expect(stdout).toContain(dummyConfig);
+  });
+
+  it("init link-config with invalid path fails", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli([
+      "init", "--mode", "link-config", "--config-file", "/nonexistent/stack.config.ts",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("File not found");
+  });
+
+  it("init link-cloud creates .env with API keys", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+
+    const initDir = path.join(tmpDir, "init-cloud");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "link-cloud", "--select-project-id", createdProjectId, "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Created .env with Stack Auth keys");
+
+    const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
+    expect(envContent).toContain("# Stack Auth");
+    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
+    expect(envContent).toContain("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=");
+    expect(envContent).toContain("STACK_SECRET_SERVER_KEY=");
+  });
+
+  it("init link-cloud appends to existing .env", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+
+    const initDir = path.join(tmpDir, "init-cloud-append");
+    fs.mkdirSync(initDir, { recursive: true });
+    fs.writeFileSync(path.join(initDir, ".env"), "EXISTING_VAR=hello\n");
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "link-cloud", "--select-project-id", createdProjectId, "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Appended Stack Auth keys to .env");
+
+    const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
+    expect(envContent).toContain("EXISTING_VAR=hello");
+    expect(envContent).toContain("# Stack Auth");
+    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
+  });
+
+  it("init link-cloud fails with invalid project ID", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli([
+      "init", "--mode", "link-cloud", "--select-project-id", "nonexistent-project-id",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("not found");
+  });
+
+  it.skip("init outputs setup instructions", async ({ expect }) => {
+    const initDir = path.join(tmpDir, "init-instructions");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
+  });
 });
