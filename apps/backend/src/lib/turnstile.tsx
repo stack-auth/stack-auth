@@ -2,7 +2,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { TurnstileAction, TurnstilePhase, TurnstileResult, TurnstileRetryResult, turnstileDevelopmentKeys, turnstilePhaseValues, turnstileRetryResultValues } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { TurnstileAction, TurnstilePhase, TurnstileResult, turnstileDevelopmentKeys, turnstilePhaseValues } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
 
@@ -14,13 +14,11 @@ export type SignUpTurnstileAssessment = {
 export type TurnstileFlowRequest = {
   turnstile_token?: string,
   turnstile_phase?: TurnstilePhase,
-  turnstile_previous_result?: TurnstileRetryResult,
 };
 
 export const turnstileFlowRequestSchemaFields = {
   turnstile_token: yupString().optional(),
   turnstile_phase: yupString().oneOf(turnstilePhaseValues).optional(),
-  turnstile_previous_result: yupString().oneOf(turnstileRetryResultValues).optional(),
 } as const;
 
 type TurnstileSiteverifyResponse = {
@@ -145,20 +143,8 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   remoteIp: string | null,
   expectedAction: TurnstileAction,
   phase?: "invisible" | "visible",
-  previousResult?: TurnstileRetryResult,
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
-  // Validate phase/previousResult constraints upfront
-  if (params.phase === undefined && params.previousResult !== undefined) {
-    throw new KnownErrors.SchemaError("turnstile_previous_result requires turnstile_phase");
-  }
-  if (params.phase === "visible" && params.previousResult === undefined) {
-    throw new KnownErrors.SchemaError("turnstile_previous_result is required when turnstile_phase is visible");
-  }
-  if (params.phase === "invisible" && params.previousResult !== undefined) {
-    throw new KnownErrors.SchemaError("turnstile_previous_result is only allowed when turnstile_phase is visible");
-  }
-
   // Verify the token against Cloudflare
   const assessment = await verifyTurnstileToken(params);
 
@@ -171,7 +157,7 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
     case "invisible": {
       // Invisible challenge failed — require a visible challenge from the client
       if (assessment.status !== "ok") {
-        throw new KnownErrors.TurnstileChallengeRequired(assessment.status);
+        throw new KnownErrors.TurnstileChallengeRequired();
       }
       return assessment;
     }
@@ -180,9 +166,11 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
       if (assessment.status !== "ok") {
         throw new KnownErrors.TurnstileChallengeFailed("Visible Turnstile challenge verification failed");
       }
-      // Visible passed — carry forward the original invisible result for risk scoring
+      // Visible passed — the invisible phase was non-ok. We always record "invalid" here
+      // rather than trusting a client-supplied value, because a malicious client could
+      // claim "error" to avoid the risk-score penalty that "invalid" carries.
       return {
-        status: params.previousResult ?? (() => { throw new StackAssertionError("previousResult must be defined when phase is visible; validated above"); })(),
+        status: "invalid",
         visibleChallengeResult: "ok",
       };
     }
@@ -202,7 +190,6 @@ export async function getRequestContextAndTurnstileAssessment(
     remoteIp: requestContext.ipAddress,
     expectedAction,
     phase: turnstile.turnstile_phase,
-    previousResult: turnstile.turnstile_previous_result,
   });
   return {
     requestContext,
@@ -363,7 +350,6 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
       remoteIp: null,
       expectedAction: "send_magic_link_email",
       phase: "visible",
-      previousResult: "invalid",
       secretKey: "secret-key",
     })).resolves.toEqual({
       status: "invalid",

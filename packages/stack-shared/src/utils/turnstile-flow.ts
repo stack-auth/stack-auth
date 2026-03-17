@@ -1,6 +1,6 @@
 import { StackAssertionError, captureError } from "./errors";
 import { loadTurnstileScript, getTurnstileApi } from "./turnstile-browser";
-import type { TurnstileAction, TurnstileRetryResult } from "./turnstile";
+import type { TurnstileAction } from "./turnstile";
 
 export class TurnstileUserCancelledError extends Error {
   constructor() {
@@ -201,7 +201,6 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
 export type TurnstileExecuteParams = {
   token?: string,
   phase?: "invisible" | "visible",
-  previousResult?: TurnstileRetryResult,
 };
 
 export type WithTurnstileFlowOptions<T> = {
@@ -209,7 +208,7 @@ export type WithTurnstileFlowOptions<T> = {
   invisibleSiteKey: string,
   action: TurnstileAction,
   execute: (turnstile: TurnstileExecuteParams) => Promise<T>,
-  isChallengeRequired: (result: T) => TurnstileRetryResult | null,
+  isChallengeRequired: (result: T) => boolean,
 };
 
 export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>): Promise<T> {
@@ -243,8 +242,7 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
     phase: invisibleToken ? "invisible" : undefined,
   });
 
-  const challengeResult = options.isChallengeRequired(firstResult);
-  if (challengeResult == null) {
+  if (!options.isChallengeRequired(firstResult)) {
     return firstResult;
   }
 
@@ -264,6 +262,5 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
   return await options.execute({
     token: visibleToken,
     phase: "visible",
-    previousResult: challengeResult,
   });
 }

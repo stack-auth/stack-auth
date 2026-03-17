@@ -103,7 +103,6 @@ export const mockTurnstileTokens = Object.freeze({
 type TurnstileTestOptions = {
   turnstileToken?: string,
   turnstilePhase?: "invisible" | "visible",
-  previousTurnstileResult?: "invalid" | "error",
 };
 
 function expectSnakeCase(obj: unknown, path: string): void {
@@ -459,7 +458,6 @@ export namespace Auth {
           callback_url: "http://localhost:12345/some-callback-url",
           turnstile_token: options.turnstileToken ?? mockTurnstileTokens.magicLinkOk,
           turnstile_phase: options.turnstilePhase,
-          turnstile_previous_result: options.previousTurnstileResult,
         }),
       });
       expect(response).toMatchInlineSnapshot(`
@@ -755,7 +753,7 @@ export namespace Auth {
         token: userAuth?.accessToken ?? undefined,
         turnstile_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
         turnstile_phase: options.turnstilePhase,
-        turnstile_previous_result: options.previousTurnstileResult,
+
       });
     }
 

@@ -76,7 +76,6 @@ describe("StackClientInterface Turnstile compatibility", () => {
     await iface.sendMagicLinkEmail("user@example.com", "https://app.example.com/callback", {
       token: " visible-token ",
       phase: "visible",
-      previousResult: "invalid",
     });
 
     expect(getRequestBody(fetchMock)).toStrictEqual({
@@ -84,7 +83,6 @@ describe("StackClientInterface Turnstile compatibility", () => {
       callback_url: "https://app.example.com/callback",
       turnstile_token: "visible-token",
       turnstile_phase: "visible",
-      turnstile_previous_result: "invalid",
     });
   });
 
@@ -137,7 +135,6 @@ describe("StackClientInterface Turnstile compatibility", () => {
       turnstile: {
         token: "visible-token",
         phase: "visible",
-        previousResult: "error",
       },
       session: createSession(),
     });
@@ -145,7 +142,6 @@ describe("StackClientInterface Turnstile compatibility", () => {
     expect(Object.fromEntries(new URL(oauthUrl).searchParams.entries())).toMatchObject({
       turnstile_token: "visible-token",
       turnstile_phase: "visible",
-      turnstile_previous_result: "error",
     });
   });
 
@@ -194,7 +190,6 @@ describe("StackClientInterface Turnstile compatibility", () => {
       createSession(),
       {
         phase: "visible",
-        previousResult: "invalid",
       },
     )).rejects.toThrowError("Credential sign-up visible Turnstile retries require a token.");
   });

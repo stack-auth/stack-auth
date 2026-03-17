@@ -28,16 +28,6 @@ export const turnstileDevelopmentKeys = {
   forcedChallengeSiteKey: "3x00000000000000000000FF",
 } as const;
 
-export const turnstileRetryResultValues = [
-  "invalid",
-  "error",
-] as const;
-
-export type TurnstileRetryResult = typeof turnstileRetryResultValues[number];
-
-export function isTurnstileRetryResult(value: unknown): value is TurnstileRetryResult {
-  return typeof value === "string" && turnstileRetryResultValues.some((status) => status === value);
-}
 
 export function isTurnstileResult(value: unknown): value is TurnstileResult {
   return typeof value === "string" && turnstileResultValues.some((status) => status === value);

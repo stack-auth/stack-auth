@@ -17,6 +17,7 @@
 
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
@@ -65,7 +66,7 @@ function normalizeConditionValue(condition: ConditionNode): ConditionNode['value
   }
 
   if (typeof condition.value === 'number') {
-    throw new Error(`Invalid numeric value for countryCode: ${condition.value}. Country codes must be strings.`);
+    throw new StackAssertionError(`Invalid numeric value for countryCode: ${condition.value}. Country codes must be strings.`);
   }
 
   return normalizeCountryCode(condition.value);
@@ -80,7 +81,7 @@ function conditionToCel(condition: ConditionNode): string {
     case 'equals': {
       if (isNumericField(field)) {
         const err = validateNumericFieldValue(field, String(value));
-        if (err) throw new Error(err);
+        if (err) throw new StackAssertionError(err);
         return `${field} == ${valueAsNumber}`;
       }
       return `${field} == "${escapeCelString(String(value))}"`;
@@ -88,41 +89,41 @@ function conditionToCel(condition: ConditionNode): string {
     case 'not_equals': {
       if (isNumericField(field)) {
         const err = validateNumericFieldValue(field, String(value));
-        if (err) throw new Error(err);
+        if (err) throw new StackAssertionError(err);
         return `${field} != ${valueAsNumber}`;
       }
       return `${field} != "${escapeCelString(String(value))}"`;
     }
     case 'greater_than': {
       if (!isNumericField(field)) {
-        throw new Error(`Operator 'greater_than' not allowed on non-numeric field '${field}'`);
+        throw new StackAssertionError(`Operator 'greater_than' not allowed on non-numeric field '${field}'`);
       }
       const err = validateNumericFieldValue(field, String(value));
-      if (err) throw new Error(err);
+      if (err) throw new StackAssertionError(err);
       return `${field} > ${valueAsNumber}`;
     }
     case 'greater_or_equal': {
       if (!isNumericField(field)) {
-        throw new Error(`Operator 'greater_or_equal' not allowed on non-numeric field '${field}'`);
+        throw new StackAssertionError(`Operator 'greater_or_equal' not allowed on non-numeric field '${field}'`);
       }
       const err = validateNumericFieldValue(field, String(value));
-      if (err) throw new Error(err);
+      if (err) throw new StackAssertionError(err);
       return `${field} >= ${valueAsNumber}`;
     }
     case 'less_than': {
       if (!isNumericField(field)) {
-        throw new Error(`Operator 'less_than' not allowed on non-numeric field '${field}'`);
+        throw new StackAssertionError(`Operator 'less_than' not allowed on non-numeric field '${field}'`);
       }
       const err = validateNumericFieldValue(field, String(value));
-      if (err) throw new Error(err);
+      if (err) throw new StackAssertionError(err);
       return `${field} < ${valueAsNumber}`;
     }
     case 'less_or_equal': {
       if (!isNumericField(field)) {
-        throw new Error(`Operator 'less_or_equal' not allowed on non-numeric field '${field}'`);
+        throw new StackAssertionError(`Operator 'less_or_equal' not allowed on non-numeric field '${field}'`);
       }
       const err = validateNumericFieldValue(field, String(value));
-      if (err) throw new Error(err);
+      if (err) throw new StackAssertionError(err);
       return `${field} <= ${valueAsNumber}`;
     }
     case 'matches': {

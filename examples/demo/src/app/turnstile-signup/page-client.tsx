@@ -39,7 +39,6 @@ async function debugSignup(
     password: string,
     turnstileToken?: string,
     turnstilePhase?: "invisible" | "visible",
-    turnstilePreviousResult?: string,
   },
 ): Promise<SignupResult> {
   const bodyObj: Record<string, unknown> = {
@@ -51,9 +50,6 @@ async function debugSignup(
   }
   if (options.turnstilePhase) {
     bodyObj.turnstile_phase = options.turnstilePhase;
-  }
-  if (options.turnstilePreviousResult) {
-    bodyObj.turnstile_previous_result = options.turnstilePreviousResult;
   }
 
   try {
@@ -226,7 +222,6 @@ export default function TurnstileSignupPageClient() {
       email: signupEmail, password,
       turnstileToken: visibleToken,
       turnstilePhase: "visible",
-      turnstilePreviousResult: "invalid",
     });
 
     if (secondRes.ok) {
@@ -252,7 +247,6 @@ export default function TurnstileSignupPageClient() {
       email: signupEmail, password,
       turnstileToken: "mock-turnstile-invalid",
       turnstilePhase: "visible",
-      turnstilePreviousResult: "invalid",
     });
 
     if (secondRes.ok) {
@@ -282,14 +276,10 @@ export default function TurnstileSignupPageClient() {
           email: signupEmail, password,
           turnstileToken: turnstile.token,
           turnstilePhase: turnstile.phase,
-          turnstilePreviousResult: turnstile.previousResult,
         });
       },
       isChallengeRequired: (res) => {
-        if (!res.ok && res.code === "TURNSTILE_CHALLENGE_REQUIRED") {
-          return "invalid";
-        }
-        return null;
+        return !res.ok && res.code === "TURNSTILE_CHALLENGE_REQUIRED";
       },
     });
 
@@ -331,7 +321,6 @@ export default function TurnstileSignupPageClient() {
         email: signupEmail, password,
         turnstileToken: visibleToken,
         turnstilePhase: "visible",
-        turnstilePreviousResult: "invalid",
       });
       if (secondRes.ok) {
         await signInWithTokens({ accessToken: secondRes.accessToken, refreshToken: secondRes.refreshToken });
@@ -352,7 +341,6 @@ export default function TurnstileSignupPageClient() {
         email: signupEmail, password,
         turnstileToken: "mock-turnstile-invalid",
         turnstilePhase: "visible",
-        turnstilePreviousResult: "invalid",
       });
       if (secondRes.ok) {
         return { status: "error", message: "[Random: both fail] Signup unexpectedly succeeded." };

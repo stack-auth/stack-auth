@@ -15,7 +15,6 @@ import { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, Pub
 import { wait } from '../utils/promises';
 import { Result } from "../utils/results";
 import { deindent } from '../utils/strings';
-import { type TurnstileRetryResult } from '../utils/turnstile';
 import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
@@ -51,7 +50,6 @@ export type ClientInterfaceOptions = {
 type TurnstileInput = {
   token?: string,
   phase?: "invisible" | "visible",
-  previousResult?: TurnstileRetryResult,
 };
 
 function getTurnstileRequestFields(turnstile: TurnstileInput | undefined, context: string) {
@@ -60,19 +58,11 @@ function getTurnstileRequestFields(turnstile: TurnstileInput | undefined, contex
     if (turnstileToken == null) {
       throw new StackAssertionError(`${context} visible Turnstile retries require a token.`);
     }
-    if (turnstile.previousResult == null) {
-      throw new StackAssertionError(`${context} visible Turnstile retries require previousResult.`);
-    }
 
     return {
       turnstile_token: turnstileToken,
       turnstile_phase: "visible" as const,
-      turnstile_previous_result: turnstile.previousResult,
     };
-  }
-
-  if (turnstile?.previousResult != null) {
-    throw new StackAssertionError(`${context} previousResult is only allowed for visible Turnstile retries.`);
   }
 
   if (turnstileToken == null) {

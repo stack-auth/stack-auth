@@ -2280,14 +2280,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
           token: turnstile.token,
           phase: turnstile.phase,
-          previousResult: turnstile.previousResult,
         });
       },
       isChallengeRequired: (result) => {
-        if (result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-          return result.error.constructorArgs[0];
-        }
-        return null;
+        return result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error);
       },
     });
 
@@ -2568,7 +2564,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const siteKeys = this._getTurnstileSiteKeys();
     const { codeChallenge, state } = await saveVerifierAndState();
 
-    const executeOAuth = async (turnstile: { token?: string, phase?: "invisible" | "visible", previousResult?: import("@stackframe/stack-shared/dist/utils/turnstile").TurnstileRetryResult }) => {
+    const executeOAuth = async (turnstile: { token?: string, phase?: "invisible" | "visible" }) => {
       return await this._interface.authorizeOAuth({
         provider,
         redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
@@ -2580,7 +2576,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         turnstile: {
           token: turnstile.token,
           phase: turnstile.phase,
-          previousResult: turnstile.previousResult,
         },
         session,
       });
@@ -2594,10 +2589,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           action: "oauth_authenticate",
           execute: executeOAuth,
           isChallengeRequired: (result) => {
-            if (result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error)) {
-              return result.error.constructorArgs[0];
-            }
-            return null;
+            return result.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(result.error);
           },
         });
       } else {
@@ -2690,13 +2682,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
     const siteKeys = this._getTurnstileSiteKeys();
 
-    const executeSignUp = async (turnstile: { token?: string, phase?: "invisible" | "visible", previousResult?: import("@stackframe/stack-shared/dist/utils/turnstile").TurnstileRetryResult }) => {
+    const executeSignUp = async (turnstile: { token?: string, phase?: "invisible" | "visible" }) => {
       let result = await this._interface.signUpWithCredential(
         options.email,
         options.password,
         emailVerificationRedirectUrl,
         session,
-        { token: turnstile.token, phase: turnstile.phase, previousResult: turnstile.previousResult },
+        { token: turnstile.token, phase: turnstile.phase },
       );
 
       // If the auto-constructed redirect URL is not whitelisted, gracefully fall back
@@ -2713,7 +2705,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             options.password,
             undefined, // No email verification
             session,
-            { token: turnstile.token, phase: turnstile.phase, previousResult: turnstile.previousResult },
+            { token: turnstile.token, phase: turnstile.phase },
           );
         }
       }
@@ -2728,10 +2720,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         action: "sign_up_with_credential",
         execute: executeSignUp,
         isChallengeRequired: (r) => {
-          if (r.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(r.error)) {
-            return r.error.constructorArgs[0];
-          }
-          return null;
+          return r.status === "error" && KnownErrors.TurnstileChallengeRequired.isInstance(r.error);
         },
       });
     } else {
