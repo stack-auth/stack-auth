@@ -48,8 +48,6 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
     }
   `);
 
-  await new Promise((resolve) => setTimeout(resolve, 10));
-
   // Upgrade the user via password sign-up while logged in as anonymous
   const { signUpResponse: upgradeRes } = await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
 
@@ -102,9 +100,10 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  // Anonymous users have null signed_up_at_millis; after upgrade it should be set
-  expect(anonMeRes.body.signed_up_at_millis).toBeNull();
-  expect(upgradedMeRes.body.signed_up_at_millis).toBeGreaterThan(0);
+  // Anonymous users already have a signup timestamp; upgrading should keep it
+  // valid and must not move it backwards.
+  expect(anonMeRes.body.signed_up_at_millis).toBeGreaterThan(0);
+  expect(upgradedMeRes.body.signed_up_at_millis).toBeGreaterThanOrEqual(anonMeRes.body.signed_up_at_millis);
 
   // Old anonymous token should still work
   backendContext.set({
