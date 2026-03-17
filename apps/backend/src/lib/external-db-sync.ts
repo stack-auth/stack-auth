@@ -52,6 +52,18 @@ type ExternalDbSyncTarget =
     tenancyId: string,
     projectUserId: string,
     teamId: string,
+  }
+  | {
+    tableName: "TeamMemberDirectPermission",
+    tenancyId: string,
+    permissionDbId: string,
+  }
+  | {
+    tableName: "VerificationCode_TEAM_INVITATION",
+    tenancyId: string,
+    verificationCodeProjectId: string,
+    verificationCodeBranchId: string,
+    verificationCodeId: string,
   };
 
 type ExternalDbType = NonNullable<NonNullable<CompleteConfig["dbSync"]["externalDatabases"][string]>["type"]>;
@@ -203,8 +215,7 @@ export async function recordExternalDbSyncDeletion(
     return;
   }
 
-  {
-    const _teamMemberTarget: { tableName: "TeamMember" } = target;
+  if (target.tableName === "TeamMember") {
     assertUuid(target.projectUserId, "projectUserId");
     assertUuid(target.teamId, "teamId");
     const insertedCount = await tx.$executeRaw(Prisma.sql`
@@ -235,6 +246,85 @@ export async function recordExternalDbSyncDeletion(
     if (insertedCount !== 1) {
       throw new StackAssertionError(
         `Expected to insert 1 DeletedRow entry for TeamMember, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "TeamMemberDirectPermission") {
+    assertUuid(target.permissionDbId, "permissionDbId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'TeamMemberDirectPermission',
+        jsonb_build_object(
+          'tenancyId', "tenancyId",
+          'projectUserId', "projectUserId",
+          'teamId', "teamId",
+          'permissionId', "permissionId"
+        ),
+        to_jsonb("TeamMemberDirectPermission".*),
+        NOW(),
+        TRUE
+      FROM "TeamMemberDirectPermission"
+      WHERE "id" = ${target.permissionDbId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for TeamMemberDirectPermission, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  {
+    const _verificationCodeTarget: { tableName: "VerificationCode_TEAM_INVITATION" } = target;
+    assertNonEmptyString(target.verificationCodeProjectId, "verificationCodeProjectId");
+    assertNonEmptyString(target.verificationCodeBranchId, "verificationCodeBranchId");
+    assertUuid(target.verificationCodeId, "verificationCodeId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "Tenancy"."id",
+        'VerificationCode_TEAM_INVITATION',
+        jsonb_build_object('id', "VerificationCode"."id"),
+        to_jsonb("VerificationCode".*),
+        NOW(),
+        TRUE
+      FROM "VerificationCode"
+      JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
+        AND "Tenancy"."branchId" = "VerificationCode"."branchId"
+      WHERE "VerificationCode"."projectId" = ${target.verificationCodeProjectId}
+        AND "VerificationCode"."branchId" = ${target.verificationCodeBranchId}
+        AND "VerificationCode"."id" = ${target.verificationCodeId}::uuid
+        AND "VerificationCode"."type" = 'TEAM_INVITATION'
+      FOR UPDATE OF "VerificationCode"
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for VerificationCode_TEAM_INVITATION, got ${insertedCount}.`
       );
     }
     return;
@@ -315,6 +405,167 @@ export async function recordExternalDbSyncTeamMemberDeletionsForTeam(
     WHERE "tenancyId" = ${options.tenancyId}::uuid
       AND "teamId" = ${options.teamId}::uuid
     FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamPermissionDeletionsForTeamMember(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMemberDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'teamId', "teamId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("TeamMemberDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "TeamMemberDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+      AND "teamId" = ${options.teamId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamPermissionDeletionsForTeam(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMemberDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'teamId', "teamId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("TeamMemberDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "TeamMemberDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "teamId" = ${options.teamId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamPermissionDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMemberDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'teamId', "teamId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("TeamMemberDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "TeamMemberDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamInvitationDeletionsForTeam(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "Tenancy"."id",
+      'VerificationCode_TEAM_INVITATION',
+      jsonb_build_object('id', "VerificationCode"."id"),
+      to_jsonb("VerificationCode".*),
+      NOW(),
+      TRUE
+    FROM "VerificationCode"
+    JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
+      AND "Tenancy"."branchId" = "VerificationCode"."branchId"
+    WHERE "Tenancy"."id" = ${options.tenancyId}::uuid
+      AND "VerificationCode"."type" = 'TEAM_INVITATION'
+      AND "VerificationCode"."data"->>'team_id' = ${options.teamId}
+    FOR UPDATE OF "VerificationCode"
   `);
 }
 
@@ -481,7 +732,7 @@ async function pushRowsToExternalDb(
   }
 }
 
-function getInternalDbFetchQuery(mapping: DbSyncMapping, dbType: ExternalDbType) {
+function getInternalDbFetchQuery(mapping: DbSyncMapping) {
   return mapping.internalDbFetchQuery;
 }
 
@@ -503,7 +754,7 @@ function parseSequenceId(value: unknown, mappingId: string): number | null {
   if (value == null) {
     return null;
   }
-  const seqNum = typeof value === "bigint" ? Number(value) : Number(value);
+  const seqNum = Number(value);
   if (!Number.isFinite(seqNum)) {
     throw new StackAssertionError(
       `Invalid sequence_id for mapping ${mappingId}: ${JSON.stringify(value)}`
@@ -529,8 +780,8 @@ async function ensureClickhouseSchema(
 }
 
 // Map of target table name -> column normalizers for ClickHouse
-// 'json' columns get JSON.stringify, 'boolean' columns get normalizeClickhouseBoolean
-const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean'>> = {
+// 'json' columns get JSON.stringify, 'boolean' columns get normalizeClickhouseBoolean, 'bigint' columns get Number()
+const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean' | 'bigint'>> = {
   users: {
     client_metadata: 'json',
     client_read_only_metadata: 'json',
@@ -553,6 +804,13 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
     sync_is_deleted: 'boolean',
   },
   team_member_profiles: {
+    sync_is_deleted: 'boolean',
+  },
+  team_permissions: {
+    sync_is_deleted: 'boolean',
+  },
+  team_invitations: {
+    expires_at_millis: 'bigint',
     sync_is_deleted: 'boolean',
   },
 };
@@ -626,6 +884,8 @@ async function pushRowsToClickhouse(
       if (col in normalized) {
         if (type === 'json') {
           normalized[col] = JSON.stringify(normalized[col]);
+        } else if (type === 'bigint') {
+          normalized[col] = Number(normalized[col]);
         } else {
           normalized[col] = normalizeClickhouseBoolean(normalized[col], col);
         }
@@ -718,7 +978,7 @@ async function syncPostgresMapping(
   assertNonEmptyString(mappingId, "mappingId");
   assertNonEmptyString(mapping.targetTable, "mapping.targetTable");
   assertUuid(tenancyId, "tenancyId");
-  const fetchQuery = getInternalDbFetchQuery(mapping, "postgres");
+  const fetchQuery = getInternalDbFetchQuery(mapping);
   const updateQuery = mapping.externalDbUpdateQueries.postgres;
   const tableName = mapping.targetTable;
   assertNonEmptyString(fetchQuery, "internalDbFetchQuery");

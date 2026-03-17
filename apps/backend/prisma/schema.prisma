@@ -251,7 +251,12 @@ model TeamMemberDirectPermission {
 
   teamMember TeamMember @relation(fields: [tenancyId, projectUserId, teamId], references: [tenancyId, projectUserId, teamId], onDelete: Cascade)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@unique([tenancyId, projectUserId, teamId, permissionId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "TeamMemberDirectPermission_shouldUpdateSequenceId_idx")
+  @@index([tenancyId, sequenceId], name: "TeamMemberDirectPermission_tenancyId_sequenceId_idx")
 }
 
 model ProjectUser {
@@ -647,9 +652,13 @@ model VerificationCode {
   data         Json
   attemptCount Int                  @default(0)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([projectId, branchId, id])
   @@unique([projectId, branchId, code])
   @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@index([shouldUpdateSequenceId, type], name: "VerificationCode_shouldUpdateSequenceId_type_idx")
 }
 
 enum VerificationCodeType {

@@ -1,4 +1,4 @@
-import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamMemberDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamInvitationDeletionsForTeam, recordExternalDbSyncTeamMemberDeletionsForTeam, recordExternalDbSyncTeamPermissionDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -194,6 +194,16 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
       await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForTeam(tx, {
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
+
+      await recordExternalDbSyncTeamInvitationDeletionsForTeam(tx, {
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
 
       await recordExternalDbSyncTeamMemberDeletionsForTeam(tx, {
         tenancyId: auth.tenancy.id,

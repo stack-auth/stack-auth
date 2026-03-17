@@ -314,6 +314,34 @@ export async function waitForSyncedContactChannelDeletion(client: Client, value:
   });
 }
 
+export async function waitForSyncedTeamPermission(client: Client, teamId: string, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_permissions" WHERE "team_id" = $1 AND "user_id" = $2 AND "permission_id" = $3`, [teamId, userId, permissionId], {
+    shouldExist: true,
+    description: `team permission (team=${teamId}, user=${userId}, perm=${permissionId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedTeamPermissionDeletion(client: Client, teamId: string, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_permissions" WHERE "team_id" = $1 AND "user_id" = $2 AND "permission_id" = $3`, [teamId, userId, permissionId], {
+    shouldExist: false,
+    description: `team permission (team=${teamId}, user=${userId}, perm=${permissionId}) to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedTeamInvitation(client: Client, recipientEmail: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_invitations" WHERE "recipient_email" = $1`, [recipientEmail], {
+    shouldExist: true,
+    description: `team invitation for "${recipientEmail}" to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedTeamInvitationDeletion(client: Client, invitationId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_invitations" WHERE "id" = $1`, [invitationId], {
+    shouldExist: false,
+    description: `team invitation ${invitationId} to be removed from external DB`,
+  });
+}
+
 /**
  * Helper to create a project and update its config with external DB settings.
  * Tracks the project for cleanup later.
