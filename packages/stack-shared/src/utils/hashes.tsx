@@ -1,8 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { StackAssertionError } from './errors';
+import { toArrayBufferBacked } from './typed-arrays';
 
 export async function sha512(input: Uint8Array | string): Promise<Uint8Array> {
-  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
+  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : toArrayBufferBacked(input);
   return new Uint8Array(await crypto.subtle.digest("SHA-512", bytes));
 }
 

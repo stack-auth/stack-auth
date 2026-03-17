@@ -20,11 +20,11 @@ import {
 } from "@/components/ui";
 import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
 import { useUpdateConfig } from "@/lib/config-update";
-import { getPublicEnvVar } from '@/lib/env';
 import { cn } from "@/lib/utils";
 import {
   CaretDownIcon,
   CaretRightIcon,
+  ChartBarIcon,
   CubeIcon,
   GearIcon,
   GlobeIcon,
@@ -98,6 +98,14 @@ const overviewItem: Item = {
   regex: /^\/projects\/[^\/]+\/?$/,
   icon: GlobeIcon,
   type: 'item'
+};
+
+const dashboardsItem: Item = {
+  name: "Dashboards",
+  href: "/dashboards",
+  regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
+  icon: ChartBarIcon,
+  type: 'item',
 };
 
 function NavItem({
@@ -449,6 +457,12 @@ function SidebarContent({
             href={`/projects/${projectId}${overviewItem.href}`}
             isCollapsed={isCollapsed}
           />
+          <NavItem
+            item={dashboardsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${dashboardsItem.href}`}
+            isCollapsed={isCollapsed}
+          />
         </div>
 
         <div className={cn("mt-6 mb-3 transition-opacity duration-200", isCollapsed ? "opacity-0 h-0 mt-2 mb-0 overflow-hidden" : "opacity-100")}>
@@ -559,6 +573,9 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const projectId = useProjectId();
+  const pathname = usePathname();
+  // Custom dashboard detail pages have a transparent iframe background; the companion should match.
+  const isCustomDashboardPage = /\/dashboards\/[^/]+/.test(pathname);
 
   const toggleCollapsed = useCallback(() => {
     setIsCollapsed(prev => !prev);
@@ -571,7 +588,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
         <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">
           {/* Vertical blur layer behind header - light mode only */}
           <div
-            className="absolute inset-0 h-[calc(100%+1.5rem)] pointer-events-none dark:hidden"
+            className="absolute inset-0 h-[calc(100%+0.75rem)] pointer-events-none dark:hidden"
             style={{
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
@@ -610,11 +627,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               <div className="hidden lg:flex items-center gap-2">
                 <Logo height={24} href="/" />
                 <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
-                {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-                  <Logo full width={96} href="/projects" />
-                ) : (
-                  <ProjectSwitcher currentProjectId={projectId} />
-                )}
+                <ProjectSwitcher currentProjectId={projectId} />
               </div>
 
               {/* Mobile: Logo */}
@@ -623,31 +636,21 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               </div>
             </div>
 
-            {/* Middle section: Control Center (development only) */}
-            {process.env.NODE_ENV === "development" && (
-              <div className="grow-1">
-                <CmdKTrigger />
-              </div>
-            )}
+            {/* Middle section: Control Center */}
+            <div className="grow-1">
+              <CmdKTrigger />
+            </div>
 
             {/* Right section: Search, Theme toggle and User button */}
             <div className="flex grow-1 gap-2 items-center">
-              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-                <ThemeToggle />
-              ) : (
-                <>
-                  <ThemeToggle />
-                  <UserButton />
-                </>
-              )}
+              <ThemeToggle />
+              <UserButton />
             </div>
           </div>
         </div>
 
-        {/* Spotlight Search (development only) */}
-        {process.env.NODE_ENV === "development" && (
-          <SpotlightSearchWrapper projectId={projectId} />
-        )}
+        {/* Spotlight Search */}
+        <SpotlightSearchWrapper projectId={projectId} />
 
         {/* Body Layout (Left Sidebar + Content + Right Companion) */}
         <div className="relative flex flex-1 items-start w-full">
@@ -682,7 +685,7 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
           {/* Stack Companion - overlay with reserved content gutter */}
           <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
-            <StackCompanion className="pointer-events-auto" />
+            <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
           </div>
         </div>
       </div>

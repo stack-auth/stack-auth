@@ -10,6 +10,7 @@ import type { Transaction, TransactionType } from "@stackframe/stack-shared/dist
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import type { MoneyAmount } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import type { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { pick, typedEntries, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
@@ -20,14 +21,12 @@ import { InternalApiKey, InternalApiKeyBase, InternalApiKeyBaseCrudRead, Interna
 import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectPermissionDefinitionCreateOptions, AdminProjectPermissionDefinitionUpdateOptions, AdminTeamPermission, AdminTeamPermissionDefinition, AdminTeamPermissionDefinitionCreateOptions, AdminTeamPermissionDefinitionUpdateOptions, adminProjectPermissionDefinitionCreateOptionsToCrud, adminProjectPermissionDefinitionUpdateOptionsToCrud, adminTeamPermissionDefinitionCreateOptionsToCrud, adminTeamPermissionDefinitionUpdateOptionsToCrud } from "../../permissions";
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
-import { StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
+import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
 import { clientVersion, createCache, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { branchConfigSourceSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
 import * as yup from "yup";
 import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
@@ -174,6 +173,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       createdAt: new Date(data.created_at_millis),
       isProductionMode: data.is_production_mode,
       ownerTeamId: data.owner_team_id,
+      onboardingStatus: data.onboarding_status,
       logoUrl: data.logo_url,
       logoFullUrl: data.logo_full_url,
       logoDarkModeUrl: data.logo_dark_mode_url,
@@ -604,6 +604,50 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }));
   }
 
+  async setupManagedEmailProvider(options: { subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderSetupResult> {
+    const response = await this._interface.setupManagedEmailProvider({
+      subdomain: options.subdomain,
+      sender_local_part: options.senderLocalPart,
+    });
+    return {
+      domainId: response.domain_id,
+      subdomain: response.subdomain,
+      senderLocalPart: response.sender_local_part,
+      nameServerRecords: response.name_server_records,
+      status: response.status,
+    };
+  }
+
+  async checkManagedEmailStatus(options: { domainId: string, subdomain: string, senderLocalPart: string }): Promise<ManagedEmailProviderStatus> {
+    const response = await this._interface.checkManagedEmailStatus({
+      domain_id: options.domainId,
+      subdomain: options.subdomain,
+      sender_local_part: options.senderLocalPart,
+    });
+    return {
+      status: response.status,
+    };
+  }
+
+  async listManagedEmailDomains(): Promise<ManagedEmailProviderListItem[]> {
+    const response = await this._interface.listManagedEmailDomains();
+    return response.items.map((item) => ({
+      domainId: item.domain_id,
+      subdomain: item.subdomain,
+      senderLocalPart: item.sender_local_part,
+      status: item.status,
+      nameServerRecords: item.name_server_records,
+    }));
+  }
+
+  async applyManagedEmailProvider(options: { domainId: string }): Promise<{ status: "applied" }> {
+    const result = await this._interface.applyManagedEmailProvider({
+      domain_id: options.domainId,
+    });
+    await this._refreshProjectConfig();
+    return result;
+  }
+
   async sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void> {
     await this._interface.sendSignInInvitationEmail(email, callbackUrl);
   }
@@ -648,13 +692,8 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     await this._adminEmailDraftsCache.refresh([]);
   }
 
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    return await this._interface.sendChatMessage(threadId, contextType, messages, abortSignal);
+  async refreshEmailDrafts(): Promise<void> {
+    await this._adminEmailDraftsCache.refresh([]);
   }
 
   async saveChatMessage(threadId: string, message: any): Promise<void> {
@@ -665,16 +704,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return await this._interface.listChatMessages(threadId);
   }
 
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    return await this._interface.applyWysiwygEdit(options);
+  async rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsxSource: string }> {
+    const result = await this._interface.rewriteTemplateSourceWithAI(templateTsxSource);
+    return { tsxSource: result.tsx_source };
   }
 
   async createEmailTheme(displayName: string): Promise<{ id: string }> {
@@ -798,8 +830,15 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       id: crud.id as string,
       createdAt: new Date(crud.created_at_millis),
       updatedAt: new Date(crud.updated_at_millis),
+      tsxSource: crud.tsx_source as string,
+      themeId: (crud.theme_id as string | null) ?? null,
       to,
       scheduledAt: new Date(crud.scheduled_at_millis),
+      // Source tracking for grouping emails by template/draft
+      createdWith: crud.created_with as "draft" | "programmatic-call",
+      emailDraftId: crud.email_draft_id as string | null,
+      emailProgrammaticCallTemplateId: crud.email_programmatic_call_template_id as string | null,
+      variables: (crud.variables ?? {}) as Record<string, Json>,
       isPaused: false as const,
       hasRendered: false as const,
       hasDelivered: false as const,
@@ -1017,11 +1056,13 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return this._emailOutboxCrudToAdmin(response);
   }
 
-  async updateOutboxEmail(id: string, options: { isPaused?: boolean, scheduledAtMillis?: number, cancel?: boolean }): Promise<AdminEmailOutbox> {
+  async updateOutboxEmail(id: string, options: EmailOutboxUpdateOptions): Promise<AdminEmailOutbox> {
     const response = await this._interface.updateOutboxEmail(id, {
       is_paused: options.isPaused,
       scheduled_at_millis: options.scheduledAtMillis,
       cancel: options.cancel,
+      tsx_source: options.tsxSource,
+      theme_id: options.themeId,
     });
     return this._emailOutboxCrudToAdmin(response);
   }

@@ -1,4 +1,4 @@
-import { DesignButton, DesignInput } from "@/components/design-components";
+import { DesignButton, DesignInput } from "@stackframe/dashboard-ui-components";
 import { cn } from "@/lib/utils";
 import { Check, X } from "@phosphor-icons/react";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";

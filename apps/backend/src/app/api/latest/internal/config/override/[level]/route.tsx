@@ -13,11 +13,12 @@ import {
   validateEnvironmentConfigOverride,
 } from "@/lib/config";
 import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
+import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } from "@/lib/local-emulator";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -193,7 +194,7 @@ async function warnOnValidationFailure(
       captureError("config-override-validation-warning", `Config override validation warning for project ${options.projectId} (this may not be a logic error, but rather a client/implementation issue — e.g. dot notation into non-existent record entries): ${validationResult.error}`);
     }
   } catch (e) {
-    captureError("config-override-validation-check-failed", e);
+    captureError("config-override-validation-check-failed", new StackAssertionError("Config override validation check failed. This may be really bad! Make sure to check the error and the config.", { cause: e, options, levelConfig }));
   }
 }
 
@@ -220,6 +221,10 @@ export const PUT = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
+      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
+    }
+
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_string, levelConfig);
 
@@ -273,10 +278,14 @@ export const PATCH = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
+      throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
+    }
+
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig);
 
-    await levelConfig.override({
+    const newConfig = await levelConfig.override({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
       config: parsedConfig,
@@ -285,7 +294,7 @@ export const PATCH = createSmartRouteHandler({
     await warnOnValidationFailure(levelConfig, {
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
-      config: parsedConfig,
+      config: newConfig,
     });
 
     if (req.params.level === "environment" && shouldEnqueueExternalDbSync(parsedConfig)) {

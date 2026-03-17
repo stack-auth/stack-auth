@@ -9,7 +9,7 @@ export type {
   StackClientAppConstructorOptions,
   StackClientAppJson,
   StackServerAppConstructor,
-  StackServerAppConstructorOptions
+  StackServerAppConstructorOptions,
 } from "./apps";
 
 export type {

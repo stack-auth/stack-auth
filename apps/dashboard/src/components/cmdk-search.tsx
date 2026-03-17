@@ -600,6 +600,8 @@ export function CmdKSearch({
     setSelectedIndex(index);
   }, []);
 
+  const handleClose = useCallback(() => setOpen(false), []);
+
   // Track pending focus action to handle click-then-focus timing
   const pendingFocusRef = useRef(false);
 
@@ -825,6 +827,7 @@ export function CmdKSearch({
                     onBlur: handleBackFromPreview,
                     registerNestedCommands: registerNestedCommandsDepth0,
                     navigateToNested: navigateToNestedDepth1,
+                    onClose: handleClose,
                     depth: 0,
                     pathname,
                   })}
@@ -913,6 +916,7 @@ export function CmdKSearch({
                             onBlur: handlePreviewBlur,
                             registerNestedCommands: registerNestedCommandsDepth0,
                             navigateToNested: navigateToNestedDepth1,
+                            onClose: handleClose,
                             depth: 0,
                             pathname,
                           })}
@@ -932,6 +936,7 @@ export function CmdKSearch({
                           onBlur: handlePreviewBlur,
                           registerNestedCommands: registerNestedCommandsDepth0,
                           navigateToNested: navigateToNestedDepth1,
+                          onClose: handleClose,
                           depth: 0,
                           pathname,
                         })}

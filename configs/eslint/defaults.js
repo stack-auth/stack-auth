@@ -37,7 +37,9 @@ module.exports = {
     "max-statements-per-line": "warn",
     semi: ["error", "always"],
     "no-fallthrough": "error",
-    "@typescript-eslint/switch-exhaustiveness-check": "error",
+    "@typescript-eslint/switch-exhaustiveness-check": ["error", {
+      "considerDefaultExhaustiveForUnions": true,
+    }],
     "@typescript-eslint/no-floating-promises": [
       "error",
       {
@@ -48,7 +50,8 @@ module.exports = {
     "@typescript-eslint/return-await": ["error", "always"],
     "no-multiple-empty-lines": "warn",
     "@typescript-eslint/await-thenable": "error",
-    "@typescript-eslint/member-delimiter-style": [
+    // TODO: Re-introduce this rule when we migrate to the Stylistic plugin/ESLint 9+
+    /*"@typescript-eslint/member-delimiter-style": [
       "error",
       {
         multiline: {
@@ -60,7 +63,7 @@ module.exports = {
         },
         multilineDetection: "brackets",
       },
-    ],
+    ],*/
     "@typescript-eslint/no-unnecessary-condition": [
       "error",
       { allowConstantLoopConditions: true },

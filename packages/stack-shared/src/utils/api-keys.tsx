@@ -40,7 +40,7 @@ type ProjectApiKey = {
 
 function createChecksumSync(checksummablePart: string): string {
   const data = new TextEncoder().encode(checksummablePart);
-  const calculated_checksum = crc32(data);
+  const calculated_checksum = crc32(data.buffer);
   return calculated_checksum.toString(16).padStart(8, "0");
 }
 

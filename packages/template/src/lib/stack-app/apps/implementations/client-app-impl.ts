@@ -550,8 +550,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._sessionRecorder.start();
     }
 
-    // for now we only track events for internal project
-    if (isBrowserLike() && this.projectId === "internal") {
+    if (isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         getAccessToken: getAnalyticsAccessToken,
@@ -2418,6 +2417,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       displayName: accessToken.payload.name,
       primaryEmailVerified: accessToken.payload.email_verified,
       isAnonymous,
+      isMultiFactorRequired: accessToken.payload.requires_totp_mfa,
       isRestricted: accessToken.payload.is_restricted,
       restrictedReason: accessToken.payload.restricted_reason,
     } satisfies TokenPartialUser;
@@ -2434,6 +2434,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       primaryEmail: auth.email ?? null,
       primaryEmailVerified: auth.email_verified as boolean,
       isAnonymous: auth.is_anonymous as boolean,
+      isMultiFactorRequired: auth.requires_totp_mfa as boolean,
       isRestricted: auth.is_restricted as boolean,
       restrictedReason: (auth.restricted_reason as RestrictedReason | null) ?? null,
     };
@@ -3116,6 +3117,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         requestType: "client" | "server" | "admin" = "client",
       ) => {
         return await this._interface.sendClientRequest(path, requestOptions, await this._getSession(), requestType);
+      },
+      refreshOwnedProjects: async () => {
+        await this._refreshOwnedProjects(await this._getSession());
       },
     };
   };
