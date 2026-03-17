@@ -26,6 +26,8 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: EMAIL_OUTBOXES_VIEW_SQL });
   await client.exec({ query: SESSION_REPLAYS_TABLE_BASE_SQL });
   await client.exec({ query: SESSION_REPLAYS_VIEW_SQL });
+  await client.exec({ query: PROJECT_API_KEYS_TABLE_BASE_SQL });
+  await client.exec({ query: PROJECT_API_KEYS_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -42,6 +44,7 @@ export async function runClickhouseMigrations() {
     "GRANT SELECT ON default.team_members TO limited_user;",
     "GRANT SELECT ON default.email_outboxes TO limited_user;",
     "GRANT SELECT ON default.session_replays TO limited_user;",
+    "GRANT SELECT ON default.project_api_keys TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
@@ -63,6 +66,9 @@ export async function runClickhouseMigrations() {
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS session_replays_project_isolation ON default.session_replays FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS project_api_keys_project_isolation ON default.project_api_keys FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -443,6 +449,47 @@ AS
 SELECT project_id, branch_id, id, user_id, refresh_token_id,
        started_at, last_event_at, created_at
 FROM analytics_internal.session_replays
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const PROJECT_API_KEYS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.project_api_keys (
+    project_id String,
+    branch_id String,
+    id UUID,
+    description String,
+    is_public UInt8,
+    expires_at Nullable(DateTime64(3, 'UTC')),
+    manually_revoked_at Nullable(DateTime64(3, 'UTC')),
+    created_at DateTime64(3, 'UTC'),
+    team_id Nullable(UUID),
+    user_id Nullable(UUID),
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const PROJECT_API_KEYS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.project_api_keys
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  description,
+  is_public,
+  expires_at,
+  manually_revoked_at,
+  created_at,
+  team_id,
+  user_id
+FROM analytics_internal.project_api_keys
 FINAL
 WHERE sync_is_deleted = 0;
 `;

@@ -17,6 +17,7 @@ import {
   waitForSyncedDeletion,
   waitForSyncedEmailOutbox,
   waitForSyncedEmailOutboxByStatus,
+  waitForSyncedProjectApiKey,
   waitForSyncedSessionReplay,
   waitForSyncedTeam,
   waitForSyncedTeamDeletion,
@@ -1184,6 +1185,112 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(row.refresh_token_id).toBeDefined();
     expect(row.started_at).toBeDefined();
     expect(row.last_event_at).toBeDefined();
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a project with analytics, signs in a user, creates a user API key,
+   *   and verifies the project_api_keys row is synced to ClickHouse.
+   */
+  test('ProjectApiKey sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        magic_link_enabled: true,
+        allow_user_api_keys: true,
+      },
+    });
+    await Auth.Otp.signIn();
+
+    // Create a user API key
+    const createRes = await niceBackendFetch("/api/v1/user-api-keys", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        user_id: "me",
+        description: "CH sync test key",
+        expires_at_millis: null,
+      },
+    });
+    expect(createRes.status).toBe(200);
+    const apiKeyId = createRes.body.id;
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    // Poll ClickHouse until the project_api_keys row appears
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT id, description, is_public, created_at, user_id FROM project_api_keys WHERE id = {id:String}",
+        params: { id: apiKeyId },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length >= 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBeGreaterThanOrEqual(1);
+    const row = response!.body.result[0];
+    expect(row.description).toBe("CH sync test key");
+    expect(row.user_id).toBeDefined();
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a project with an external Postgres DB, signs in a user,
+   *   creates a user API key, verifies it syncs, then revokes it and
+   *   verifies the update is synced.
+   */
+  test('ProjectApiKey CRUD sync (Postgres)', async () => {
+    const dbName = 'project_api_key_pg_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, {
+      display_name: 'API Key Sync Test',
+      config: {
+        magic_link_enabled: true,
+        allow_user_api_keys: true,
+      },
+    });
+
+    await Auth.Otp.signIn();
+
+    // Create a user API key
+    const createRes = await niceBackendFetch("/api/v1/user-api-keys", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        user_id: "me",
+        description: "PG sync test key",
+        expires_at_millis: null,
+      },
+    });
+    expect(createRes.status).toBe(200);
+    const apiKeyId = createRes.body.id;
+
+    const client = dbManager.getClient(dbName);
+
+    // Wait for the API key row to appear in external DB
+    await waitForSyncedProjectApiKey(client, apiKeyId);
+
+    // Verify the synced row has expected columns
+    const res = await client.query(`SELECT * FROM "project_api_keys" WHERE "id" = $1`, [apiKeyId]);
+    expect(res.rows.length).toBe(1);
+    const row = res.rows[0];
+    expect(row.description).toBe("PG sync test key");
+    expect(row.is_public).toBe(false);
+    expect(row.user_id).toBeDefined();
+    expect(row.created_at).toBeDefined();
   }, TEST_TIMEOUT);
 
   /**

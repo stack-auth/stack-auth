@@ -339,6 +339,30 @@ export async function waitForSyncedSessionReplay(client: Client, replayId: strin
   );
 }
 
+export async function waitForSyncedProjectApiKey(client: Client, apiKeyId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "project_api_keys" WHERE "id" = $1`,
+    [apiKeyId],
+    {
+      shouldExist: true,
+      description: `project api key "${apiKeyId}" to appear in external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedProjectApiKeyDeletion(client: Client, apiKeyId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "project_api_keys" WHERE "id" = $1`,
+    [apiKeyId],
+    {
+      shouldExist: false,
+      description: `project api key "${apiKeyId}" to be removed from external DB`,
+    },
+  );
+}
+
 export async function waitForSyncedEmailOutboxByStatus(client: Client, status: string) {
   await waitForExternalDbRow(
     client,

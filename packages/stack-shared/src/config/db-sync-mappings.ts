@@ -1256,4 +1256,156 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
+  "project_api_keys": {
+    sourceTables: { "ProjectApiKey": "ProjectApiKey" },
+    targetTable: "project_api_keys",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "project_api_keys" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "description" text NOT NULL,
+          "is_public" boolean NOT NULL,
+          "expires_at" timestamp without time zone,
+          "manually_revoked_at" timestamp without time zone,
+          "created_at" timestamp without time zone NOT NULL,
+          "team_id" uuid,
+          "user_id" uuid
+        );
+        REVOKE ALL ON "project_api_keys" FROM PUBLIC;
+        GRANT SELECT ON "project_api_keys" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.project_api_keys (
+          project_id String,
+          branch_id String,
+          id UUID,
+          description String,
+          is_public UInt8,
+          expires_at Nullable(DateTime64(3, 'UTC')),
+          manually_revoked_at Nullable(DateTime64(3, 'UTC')),
+          created_at DateTime64(3, 'UTC'),
+          team_id Nullable(UUID),
+          user_id Nullable(UUID),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT
+          "Tenancy"."projectId" AS "project_id",
+          "Tenancy"."branchId" AS "branch_id",
+          "ProjectApiKey"."id" AS "id",
+          "ProjectApiKey"."description" AS "description",
+          "ProjectApiKey"."isPublic" AS "is_public",
+          "ProjectApiKey"."expiresAt" AS "expires_at",
+          "ProjectApiKey"."manuallyRevokedAt" AS "manually_revoked_at",
+          "ProjectApiKey"."createdAt" AS "created_at",
+          "ProjectApiKey"."teamId" AS "team_id",
+          "ProjectApiKey"."projectUserId" AS "user_id",
+          "ProjectApiKey"."sequenceId" AS "sync_sequence_id",
+          "ProjectApiKey"."tenancyId" AS "tenancyId",
+          false AS "sync_is_deleted"
+        FROM "ProjectApiKey"
+        JOIN "Tenancy" ON "Tenancy"."id" = "ProjectApiKey"."tenancyId"
+        WHERE "ProjectApiKey"."tenancyId" = $1::uuid
+          AND "ProjectApiKey"."sequenceId" IS NOT NULL
+          AND "ProjectApiKey"."sequenceId" > $2::bigint
+        ORDER BY "ProjectApiKey"."sequenceId" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT
+        "ProjectApiKey"."id" AS "id",
+        "ProjectApiKey"."description" AS "description",
+        "ProjectApiKey"."isPublic" AS "is_public",
+        "ProjectApiKey"."expiresAt" AS "expires_at",
+        "ProjectApiKey"."manuallyRevokedAt" AS "manually_revoked_at",
+        "ProjectApiKey"."createdAt" AS "created_at",
+        "ProjectApiKey"."teamId" AS "team_id",
+        "ProjectApiKey"."projectUserId" AS "user_id",
+        "ProjectApiKey"."sequenceId" AS "sequence_id",
+        "ProjectApiKey"."tenancyId",
+        false AS "is_deleted"
+      FROM "ProjectApiKey"
+      WHERE "ProjectApiKey"."tenancyId" = $1::uuid
+        AND "ProjectApiKey"."sequenceId" IS NOT NULL
+        AND "ProjectApiKey"."sequenceId" > $2::bigint
+      ORDER BY "ProjectApiKey"."sequenceId" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::text AS "description",
+            $3::boolean AS "is_public",
+            $4::timestamp without time zone AS "expires_at",
+            $5::timestamp without time zone AS "manually_revoked_at",
+            $6::timestamp without time zone AS "created_at",
+            $7::uuid AS "team_id",
+            $8::uuid AS "user_id",
+            $9::bigint AS "sequence_id",
+            $10::boolean AS "is_deleted",
+            $11::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "project_api_keys" pak
+          USING params p
+          WHERE p."is_deleted" = true AND pak."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "project_api_keys" (
+            "id",
+            "description",
+            "is_public",
+            "expires_at",
+            "manually_revoked_at",
+            "created_at",
+            "team_id",
+            "user_id"
+          )
+          SELECT
+            p."id",
+            p."description",
+            p."is_public",
+            p."expires_at",
+            p."manually_revoked_at",
+            p."created_at",
+            p."team_id",
+            p."user_id"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "description" = EXCLUDED."description",
+            "is_public" = EXCLUDED."is_public",
+            "expires_at" = EXCLUDED."expires_at",
+            "manually_revoked_at" = EXCLUDED."manually_revoked_at",
+            "created_at" = EXCLUDED."created_at",
+            "team_id" = EXCLUDED."team_id",
+            "user_id" = EXCLUDED."user_id"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
 } as const;

@@ -711,7 +711,12 @@ model ProjectApiKey {
   projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team        Team?        @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   @@id([tenancyId, id])
+  @@index([tenancyId, sequenceId], name: "ProjectApiKey_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectApiKey_shouldUpdateSequenceId_idx")
 }
 
 enum EmailTemplateType {

@@ -222,6 +222,34 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
+    const projectApiKeyTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "ProjectApiKey"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "ProjectApiKey" pak
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE pak."tenancyId" = r."tenancyId"
+          AND pak."id"        = r."id"
+        RETURNING pak."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.project-api-key-tenants", projectApiKeyTenants.length);
+
+    if (projectApiKeyTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(projectApiKeyTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
     const deletedRowTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id", "tenancyId"
@@ -251,7 +279,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
     if (didUpdate) {
-      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, EO=${emailOutboxTenants.length}, SR=${sessionReplayTenants.length}, DR=${deletedRowTenants.length}`);
+      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, EO=${emailOutboxTenants.length}, SR=${sessionReplayTenants.length}, PAK=${projectApiKeyTenants.length}, DR=${deletedRowTenants.length}`);
     }
 
     return didUpdate;
