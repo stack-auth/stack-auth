@@ -523,6 +523,7 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON URL FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW DATABASES ON default.* TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.contact_channels TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.email_outboxes TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.events TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_invitations TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_member_profiles TO limited_user" },
@@ -572,6 +573,10 @@ it("can see only some tables", async ({ expect }) => {
           },
           {
             "database": "default",
+            "name": "email_outboxes",
+          },
+          {
+            "database": "default",
             "name": "events",
           },
           {
@@ -612,6 +617,7 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
       "body": {
         "result": [
           { "name": "contact_channels" },
+          { "name": "email_outboxes" },
           { "name": "events" },
           { "name": "team_invitations" },
           { "name": "team_member_profiles" },
@@ -1099,6 +1105,7 @@ it("shows grants", async ({ expect }) => {
       "body": {
         "result": [
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.contact_channels TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.email_outboxes TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_invitations TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_member_profiles TO limited_user" },
