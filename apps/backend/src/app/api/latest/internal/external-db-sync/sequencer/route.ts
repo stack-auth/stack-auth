@@ -1,5 +1,6 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
+import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
@@ -78,6 +79,23 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
     if (projectUserTenants.length > 0) {
       await enqueueExternalDbSyncBatch(projectUserTenants.map(t => t.tenancyId));
       didUpdate = true;
+
+      // Cascade: when a user changes, mark their TeamMember rows for re-sync
+      // so the embedded user JSON in team_member_profiles stays fresh
+      await globalPrismaClient.$executeRaw`
+        UPDATE "TeamMember"
+        SET "shouldUpdateSequenceId" = TRUE
+        FROM (
+          SELECT DISTINCT "tenancyId", "projectUserId"
+          FROM "ProjectUser"
+          WHERE "tenancyId" IN (${Prisma.join(projectUserTenants.map(t => t.tenancyId))})
+            AND "shouldUpdateSequenceId" = FALSE
+            AND "sequenceId" IS NOT NULL
+        ) AS changed_users
+        WHERE "TeamMember"."tenancyId" = changed_users."tenancyId"
+          AND "TeamMember"."projectUserId" = changed_users."projectUserId"
+          AND "TeamMember"."shouldUpdateSequenceId" = FALSE
+      `;
     }
 
     const contactChannelTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
@@ -135,6 +153,25 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
     if (teamTenants.length > 0) {
       await enqueueExternalDbSyncBatch(teamTenants.map(t => t.tenancyId));
       didUpdate = true;
+
+      // Cascade: when a team changes, mark related TEAM_INVITATION verification codes for re-sync
+      // so the team_display_name in team_invitations stays fresh
+      await globalPrismaClient.$executeRaw`
+        UPDATE "VerificationCode"
+        SET "shouldUpdateSequenceId" = TRUE
+        FROM (
+          SELECT DISTINCT "Tenancy"."projectId", "Tenancy"."branchId"
+          FROM "Team"
+          JOIN "Tenancy" ON "Tenancy"."id" = "Team"."tenancyId"
+          WHERE "Team"."tenancyId" IN (${Prisma.join(teamTenants.map(t => t.tenancyId))})
+            AND "Team"."shouldUpdateSequenceId" = FALSE
+            AND "Team"."sequenceId" IS NOT NULL
+        ) AS changed_teams
+        WHERE "VerificationCode"."projectId" = changed_teams."projectId"
+          AND "VerificationCode"."branchId" = changed_teams."branchId"
+          AND "VerificationCode"."type" = 'TEAM_INVITATION'
+          AND "VerificationCode"."shouldUpdateSequenceId" = FALSE
+      `;
     }
 
     const teamMemberTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
@@ -163,6 +200,66 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     if (teamMemberTenants.length > 0) {
       await enqueueExternalDbSyncBatch(teamMemberTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const teamPermissionTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "id"
+        FROM "TeamMemberDirectPermission"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "TeamMemberDirectPermission" tp
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE tp."id" = r."id"
+        RETURNING tp."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-permission-tenants", teamPermissionTenants.length);
+
+    if (teamPermissionTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamPermissionTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const teamInvitationTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "projectId", "branchId", "id"
+        FROM "VerificationCode"
+        WHERE "shouldUpdateSequenceId" = TRUE
+          AND "type" = 'TEAM_INVITATION'
+        ORDER BY "projectId", "branchId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "VerificationCode" vc
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE vc."projectId" = r."projectId"
+          AND vc."branchId"  = r."branchId"
+          AND vc."id"        = r."id"
+        RETURNING vc."projectId", vc."branchId"
+      )
+      SELECT DISTINCT "Tenancy"."id" AS "tenancyId"
+      FROM updated_rows
+      JOIN "Tenancy" ON "Tenancy"."projectId" = updated_rows."projectId"
+        AND "Tenancy"."branchId" = updated_rows."branchId"
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-invitation-tenants", teamInvitationTenants.length);
+
+    if (teamInvitationTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamInvitationTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
@@ -223,7 +320,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
     if (didUpdate) {
-      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, EO=${emailOutboxTenants.length}, DR=${deletedRowTenants.length}`);
+      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, TP=${teamPermissionTenants.length}, TI=${teamInvitationTenants.length}, EO=${emailOutboxTenants.length}, DR=${deletedRowTenants.length}`);
     }
 
     return didUpdate;
