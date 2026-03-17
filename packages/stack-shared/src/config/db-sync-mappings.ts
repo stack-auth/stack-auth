@@ -663,21 +663,22 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
-  "team_members": {
-    sourceTables: { "TeamMember": "TeamMember" },
-    targetTable: "team_members",
+  "team_member_profiles": {
+    sourceTables: { "TeamMember": "TeamMember", "ProjectUser": "ProjectUser" },
+    targetTable: "team_member_profiles",
     targetTableSchemas: {
       postgres: `
-        CREATE TABLE IF NOT EXISTS "team_members" (
+        CREATE TABLE IF NOT EXISTS "team_member_profiles" (
           "team_id" uuid NOT NULL,
           "user_id" uuid NOT NULL,
           "display_name" text,
           "profile_image_url" text,
+          "user" jsonb NOT NULL DEFAULT '{}'::jsonb,
           "created_at" timestamp without time zone NOT NULL,
           PRIMARY KEY ("team_id", "user_id")
         );
-        REVOKE ALL ON "team_members" FROM PUBLIC;
-        GRANT SELECT ON "team_members" TO PUBLIC;
+        REVOKE ALL ON "team_member_profiles" FROM PUBLIC;
+        GRANT SELECT ON "team_member_profiles" TO PUBLIC;
 
         CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
           "mapping_name" text PRIMARY KEY NOT NULL,
@@ -686,13 +687,14 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         );
       `.trim(),
       clickhouse: `
-        CREATE TABLE IF NOT EXISTS analytics_internal.team_members (
+        CREATE TABLE IF NOT EXISTS analytics_internal.team_member_profiles (
           project_id String,
           branch_id String,
           team_id UUID,
           user_id UUID,
           display_name Nullable(String),
           profile_image_url Nullable(String),
+          user JSON,
           created_at DateTime64(3, 'UTC'),
           sync_sequence_id Int64,
           sync_is_deleted UInt8,
@@ -714,12 +716,46 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "TeamMember"."projectUserId" AS "user_id",
             "TeamMember"."displayName" AS "display_name",
             "TeamMember"."profileImageUrl" AS "profile_image_url",
+            jsonb_build_object(
+              'id', "ProjectUser"."projectUserId",
+              'display_name', "ProjectUser"."displayName",
+              'primary_email', (
+                SELECT "ContactChannel"."value"
+                FROM "ContactChannel"
+                WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                  AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                  AND "ContactChannel"."type" = 'EMAIL'
+                  AND "ContactChannel"."isPrimary" = 'TRUE'
+                LIMIT 1
+              ),
+              'primary_email_verified', COALESCE(
+                (
+                  SELECT "ContactChannel"."isVerified"
+                  FROM "ContactChannel"
+                  WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                    AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                    AND "ContactChannel"."type" = 'EMAIL'
+                    AND "ContactChannel"."isPrimary" = 'TRUE'
+                  LIMIT 1
+                ),
+                false
+              ),
+              'profile_image_url', "ProjectUser"."profileImageUrl",
+              'signed_up_at_millis', EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000,
+              'client_metadata', COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb),
+              'client_read_only_metadata', COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb),
+              'server_metadata', COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb),
+              'is_anonymous', "ProjectUser"."isAnonymous",
+              'last_active_at_millis', CASE WHEN "ProjectUser"."lastActiveAt" IS NOT NULL THEN EXTRACT(EPOCH FROM "ProjectUser"."lastActiveAt") * 1000 ELSE NULL END
+            ) AS "user",
             "TeamMember"."createdAt" AS "created_at",
             "TeamMember"."sequenceId" AS "sync_sequence_id",
             "TeamMember"."tenancyId" AS "tenancyId",
             false AS "sync_is_deleted"
           FROM "TeamMember"
           JOIN "Tenancy" ON "Tenancy"."id" = "TeamMember"."tenancyId"
+          JOIN "ProjectUser" ON "ProjectUser"."projectUserId" = "TeamMember"."projectUserId"
+            AND "ProjectUser"."tenancyId" = "TeamMember"."tenancyId"
           WHERE "TeamMember"."tenancyId" = $1::uuid
 
           UNION ALL
@@ -731,6 +767,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
             NULL::text AS "display_name",
             NULL::text AS "profile_image_url",
+            '{}'::jsonb AS "user",
             "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
             "DeletedRow"."sequenceId" AS "sync_sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
@@ -755,11 +792,45 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "TeamMember"."projectUserId" AS "user_id",
           "TeamMember"."displayName" AS "display_name",
           "TeamMember"."profileImageUrl" AS "profile_image_url",
+          jsonb_build_object(
+            'id', "ProjectUser"."projectUserId",
+            'display_name', "ProjectUser"."displayName",
+            'primary_email', (
+              SELECT "ContactChannel"."value"
+              FROM "ContactChannel"
+              WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                AND "ContactChannel"."type" = 'EMAIL'
+                AND "ContactChannel"."isPrimary" = 'TRUE'
+              LIMIT 1
+            ),
+            'primary_email_verified', COALESCE(
+              (
+                SELECT "ContactChannel"."isVerified"
+                FROM "ContactChannel"
+                WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
+                  AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
+                  AND "ContactChannel"."type" = 'EMAIL'
+                  AND "ContactChannel"."isPrimary" = 'TRUE'
+                LIMIT 1
+              ),
+              false
+            ),
+            'profile_image_url', "ProjectUser"."profileImageUrl",
+            'signed_up_at_millis', EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000,
+            'client_metadata', COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb),
+            'client_read_only_metadata', COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb),
+            'server_metadata', COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb),
+            'is_anonymous', "ProjectUser"."isAnonymous",
+            'last_active_at_millis', CASE WHEN "ProjectUser"."lastActiveAt" IS NOT NULL THEN EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000 ELSE NULL END
+          ) AS "user",
           "TeamMember"."createdAt" AS "created_at",
           "TeamMember"."sequenceId" AS "sequence_id",
           "TeamMember"."tenancyId",
           false AS "is_deleted"
         FROM "TeamMember"
+        JOIN "ProjectUser" ON "ProjectUser"."projectUserId" = "TeamMember"."projectUserId"
+          AND "ProjectUser"."tenancyId" = "TeamMember"."tenancyId"
         WHERE "TeamMember"."tenancyId" = $1::uuid
 
         UNION ALL
@@ -769,6 +840,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
           NULL::text AS "display_name",
           NULL::text AS "profile_image_url",
+          '{}'::jsonb AS "user",
           "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
           "DeletedRow"."sequenceId" AS "sequence_id",
           "DeletedRow"."tenancyId",
@@ -791,23 +863,25 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             $2::uuid AS "user_id",
             $3::text AS "display_name",
             $4::text AS "profile_image_url",
-            $5::timestamp without time zone AS "created_at",
-            $6::bigint AS "sequence_id",
-            $7::boolean AS "is_deleted",
-            $8::text AS "mapping_name"
+            $5::jsonb AS "user",
+            $6::timestamp without time zone AS "created_at",
+            $7::bigint AS "sequence_id",
+            $8::boolean AS "is_deleted",
+            $9::text AS "mapping_name"
         ),
         deleted AS (
-          DELETE FROM "team_members" tm
+          DELETE FROM "team_member_profiles" tm
           USING params p
           WHERE p."is_deleted" = true AND tm."team_id" = p."team_id" AND tm."user_id" = p."user_id"
           RETURNING 1
         ),
         upserted AS (
-          INSERT INTO "team_members" (
+          INSERT INTO "team_member_profiles" (
             "team_id",
             "user_id",
             "display_name",
             "profile_image_url",
+            "user",
             "created_at"
           )
           SELECT
@@ -815,12 +889,360 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             p."user_id",
             p."display_name",
             p."profile_image_url",
+            p."user",
             p."created_at"
           FROM params p
           WHERE p."is_deleted" = false
           ON CONFLICT ("team_id", "user_id") DO UPDATE SET
             "display_name" = EXCLUDED."display_name",
             "profile_image_url" = EXCLUDED."profile_image_url",
+            "user" = EXCLUDED."user",
+            "created_at" = EXCLUDED."created_at"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
+  "team_permissions": {
+    sourceTables: { "TeamMemberDirectPermission": "TeamMemberDirectPermission" },
+    targetTable: "team_permissions",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "team_permissions" (
+          "team_id" uuid NOT NULL,
+          "user_id" uuid NOT NULL,
+          "permission_id" text NOT NULL,
+          "created_at" timestamp without time zone NOT NULL,
+          PRIMARY KEY ("team_id", "user_id", "permission_id")
+        );
+        REVOKE ALL ON "team_permissions" FROM PUBLIC;
+        GRANT SELECT ON "team_permissions" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.team_permissions (
+          project_id String,
+          branch_id String,
+          team_id UUID,
+          user_id UUID,
+          permission_id String,
+          created_at DateTime64(3, 'UTC'),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, team_id, user_id, permission_id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "TeamMemberDirectPermission"."teamId" AS "team_id",
+            "TeamMemberDirectPermission"."projectUserId" AS "user_id",
+            "TeamMemberDirectPermission"."permissionId" AS "permission_id",
+            "TeamMemberDirectPermission"."createdAt" AS "created_at",
+            "TeamMemberDirectPermission"."sequenceId" AS "sync_sequence_id",
+            "TeamMemberDirectPermission"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "TeamMemberDirectPermission"
+          JOIN "Tenancy" ON "Tenancy"."id" = "TeamMemberDirectPermission"."tenancyId"
+          WHERE "TeamMemberDirectPermission"."tenancyId" = $1::uuid
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'teamId')::uuid AS "team_id",
+            ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
+            "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'TeamMemberDirectPermission'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
+        SELECT
+          "TeamMemberDirectPermission"."teamId" AS "team_id",
+          "TeamMemberDirectPermission"."projectUserId" AS "user_id",
+          "TeamMemberDirectPermission"."permissionId" AS "permission_id",
+          "TeamMemberDirectPermission"."createdAt" AS "created_at",
+          "TeamMemberDirectPermission"."sequenceId" AS "sequence_id",
+          "TeamMemberDirectPermission"."tenancyId",
+          false AS "is_deleted"
+        FROM "TeamMemberDirectPermission"
+        WHERE "TeamMemberDirectPermission"."tenancyId" = $1::uuid
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'teamId')::uuid AS "team_id",
+          ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
+          "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'TeamMemberDirectPermission'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "team_id",
+            $2::uuid AS "user_id",
+            $3::text AS "permission_id",
+            $4::timestamp without time zone AS "created_at",
+            $5::bigint AS "sequence_id",
+            $6::boolean AS "is_deleted",
+            $7::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "team_permissions" tp
+          USING params p
+          WHERE p."is_deleted" = true AND tp."team_id" = p."team_id" AND tp."user_id" = p."user_id" AND tp."permission_id" = p."permission_id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "team_permissions" (
+            "team_id",
+            "user_id",
+            "permission_id",
+            "created_at"
+          )
+          SELECT
+            p."team_id",
+            p."user_id",
+            p."permission_id",
+            p."created_at"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("team_id", "user_id", "permission_id") DO UPDATE SET
+            "created_at" = EXCLUDED."created_at"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
+  "team_invitations": {
+    sourceTables: { "VerificationCode": "VerificationCode" },
+    targetTable: "team_invitations",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "team_invitations" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "team_id" uuid NOT NULL,
+          "team_display_name" text NOT NULL,
+          "recipient_email" text NOT NULL,
+          "expires_at_millis" bigint NOT NULL,
+          "created_at" timestamp without time zone NOT NULL
+        );
+        REVOKE ALL ON "team_invitations" FROM PUBLIC;
+        GRANT SELECT ON "team_invitations" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.team_invitations (
+          project_id String,
+          branch_id String,
+          id UUID,
+          team_id UUID,
+          team_display_name String,
+          recipient_email String,
+          expires_at_millis Int64,
+          created_at DateTime64(3, 'UTC'),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "VerificationCode"."id"::uuid AS "id",
+            ("VerificationCode"."data"->>'team_id')::uuid AS "team_id",
+            "Team"."displayName" AS "team_display_name",
+            "VerificationCode"."method"->>'email' AS "recipient_email",
+            FLOOR(EXTRACT(EPOCH FROM "VerificationCode"."expiresAt") * 1000)::bigint AS "expires_at_millis",
+            "VerificationCode"."createdAt" AS "created_at",
+            "VerificationCode"."sequenceId" AS "sync_sequence_id",
+            "Tenancy"."id" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "VerificationCode"
+          JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
+            AND "Tenancy"."branchId" = "VerificationCode"."branchId"
+          LEFT JOIN "Team" ON "Team"."teamId" = ("VerificationCode"."data"->>'team_id')::uuid
+            AND "Team"."tenancyId" = "Tenancy"."id"
+          WHERE "Tenancy"."id" = $1::uuid
+            AND "VerificationCode"."type" = 'TEAM_INVITATION'
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+            '00000000-0000-0000-0000-000000000000'::uuid AS "team_id",
+            ''::text AS "team_display_name",
+            ''::text AS "recipient_email",
+            0::bigint AS "expires_at_millis",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'VerificationCode_TEAM_INVITATION'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
+        SELECT
+          "VerificationCode"."id"::uuid AS "id",
+          ("VerificationCode"."data"->>'team_id')::uuid AS "team_id",
+          "Team"."displayName" AS "team_display_name",
+          "VerificationCode"."method"->>'email' AS "recipient_email",
+          FLOOR(EXTRACT(EPOCH FROM "VerificationCode"."expiresAt") * 1000)::bigint AS "expires_at_millis",
+          "VerificationCode"."createdAt" AS "created_at",
+          "VerificationCode"."sequenceId" AS "sequence_id",
+          "Tenancy"."id" AS "tenancyId",
+          false AS "is_deleted"
+        FROM "VerificationCode"
+        JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
+          AND "Tenancy"."branchId" = "VerificationCode"."branchId"
+        LEFT JOIN "Team" ON "Team"."teamId" = ("VerificationCode"."data"->>'team_id')::uuid
+          AND "Team"."tenancyId" = "Tenancy"."id"
+        WHERE "Tenancy"."id" = $1::uuid
+          AND "VerificationCode"."type" = 'TEAM_INVITATION'
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+          '00000000-0000-0000-0000-000000000000'::uuid AS "team_id",
+          ''::text AS "team_display_name",
+          ''::text AS "recipient_email",
+          0::bigint AS "expires_at_millis",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId" AS "tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'VerificationCode_TEAM_INVITATION'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::uuid AS "team_id",
+            $3::text AS "team_display_name",
+            $4::text AS "recipient_email",
+            $5::bigint AS "expires_at_millis",
+            $6::timestamp without time zone AS "created_at",
+            $7::bigint AS "sequence_id",
+            $8::boolean AS "is_deleted",
+            $9::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "team_invitations" ti
+          USING params p
+          WHERE p."is_deleted" = true AND ti."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "team_invitations" (
+            "id",
+            "team_id",
+            "team_display_name",
+            "recipient_email",
+            "expires_at_millis",
+            "created_at"
+          )
+          SELECT
+            p."id",
+            p."team_id",
+            p."team_display_name",
+            p."recipient_email",
+            p."expires_at_millis",
+            p."created_at"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "team_id" = EXCLUDED."team_id",
+            "team_display_name" = EXCLUDED."team_display_name",
+            "recipient_email" = EXCLUDED."recipient_email",
+            "expires_at_millis" = EXCLUDED."expires_at_millis",
             "created_at" = EXCLUDED."created_at"
           RETURNING 1
         )

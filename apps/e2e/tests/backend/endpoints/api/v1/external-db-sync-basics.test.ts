@@ -20,8 +20,12 @@ import {
   waitForSyncedSessionReplay,
   waitForSyncedTeam,
   waitForSyncedTeamDeletion,
+  waitForSyncedTeamInvitation,
+  waitForSyncedTeamInvitationDeletion,
   waitForSyncedTeamMember,
   waitForSyncedTeamMemberDeletion,
+  waitForSyncedTeamPermission,
+  waitForSyncedTeamPermissionDeletion,
   waitForTable
 } from './external-db-sync-utils';
 
@@ -716,7 +720,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     await waitForSyncedTeamMember(client, teamId, user.userId);
 
-    const res1 = await client.query(`SELECT * FROM "team_members" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, user.userId]);
+    const res1 = await client.query(`SELECT * FROM "team_member_profiles" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, user.userId]);
     expect(res1.rows.length).toBe(1);
 
     // Remove member
@@ -840,6 +844,259 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     await waitForSyncedTeamDeletion(client, teamId);
     await waitForSyncedTeamMemberDeletion(client, teamId, user.userId);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a team, adds a member, grants a permission, verifies in external DB,
+   *   revokes the permission, and verifies removal.
+   */
+  test('TeamPermission CRUD sync (Postgres)', async () => {
+    const dbName = 'team_permission_crud_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'tp-crud@example.com' });
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'TP CRUD Team' },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    // Add user as team member
+    const addMemberResponse = await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+    expect(addMemberResponse.status).toBe(201);
+
+    // Grant a permission
+    const grantResponse = await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user.userId}/$read_members`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+    expect(grantResponse.status).toBe(201);
+
+    await waitForSyncedTeamPermission(client, teamId, user.userId, '$read_members');
+
+    const res1 = await client.query(`SELECT * FROM "team_permissions" WHERE "team_id" = $1 AND "user_id" = $2 AND "permission_id" = $3`, [teamId, user.userId, '$read_members']);
+    expect(res1.rows.length).toBe(1);
+
+    // Revoke the permission
+    await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user.userId}/$read_members`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamPermissionDeletion(client, teamId, user.userId, '$read_members');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a team + member + permission, queries ClickHouse analytics API to verify.
+   */
+  test('TeamPermission sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: 'tp-ch@example.com' });
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'TP CH Team' },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user.userId}/$read_members`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT team_id, user_id, permission_id FROM team_permissions WHERE permission_id = {perm:String}",
+        params: { perm: '$read_members' },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBe(1);
+    expect(response!.body.result[0].permission_id).toBe('$read_members');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Sends a team invitation, verifies in external DB, revokes it, verifies removal.
+   */
+  test('TeamInvitation sync (Postgres)', async () => {
+    const dbName = 'team_invitation_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, { display_name: 'Invitation Test Project' });
+
+    const client = dbManager.getClient(dbName);
+
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'Invitation Team' },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    // Send a team invitation
+    const inviteResponse = await niceBackendFetch('/api/v1/team-invitations/send-code', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { team_id: teamId, email: 'invited@example.com', callback_url: 'http://localhost:12345/callback' },
+    });
+    expect(inviteResponse.status).toBe(200);
+
+    await waitForSyncedTeamInvitation(client, 'invited@example.com');
+
+    const res1 = await client.query(`SELECT * FROM "team_invitations" WHERE "recipient_email" = $1`, ['invited@example.com']);
+    expect(res1.rows.length).toBe(1);
+    expect(res1.rows[0].team_display_name).toBe('Invitation Team');
+    const invitationId = res1.rows[0].id;
+
+    // Revoke the invitation
+    await niceBackendFetch(`/api/v1/team-invitations/${invitationId}?team_id=${teamId}`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamInvitationDeletion(client, invitationId);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Sends a team invitation, queries ClickHouse analytics API to verify.
+   */
+  test('TeamInvitation sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'CH Invitation Team' },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    await niceBackendFetch('/api/v1/team-invitations/send-code', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { team_id: teamId, email: 'ch-invited@example.com', callback_url: 'http://localhost:12345/callback' },
+    });
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT recipient_email, team_display_name FROM team_invitations WHERE recipient_email = {email:String}",
+        params: { email: 'ch-invited@example.com' },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBe(1);
+    expect(response!.body.result[0].recipient_email).toBe('ch-invited@example.com');
+    expect(response!.body.result[0].team_display_name).toBe('CH Invitation Team');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a team with a member and permission, deletes the team,
+   *   verifies team, member, and permissions are all gone.
+   */
+  test('Cascade: Team delete removes permissions and invitations from external DB', async () => {
+    const dbName = 'cascade_team_perm_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'cascade-perm@example.com' });
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'Cascade Perm Team' },
+    });
+    const teamId = createTeamResponse.body.id;
+
+    await niceBackendFetch(`/api/v1/team-memberships/${teamId}/${user.userId}`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await niceBackendFetch(`/api/v1/team-permissions/${teamId}/${user.userId}/$read_members`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await waitForSyncedTeamPermission(client, teamId, user.userId, '$read_members');
+    await waitForSyncedTeam(client, 'Cascade Perm Team');
+
+    // Delete the team — should cascade-delete permissions too
+    await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedTeamDeletion(client, teamId);
+    await waitForSyncedTeamPermissionDeletion(client, teamId, user.userId, '$read_members');
   }, TEST_TIMEOUT);
 
   /**

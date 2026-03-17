@@ -1,4 +1,4 @@
-import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamPermissionDeletionsForTeamMember, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultTeamPermissions } from "@/lib/permissions";
 import { ensureTeamExists, ensureTeamMembershipDoesNotExist, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -137,6 +137,12 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
         tenancyId: auth.tenancy.id,
         teamId: params.team_id,
         userId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForTeamMember(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+        teamId: params.team_id,
       });
 
       await recordExternalDbSyncDeletion(tx, {

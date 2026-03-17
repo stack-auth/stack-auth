@@ -7,6 +7,7 @@ import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { overrideEnvironmentConfigOverride } from "./config";
+import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "./external-db-sync";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -122,13 +123,13 @@ export async function grantTeamPermission(
         permissionId: options.permissionId,
       },
     },
-    create: {
+    create: withExternalDbSyncUpdate({
       tenancyId: options.tenancy.id,
       projectUserId: options.userId,
       teamId: options.teamId,
       permissionId: options.permissionId,
-    },
-    update: {},
+    }),
+    update: withExternalDbSyncUpdate({}),
   });
 
   return {
@@ -147,6 +148,24 @@ export async function revokeTeamPermission(
     permissionId: string,
   }
 ) {
+  const permissionRecord = await tx.teamMemberDirectPermission.findUniqueOrThrow({
+    where: {
+      tenancyId_projectUserId_teamId_permissionId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        teamId: options.teamId,
+        permissionId: options.permissionId,
+      },
+    },
+    select: { id: true },
+  });
+
+  await recordExternalDbSyncDeletion(tx, {
+    tableName: "TeamMemberDirectPermission",
+    tenancyId: options.tenancy.id,
+    permissionDbId: permissionRecord.id,
+  });
+
   await tx.teamMemberDirectPermission.delete({
     where: {
       tenancyId_projectUserId_teamId_permissionId: {
