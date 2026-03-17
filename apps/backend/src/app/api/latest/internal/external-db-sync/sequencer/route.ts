@@ -1,5 +1,6 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
+import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
@@ -78,6 +79,23 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
     if (projectUserTenants.length > 0) {
       await enqueueExternalDbSyncBatch(projectUserTenants.map(t => t.tenancyId));
       didUpdate = true;
+
+      // Cascade: when a user changes, mark their TeamMember rows for re-sync
+      // so the embedded user JSON in team_member_profiles stays fresh
+      await globalPrismaClient.$executeRaw`
+        UPDATE "TeamMember"
+        SET "shouldUpdateSequenceId" = TRUE
+        FROM (
+          SELECT DISTINCT "tenancyId", "projectUserId"
+          FROM "ProjectUser"
+          WHERE "tenancyId" IN (${Prisma.join(projectUserTenants.map(t => t.tenancyId))})
+            AND "shouldUpdateSequenceId" = FALSE
+            AND "sequenceId" IS NOT NULL
+        ) AS changed_users
+        WHERE "TeamMember"."tenancyId" = changed_users."tenancyId"
+          AND "TeamMember"."projectUserId" = changed_users."projectUserId"
+          AND "TeamMember"."shouldUpdateSequenceId" = FALSE
+      `;
     }
 
     const contactChannelTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`

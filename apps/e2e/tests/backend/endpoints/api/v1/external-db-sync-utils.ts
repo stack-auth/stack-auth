@@ -287,14 +287,14 @@ export async function waitForSyncedTeamDeletion(client: Client, teamId: string) 
 }
 
 export async function waitForSyncedTeamMember(client: Client, teamId: string, userId: string) {
-  await waitForExternalDbRow(client, `SELECT * FROM "team_members" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, userId], {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_member_profiles" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, userId], {
     shouldExist: true,
     description: `team member (team=${teamId}, user=${userId}) to appear in external DB`,
   });
 }
 
 export async function waitForSyncedTeamMemberDeletion(client: Client, teamId: string, userId: string) {
-  await waitForExternalDbRow(client, `SELECT * FROM "team_members" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, userId], {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_member_profiles" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, userId], {
     shouldExist: false,
     description: `team member (team=${teamId}, user=${userId}) to be removed from external DB`,
   });

@@ -552,7 +552,7 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
     server_metadata: 'json',
     sync_is_deleted: 'boolean',
   },
-  team_members: {
+  team_member_profiles: {
     sync_is_deleted: 'boolean',
   },
 };

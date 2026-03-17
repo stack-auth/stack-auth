@@ -711,7 +711,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     await waitForSyncedTeamMember(client, teamId, user.userId);
 
-    const res1 = await client.query(`SELECT * FROM "team_members" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, user.userId]);
+    const res1 = await client.query(`SELECT * FROM "team_member_profiles" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, user.userId]);
     expect(res1.rows.length).toBe(1);
 
     // Remove member

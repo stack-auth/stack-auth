@@ -20,8 +20,8 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: CONTACT_CHANNELS_VIEW_SQL });
   await client.exec({ query: TEAMS_TABLE_BASE_SQL });
   await client.exec({ query: TEAMS_VIEW_SQL });
-  await client.exec({ query: TEAM_MEMBERS_TABLE_BASE_SQL });
-  await client.exec({ query: TEAM_MEMBERS_VIEW_SQL });
+  await client.exec({ query: TEAM_MEMBER_PROFILES_TABLE_BASE_SQL });
+  await client.exec({ query: TEAM_MEMBER_PROFILES_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -35,7 +35,7 @@ export async function runClickhouseMigrations() {
     "GRANT SELECT ON default.users TO limited_user;",
     "GRANT SELECT ON default.contact_channels TO limited_user;",
     "GRANT SELECT ON default.teams TO limited_user;",
-    "GRANT SELECT ON default.team_members TO limited_user;",
+    "GRANT SELECT ON default.team_member_profiles TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
@@ -50,7 +50,7 @@ export async function runClickhouseMigrations() {
     query: "CREATE ROW POLICY IF NOT EXISTS teams_project_isolation ON default.teams FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   await client.exec({
-    query: "CREATE ROW POLICY IF NOT EXISTS team_members_project_isolation ON default.team_members FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+    query: "CREATE ROW POLICY IF NOT EXISTS team_member_profiles_project_isolation ON default.team_member_profiles FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -295,14 +295,15 @@ FINAL
 WHERE sync_is_deleted = 0;
 `;
 
-const TEAM_MEMBERS_TABLE_BASE_SQL = `
-CREATE TABLE IF NOT EXISTS analytics_internal.team_members (
+const TEAM_MEMBER_PROFILES_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.team_member_profiles (
     project_id String,
     branch_id String,
     team_id UUID,
     user_id UUID,
     display_name Nullable(String),
     profile_image_url Nullable(String),
+    user JSON,
     created_at DateTime64(3, 'UTC'),
     sync_sequence_id Int64,
     sync_is_deleted UInt8,
@@ -313,8 +314,8 @@ PARTITION BY toYYYYMM(created_at)
 ORDER BY (project_id, branch_id, team_id, user_id);
 `;
 
-const TEAM_MEMBERS_VIEW_SQL = `
-CREATE OR REPLACE VIEW default.team_members
+const TEAM_MEMBER_PROFILES_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.team_member_profiles
 SQL SECURITY DEFINER
 AS
 SELECT
@@ -324,8 +325,9 @@ SELECT
   user_id,
   display_name,
   profile_image_url,
+  user,
   created_at
-FROM analytics_internal.team_members
+FROM analytics_internal.team_member_profiles
 FINAL
 WHERE sync_is_deleted = 0;
 `;
