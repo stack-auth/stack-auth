@@ -1,3 +1,4 @@
+import { StackAssertionError, captureError } from "./errors";
 import { loadTurnstileScript, getTurnstileApi } from "./turnstile-browser";
 import type { TurnstileAction, TurnstileRetryResult } from "./turnstile";
 
@@ -8,10 +9,12 @@ export class TurnstileUserCancelledError extends Error {
   }
 }
 
+const INVISIBLE_CHALLENGE_TIMEOUT_MS = 30_000;
+
 export async function executeTurnstileInvisible(siteKey: string, action: TurnstileAction): Promise<string> {
   await loadTurnstileScript();
   const api = getTurnstileApi();
-  if (!api) throw new Error("Turnstile API not available");
+  if (!api) throw new StackAssertionError("Turnstile API not available after loadTurnstileScript() resolved");
 
   const container = document.createElement("div");
   container.style.position = "fixed";
@@ -23,16 +26,24 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
 
   try {
     const token = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Turnstile invisible challenge timed out"));
+      }, INVISIBLE_CHALLENGE_TIMEOUT_MS);
+      const clearAnd = (fn: () => void) => {
+        clearTimeout(timeout);
+        fn();
+      };
+
       widgetId = api.render(container, {
         sitekey: siteKey,
         action,
         size: "invisible",
         execution: "execute",
         appearance: "execute",
-        callback: resolve,
-        "error-callback": () => reject(new Error("Turnstile invisible verification failed")),
-        "expired-callback": () => reject(new Error("Turnstile token expired")),
-        "timeout-callback": () => reject(new Error("Turnstile challenge timed out")),
+        callback: (t) => clearAnd(() => resolve(t)),
+        "error-callback": () => clearAnd(() => reject(new Error("Turnstile invisible verification failed"))),
+        "expired-callback": () => clearAnd(() => reject(new Error("Turnstile token expired"))),
+        "timeout-callback": () => clearAnd(() => reject(new Error("Turnstile challenge timed out"))),
       });
 
       if (api.execute) {
@@ -44,7 +55,9 @@ export async function executeTurnstileInvisible(siteKey: string, action: Turnsti
     if (widgetId != null) {
       try {
         api.remove(widgetId);
-      } catch { /* ignore cleanup errors */ }
+      } catch (e) {
+        captureError("turnstile-widget-remove", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile widget removal", { cause: e }));
+      }
     }
     container.remove();
   }
@@ -155,7 +168,7 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
       const api = getTurnstileApi();
       if (!api) {
         cleanup();
-        reject(new Error("Turnstile API not available"));
+        reject(new StackAssertionError("Turnstile API not available after loadTurnstileScript() resolved"));
         return;
       }
 
@@ -200,7 +213,7 @@ export type WithTurnstileFlowOptions<T> = {
 };
 
 export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>): Promise<T> {
-  // SSR safe: just call execute with no turnstile params
+  // server safe: just call execute with no turnstile params
   if (typeof window === "undefined") {
     return await options.execute({});
   }
@@ -210,8 +223,19 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
   try {
     invisibleToken = await executeTurnstileInvisible(options.invisibleSiteKey, options.action);
   } catch {
-    // If invisible execution fails, fall back to the visible challenge
-    invisibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
+    try {
+      // If invisible execution fails, fall back to the visible challenge.
+      invisibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
+    } catch (e) {
+      // If both fail (e.g. Cloudflare is down), proceed without a token.
+      // The backend will treat the missing token as "invalid" for risk scoring
+      // but won't block the signup.
+      if (e instanceof TurnstileUserCancelledError) {
+        throw e;
+      }
+      captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
+      return await options.execute({});
+    }
   }
 
   const firstResult = await options.execute({
@@ -225,7 +249,17 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
   }
 
   // Phase 2: visible challenge overlay (single retry)
-  const visibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
+  let visibleToken: string | undefined;
+  try {
+    visibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
+  } catch (e) {
+    if (e instanceof TurnstileUserCancelledError) {
+      throw e;
+    }
+    // Visible challenge failed — proceed without token rather than blocking signup
+    captureError("turnstile-flow-visible-challenge-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during visible Turnstile challenge", { cause: e }));
+    return await options.execute({});
+  }
 
   return await options.execute({
     token: visibleToken,

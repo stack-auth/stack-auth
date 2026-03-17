@@ -102,7 +102,9 @@ it("anonymous user can upgrade to regular user via password sign-up", async ({ e
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  expect(upgradedMeRes.body.signed_up_at_millis).toBeGreaterThan(anonMeRes.body.signed_up_at_millis);
+  // Anonymous users have null signed_up_at_millis; after upgrade it should be set
+  expect(anonMeRes.body.signed_up_at_millis).toBeNull();
+  expect(upgradedMeRes.body.signed_up_at_millis).toBeGreaterThan(0);
 
   // Old anonymous token should still work
   backendContext.set({

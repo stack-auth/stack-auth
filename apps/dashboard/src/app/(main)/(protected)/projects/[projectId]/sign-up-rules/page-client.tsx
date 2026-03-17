@@ -539,6 +539,7 @@ function TestRulesCard({
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
 
   const [runTest, isRunning] = useAsyncCallback(async () => {
+    setResult(null);
     const normalizedCountryCodeOverride = normalizeCountryCode(countryCodeOverride);
     const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
     const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();

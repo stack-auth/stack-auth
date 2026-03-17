@@ -64,6 +64,7 @@ const personalTeamDefaultDisplayName = "Personal Team";
 // it's set at upgrade time by the risk scoring pipeline to ensure correct
 // recent-signup windows (sameIpCount, similarEmailCount). Backfilled users
 // that were anonymous pre-migration also have NULL to avoid skewing risk data.
+// TODO: remove createdAt and isAnonymous compatibility params once all call sites are updated
 function getSignedUpAtMillis(params: {
   signedUpAt: Date | null,
   createdAt: Date,

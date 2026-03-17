@@ -72,6 +72,7 @@ export function TurnstileVisibleWidget(props: {
     })();
 
     loadPromise.catch((error: unknown) => {
+      if (state.cancelled) return;
       onTokenChangeRef.current(null);
       onErrorRef.current?.(error instanceof Error ? error.message : "Failed to load Turnstile");
     });

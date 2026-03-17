@@ -12,7 +12,7 @@ import { MinusIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-ico
 import { CountryCodeSelect } from "@/components/country-code-select";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
-import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField } from "@stackframe/stack-shared/dist/utils/cel-fields";
+import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
 import React from "react";
 
 /**
@@ -56,6 +56,12 @@ export function isConditionTreeValid(node: RuleNode): boolean {
     if (node.operator === 'matches') {
       const error = validateRegex(String(node.value));
       if (error !== null) {
+        return false;
+      }
+    }
+    // Validate numeric fields are integers within [0, 100]
+    if (isNumericField(node.field)) {
+      if (validateNumericFieldValue(node.field, String(node.value)) !== null) {
         return false;
       }
     }

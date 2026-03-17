@@ -133,10 +133,11 @@ export async function checkEmailWithEmailable(
   const clientFactory = options?._clientFactory ?? createEmailableClient;
 
   return await traceSpan("checking email address with Emailable", async () => {
-    let raw: unknown;
+    let response: EmailableVerifyResponse;
     try {
       const client = clientFactory(apiKey);
-      raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
+      const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
+      response = validateVerifyResponse(raw);
     } catch (error) {
       captureError("emailable-api-error", error);
       if (onError === "return-ok") {
@@ -144,8 +145,6 @@ export async function checkEmailWithEmailable(
       }
       return { status: "error", error, emailableScore: null };
     }
-
-    const response = validateVerifyResponse(raw);
 
     if (response.state === "undeliverable" || response.disposable) {
       return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };

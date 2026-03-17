@@ -26,7 +26,11 @@ export const turnstileFlowRequestSchemaFields = {
 type TurnstileSiteverifyResponse = {
   success: boolean,
   action?: string,
+  hostname?: string,
+  "error-codes"?: string[],
 };
+
+const TURNSTILE_FETCH_TIMEOUT_MS = 10_000;
 
 function normalizeLegacyTurnstileToken(token: string | undefined): string {
   // Backward compatibility: older clients can omit Turnstile entirely.
@@ -34,15 +38,11 @@ function normalizeLegacyTurnstileToken(token: string | undefined): string {
   return token?.trim() ?? "";
 }
 
-function getTurnstileConfig(options?: {
-  siteKey?: string,
-  secretKey?: string,
-}) {
+function getTurnstileSecretKey(override?: string): string {
+  if (override) return override;
   const isDevelopmentLike = ["development", "test"].includes(getNodeEnvironment());
-  return {
-    siteKey: options?.siteKey ?? getEnvVariable("NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", isDevelopmentLike ? turnstileDevelopmentKeys.visibleSiteKey : ""),
-    secretKey: options?.secretKey ?? getEnvVariable("STACK_TURNSTILE_SECRET_KEY", isDevelopmentLike ? turnstileDevelopmentKeys.secretKey : ""),
-  };
+  const defaultSecretKey = isDevelopmentLike ? turnstileDevelopmentKeys.secretKey : "";
+  return getEnvVariable("STACK_TURNSTILE_SECRET_KEY", defaultSecretKey);
 }
 
 function getTurnstileSiteverifyUrl() {
@@ -62,7 +62,6 @@ async function fetchTurnstileVerification(params: {
   token: string,
   remoteIp: string | null,
   secretKey: string,
-  fetchImpl?: typeof fetch,
 }): Promise<TurnstileSiteverifyResponse> {
   const body = new URLSearchParams({
     secret: params.secretKey,
@@ -72,13 +71,16 @@ async function fetchTurnstileVerification(params: {
     body.set("remoteip", params.remoteIp);
   }
 
-  const fetchImpl = params.fetchImpl ?? fetch;
-  const response = await fetchImpl(getTurnstileSiteverifyUrl(), {
+  // We do not retry on transient errors — a failed verification triggers a visible challenge retry
+  // on the client side, which is preferable to silently accepting a potentially-replayed token after
+  // a server-side retry where the token has already been consumed by Cloudflare.
+  const response = await fetch(getTurnstileSiteverifyUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
+    signal: AbortSignal.timeout(TURNSTILE_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -100,33 +102,38 @@ export async function verifyTurnstileToken(params: {
   token: string | undefined,
   remoteIp: string | null,
   expectedAction: TurnstileAction,
-  siteKey?: string,
   secretKey?: string,
-  fetchImpl?: typeof fetch,
 }): Promise<SignUpTurnstileAssessment> {
   const token = normalizeLegacyTurnstileToken(params.token);
   if (!token) {
     return { status: "invalid" };
   }
 
-  const { secretKey } = getTurnstileConfig(params);
+  const secretKey = getTurnstileSecretKey(params.secretKey);
   const verificationResult = await Result.fromThrowingAsync(async () => await fetchTurnstileVerification({
     token,
     remoteIp: params.remoteIp,
     secretKey,
-    fetchImpl: params.fetchImpl,
   }));
 
   if (verificationResult.status === "error") {
-    captureError("turnstile-siteverify-error", verificationResult.error);
+    captureError("turnstile-siteverify-error", new StackAssertionError("Turnstile siteverify request failed", {
+      cause: verificationResult.error,
+      expectedAction: params.expectedAction,
+    }));
     return { status: "error" };
   }
 
-  if (!verificationResult.data.success) {
+  const siteverifyData = verificationResult.data;
+
+  if (!siteverifyData.success) {
     return { status: "invalid" };
   }
 
-  if (verificationResult.data.action != null && verificationResult.data.action !== params.expectedAction) {
+  // TODO: validate hostname to prevent cross-environment token reuse.
+  // See: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+
+  if (siteverifyData.action != null && siteverifyData.action !== params.expectedAction) {
     return { status: "invalid" };
   }
 
@@ -139,43 +146,47 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   expectedAction: TurnstileAction,
   phase?: "invisible" | "visible",
   previousResult?: TurnstileRetryResult,
-  siteKey?: string,
   secretKey?: string,
-  fetchImpl?: typeof fetch,
 }): Promise<SignUpTurnstileAssessment> {
-  const assessment = await verifyTurnstileToken(params);
-
-  if (params.phase == null) {
-    if (params.previousResult != null) {
-      throw new KnownErrors.SchemaError("turnstile_previous_result requires turnstile_phase");
-    }
-    return assessment;
+  // Validate phase/previousResult constraints upfront
+  if (params.phase === undefined && params.previousResult !== undefined) {
+    throw new KnownErrors.SchemaError("turnstile_previous_result requires turnstile_phase");
   }
-
-  if (params.phase === "visible") {
-    if (params.previousResult == null) {
-      throw new KnownErrors.SchemaError("turnstile_previous_result is required when turnstile_phase is visible");
-    }
-
-    if (assessment.status !== "ok") {
-      throw new KnownErrors.TurnstileChallengeRequired(params.previousResult);
-    }
-
-    return {
-      status: params.previousResult,
-      visibleChallengeResult: "ok",
-    };
+  if (params.phase === "visible" && params.previousResult === undefined) {
+    throw new KnownErrors.SchemaError("turnstile_previous_result is required when turnstile_phase is visible");
   }
-
-  if (params.previousResult != null) {
+  if (params.phase === "invisible" && params.previousResult !== undefined) {
     throw new KnownErrors.SchemaError("turnstile_previous_result is only allowed when turnstile_phase is visible");
   }
 
-  if (assessment.status !== "ok") {
-    throw new KnownErrors.TurnstileChallengeRequired(assessment.status);
-  }
+  // Verify the token against Cloudflare
+  const assessment = await verifyTurnstileToken(params);
 
-  return assessment;
+  // Phase-specific behavior
+  switch (params.phase) {
+    case undefined: {
+      // Legacy clients: return the raw assessment without challenge flow
+      return assessment;
+    }
+    case "invisible": {
+      // Invisible challenge failed — require a visible challenge from the client
+      if (assessment.status !== "ok") {
+        throw new KnownErrors.TurnstileChallengeRequired(assessment.status);
+      }
+      return assessment;
+    }
+    case "visible": {
+      // Visible challenge failed — this is the last resort, fail hard
+      if (assessment.status !== "ok") {
+        throw new KnownErrors.TurnstileChallengeFailed("Visible Turnstile challenge verification failed");
+      }
+      // Visible passed — carry forward the original invisible result for risk scoring
+      return {
+        status: params.previousResult ?? (() => { throw new StackAssertionError("previousResult must be defined when phase is visible; validated above"); })(),
+        visibleChallengeResult: "ok",
+      };
+    }
+  }
 }
 
 export async function getRequestContextAndTurnstileAssessment(
@@ -200,12 +211,23 @@ export async function getRequestContextAndTurnstileAssessment(
 }
 
 import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
+  const mockFetch = (response: object, status = 200) => {
+    return async () => new Response(JSON.stringify(response), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  import.meta.vitest?.afterEach(() => {
+    import.meta.vitest!.vi.restoreAllMocks();
+    import.meta.vitest!.vi.unstubAllGlobals();
+  });
+
   import.meta.vitest?.test("returns invalid when empty token is provided", async ({ expect }) => {
     await expect(verifyTurnstileToken({
       token: "",
       remoteIp: null,
       expectedAction: "sign_up_with_credential",
-      siteKey: "site-key",
       secretKey: "secret-key",
     })).resolves.toEqual({ status: "invalid" });
   });
@@ -215,12 +237,12 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
       token: undefined,
       remoteIp: null,
       expectedAction: "sign_up_with_credential",
-      siteKey: "site-key",
       secretKey: "secret-key",
     })).resolves.toEqual({ status: "invalid" });
   });
 
   import.meta.vitest?.test("maps siteverify success, invalid, and action mismatch responses", async ({ expect }) => {
+    const vi = import.meta.vitest!.vi;
     const cases = [
       {
         response: { success: true, action: "sign_up_with_credential" },
@@ -237,72 +259,63 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
     ] as const;
 
     for (const testCase of cases) {
+      vi.stubGlobal("fetch", mockFetch(testCase.response));
       await expect(verifyTurnstileToken({
         token: "real-token",
         remoteIp: "127.0.0.1",
         expectedAction: "sign_up_with_credential",
-        siteKey: "site-key",
         secretKey: "secret-key",
-        fetchImpl: async () => new Response(JSON.stringify(testCase.response), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }),
       })).resolves.toEqual({ status: testCase.expectedStatus });
     }
   });
 
   import.meta.vitest?.test("returns error when siteverify fails", async ({ expect }) => {
+    const vi = import.meta.vitest!.vi;
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("network down");
+    });
     await expect(verifyTurnstileToken({
       token: "real-token",
       remoteIp: "127.0.0.1",
       expectedAction: "sign_up_with_credential",
-      siteKey: "site-key",
       secretKey: "secret-key",
-      fetchImpl: async () => {
-        throw new Error("network down");
-      },
     })).resolves.toEqual({ status: "error" });
   });
 
   import.meta.vitest?.test("falls back to the development Turnstile secret when none is configured", async ({ expect }) => {
+    const vi = import.meta.vitest!.vi;
     const processEnv = Reflect.get(process, "env");
 
     const originalNodeEnv = Reflect.get(processEnv, "NODE_ENV");
     const originalSecretKey = Reflect.get(processEnv, "STACK_TURNSTILE_SECRET_KEY");
-    const originalSiteKey = Reflect.get(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY");
     Reflect.set(processEnv, "NODE_ENV", "development");
     Reflect.set(processEnv, "STACK_TURNSTILE_SECRET_KEY", "");
-    Reflect.set(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", "");
 
     let postedSecret = "";
     try {
+      vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = init?.body;
+        if (!(body instanceof URLSearchParams)) {
+          throw new Error("Expected URLSearchParams body");
+        }
+        postedSecret = body.get("secret") ?? "";
+        return new Response(JSON.stringify({
+          success: true,
+          action: "sign_up_with_credential",
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
       await expect(verifyTurnstileToken({
         token: "real-token",
         remoteIp: "127.0.0.1",
         expectedAction: "sign_up_with_credential",
-        fetchImpl: async (_input, init) => {
-          const body = init?.body;
-          if (!(body instanceof URLSearchParams)) {
-            throw new Error("Expected URLSearchParams body");
-          }
-          postedSecret = body.get("secret") ?? "";
-          return new Response(JSON.stringify({
-            success: true,
-            action: "sign_up_with_credential",
-          }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          });
-        },
       })).resolves.toEqual({ status: "ok" });
     } finally {
       Reflect.set(processEnv, "NODE_ENV", originalNodeEnv);
       Reflect.set(processEnv, "STACK_TURNSTILE_SECRET_KEY", originalSecretKey);
-      Reflect.set(processEnv, "NEXT_PUBLIC_STACK_TURNSTILE_SITE_KEY", originalSiteKey);
     }
 
     expect(postedSecret).toBe(turnstileDevelopmentKeys.secretKey);
@@ -310,48 +323,48 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
 });
 
 import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(...)", () => {
+  import.meta.vitest?.afterEach(() => {
+    import.meta.vitest!.vi.restoreAllMocks();
+    import.meta.vitest!.vi.unstubAllGlobals();
+  });
+
   import.meta.vitest?.test("preserves legacy behavior when no phase is provided", async ({ expect }) => {
     await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
       token: undefined,
       remoteIp: null,
       expectedAction: "send_magic_link_email",
-      siteKey: "site-key",
       secretKey: "secret-key",
     })).resolves.toEqual({ status: "invalid" });
   });
 
   import.meta.vitest?.test("throws a challenge-required error for invisible failures", async ({ expect }) => {
+    const vi = import.meta.vitest!.vi;
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: false }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
     await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
       token: "invalid-token",
       remoteIp: null,
       expectedAction: "send_magic_link_email",
       phase: "invisible",
-      siteKey: "site-key",
       secretKey: "secret-key",
-      fetchImpl: async () => new Response(JSON.stringify({ success: false }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }),
     })).rejects.toThrowError("An additional Turnstile challenge is required before sign-up can continue.");
   });
 
   import.meta.vitest?.test("returns a recovered assessment after a successful visible retry", async ({ expect }) => {
+    const vi = import.meta.vitest!.vi;
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: true, action: "send_magic_link_email" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
     await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
       token: "visible-token",
       remoteIp: null,
       expectedAction: "send_magic_link_email",
       phase: "visible",
       previousResult: "invalid",
-      siteKey: "site-key",
       secretKey: "secret-key",
-      fetchImpl: async () => new Response(JSON.stringify({ success: true, action: "send_magic_link_email" }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }),
     })).resolves.toEqual({
       status: "invalid",
       visibleChallengeResult: "ok",

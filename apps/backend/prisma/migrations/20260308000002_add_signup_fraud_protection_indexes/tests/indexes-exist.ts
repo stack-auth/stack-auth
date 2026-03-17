@@ -3,7 +3,7 @@ import { expect } from 'vitest';
 
 export const postMigration = async (sql: Sql) => {
   const indexes = await sql`
-    SELECT indexname
+    SELECT indexname, indexdef
     FROM pg_indexes
     WHERE schemaname = current_schema()
       AND tablename = 'ProjectUser'
@@ -20,4 +20,11 @@ export const postMigration = async (sql: Sql) => {
     'ProjectUser_signUpIp_recent_idx',
     'ProjectUser_signedUpAt_asc',
   ]);
+
+  // Verify column order and sort directions in the index definitions
+  const indexDefByName = Object.fromEntries(indexes.map((row) => [row.indexname, row.indexdef]));
+
+  expect(indexDefByName['ProjectUser_signedUpAt_asc']).toContain('"tenancyId", "signedUpAt"');
+  expect(indexDefByName['ProjectUser_signUpIp_recent_idx']).toContain('"tenancyId", "signUpIp", "signedUpAt"');
+  expect(indexDefByName['ProjectUser_signUpEmailBase_recent_idx']).toContain('"tenancyId", "signUpEmailBase", "signedUpAt"');
 };

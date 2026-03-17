@@ -11,6 +11,7 @@ import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 /**
@@ -197,10 +198,14 @@ export async function createOrUpgradeAnonymousUserWithRules(
     allowedErrorTypes,
   );
 
-  await persistSignUpHeuristicFacts({
-    ...signUpHeuristicFactsToPersist,
-    userId: user.id,
-  });
+  try {
+    await persistSignUpHeuristicFacts({
+      ...signUpHeuristicFactsToPersist,
+      userId: user.id,
+    });
+  } catch (error) {
+    captureError("persist-sign-up-heuristic-facts", error);
+  }
 
   return user;
 }

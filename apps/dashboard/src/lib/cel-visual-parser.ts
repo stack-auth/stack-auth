@@ -16,7 +16,7 @@
  */
 
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString } from "@stackframe/stack-shared/dist/utils/cel-fields";
+import { type ConditionField, type ConditionOperator, conditionFields, escapeCelString, fieldMetadata, isNumericField, unescapeCelString, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
 export type { ConditionField, ConditionOperator } from "@stackframe/stack-shared/dist/utils/cel-fields";
 
@@ -79,44 +79,50 @@ function conditionToCel(condition: ConditionNode): string {
   switch (operator) {
     case 'equals': {
       if (isNumericField(field)) {
-        if (!Number.isFinite(valueAsNumber)) {
-          throw new Error(`Expected a finite number for numeric field "${field}", got "${value}"`);
-        }
+        const err = validateNumericFieldValue(field, String(value));
+        if (err) throw new Error(err);
         return `${field} == ${valueAsNumber}`;
       }
       return `${field} == "${escapeCelString(String(value))}"`;
     }
     case 'not_equals': {
       if (isNumericField(field)) {
-        if (!Number.isFinite(valueAsNumber)) {
-          throw new Error(`Expected a finite number for numeric field "${field}", got "${value}"`);
-        }
+        const err = validateNumericFieldValue(field, String(value));
+        if (err) throw new Error(err);
         return `${field} != ${valueAsNumber}`;
       }
       return `${field} != "${escapeCelString(String(value))}"`;
     }
     case 'greater_than': {
-      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
-        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      if (!isNumericField(field)) {
+        throw new Error(`Operator 'greater_than' not allowed on non-numeric field '${field}'`);
       }
+      const err = validateNumericFieldValue(field, String(value));
+      if (err) throw new Error(err);
       return `${field} > ${valueAsNumber}`;
     }
     case 'greater_or_equal': {
-      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
-        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      if (!isNumericField(field)) {
+        throw new Error(`Operator 'greater_or_equal' not allowed on non-numeric field '${field}'`);
       }
+      const err = validateNumericFieldValue(field, String(value));
+      if (err) throw new Error(err);
       return `${field} >= ${valueAsNumber}`;
     }
     case 'less_than': {
-      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
-        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      if (!isNumericField(field)) {
+        throw new Error(`Operator 'less_than' not allowed on non-numeric field '${field}'`);
       }
+      const err = validateNumericFieldValue(field, String(value));
+      if (err) throw new Error(err);
       return `${field} < ${valueAsNumber}`;
     }
     case 'less_or_equal': {
-      if (isNumericField(field) && !Number.isFinite(valueAsNumber)) {
-        throw new Error(`Expected a finite number for field "${field}", got "${value}"`);
+      if (!isNumericField(field)) {
+        throw new Error(`Operator 'less_or_equal' not allowed on non-numeric field '${field}'`);
       }
+      const err = validateNumericFieldValue(field, String(value));
+      if (err) throw new Error(err);
       return `${field} <= ${valueAsNumber}`;
     }
     case 'matches': {

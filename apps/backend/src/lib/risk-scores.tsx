@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
 import { normalizeEmail } from "./emails";
@@ -116,7 +116,7 @@ function extractEngine(mod: unknown): SignUpRiskEngine {
     }
   }
 
-  throw new Error("Private sign-up risk module does not export a valid signUpRiskEngine");
+  throw new StackAssertionError("Private sign-up risk module does not export a valid signUpRiskEngine");
 }
 
 function getPrivateModuleFallbackPaths(): string[] {
@@ -238,7 +238,15 @@ export async function calculateSignUpRiskAssessment(
   context: SignUpRiskScoreContext,
 ): Promise<SignUpRiskAssessment> {
   const engine = await getEngine();
-  return await engine.calculateRiskAssessment(context, createDependencies(tenancy));
+  try {
+    return await engine.calculateRiskAssessment(context, createDependencies(tenancy));
+  } catch (error) {
+    captureError("sign-up-risk-engine-error", error);
+    return {
+      scores: ZERO_SCORES,
+      heuristicFacts: createNeutralSignUpHeuristicFacts(new Date()),
+    };
+  }
 }
 
 export async function calculateSignUpRiskScores(tenancy: Tenancy, context: SignUpRiskScoreContext): Promise<SignUpRiskScores> {

@@ -31,6 +31,24 @@ export function isNumericField(field: ConditionField): boolean {
   return field === 'riskScores.bot' || field === 'riskScores.free_trial_abuse';
 }
 
+/**
+ * Validates a numeric field value is a finite integer within [0, 100].
+ * Returns null if valid, or an error message string if invalid.
+ */
+export function validateNumericFieldValue(field: string, value: string | number): string | null {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) {
+    return `Expected a finite number for field "${field}", got "${String(value)}"`;
+  }
+  if (!Number.isInteger(num)) {
+    return `Expected an integer for field "${field}", got "${String(value)}"`;
+  }
+  if (num < 0 || num > 100) {
+    return `Value for field "${field}" must be between 0 and 100, got ${num}`;
+  }
+  return null;
+}
+
 export function escapeCelString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }

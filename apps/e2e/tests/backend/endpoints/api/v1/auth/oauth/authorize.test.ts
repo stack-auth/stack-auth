@@ -60,9 +60,7 @@ it("should return the OAuth location as JSON when requested by the SDK flow", as
     NiceResponse {
       "status": 200,
       "body": { "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent" },
-      "headers": Headers {
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
   // In JSON mode, PKCE prevents CSRF so no cookie is needed
