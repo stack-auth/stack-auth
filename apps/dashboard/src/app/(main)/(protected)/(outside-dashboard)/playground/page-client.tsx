@@ -10,14 +10,16 @@ import {
   DesignButton,
   DesignCard,
   DesignCategoryTabs,
+  DesignInput,
+  DesignPillToggle,
+} from "@stackframe/dashboard-ui-components";
+import {
   DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
   type DesignEditableGridSize,
-  DesignInput,
   DesignListItemRow,
   DesignMenu,
-  DesignPillToggle,
   DesignSelectorDropdown,
   DesignUserList,
 } from "@/components/design-components";

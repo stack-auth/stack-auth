@@ -106,6 +106,8 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           const allowedLongRequestPaths = [
             "/api/latest/internal/email-queue-step",
             "/api/latest/internal/analytics/query",
+            "/api/latest/ai/query/stream",
+            "/api/latest/ai/query/generate",
             "/health/email",
             "/api/latest/internal/metrics",
             "/api/latest/internal/external-db-sync/poller",

@@ -2,7 +2,7 @@
 
 import EmailPreview from "@/components/email-preview";
 import { EmailThemeSelector } from "@/components/email-theme-selector";
-import { DesignButton } from "@/components/design-components/button";
+import { DesignButton } from "@/components/design-components";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Badge, Button, Input, Label, Spinner, Typography, useToast } from "@/components/ui";
 import { CodeEditor, VibeCodeLayout, type ViewportMode } from "@/components/vibe-coding";
 import { cn } from "@/lib/utils";

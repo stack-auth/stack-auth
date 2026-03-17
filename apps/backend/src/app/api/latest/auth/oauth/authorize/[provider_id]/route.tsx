@@ -50,7 +50,7 @@ export const GET = createSmartRouteHandler({
       code_challenge: yupString().defined(),
       code_challenge_method: yupString().defined(),
       response_type: yupString().defined(),
-    }).defined(),
+    }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
   response: yupObject({
     // The SDK uses x_stack_response_mode=json so it can intercept Turnstile challenges before navigating.

@@ -4,7 +4,6 @@ import { branchConfigSourceSchema, type RestrictedReason } from "../schema-field
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
-import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
 import { Result } from "../utils/results";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
@@ -483,28 +482,6 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ context_type: contextType, messages }),
-        signal: abortSignal,
-      },
-      null,
-    );
-    return await response.json();
-  }
-
   async saveChatMessage(threadId: string, message: any): Promise<void> {
     await this.sendAdminRequest(
       `/internal/ai-chat/${threadId}`,
@@ -526,38 +503,6 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
-  }
-
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    const response = await this.sendAdminRequest(
-      `/internal/wysiwyg-edit`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          source_type: options.sourceType,
-          source_code: options.sourceCode,
-          old_text: options.oldText,
-          new_text: options.newText,
-          metadata: options.metadata,
-          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
-          html_context: options.htmlContext,
-        }),
-      },
-      null,
-    );
-    const result = await response.json();
-    return { updatedSource: result.updated_source };
   }
 
   async renderEmailPreview(options: {

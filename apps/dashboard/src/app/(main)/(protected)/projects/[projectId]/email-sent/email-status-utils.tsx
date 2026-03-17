@@ -1,4 +1,4 @@
-import { DesignBadgeColor } from "@/components/design-components/badge";
+import { DesignBadgeColor } from "@/components/design-components";
 import { AdminEmailOutboxStatus } from "@stackframe/stack";
 import { StatsBarData } from "./stats-bar";
 

@@ -1,6 +1,6 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { DesignDataTable } from "@/components/design-components/table";
+import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
 import { ServerTeam } from '@stackframe/stack';

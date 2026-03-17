@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components/card";
+import { DesignCard } from "@/components/design-components";
 import EmailPreview, { DEVICE_VIEWPORTS, DeviceViewport } from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
