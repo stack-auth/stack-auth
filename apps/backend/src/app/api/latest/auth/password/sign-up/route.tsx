@@ -57,7 +57,7 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
-    const { requestContext, turnstileAssessment } = await getRequestContextAndTurnstileAssessment(turnstile, "sign_up_with_credential");
+    const { requestContext, turnstileAssessment } = await getRequestContextAndTurnstileAssessment(turnstile, "sign_up_with_credential", tenancy);
 
     const createdUser = await createOrUpgradeAnonymousUserWithRules(
       tenancy,

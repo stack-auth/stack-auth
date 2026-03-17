@@ -39,7 +39,7 @@ export const POST = createSmartRouteHandler({
 
     await ensureUserForEmailAllowsOtp(tenancy, email);
 
-    const { turnstileAssessment } = await getRequestContextAndTurnstileAssessment(turnstile, "send_magic_link_email");
+    const { turnstileAssessment } = await getRequestContextAndTurnstileAssessment(turnstile, "send_magic_link_email", tenancy);
 
     const { nonce } = await signInVerificationCodeHandler.sendCode(
       {

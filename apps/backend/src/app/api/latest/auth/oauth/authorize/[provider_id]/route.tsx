@@ -83,7 +83,7 @@ export const GET = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
     }
 
-    const { turnstileAssessment } = await getRequestContextAndTurnstileAssessment(query, "oauth_authenticate");
+    const { turnstileAssessment } = await getRequestContextAndTurnstileAssessment(query, "oauth_authenticate", tenancy);
 
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;

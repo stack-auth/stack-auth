@@ -30,7 +30,7 @@ function validateVerifyResponse(value: unknown) {
   if (value == null || typeof value !== "object" || Array.isArray(value)) {
     throw new StackAssertionError("Emailable returned a non-object response body", { value });
   }
-  const response = Object.fromEntries(Object.entries(value));
+  const response = Object.assign(Object.create(null), value) as Record<string, unknown>;
   const { state, disposable, score } = response;
   if (typeof state !== "string" || !VERIFY_STATES.some(s => s === state)) {
     throw new StackAssertionError("Emailable verify response has invalid or missing state", { response });

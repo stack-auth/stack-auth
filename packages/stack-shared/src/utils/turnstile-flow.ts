@@ -216,11 +216,13 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
 
   // Phase 1: invisible token
   let invisibleToken: string | undefined;
+  let usedVisibleFallback = false;
   try {
     invisibleToken = await executeTurnstileInvisible(options.invisibleSiteKey, options.action);
   } catch {
     try {
       invisibleToken = await showTurnstileVisibleChallenge(options.visibleSiteKey, options.action);
+      usedVisibleFallback = true;
     } catch (e) {
       if (e instanceof TurnstileUserCancelledError) throw e;
       // Both challenges failed (e.g. Cloudflare down) — proceed without token.
@@ -232,7 +234,7 @@ export async function withTurnstileFlow<T>(options: WithTurnstileFlowOptions<T>)
 
   const firstResult = await options.execute({
     token: invisibleToken,
-    phase: invisibleToken ? "invisible" : undefined,
+    phase: invisibleToken ? (usedVisibleFallback ? "visible" : "invisible") : undefined,
   });
 
   if (!options.isChallengeRequired(firstResult)) {

@@ -10,7 +10,9 @@ import {
   turnstileDevelopmentKeys,
   turnstilePhaseValues,
 } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
+import { Tenancy } from "./tenancies";
 
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -41,6 +43,18 @@ type SiteverifyResponse = {
 // ── Configuration ──────────────────────────────────────────────────────
 
 const FETCH_TIMEOUT_MS = 10_000;
+
+function isAllowedTurnstileHostname(hostname: string, tenancy: Tenancy): boolean {
+  if (tenancy.config.domains.allowLocalhost && isLocalhost(`http://${hostname}`)) {
+    return true;
+  }
+  return Object.values(tenancy.config.domains.trustedDomains).some(({ baseUrl }) => {
+    if (baseUrl == null) return false;
+    const pattern = createUrlIfValid(baseUrl)?.hostname
+      ?? baseUrl.match(/^[^:]+:\/\/([^/:]+)/)?.[1];
+    return pattern != null && matchHostnamePattern(pattern, hostname);
+  });
+}
 
 function getSecretKey(override?: string): string {
   if (override) return override;
@@ -97,6 +111,7 @@ export async function verifyTurnstileToken(params: {
   token: string | undefined,
   remoteIp: string | null,
   expectedAction: TurnstileAction,
+  isAllowedHostname?: (hostname: string) => boolean,
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
   const token = params.token?.trim() ?? "";
@@ -128,8 +143,12 @@ export async function verifyTurnstileToken(params: {
     return { status: "invalid" };
   }
 
-  // TODO: validate hostname to prevent cross-environment token reuse.
-  // See: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+  if (data.hostname != null && params.isAllowedHostname != null && !params.isAllowedHostname(data.hostname)) {
+    captureError("turnstile-hostname-mismatch", new StackAssertionError("Turnstile hostname does not match any allowed domain", {
+      receivedHostname: data.hostname,
+    }));
+    return { status: "invalid" };
+  }
 
   if (data.action != null && data.action !== params.expectedAction) {
     return { status: "invalid" };
@@ -142,6 +161,7 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   token: string | undefined,
   remoteIp: string | null,
   expectedAction: TurnstileAction,
+  isAllowedHostname?: (hostname: string) => boolean,
   phase?: "invisible" | "visible",
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
@@ -176,6 +196,7 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
 export async function getRequestContextAndTurnstileAssessment(
   turnstile: TurnstileFlowRequest,
   expectedAction: TurnstileAction,
+  tenancy: Tenancy,
 ): Promise<{
   requestContext: BestEffortEndUserRequestContext,
   turnstileAssessment: SignUpTurnstileAssessment,
@@ -185,6 +206,7 @@ export async function getRequestContextAndTurnstileAssessment(
     token: turnstile.turnstile_token,
     remoteIp: requestContext.ipAddress,
     expectedAction,
+    isAllowedHostname: (hostname) => isAllowedTurnstileHostname(hostname, tenancy),
     phase: turnstile.turnstile_phase,
   });
   return { requestContext, turnstileAssessment };
@@ -239,6 +261,47 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
     });
     await expect(verifyTurnstileToken({ ...baseParams, token: "real-token", remoteIp: "127.0.0.1" }))
       .resolves.toEqual({ status: "error" });
+  });
+
+  const allowMyapp = (h: string) => h === "myapp.com" || matchHostnamePattern("*.myapp.com", h);
+
+  test("returns invalid when hostname does not match allowed hostnames", async ({ expect }) => {
+    stubFetch({ success: true, action: "sign_up_with_credential", hostname: "evil.example.com" });
+    await expect(verifyTurnstileToken({
+      ...baseParams, token: "real-token", remoteIp: "127.0.0.1",
+      isAllowedHostname: allowMyapp,
+    })).resolves.toEqual({ status: "invalid" });
+  });
+
+  test("returns ok when hostname matches an allowed hostname", async ({ expect }) => {
+    stubFetch({ success: true, action: "sign_up_with_credential", hostname: "app.myapp.com" });
+    await expect(verifyTurnstileToken({
+      ...baseParams, token: "real-token", remoteIp: "127.0.0.1",
+      isAllowedHostname: allowMyapp,
+    })).resolves.toEqual({ status: "ok" });
+  });
+
+  test("returns ok when isAllowedHostname accepts the value", async ({ expect }) => {
+    stubFetch({ success: true, action: "sign_up_with_credential", hostname: "localhost" });
+    await expect(verifyTurnstileToken({
+      ...baseParams, token: "real-token", remoteIp: "127.0.0.1",
+      isAllowedHostname: () => true,
+    })).resolves.toEqual({ status: "ok" });
+  });
+
+  test("skips hostname validation when response omits hostname", async ({ expect }) => {
+    stubFetch({ success: true, action: "sign_up_with_credential" });
+    await expect(verifyTurnstileToken({
+      ...baseParams, token: "real-token", remoteIp: "127.0.0.1",
+      isAllowedHostname: () => false,
+    })).resolves.toEqual({ status: "ok" });
+  });
+
+  test("skips hostname validation when no isAllowedHostname provided", async ({ expect }) => {
+    stubFetch({ success: true, action: "sign_up_with_credential", hostname: "anything.com" });
+    await expect(verifyTurnstileToken({
+      ...baseParams, token: "real-token", remoteIp: "127.0.0.1",
+    })).resolves.toEqual({ status: "ok" });
   });
 
   test("uses development secret key when none is configured", async ({ expect }) => {
