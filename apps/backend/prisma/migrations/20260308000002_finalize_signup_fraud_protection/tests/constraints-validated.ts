@@ -2,7 +2,6 @@ import type { Sql } from 'postgres';
 import { expect } from 'vitest';
 
 export const postMigration = async (sql: Sql) => {
-  // Verify CHECK constraints are fully validated (not just NOT VALID)
   const constraints = await sql`
     SELECT conname, convalidated
     FROM pg_constraint
@@ -20,7 +19,6 @@ export const postMigration = async (sql: Sql) => {
     expect(c.convalidated, `${c.conname} should be validated`).toBe(true);
   }
 
-  // Verify signedUpAt column is NOT NULL at the schema level
   const colInfo = await sql`
     SELECT is_nullable
     FROM information_schema.columns

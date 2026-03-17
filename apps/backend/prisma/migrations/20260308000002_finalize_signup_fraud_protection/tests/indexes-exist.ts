@@ -21,15 +21,9 @@ export const postMigration = async (sql: Sql) => {
     'ProjectUser_signedUpAt_asc',
   ]);
 
-  // Verify column order and sort directions in the index definitions
   const indexDefByName = Object.fromEntries(indexes.map((row) => [row.indexname, row.indexdef]));
 
-  expect(indexDefByName['ProjectUser_signedUpAt_asc']).toContain('"tenancyId", "signedUpAt"');
-  expect(indexDefByName['ProjectUser_signUpIp_recent_idx']).toContain('"tenancyId", "signUpIp", "signedUpAt"');
-  expect(indexDefByName['ProjectUser_signUpEmailBase_recent_idx']).toContain('"tenancyId", "signUpEmailBase", "signedUpAt"');
-
-  // Verify all indexes are partial (exclude anonymous users)
-  for (const [name, def] of Object.entries(indexDefByName)) {
-    expect(def, `${name} should be a partial index`).toContain('("isAnonymous" = false)');
-  }
+  expect(indexDefByName['ProjectUser_signedUpAt_asc']).toContain('"tenancyId", "isAnonymous", "signedUpAt"');
+  expect(indexDefByName['ProjectUser_signUpIp_recent_idx']).toContain('"tenancyId", "isAnonymous", "signUpIp", "signedUpAt"');
+  expect(indexDefByName['ProjectUser_signUpEmailBase_recent_idx']).toContain('"tenancyId", "isAnonymous", "signUpEmailBase", "signedUpAt"');
 };
