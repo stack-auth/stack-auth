@@ -246,7 +246,7 @@ async function main() {
           for (const user of usersPage.items) {
             if (usersProcessed >= maxUsersPerProject) break;
             usersProcessed++;
-            await recurse(`[user ${usersProcessed}/${userCount}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
+            await recurse(`[user ${usersProcessed}/${Math.min(userCount, maxUsersPerProject)}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
               await expectStatusCode(200, `/api/v1/users/${user.id}`, {
                 method: "GET",
                 headers: {
