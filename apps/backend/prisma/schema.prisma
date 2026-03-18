@@ -348,9 +348,14 @@ model ProjectUserOAuthAccount {
   allowConnectedAccounts Boolean          @default(true)
   allowSignIn            Boolean          @default(true)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([tenancyId, id])
   @@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
   @@index([tenancyId, projectUserId])
+  @@index([tenancyId, sequenceId], name: "ProjectUserOAuthAccount_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserOAuthAccount_shouldUpdateSequenceId_idx")
 }
 
 model SessionReplay {
@@ -622,7 +627,12 @@ model ProjectUserRefreshToken {
   expiresAt       DateTime?
   isImpersonation Boolean   @default(false)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([tenancyId, id])
+  @@index([tenancyId, sequenceId], name: "ProjectUserRefreshToken_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserRefreshToken_shouldUpdateSequenceId_idx")
 }
 
 model ProjectUserAuthorizationCode {

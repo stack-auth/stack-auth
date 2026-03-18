@@ -34,6 +34,10 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: PROJECT_PERMISSIONS_VIEW_SQL });
   await client.exec({ query: NOTIFICATION_PREFERENCES_TABLE_BASE_SQL });
   await client.exec({ query: NOTIFICATION_PREFERENCES_VIEW_SQL });
+  await client.exec({ query: REFRESH_TOKENS_TABLE_BASE_SQL });
+  await client.exec({ query: REFRESH_TOKENS_VIEW_SQL });
+  await client.exec({ query: CONNECTED_ACCOUNTS_TABLE_BASE_SQL });
+  await client.exec({ query: CONNECTED_ACCOUNTS_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -54,6 +58,8 @@ export async function runClickhouseMigrations() {
     "GRANT SELECT ON default.session_replays TO limited_user;",
     "GRANT SELECT ON default.project_permissions TO limited_user;",
     "GRANT SELECT ON default.notification_preferences TO limited_user;",
+    "GRANT SELECT ON default.refresh_tokens TO limited_user;",
+    "GRANT SELECT ON default.connected_accounts TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
@@ -87,6 +93,12 @@ export async function runClickhouseMigrations() {
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS notification_preferences_project_isolation ON default.notification_preferences FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS refresh_tokens_project_isolation ON default.refresh_tokens FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS connected_accounts_project_isolation ON default.connected_accounts FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -617,6 +629,80 @@ SELECT
   notification_category_id,
   enabled
 FROM analytics_internal.notification_preferences
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const REFRESH_TOKENS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.refresh_tokens (
+    project_id String,
+    branch_id String,
+    id UUID,
+    user_id UUID,
+    created_at DateTime64(3, 'UTC'),
+    last_used_at DateTime64(3, 'UTC'),
+    is_impersonation UInt8,
+    expires_at Nullable(DateTime64(3, 'UTC')),
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const REFRESH_TOKENS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.refresh_tokens
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  user_id,
+  created_at,
+  last_used_at,
+  is_impersonation,
+  expires_at
+FROM analytics_internal.refresh_tokens
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const CONNECTED_ACCOUNTS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.connected_accounts (
+    project_id String,
+    branch_id String,
+    id UUID,
+    user_id UUID,
+    provider String,
+    provider_account_id String,
+    email Nullable(String),
+    created_at DateTime64(3, 'UTC'),
+    sync_sequence_id Int64,
+    sync_is_deleted UInt8,
+    sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const CONNECTED_ACCOUNTS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.connected_accounts
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  user_id,
+  provider,
+  provider_account_id,
+  email,
+  created_at
+FROM analytics_internal.connected_accounts
 FINAL
 WHERE sync_is_deleted = 0;
 `;

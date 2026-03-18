@@ -2059,4 +2059,382 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
+  "refresh_tokens": {
+    sourceTables: { "ProjectUserRefreshToken": "ProjectUserRefreshToken" },
+    targetTable: "refresh_tokens",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "refresh_tokens" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "user_id" uuid NOT NULL,
+          "created_at" timestamp without time zone NOT NULL,
+          "last_used_at" timestamp without time zone NOT NULL,
+          "is_impersonation" boolean NOT NULL DEFAULT false,
+          "expires_at" timestamp without time zone
+        );
+        REVOKE ALL ON "refresh_tokens" FROM PUBLIC;
+        GRANT SELECT ON "refresh_tokens" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.refresh_tokens (
+          project_id String,
+          branch_id String,
+          id UUID,
+          user_id UUID,
+          created_at DateTime64(3, 'UTC'),
+          last_used_at DateTime64(3, 'UTC'),
+          is_impersonation UInt8,
+          expires_at Nullable(DateTime64(3, 'UTC')),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, id);
+
+        CREATE TABLE IF NOT EXISTS analytics_internal._stack_sync_metadata (
+          tenancy_id UUID,
+          mapping_name String,
+          last_synced_sequence_id Int64,
+          updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(updated_at)
+        ORDER BY (tenancy_id, mapping_name);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "ProjectUserRefreshToken"."id" AS "id",
+            "ProjectUserRefreshToken"."projectUserId" AS "user_id",
+            "ProjectUserRefreshToken"."createdAt" AS "created_at",
+            "ProjectUserRefreshToken"."lastActiveAt" AS "last_used_at",
+            "ProjectUserRefreshToken"."isImpersonation" AS "is_impersonation",
+            "ProjectUserRefreshToken"."expiresAt" AS "expires_at",
+            "ProjectUserRefreshToken"."sequenceId" AS "sync_sequence_id",
+            "ProjectUserRefreshToken"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "ProjectUserRefreshToken"
+          JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUserRefreshToken"."tenancyId"
+          WHERE "ProjectUserRefreshToken"."tenancyId" = $1::uuid
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+            ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "last_used_at",
+            false AS "is_impersonation",
+            NULL::timestamp without time zone AS "expires_at",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'ProjectUserRefreshToken'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
+        SELECT
+          "ProjectUserRefreshToken"."id" AS "id",
+          "ProjectUserRefreshToken"."projectUserId" AS "user_id",
+          "ProjectUserRefreshToken"."createdAt" AS "created_at",
+          "ProjectUserRefreshToken"."lastActiveAt" AS "last_used_at",
+          "ProjectUserRefreshToken"."isImpersonation" AS "is_impersonation",
+          "ProjectUserRefreshToken"."expiresAt" AS "expires_at",
+          "ProjectUserRefreshToken"."sequenceId" AS "sequence_id",
+          "ProjectUserRefreshToken"."tenancyId",
+          false AS "is_deleted"
+        FROM "ProjectUserRefreshToken"
+        WHERE "ProjectUserRefreshToken"."tenancyId" = $1::uuid
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+          ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "last_used_at",
+          false AS "is_impersonation",
+          NULL::timestamp without time zone AS "expires_at",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'ProjectUserRefreshToken'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::uuid AS "user_id",
+            $3::timestamp without time zone AS "created_at",
+            $4::timestamp without time zone AS "last_used_at",
+            $5::boolean AS "is_impersonation",
+            $6::timestamp without time zone AS "expires_at",
+            $7::bigint AS "sequence_id",
+            $8::boolean AS "is_deleted",
+            $9::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "refresh_tokens" rt
+          USING params p
+          WHERE p."is_deleted" = true AND rt."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "refresh_tokens" (
+            "id",
+            "user_id",
+            "created_at",
+            "last_used_at",
+            "is_impersonation",
+            "expires_at"
+          )
+          SELECT
+            p."id",
+            p."user_id",
+            p."created_at",
+            p."last_used_at",
+            p."is_impersonation",
+            p."expires_at"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "user_id" = EXCLUDED."user_id",
+            "created_at" = EXCLUDED."created_at",
+            "last_used_at" = EXCLUDED."last_used_at",
+            "is_impersonation" = EXCLUDED."is_impersonation",
+            "expires_at" = EXCLUDED."expires_at"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
+  "connected_accounts": {
+    sourceTables: { "ProjectUserOAuthAccount": "ProjectUserOAuthAccount" },
+    targetTable: "connected_accounts",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "connected_accounts" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "user_id" uuid NOT NULL,
+          "provider" text NOT NULL,
+          "provider_account_id" text NOT NULL,
+          "email" text,
+          "created_at" timestamp without time zone NOT NULL
+        );
+        REVOKE ALL ON "connected_accounts" FROM PUBLIC;
+        GRANT SELECT ON "connected_accounts" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.connected_accounts (
+          project_id String,
+          branch_id String,
+          id UUID,
+          user_id UUID,
+          provider String,
+          provider_account_id String,
+          email Nullable(String),
+          created_at DateTime64(3, 'UTC'),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, id);
+
+        CREATE TABLE IF NOT EXISTS analytics_internal._stack_sync_metadata (
+          tenancy_id UUID,
+          mapping_name String,
+          last_synced_sequence_id Int64,
+          updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(updated_at)
+        ORDER BY (tenancy_id, mapping_name);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "ProjectUserOAuthAccount"."id" AS "id",
+            "ProjectUserOAuthAccount"."projectUserId" AS "user_id",
+            "ProjectUserOAuthAccount"."configOAuthProviderId" AS "provider",
+            "ProjectUserOAuthAccount"."providerAccountId" AS "provider_account_id",
+            "ProjectUserOAuthAccount"."email" AS "email",
+            "ProjectUserOAuthAccount"."createdAt" AS "created_at",
+            "ProjectUserOAuthAccount"."sequenceId" AS "sync_sequence_id",
+            "ProjectUserOAuthAccount"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "ProjectUserOAuthAccount"
+          JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUserOAuthAccount"."tenancyId"
+          WHERE "ProjectUserOAuthAccount"."tenancyId" = $1::uuid
+            AND "ProjectUserOAuthAccount"."projectUserId" IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+            ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
+            NULL::text AS "provider",
+            NULL::text AS "provider_account_id",
+            NULL::text AS "email",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'ProjectUserOAuthAccount'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
+        SELECT
+          "ProjectUserOAuthAccount"."id" AS "id",
+          "ProjectUserOAuthAccount"."projectUserId" AS "user_id",
+          "ProjectUserOAuthAccount"."configOAuthProviderId" AS "provider",
+          "ProjectUserOAuthAccount"."providerAccountId" AS "provider_account_id",
+          "ProjectUserOAuthAccount"."email" AS "email",
+          "ProjectUserOAuthAccount"."createdAt" AS "created_at",
+          "ProjectUserOAuthAccount"."sequenceId" AS "sequence_id",
+          "ProjectUserOAuthAccount"."tenancyId",
+          false AS "is_deleted"
+        FROM "ProjectUserOAuthAccount"
+        WHERE "ProjectUserOAuthAccount"."tenancyId" = $1::uuid
+          AND "ProjectUserOAuthAccount"."projectUserId" IS NOT NULL
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+          ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
+          NULL::text AS "provider",
+          NULL::text AS "provider_account_id",
+          NULL::text AS "email",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'ProjectUserOAuthAccount'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::uuid AS "user_id",
+            $3::text AS "provider",
+            $4::text AS "provider_account_id",
+            $5::text AS "email",
+            $6::timestamp without time zone AS "created_at",
+            $7::bigint AS "sequence_id",
+            $8::boolean AS "is_deleted",
+            $9::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "connected_accounts" ca
+          USING params p
+          WHERE p."is_deleted" = true AND ca."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "connected_accounts" (
+            "id",
+            "user_id",
+            "provider",
+            "provider_account_id",
+            "email",
+            "created_at"
+          )
+          SELECT
+            p."id",
+            p."user_id",
+            p."provider",
+            p."provider_account_id",
+            p."email",
+            p."created_at"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "user_id" = EXCLUDED."user_id",
+            "provider" = EXCLUDED."provider",
+            "provider_account_id" = EXCLUDED."provider_account_id",
+            "email" = EXCLUDED."email",
+            "created_at" = EXCLUDED."created_at"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
 } as const;

@@ -396,6 +396,54 @@ export async function waitForSyncedNotificationPreferenceDeletion(client: Client
   });
 }
 
+export async function waitForSyncedRefreshToken(client: Client, refreshTokenId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "refresh_tokens" WHERE "id" = $1`,
+    [refreshTokenId],
+    {
+      shouldExist: true,
+      description: `refresh token "${refreshTokenId}" to appear in external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedRefreshTokenDeletion(client: Client, refreshTokenId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "refresh_tokens" WHERE "id" = $1`,
+    [refreshTokenId],
+    {
+      shouldExist: false,
+      description: `refresh token "${refreshTokenId}" to be removed from external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedConnectedAccount(client: Client, accountId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "connected_accounts" WHERE "id" = $1`,
+    [accountId],
+    {
+      shouldExist: true,
+      description: `connected account "${accountId}" to appear in external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedConnectedAccountDeletion(client: Client, accountId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "connected_accounts" WHERE "id" = $1`,
+    [accountId],
+    {
+      shouldExist: false,
+      description: `connected account "${accountId}" to be removed from external DB`,
+    },
+  );
+}
+
 export async function waitForSyncedEmailOutboxByStatus(client: Client, status: string) {
   await waitForExternalDbRow(
     client,

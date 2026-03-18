@@ -74,6 +74,16 @@ type ExternalDbSyncTarget =
     verificationCodeProjectId: string,
     verificationCodeBranchId: string,
     verificationCodeId: string,
+  }
+  | {
+    tableName: "ProjectUserRefreshToken",
+    tenancyId: string,
+    refreshTokenId: string,
+  }
+  | {
+    tableName: "ProjectUserOAuthAccount",
+    tenancyId: string,
+    oauthAccountId: string,
   };
 
 type ExternalDbType = NonNullable<NonNullable<CompleteConfig["dbSync"]["externalDatabases"][string]>["type"]>;
@@ -368,6 +378,74 @@ export async function recordExternalDbSyncDeletion(
     if (insertedCount !== 1) {
       throw new StackAssertionError(
         `Expected to insert 1 DeletedRow entry for UserNotificationPreference, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "ProjectUserRefreshToken") {
+    assertUuid(target.refreshTokenId, "refreshTokenId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUserRefreshToken',
+        jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+        to_jsonb("ProjectUserRefreshToken".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUserRefreshToken"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "id" = ${target.refreshTokenId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserRefreshToken, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "ProjectUserOAuthAccount") {
+    assertUuid(target.oauthAccountId, "oauthAccountId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUserOAuthAccount',
+        jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+        to_jsonb("ProjectUserOAuthAccount".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUserOAuthAccount"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "id" = ${target.oauthAccountId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserOAuthAccount, got ${insertedCount}.`
       );
     }
     return;
@@ -765,6 +843,82 @@ export async function recordExternalDbSyncNotificationPreferenceDeletionsForUser
   `);
 }
 
+export async function recordExternalDbSyncRefreshTokenDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    excludeRefreshToken?: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  const excludeCondition = options.excludeRefreshToken
+    ? Prisma.sql`AND "refreshToken" != ${options.excludeRefreshToken}`
+    : Prisma.sql``;
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ProjectUserRefreshToken',
+      jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+      to_jsonb("ProjectUserRefreshToken".*),
+      NOW(),
+      TRUE
+    FROM "ProjectUserRefreshToken"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+      ${excludeCondition}
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncOAuthAccountDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ProjectUserOAuthAccount',
+      jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+      to_jsonb("ProjectUserOAuthAccount".*),
+      NOW(),
+      TRUE
+    FROM "ProjectUserOAuthAccount"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
 type PgErrorLike = {
   code?: string,
   constraint?: string,
@@ -991,6 +1145,20 @@ const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boo
   },
   session_replays: {
     chunk_count: 'bigint',
+    sync_is_deleted: 'boolean',
+  },
+  project_permissions: {
+    sync_is_deleted: 'boolean',
+  },
+  notification_preferences: {
+    enabled: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  refresh_tokens: {
+    is_impersonation: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  connected_accounts: {
     sync_is_deleted: 'boolean',
   },
 };

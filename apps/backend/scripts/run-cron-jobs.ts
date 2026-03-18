@@ -30,7 +30,7 @@ async function main() {
         if (runResult.status === "error") {
           captureError("run-cron-jobs", runResult.error);
         }
-        await wait(1000)
+        await wait(1000);
       }
     });
   }

@@ -13,10 +13,14 @@ import {
   verifyNotInExternalDb,
   waitForSyncedContactChannel,
   waitForSyncedContactChannelDeletion,
+  waitForSyncedConnectedAccount,
+  waitForSyncedConnectedAccountDeletion,
   waitForSyncedData,
   waitForSyncedDeletion,
   waitForSyncedEmailOutbox,
   waitForSyncedEmailOutboxByStatus,
+  waitForSyncedRefreshToken,
+  waitForSyncedRefreshTokenDeletion,
   waitForSyncedSessionReplay,
   waitForSyncedTeam,
   waitForSyncedTeamDeletion,
@@ -1687,6 +1691,206 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       sequencer_enabled: getResponse.body.sequencer_enabled,
       poller_enabled: getResponse.body.poller_enabled,
     });
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Signs up a user (which creates a refresh token), waits for it to sync to the external DB.
+   *
+   * Why it matters:
+   * - Validates that refresh tokens are synced to external databases.
+   */
+  test('Refresh token sync to external DB', async ({ expect }) => {
+    const dbName = 'refresh_token_sync';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: "postgres",
+        connectionString,
+      },
+    }, { config: { magic_link_enabled: true } });
+
+    const signUpRes = await Auth.Otp.signIn();
+
+    // List sessions to get the session (refresh token) ID
+    const listRes = await niceBackendFetch("/api/v1/auth/sessions", {
+      accessType: "client",
+      method: "GET",
+      query: { user_id: signUpRes.userId },
+    });
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.items.length).toBeGreaterThanOrEqual(1);
+    const sessionId = listRes.body.items[0].id;
+
+    const client = dbManager.getClient(dbName);
+    await waitForSyncedRefreshToken(client, sessionId);
+
+    const res = await client.query(`SELECT * FROM "refresh_tokens" WHERE "id" = $1`, [sessionId]);
+    expect(res.rows.length).toBe(1);
+    expect(res.rows[0].user_id).toBe(signUpRes.userId);
+    expect(res.rows[0].is_impersonation).toBe(false);
+    expect(res.rows[0].created_at).toBeInstanceOf(Date);
+    expect(res.rows[0].last_used_at).toBeInstanceOf(Date);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Signs up a user, revokes the session, and waits for the deletion to sync.
+   *
+   * Why it matters:
+   * - Validates that refresh token deletions are synced to external databases.
+   */
+  test('Refresh token deletion sync to external DB', async ({ expect }) => {
+    const dbName = 'refresh_token_delete_sync';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: "postgres",
+        connectionString,
+      },
+    }, { config: { magic_link_enabled: true } });
+
+    const signUpRes = await Auth.Otp.signIn();
+
+    // Create a second session so we can revoke one
+    const newSession = await niceBackendFetch("/api/v1/auth/sessions", {
+      accessType: "server",
+      method: "POST",
+      body: { user_id: signUpRes.userId },
+    });
+    expect(newSession.status).toBe(200);
+
+    // List sessions to find the second session ID
+    const listRes = await niceBackendFetch("/api/v1/auth/sessions", {
+      accessType: "client",
+      method: "GET",
+      query: { user_id: signUpRes.userId },
+    });
+    expect(listRes.status).toBe(200);
+    const nonCurrentSession = listRes.body.items.find((s: any) => !s.is_current_session);
+    expect(nonCurrentSession).toBeDefined();
+
+    const client = dbManager.getClient(dbName);
+    await waitForSyncedRefreshToken(client, nonCurrentSession.id);
+
+    // Revoke the non-current session
+    const deleteRes = await niceBackendFetch(`/api/v1/auth/sessions/${nonCurrentSession.id}`, {
+      accessType: "client",
+      method: "DELETE",
+      query: { user_id: signUpRes.userId },
+    });
+    expect(deleteRes.status).toBe(200);
+
+    await waitForSyncedRefreshTokenDeletion(client, nonCurrentSession.id);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Signs up a user, verifies refresh token appears in ClickHouse.
+   *
+   * Why it matters:
+   * - Validates ClickHouse refresh_tokens table sync.
+   */
+  test('Refresh token sync to ClickHouse', async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+    await InternalApiKey.createAndSetProjectKeys();
+
+    const signUpRes = await Auth.Otp.signIn();
+
+    const listRes = await niceBackendFetch("/api/v1/auth/sessions", {
+      accessType: "client",
+      method: "GET",
+      query: { user_id: signUpRes.userId },
+    });
+    expect(listRes.status).toBe(200);
+    const sessionId = listRes.body.items[0].id;
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT id, user_id, is_impersonation FROM refresh_tokens WHERE id = {session_id:UUID}",
+        params: { session_id: sessionId },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        expect(response.body.result[0]).toMatchObject({
+          id: sessionId,
+          user_id: signUpRes.userId,
+          is_impersonation: 0,
+        });
+        return;
+      }
+      await wait(intervalMs);
+    }
+    throw new StackAssertionError(`Timed out waiting for ClickHouse refresh token to sync.`, { response });
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Signs up a user, verifies connected account appears in ClickHouse.
+   *
+   * Why it matters:
+   * - Validates ClickHouse connected_accounts table sync.
+   */
+  test('Connected account sync to ClickHouse', async ({ expect }) => {
+    // Use default project (has spotify configured) with analytics keys
+    await Auth.OAuth.signIn();
+    await InternalApiKey.createAndSetProjectKeys();
+
+    // Get the user ID
+    const userRes = await niceBackendFetch("/api/v1/users/me", {
+      accessType: "client",
+      method: "GET",
+    });
+    expect(userRes.status).toBe(200);
+    const userId = userRes.body.id;
+
+    // Create an additional connected account via the oauth-providers API so we have a known ID
+    const createRes = await niceBackendFetch("/api/v1/oauth-providers", {
+      accessType: "server",
+      method: "POST",
+      body: {
+        user_id: userId,
+        provider_config_id: "spotify",
+        account_id: "ch-test-account-12345",
+        email: "chuser@example.com",
+        allow_sign_in: false,
+        allow_connected_accounts: true,
+      },
+    });
+    expect(createRes.status).toBe(201);
+    const accountId = createRes.body.id;
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT id, user_id, provider, provider_account_id, email FROM connected_accounts WHERE id = {account_id:UUID}",
+        params: { account_id: accountId },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        expect(response.body.result[0]).toMatchObject({
+          id: accountId,
+          user_id: userId,
+          provider: "spotify",
+          provider_account_id: "ch-test-account-12345",
+          email: "chuser@example.com",
+        });
+        return;
+      }
+      await wait(intervalMs);
+    }
+    throw new StackAssertionError(`Timed out waiting for ClickHouse connected account to sync.`, { response });
   }, TEST_TIMEOUT);
 
 });
