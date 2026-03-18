@@ -791,6 +791,9 @@ importers:
 
   docs:
     dependencies:
+      2027-track:
+        specifier: ^0.1.9
+        version: 0.1.9
       '@ai-sdk/react':
         specifier: ^3.0.0
         version: 3.0.83(react@18.3.1)(zod@3.25.76)
@@ -2416,6 +2419,9 @@ importers:
   sdks/spec: {}
 
 packages:
+
+  2027-track@0.1.9:
+    resolution: {integrity: sha512-ER9VNkkyBPSjhbQv2M4rcIgoTwJCnthBvbrs7KvIg/sXbUvYN+iJAg5eVEEGQwo49IPnQmj0Y3aSPLRpvF9ltg==}
 
   '@ai-sdk/gateway@3.0.41':
     resolution: {integrity: sha512-dYNhtvEomccNNGSxfSP8f4g6yPcoDHyQ6Rb7dALFE0FvvVP9UqfFWi3D2dLIz0VVKaSkiNLQAJ7lsdTVlBdRrw==}
@@ -16997,6 +17003,8 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  2027-track@0.1.9: {}
 
   '@ai-sdk/gateway@3.0.41(zod@3.25.76)':
     dependencies:
