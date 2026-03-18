@@ -27,11 +27,12 @@ export function loadOutputData(filePath: string): OutputData {
   const data: OutputData = new Map();
   if (!content) return data;
 
-  const firstLine = content.split("\n")[0];
+  const lines = content.split(/\r?\n/);
+  const firstLine = lines[0];
   try {
     const parsed = JSON.parse(firstLine);
     if ("endpoint" in parsed && "output" in parsed) {
-      for (const line of content.split("\n")) {
+      for (const line of lines) {
         if (!line.trim()) continue;
         const { endpoint, output } = JSON.parse(line);
         if (!data.has(endpoint)) data.set(endpoint, []);
