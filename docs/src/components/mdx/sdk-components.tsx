@@ -139,6 +139,7 @@ function ClickableCodeblock({
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
                       window.location.hash = area.anchor;
                     }
                   }}
