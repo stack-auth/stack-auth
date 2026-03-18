@@ -1,10 +1,13 @@
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import * as path from "path";
 import * as fs from "fs";
 import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
 import { renderConfigFile } from "../lib/stack-config-file.js";
+
+const _require = createRequire(import.meta.url);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -68,7 +71,11 @@ export function registerConfigCommand(program: Command) {
       }
 
       const { createJiti } = await import("jiti");
-      const jiti = createJiti(import.meta.url);
+      const jiti = createJiti(import.meta.url, {
+        alias: {
+          "@stackframe/stack-shared/config": _require.resolve("@stackframe/stack-shared/config"),
+        },
+      });
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = configModule.config;

@@ -5,7 +5,10 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import fs from "fs/promises";
 import { createJiti } from "jiti";
+import { createRequire } from "node:module";
 import path from "path";
+
+const _require = createRequire(import.meta.url);
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
 export const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
@@ -55,7 +58,12 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
     }
     throw e;
   }
-  const jiti = createJiti(import.meta.url, { cache: false });
+  const jiti = createJiti(import.meta.url, {
+    cache: false,
+    alias: {
+      "@stackframe/stack-shared/config": _require.resolve("@stackframe/stack-shared/config"),
+    },
+  });
   const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
   const config = mod.config;
   if (!isValidConfig(config)) {

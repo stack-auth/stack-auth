@@ -1,3 +1,4 @@
+import { expect, it } from "vitest";
 import { typeAssertExtends } from "./utils/types";
 import { defineStackConfig, type StackConfig } from "./config-authoring";
 
@@ -13,6 +14,10 @@ const validConfig = defineStackConfig({
 });
 
 typeAssertExtends<typeof validConfig, StackConfig>()();
+
+it("returns its input unchanged", () => {
+  expect(defineStackConfig(validConfig)).toBe(validConfig);
+});
 
 defineStackConfig({
   // @ts-expect-error Top-level dot notation should not be accepted in typed config files.
