@@ -258,7 +258,7 @@ describe.sequential('External DB Sync - Advanced Tests', () => {
         const res = await client.query(`SELECT COUNT(*) as count FROM "users"`);
         return parseInt(res.rows[0].count) === 3;
       },
-      { description: 'all 3 users to be synced' }
+      { description: 'all 3 users to be synced', timeoutMs: 30000, intervalMs: 250 }
     );
 
     const res1 = await client.query(`SELECT * FROM "users" ORDER BY "primary_email"`);
