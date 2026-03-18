@@ -803,24 +803,24 @@ function renderMemberDocumentation(typeInfo: TypeInfo, member: TypeMember, platf
 // Component to render example code with client/server tabs
 function ExampleSection({ tags }: { tags?: Array<{ name: string, text?: string }> }) {
   const [activeTab, setActiveTab] = useState<'client' | 'server'>('client');
-  
+
   const clientExample = tags?.find(t => t.name === 'example-client')?.text;
   const serverExample = tags?.find(t => t.name === 'example-server')?.text;
-  
+
   if (!clientExample && !serverExample) {
     return null;
   }
-  
+
   const hasMultipleTabs = clientExample && serverExample;
   const currentExample = activeTab === 'client' ? clientExample : serverExample;
-  
+
   // Extract code from markdown code block if present
   const extractCode = (text?: string) => {
     if (!text) return '';
     const match = text.match(/```(?:tsx?|js)?\n?([\s\S]*?)```/);
     return match ? match[1].trim() : text.trim();
   };
-  
+
   return (
     <div className="mt-4 pt-4 border-t border-fd-border">
       <div className="flex items-center justify-between mb-2">
@@ -985,8 +985,7 @@ export function TypeDocumentation({ typeInfo, platform = 'react-like', parentTyp
       try {
         const response = await fetch('/sdk-docs/types.json');
         if (!response.ok) {
-          setLoading(false);
-          return;
+          throw new Error(`Failed to load types.json: ${response.status} ${response.statusText}`);
         }
 
         const typesData = await response.json();
@@ -1026,8 +1025,6 @@ export function TypeDocumentation({ typeInfo, platform = 'react-like', parentTyp
         }
 
         setParentMembers(allParentMembers);
-      } catch (err) {
-        console.error('Error loading parent types:', err);
       } finally {
         setLoading(false);
       }
