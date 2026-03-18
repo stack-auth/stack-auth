@@ -446,32 +446,43 @@ export function HookFromJson({ hookName }: { hookName: string }) {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    async function loadHookInfo() {
-      try {
-        setLoading(true);
-        setError(null);
+    const controller = new AbortController();
 
-        // Load the hooks.json file
-        const response = await fetch('/sdk-docs/hooks.json');
+    async function loadHookInfo() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch('/sdk-docs/hooks.json', { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`Failed to load hooks.json: ${response.statusText}`);
         }
 
-        const hooksData = await response.json();
+        const hooksData: Partial<Record<string, HookInfo>> = await response.json();
         const foundHook = hooksData[hookName];
 
         if (!foundHook) {
-          throw new Error(`Hook "${hookName}" not found in hooks.json. Available hooks: ${Object.keys(hooksData).join(', ')}`);
+          const availableKeys = Object.keys(hooksData);
+          const preview = availableKeys.slice(0, 10).join(', ');
+          const suffix = availableKeys.length > 10 ? `, ... (${availableKeys.length} total)` : '';
+          throw new Error(`Hook "${hookName}" not found in hooks.json. Available hooks: ${preview}${suffix}`);
         }
 
-        setHookInfo(foundHook);
+        if (!controller.signal.aborted) {
+          setHookInfo(foundHook);
+        }
       } catch (err) {
+        if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
     runAsynchronously(loadHookInfo());
+
+    return () => controller.abort();
   }, [hookName]);
 
   if (loading) {
