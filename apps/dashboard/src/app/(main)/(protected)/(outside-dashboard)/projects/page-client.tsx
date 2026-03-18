@@ -267,7 +267,7 @@ export default function PageClient() {
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Enter the absolute path to your local Stack config file. The local emulator will create or reuse the mapped project and open it in the dashboard.
+              Enter the absolute path to your local Stack config file. If it does not exist yet, the local emulator will generate it with a default config, create or reuse the mapped project, and open it in the dashboard.
             </Typography>
             <Input
               autoFocus
@@ -281,7 +281,7 @@ export default function PageClient() {
               Cancel
             </Button>
             <Button onClick={handleOpenConfigFile} loading={openingConfigFile}>
-              Open project
+              Open or create project
             </Button>
           </DialogFooter>
         </DialogContent>

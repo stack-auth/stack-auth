@@ -27,13 +27,16 @@ export default function Header() {
           <Link href="/anonymous-test" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
             Anonymous Test
           </Link>
+          <Link href="/emulator-status" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
+            Emulator Status
+          </Link>
         </div>
 
         <div className="flex items-center justify-end gap-5">
           <UserButton colorModeToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         </div>
       </div>
-      <div className="min-h-12"/> {/* Placeholder for fixed header */}
+      <div className="min-h-12"/>
     </>
   );
 }

@@ -99,3 +99,48 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
+
+Q: How does the Docker local emulator make generated config files visible on the host filesystem?
+A: In `docker/local-emulator/docker-compose.yaml`, the `stack-app` service now bind-mounts `"${HOME}:${HOME}"` and `"/tmp:/tmp"`, so local-emulator config paths under the user's home directory or `/tmp` resolve to the same absolute path inside and outside the container.
+
+Q: Why shouldn't the Docker app entrypoint use `/tmp/processed` as its runtime working directory when `/tmp` is bind-mounted?
+A: With `/tmp` bind-mounted for host-visible config files, copying the full runtime tree into `/tmp/processed` pushes that heavy startup copy onto the host filesystem and makes boot much slower. `docker/server/entrypoint.sh` should keep its scratch runtime under a non-mounted path like `/var/tmp/stack-runtime` instead.
+
+Q: How can we verify the Docker local-emulator config-generation flow end to end?
+A: POST `http://127.0.0.1:8102/api/v1/internal/local-emulator/project` with admin headers for the internal project and a body like `{"absolute_file_path":"/tmp/stack-auth-test-config-internal/stack.config.ts"}`. A successful `200` response should create `/tmp/stack-auth-test-config-internal/stack.config.ts` on the host containing `export const config = {};`.
+
+Q: What is the measured footprint of the Docker local emulator on an arm Mac once the stack is healthy?
+A: With `pnpm run start-emulator` green on port prefix `81`, `docker stats --no-stream` showed about `578.6MiB` for `stack-deps` and `552.9MiB` for `stack-app`, for roughly `1.13GiB` RAM total. `docker image inspect` showed image sizes of about `1.44GB` (`stack-local-emulator-deps`) and `2.79GB` (`stack-local-emulator-app`), roughly `3.94GiB` combined image footprint, and `docker system df -v` showed another ~`77.7MiB` across the emulator's named volumes right after startup.
+
+Q: What made the split QEMU local-emulator build reliable on arm Macs?
+A: The working path provisions two Debian arm64 guests that run the already-built `stack-local-emulator-deps` and `stack-local-emulator-app` Docker images inside the VM, instead of re-implementing the full service stack twice. The build script caches the Debian base image, reuses gzipped `docker save` bundles, and then provisions the `deps` and `dev-server` qcow images in parallel.
+
+Q: What subtle issues mattered for the QEMU image-bundle path?
+A: Two details were critical: use a short ISO-safe bundle filename like `img.tgz` instead of a longer name such as `image.tar.gz`, and use Docker volumes inside the guest for the deps container rather than bind-mounting empty guest directories into `/data/*`. The short name avoids missing-file issues after mounting the ISO in the guest, and Docker volumes preserve the ownership expectations that the deps image's PostgreSQL initialization relies on.
+
+Q: How can we verify that the QEMU-backed local emulator is already seeded correctly?
+A: Query the `stackframe` Postgres on host port `8128` and check for the local-emulator seed records directly: `ContactChannel.value='local-emulator@stack-auth.com'`, `ProjectUser.projectUserId='63abbc96-5329-454a-ba56-e0460173c6c1'` with display name `Local Emulator User`, `Team.teamId='5a0c858b-d9e9-49d4-9943-8ce385d86428'` with display name `Emulator Team`, and the matching `TeamMember` row. On the working QEMU stack these rows were all present under tenancy `3c69b8d4-55c0-4417-8a0b-2f1923d745f6`, confirming the app guest had already run migrations and seed on boot.
+
+Q: How should the QEMU local-emulator access host `stack.config.ts` paths reliably?
+A: Use a host-side file bridge plus backend helper support rather than assuming the guest can read macOS host paths directly. In this repo that means `docker/local-emulator/qemu/host-file-bridge.mjs` running on the host, `apps/backend/src/lib/local-emulator.ts` reading/writing through `STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL` and `STACK_LOCAL_EMULATOR_FILE_BRIDGE_TOKEN`, and `docker/local-emulator/qemu/run-emulator.sh` injecting those values into the dev-server guest runtime config.
+
+Q: What was the subtle process-lifecycle bug with the QEMU host file bridge on macOS?
+A: Starting the bridge with a plain background shell job (even with `nohup`) was not reliable; the process printed its startup line and then died after the launcher shell exited. The durable fix was to spawn it in a new session from `docker/local-emulator/qemu/run-emulator.sh` using Python's `subprocess.Popen(..., start_new_session=True)` and then wait for `http://127.0.0.1:${PORT_PREFIX}16/health` before booting the app guest.
+
+Q: How should the QEMU image build decide whether to reuse a cached Docker image bundle?
+A: Reusing `docker/local-emulator/qemu/images/*-docker-image.tar.gz` blindly causes stale guest images after the app Docker image changes. `docker/local-emulator/qemu/build-image.sh` should compare the current Docker image ID to a sidecar metadata file like `*.image-id` and only reuse the cached tarball when the IDs match; otherwise it must regenerate the bundle before provisioning the qcow image.
+
+Q: Why does the QEMU emulator's app container take so long to start, and what optimizations help?
+A: The app container runs `docker/server/entrypoint.sh` which by default: (1) runs DB migrations, (2) runs seed, (3) copies the entire /app to a working directory (`cp -r /app/. /var/tmp/stack-runtime/.`), and (4) does find+sed sentinel replacement on all files. Migrations/seed cannot be skipped because they're never pre-run during the QEMU build (the STACKCFG ISO isn't present during build, so the app container fails to start during provisioning). Two optimizations cut startup from ~92s to ~62s: (a) use qcow2 backing files (`qemu-img create -f qcow2 -b base -F qcow2 overlay`) instead of copying the full 2.2GB base image, and (b) set `STACK_RUNTIME_WORK_DIR=/app` in the emulator env so the entrypoint skips the ~2.6GB app copy and does sentinel replacement in-place (safe since the container is ephemeral with `--rm`).
+
+Q: Why can't STACK_SKIP_MIGRATIONS be set in the QEMU cloud-init user-data?
+A: During the QEMU image build, cloud-init provisions the VM using the same `render-stack-env` script as runtime. If `STACK_SKIP_MIGRATIONS=true` is hardcoded there, the build's container start also skips migrations (when the DB is actually empty). Since there's no STACKCFG ISO during build, the render-stack-env script fails anyway, but if it were fixed, the skip flag would prevent DB setup. Runtime-only flags should go in the runtime.env on the STACKCFG ISO (created by `run-emulator.sh`'s `prepare_runtime_config_iso`).
+
+Q: How does the QEMU emulator snapshot restore work?
+A: After a successful cold boot where all services are green, `run-emulator.sh` saves a QEMU `savevm` snapshot (named "ready") for both the deps and dev-server VMs via QMP. The snapshot includes full CPU/RAM/device state. On subsequent starts, if both overlays contain a "ready" snapshot, QEMU is launched with `-loadvm ready` which restores the entire VM state instantly (no Linux boot, no Docker start, no migrations). This reduces restart from ~62s to ~4s. If snapshot restore fails (services don't come up within 30s), the script automatically falls back to a fresh boot. Use `pnpm emulator-qemu:reset` to clear snapshots and force a fresh boot.
+
+Q: Why does the QEMU emulator use a deterministic file bridge token instead of a random one?
+A: The file bridge token is baked into the VM's environment when the container starts. When restoring from a snapshot, the VM resumes with the old token. If the host bridge generates a new random token each time, the VM's token won't match and file bridge requests will fail. Using a deterministic token derived from the port prefix (`shasum -a 256` of `stack-local-emulator-$PORT_PREFIX`) ensures the same token on every start, making snapshot restore work seamlessly.
+
+Q: Why can't `qemu-img snapshot -l` be used to check snapshots while QEMU is running?
+A: QEMU holds an exclusive write lock on the qcow2 file. `qemu-img` commands (including `snapshot -l`) fail with "Failed to get shared write lock". To check snapshots while QEMU runs, use QMP: `{"execute":"human-monitor-command","arguments":{"command-line":"info snapshots"}}`. To check snapshots when QEMU is stopped (e.g., in `role_has_snapshot`), `qemu-img snapshot -l` works fine.

@@ -1,0 +1,284 @@
+#cloud-config
+
+hostname: stack-emulator-dev-server
+manage_etc_hosts: true
+
+users:
+  - name: stack
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+chpasswd:
+  list: |
+    root:stack-emulator
+    stack:stack-emulator
+  expire: false
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - docker.io
+  - ca-certificates
+  - curl
+  - qemu-guest-agent
+
+write_files:
+  - path: /etc/stack-auth/local-emulator.base.env
+    content: |
+      NEXT_PUBLIC_STACK_DOCS_BASE_URL=https://docs.stack-auth.com
+      NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true
+      NEXT_PUBLIC_STACK_PROJECT_ID=internal
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only
+      STACK_SECRET_SERVER_KEY=this-secret-server-key-is-for-local-development-only
+      STACK_SERVER_SECRET=23-wuNpik0gIW4mruTz25rbIvhuuvZFrLOLtL7J4tyo
+      STACK_CHANGELOG_URL=https://raw.githubusercontent.com/stack-auth/stack-auth/refs/heads/dev/CHANGELOG.md
+      STACK_SEED_ENABLE_DUMMY_PROJECT=true
+      STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED=true
+      STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED=true
+      STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST=true
+      STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS=github,spotify,google,microsoft
+      STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS=true
+      STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only
+      STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=this-secret-server-key-is-for-local-development-only
+      STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=this-super-secret-admin-key-is-for-local-development-only
+      STACK_SVIX_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NTUxNDA2MzksImV4cCI6MTk3MDUwMDYzOSwibmJmIjoxNjU1MTQwNjM5LCJpc3MiOiJzdml4LXNlcnZlciIsInN1YiI6Im9yZ18yM3JiOFlkR3FNVDBxSXpwZ0d3ZFhmSGlyTXUifQ.En8w77ZJWbd0qrMlHHupHUB-4cx17RfzFykseg95SUk
+      STACK_OPENAI_API_KEY=mock_openai_api_key
+      STACK_OPENROUTER_API_KEY=FORWARD_TO_PRODUCTION
+      STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey
+      STACK_STRIPE_WEBHOOK_SECRET=mock_stripe_webhook_secret
+      STACK_RESEND_API_KEY=mock_resend_api_key
+      STACK_RESEND_WEBHOOK_SECRET=mock_resend_webhook_secret
+      STACK_DNSIMPLE_API_TOKEN=mock_dnsimple_api_token
+      STACK_DNSIMPLE_ACCOUNT_ID=mock_dnsimple_account_id
+      STACK_DNSIMPLE_API_BASE_URL=https://api.dnsimple.com/v2
+      STACK_FREESTYLE_API_KEY=mock_stack_freestyle_key
+      STACK_VERCEL_SANDBOX_TOKEN=vercel_sandbox_disabled_for_local_development
+      CRON_SECRET=mock_cron_secret
+      STACK_S3_REGION=us-east-1
+      STACK_S3_ACCESS_KEY_ID=s3mockroot
+      STACK_S3_SECRET_ACCESS_KEY=s3mockroot
+      STACK_S3_BUCKET=stack-storage
+      STACK_S3_PRIVATE_BUCKET=stack-storage-private
+      STACK_AWS_REGION=us-east-1
+      STACK_AWS_ACCESS_KEY_ID=test
+      STACK_AWS_SECRET_ACCESS_KEY=test
+      STACK_QSTASH_TOKEN=eyJVc2VySUQiOiJkZWZhdWx0VXNlciIsIlBhc3N3b3JkIjoiZGVmYXVsdFBhc3N3b3JkIn0=
+      STACK_QSTASH_CURRENT_SIGNING_KEY=sig_7kYjw48mhY7kAjqNGcy6cr29RJ6r
+      STACK_QSTASH_NEXT_SIGNING_KEY=sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs
+      STACK_CLICKHOUSE_ADMIN_USER=stackframe
+      STACK_CLICKHOUSE_ADMIN_PASSWORD=PASSWORD-PLACEHOLDER--9gKyMxJeMx
+      STACK_CLICKHOUSE_EXTERNAL_PASSWORD=PASSWORD-PLACEHOLDER--EZeHscBMzE
+      STACK_EMAIL_MONITOR_PROJECT_ID=internal
+      STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY=this-publishable-client-key-is-for-local-development-only
+      STACK_EMAIL_MONITOR_RESEND_EMAIL_DOMAIN=stack-generated.example.com
+      STACK_EMAIL_MONITOR_RESEND_EMAIL_API_KEY=this-is-a-fake-key
+      STACK_EMAIL_MONITOR_SECRET_TOKEN=this-secret-token-is-for-local-development-only
+      STACK_FEATUREBASE_JWT_SECRET=secret-value
+      STACK_FORWARD_MOCK_OAUTH_SERVER=false
+      STACK_GITHUB_CLIENT_ID=MOCK
+      STACK_GITHUB_CLIENT_SECRET=MOCK
+      STACK_GOOGLE_CLIENT_ID=MOCK
+      STACK_GOOGLE_CLIENT_SECRET=MOCK
+      STACK_MICROSOFT_CLIENT_ID=MOCK
+      STACK_MICROSOFT_CLIENT_SECRET=MOCK
+      STACK_SPOTIFY_CLIENT_ID=MOCK
+      STACK_SPOTIFY_CLIENT_SECRET=MOCK
+      STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS=true
+
+  - path: /usr/local/bin/install-stack-app-container
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-bundle
+      bundle_device="$(readlink -f /dev/disk/by-label/STACKBUNDLE)"
+      mount -o ro "$bundle_device" /mnt/stack-bundle
+
+      systemctl enable --now docker
+      until docker info >/dev/null 2>&1; do sleep 1; done
+
+      gzip -dc /mnt/stack-bundle/img.tgz | docker load
+
+  - path: /usr/local/bin/render-stack-env
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-runtime /run/stack-auth
+      runtime_device="$(readlink -f /dev/disk/by-label/STACKCFG)"
+      mountpoint -q /mnt/stack-runtime || mount -o ro "$runtime_device" /mnt/stack-runtime
+
+      set -a
+      source /mnt/stack-runtime/runtime.env
+      source /etc/stack-auth/local-emulator.base.env
+      set +a
+
+      cat > /run/stack-auth/local-emulator.env <<EOF
+      NEXT_PUBLIC_STACK_PORT_PREFIX=${STACK_EMULATOR_PORT_PREFIX}
+      STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL=${STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL}
+      STACK_LOCAL_EMULATOR_FILE_BRIDGE_TOKEN=${STACK_LOCAL_EMULATOR_FILE_BRIDGE_TOKEN}
+      STACK_RUNTIME_WORK_DIR=/app
+      NEXT_PUBLIC_STACK_API_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}02
+      NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}01
+      NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}02
+      NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}01
+      NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}02
+      NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}01
+      NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}13
+      STACK_DATABASE_CONNECTION_STRING=postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}28/stackframe
+      STACK_EMAIL_HOST=${STACK_EMULATOR_DEPS_HOST}
+      STACK_EMAIL_PORT=${STACK_EMULATOR_PORT_PREFIX}29
+      STACK_EMAIL_SECURE=false
+      STACK_EMAIL_USERNAME=does-not-matter
+      STACK_EMAIL_PASSWORD=does-not-matter
+      STACK_EMAIL_SENDER=noreply@example.com
+      STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR=10000
+      STACK_SVIX_SERVER_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}13
+      STACK_S3_ENDPOINT=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}21
+      STACK_S3_PUBLIC_ENDPOINT=http://localhost:${STACK_EMULATOR_PORT_PREFIX}21/stack-storage
+      STACK_QSTASH_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}25
+      STACK_CLICKHOUSE_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}36
+      STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}01/handler/email-verification
+      STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}05
+      STACK_EMAIL_MONITOR_USE_INBUCKET=true
+      STACK_OAUTH_MOCK_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}14
+      BACKEND_PORT=${STACK_EMULATOR_PORT_PREFIX}02
+      DASHBOARD_PORT=${STACK_EMULATOR_PORT_PREFIX}01
+      NEXT_PUBLIC_STACK_DOCS_BASE_URL=${NEXT_PUBLIC_STACK_DOCS_BASE_URL}
+      NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=${NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR}
+      NEXT_PUBLIC_STACK_PROJECT_ID=${NEXT_PUBLIC_STACK_PROJECT_ID}
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}
+      STACK_SECRET_SERVER_KEY=${STACK_SECRET_SERVER_KEY}
+      STACK_SERVER_SECRET=${STACK_SERVER_SECRET}
+      STACK_CHANGELOG_URL=${STACK_CHANGELOG_URL}
+      STACK_SEED_ENABLE_DUMMY_PROJECT=${STACK_SEED_ENABLE_DUMMY_PROJECT}
+      STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED=${STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED}
+      STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED=${STACK_SEED_INTERNAL_PROJECT_OTP_ENABLED}
+      STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST=${STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST}
+      STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS=${STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS}
+      STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS=${STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS}
+      STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
+      STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY}
+      STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}
+      STACK_SVIX_API_KEY=${STACK_SVIX_API_KEY}
+      STACK_OPENAI_API_KEY=${STACK_OPENAI_API_KEY}
+      STACK_OPENROUTER_API_KEY=${STACK_OPENROUTER_API_KEY}
+      STACK_STRIPE_SECRET_KEY=${STACK_STRIPE_SECRET_KEY}
+      STACK_STRIPE_WEBHOOK_SECRET=${STACK_STRIPE_WEBHOOK_SECRET}
+      STACK_RESEND_API_KEY=${STACK_RESEND_API_KEY}
+      STACK_RESEND_WEBHOOK_SECRET=${STACK_RESEND_WEBHOOK_SECRET}
+      STACK_DNSIMPLE_API_TOKEN=${STACK_DNSIMPLE_API_TOKEN}
+      STACK_DNSIMPLE_ACCOUNT_ID=${STACK_DNSIMPLE_ACCOUNT_ID}
+      STACK_DNSIMPLE_API_BASE_URL=${STACK_DNSIMPLE_API_BASE_URL}
+      STACK_FREESTYLE_API_KEY=${STACK_FREESTYLE_API_KEY}
+      STACK_VERCEL_SANDBOX_TOKEN=${STACK_VERCEL_SANDBOX_TOKEN}
+      CRON_SECRET=${CRON_SECRET}
+      STACK_S3_REGION=${STACK_S3_REGION}
+      STACK_S3_ACCESS_KEY_ID=${STACK_S3_ACCESS_KEY_ID}
+      STACK_S3_SECRET_ACCESS_KEY=${STACK_S3_SECRET_ACCESS_KEY}
+      STACK_S3_BUCKET=${STACK_S3_BUCKET}
+      STACK_S3_PRIVATE_BUCKET=${STACK_S3_PRIVATE_BUCKET}
+      STACK_AWS_REGION=${STACK_AWS_REGION}
+      STACK_AWS_ACCESS_KEY_ID=${STACK_AWS_ACCESS_KEY_ID}
+      STACK_AWS_SECRET_ACCESS_KEY=${STACK_AWS_SECRET_ACCESS_KEY}
+      STACK_QSTASH_TOKEN=${STACK_QSTASH_TOKEN}
+      STACK_QSTASH_CURRENT_SIGNING_KEY=${STACK_QSTASH_CURRENT_SIGNING_KEY}
+      STACK_QSTASH_NEXT_SIGNING_KEY=${STACK_QSTASH_NEXT_SIGNING_KEY}
+      STACK_CLICKHOUSE_ADMIN_USER=${STACK_CLICKHOUSE_ADMIN_USER}
+      STACK_CLICKHOUSE_ADMIN_PASSWORD=${STACK_CLICKHOUSE_ADMIN_PASSWORD}
+      STACK_CLICKHOUSE_EXTERNAL_PASSWORD=${STACK_CLICKHOUSE_EXTERNAL_PASSWORD}
+      STACK_EMAIL_MONITOR_PROJECT_ID=${STACK_EMAIL_MONITOR_PROJECT_ID}
+      STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY=${STACK_EMAIL_MONITOR_PUBLISHABLE_CLIENT_KEY}
+      STACK_EMAIL_MONITOR_RESEND_EMAIL_DOMAIN=${STACK_EMAIL_MONITOR_RESEND_EMAIL_DOMAIN}
+      STACK_EMAIL_MONITOR_RESEND_EMAIL_API_KEY=${STACK_EMAIL_MONITOR_RESEND_EMAIL_API_KEY}
+      STACK_EMAIL_MONITOR_SECRET_TOKEN=${STACK_EMAIL_MONITOR_SECRET_TOKEN}
+      STACK_FEATUREBASE_JWT_SECRET=${STACK_FEATUREBASE_JWT_SECRET}
+      STACK_FORWARD_MOCK_OAUTH_SERVER=${STACK_FORWARD_MOCK_OAUTH_SERVER}
+      STACK_GITHUB_CLIENT_ID=${STACK_GITHUB_CLIENT_ID}
+      STACK_GITHUB_CLIENT_SECRET=${STACK_GITHUB_CLIENT_SECRET}
+      STACK_GOOGLE_CLIENT_ID=${STACK_GOOGLE_CLIENT_ID}
+      STACK_GOOGLE_CLIENT_SECRET=${STACK_GOOGLE_CLIENT_SECRET}
+      STACK_MICROSOFT_CLIENT_ID=${STACK_MICROSOFT_CLIENT_ID}
+      STACK_MICROSOFT_CLIENT_SECRET=${STACK_MICROSOFT_CLIENT_SECRET}
+      STACK_SPOTIFY_CLIENT_ID=${STACK_SPOTIFY_CLIENT_ID}
+      STACK_SPOTIFY_CLIENT_SECRET=${STACK_SPOTIFY_CLIENT_SECRET}
+      STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS=${STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS}
+      EOF
+
+  - path: /usr/local/bin/run-stack-app-container
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      /usr/local/bin/render-stack-env
+      docker rm -f stack-app >/dev/null 2>&1 || true
+      exec docker run \
+        --rm \
+        --name stack-app \
+        --network host \
+        --add-host host.docker.internal:host-gateway \
+        --env-file /run/stack-auth/local-emulator.env \
+        stack-local-emulator-app
+
+  - path: /usr/local/bin/stack-ready-signal
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-runtime
+      runtime_device="$(readlink -f /dev/disk/by-label/STACKCFG)"
+      mountpoint -q /mnt/stack-runtime || mount -o ro "$runtime_device" /mnt/stack-runtime
+      source /mnt/stack-runtime/runtime.env
+
+      until curl -sf "http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}02/health?db=1" >/dev/null 2>&1; do sleep 1; done
+      until curl -sf "http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}01/handler/sign-in" >/dev/null 2>&1; do sleep 1; done
+      echo "STACK_EMULATOR_READY" > /dev/console 2>/dev/null || true
+      echo "STACK_EMULATOR_READY" > /dev/ttyAMA0 2>/dev/null || true
+      echo "STACK_EMULATOR_READY" > /dev/ttyS0 2>/dev/null || true
+
+  - path: /etc/systemd/system/stack-app.service
+    content: |
+      [Unit]
+      Description=Stack Auth local emulator app container
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+      ExecStart=/usr/local/bin/run-stack-app-container
+      ExecStop=/usr/bin/docker stop stack-app
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/stack-ready.service
+    content: |
+      [Unit]
+      Description=Stack Auth app readiness signal
+      After=stack-app.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/stack-ready-signal
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - mkdir -p /etc/stack-auth
+  - bash /usr/local/bin/install-stack-app-container
+  - systemctl daemon-reload
+  - systemctl enable --now stack-app.service
+  - systemctl start stack-ready.service
+  - echo "STACK_CLOUD_INIT_DONE" > /dev/console 2>/dev/null || true
+  - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyAMA0 2>/dev/null || true
+  - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyS0 2>/dev/null || true
+  - shutdown -P now
