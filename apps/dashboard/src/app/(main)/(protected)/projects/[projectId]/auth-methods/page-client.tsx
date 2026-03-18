@@ -13,7 +13,6 @@ import { allProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useMemo, useState } from "react";
-import { CardSubtitle } from "../../../../../../../../../packages/stack-ui/dist/components/ui/card";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -434,9 +433,9 @@ export default function PageClient() {
               onSave={handleAuthMethodsSave}
               onDiscard={handleAuthMethodsDiscard}
             />
-            <CardSubtitle className="mt-2">
+            <Typography variant="secondary" className="mt-2">
               SSO Providers
-            </CardSubtitle>
+            </Typography>
 
             {enabledProviders.map(([, provider]) => provider)
               .filter((provider): provider is AdminOAuthProviderConfig => !!provider).map(provider => {

@@ -17,6 +17,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -104,7 +105,7 @@ export function computeRestrictedStatus<T extends OnboardingConfig>(
   primaryEmailVerified: boolean,
   config: T,
   restrictedByAdmin?: boolean,
-): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } } {
+): { isRestricted: false, restrictedReason: null } | { isRestricted: true, restrictedReason: RestrictedReason } {
   // note: when you implement this function, make sure to also update the filter in the list users endpoint
 
   // Anonymous users are always restricted (they need to sign up first)

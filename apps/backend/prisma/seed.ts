@@ -4,6 +4,13 @@ import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
 import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
+import {
+  LOCAL_EMULATOR_ADMIN_EMAIL,
+  LOCAL_EMULATOR_ADMIN_PASSWORD,
+  LOCAL_EMULATOR_ADMIN_USER_ID,
+  LOCAL_EMULATOR_OWNER_TEAM_ID,
+  isLocalEmulatorEnabled,
+} from '@/lib/local-emulator';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
@@ -11,6 +18,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction 
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
+import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
@@ -36,15 +44,11 @@ export async function seed() {
   const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
   const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
 
-  const emulatorEnabled = process.env.STACK_EMULATOR_ENABLED === 'true';
-  const emulatorProjectId = process.env.STACK_EMULATOR_PROJECT_ID;
+  const localEmulatorEnabled = isLocalEmulatorEnabled();
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
   const internalTeamId = 'a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c';
-  const emulatorAdminUserId = '63abbc96-5329-454a-ba56-e0460173c6c1';
-  const emulatorAdminTeamId = '5a0c858b-d9e9-49d4-9943-8ce385d86428';
-
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
@@ -119,9 +123,24 @@ export async function seed() {
           },
         },
         products: {
-          team_plans: {
+          free: {
             productLineId: "plans",
-            displayName: "Team Plans",
+            displayName: "Free",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: "include-by-default",
+            includedItems: {
+              [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.free.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+            },
+          },
+          team: {
+            productLineId: "plans",
+            displayName: "Team",
             customerType: "team",
             serverOnly: false,
             stackable: false,
@@ -129,16 +148,16 @@ export async function seed() {
               monthly: {
                 USD: "49",
                 interval: [1, "month"] as any,
-                serverOnly: false
-              }
+                serverOnly: false,
+              },
             },
             includedItems: {
-              dashboard_admins: {
-                quantity: 3,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
-            }
+              [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.team.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.team.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.team.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+            },
           },
           growth: {
             productLineId: "plans",
@@ -150,63 +169,45 @@ export async function seed() {
               monthly: {
                 USD: "299",
                 interval: [1, "month"] as any,
-                serverOnly: false
-              }
+                serverOnly: false,
+              },
             },
             includedItems: {
-              dashboard_admins: {
-                quantity: 5,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
-            }
+              [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.growth.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.growth.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.growth.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+            },
           },
-          free: {
+          "extra-seats": {
             productLineId: "plans",
-            displayName: "Free",
-            customerType: "team",
-            serverOnly: false,
-            stackable: false,
-            prices: "include-by-default",
-            includedItems: {
-              dashboard_admins: {
-                quantity: 1,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
-            }
-          },
-          "extra-admins": {
-            productLineId: "plans",
-            displayName: "Extra Admins",
+            displayName: "Extra Seats",
             customerType: "team",
             serverOnly: false,
             stackable: true,
             prices: {
               monthly: {
-                USD: "49",
+                USD: "29",
                 interval: [1, "month"] as any,
-                serverOnly: false
-              }
+                serverOnly: false,
+              },
             },
             includedItems: {
-              dashboard_admins: {
-                quantity: 1,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
+              [ITEM_IDS.seats]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
             isAddOnTo: {
               team: true,
               growth: true,
-            }
-          }
+            },
+          },
         },
         items: {
-          dashboard_admins: {
-            displayName: "Dashboard Admins",
-            customerType: "team"
-          }
+          [ITEM_IDS.seats]: { displayName: "Dashboard Admins", customerType: "team" as const },
+          [ITEM_IDS.authUsers]: { displayName: "Auth Users", customerType: "team" as const },
+          [ITEM_IDS.emailsPerMonth]: { displayName: "Emails per Month", customerType: "team" as const },
+          [ITEM_IDS.analyticsTimeoutSeconds]: { displayName: "Analytics Timeout (seconds)", customerType: "team" as const },
+          [ITEM_IDS.analyticsEvents]: { displayName: "Analytics Events", customerType: "team" as const },
         },
       },
       apps: {
@@ -406,16 +407,12 @@ export async function seed() {
     }
   }
 
-  if (emulatorEnabled) {
-    if (!emulatorProjectId) {
-      throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
-    }
-
+  if (localEmulatorEnabled) {
     const emulatorTeam = await internalPrisma.team.findUnique({
       where: {
         tenancyId_teamId: {
           tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
         },
       },
     });
@@ -423,7 +420,7 @@ export async function seed() {
       await internalPrisma.team.create({
         data: {
           tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
           displayName: 'Emulator Team',
           mirroredProjectId: "internal",
           mirroredBranchId: DEFAULT_BRANCH_ID,
@@ -436,73 +433,68 @@ export async function seed() {
       where: {
         mirroredProjectId: 'internal',
         mirroredBranchId: DEFAULT_BRANCH_ID,
-        projectUserId: emulatorAdminUserId,
+        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
       }
     });
 
     if (existingUser) {
       console.log('Emulator user already exists, skipping creation');
     } else {
-      const newEmulatorUser = await internalPrisma.projectUser.create({
+      await internalPrisma.projectUser.create({
         data: {
           displayName: 'Local Emulator User',
-          projectUserId: emulatorAdminUserId,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
         }
       });
 
-      await internalPrisma.teamMember.create({
-        data: {
-          tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
-          projectUserId: newEmulatorUser.projectUserId,
-        },
-      });
-
-      await usersCrudHandlers.adminUpdate({
-        tenancy: internalTenancy,
-        user_id: newEmulatorUser.projectUserId,
-        data: {
-          password: 'LocalEmulatorPassword',
-          primary_email: 'local-emulator@stack-auth.com',
-          primary_email_auth_enabled: true,
-        },
-      });
-
       console.log('Created emulator user');
     }
 
-    const existingProject = await internalPrisma.project.findUnique({
+    await internalPrisma.teamMember.upsert({
       where: {
-        id: emulatorProjectId,
+        tenancyId_projectUserId_teamId: {
+          tenancyId: internalTenancy.id,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+        },
+      },
+      create: {
+        tenancyId: internalTenancy.id,
+        teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+      },
+      update: {},
+    });
+
+    await usersCrudHandlers.adminUpdate({
+      tenancy: internalTenancy,
+      user_id: LOCAL_EMULATOR_ADMIN_USER_ID,
+      data: {
+        password: LOCAL_EMULATOR_ADMIN_PASSWORD,
+        primary_email: LOCAL_EMULATOR_ADMIN_EMAIL,
+        primary_email_auth_enabled: true,
       },
     });
 
-    if (existingProject) {
-      console.log('Emulator project already exists, skipping creation');
-    } else {
-      await createOrUpdateProjectWithLegacyConfig({
-        projectId: emulatorProjectId,
-        type: 'create',
-        data: {
-          display_name: 'Emulator Project',
-          owner_team_id: emulatorAdminTeamId,
-          config: {
-            allow_localhost: true,
-            create_team_on_sign_up: false,
-            client_team_creation_enabled: false,
-            passkey_enabled: true,
-            oauth_providers: oauthProviderIds.map((id) => ({
-              id: id as any,
-              type: 'shared',
-            })),
-          }
+    const userTeamMembership = await internalPrisma.teamMember.findUnique({
+      where: {
+        tenancyId_projectUserId_teamId: {
+          tenancyId: internalTenancy.id,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
         },
-      });
-
-      console.log('Created emulator project');
+      },
+      select: {
+        projectUserId: true,
+      },
+    });
+    if (!userTeamMembership) {
+      throw new Error('Local emulator user must be a member of the local emulator owner team');
+    } else {
+      console.log('Ensured emulator user is a member of emulator team');
     }
   }
 
@@ -1116,6 +1108,13 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     tenancyId: dummyTenancy.id,
     projectId: DUMMY_PROJECT_ID,
     userEmailToId,
+  });
+
+  await seedDummySessionReplays({
+    prisma: dummyPrisma,
+    tenancyId: dummyTenancy.id,
+    userEmailToId,
+    targetSessionReplayCount: 75
   });
 
   console.log('Seeded dummy project data');
@@ -1764,4 +1763,66 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   }
 
   console.log('Finished seeding session activity events');
+}
+
+type SessionReplaySeedOptions = {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  userEmailToId: Map<string, string>,
+  targetSessionReplayCount?: number,
+};
+
+async function seedDummySessionReplays(options: SessionReplaySeedOptions) {
+  const {
+    prisma,
+    tenancyId,
+    userEmailToId,
+    targetSessionReplayCount = 250,
+  } = options;
+
+  const existingCount = await prisma.sessionReplay.count({
+    where: {
+      tenancyId,
+    },
+  });
+
+  if (existingCount >= targetSessionReplayCount) {
+    console.log(`Dummy project already has ${existingCount} session replays, skipping seeding`);
+    return;
+  }
+
+  const toCreate = targetSessionReplayCount - existingCount;
+  const userIds = Array.from(userEmailToId.values());
+  if (userIds.length === 0) {
+    throw new Error('Cannot seed session replays: no dummy project users exist');
+  }
+
+  const now = new Date();
+  const twoWeeksAgo = new Date(now);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  for (let i = 0; i < toCreate; i++) {
+    const startedAt = new Date(
+      twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
+    );
+    const durationMs = 10_000 + Math.floor(Math.random() * (20 * 60 * 1000)); // 10s..20m
+    const lastEventAt = new Date(startedAt.getTime() + durationMs);
+    const projectUserId = userIds[Math.floor(Math.random() * userIds.length)]!;
+
+    seeds.push({
+      tenancyId,
+      refreshTokenId: generateUuid(),
+      projectUserId,
+      id: generateUuid(),
+      startedAt,
+      lastEventAt,
+    });
+  }
+
+  await prisma.sessionReplay.createMany({
+    data: seeds,
+  });
+
+  console.log(`Seeded ${toCreate} session replays`);
 }

@@ -494,7 +494,7 @@ export async function retryTransaction<T>(client: Omit<PrismaClient, "$on">, fn:
         }
         return attemptRes;
       });
-    }, 3, {
+    }, 4, {
       exponentialDelayBase: getNodeEnvironment() === 'development' || getNodeEnvironment() === 'test' ? 3 : 1000,
     });
 

@@ -48,7 +48,7 @@ export default function PageClient({ code }: { code: string }) {
     if (!selectedPriceId || !data?.product?.prices) {
       return 0;
     }
-    return Number(data.product.prices[selectedPriceId].USD) * 100;
+    return Math.round(Number(data.product.prices[selectedPriceId].USD) * 100);
   }, [data, selectedPriceId]);
 
   const MAX_STRIPE_AMOUNT_CENTS = 999_999 * 100;

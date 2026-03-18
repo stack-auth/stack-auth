@@ -49,7 +49,7 @@ isRestricted: bool
   Whether user is in restricted state (signed up but hasn't completed onboarding).
   Example: email verification required but not yet verified.
 
-restrictedReason: { type: "anonymous" | "email_not_verified" } | null
+restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null
   The reason why user is restricted, or null if not restricted.
 
 

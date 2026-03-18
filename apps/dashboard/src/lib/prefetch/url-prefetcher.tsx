@@ -182,13 +182,11 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
     ([_, projectId]) => {
       const adminApp = useAdminApp(projectId);
       const themes = adminApp.useEmailThemes();
-      themes.forEach((theme) => {
-        return [() => {
-          adminApp.useEmailPreview({
-            themeId: theme.id,
-            templateTsxSource: previewTemplateSource,
-          });
-        }];
+      return themes.map((theme) => () => {
+        adminApp.useEmailPreview({
+          themeId: theme.id,
+          templateTsxSource: previewTemplateSource,
+        });
       });
     },
   ],

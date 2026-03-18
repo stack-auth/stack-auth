@@ -113,7 +113,7 @@ describe("with client access", () => {
           "code": "ACCESS_TOKEN_EXPIRED",
           "details": { "expired_at_millis": 1738374988000 },
           "error": deindent\`
-            Access token has expired. Please refresh it and try again. (The access token expired at 2025-02-01T01:56:28.000Z.)
+            Access token has expired. Please refresh it and try again. (The access token expired at 2025-02-01T01:56:28.000Z.) Project ID: 1234567890. User ID: 1234567890. Refresh token ID: 1234567890.
 
             Debug info: Most likely, you fetched the access token before it expired (for example, in a server component, pre-rendered page, or on page load), but then didn't refresh it before it expired. If this is the case, and you're using the SDK, make sure you call getAccessToken() every time you need to use the access token. If you're not using the SDK, make sure you refresh the access token with the refresh endpoint.
           \`,

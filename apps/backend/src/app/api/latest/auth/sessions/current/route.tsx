@@ -27,7 +27,7 @@ export const DELETE = createSmartRouteHandler({
     if (!refreshTokenId) {
       // Only here for transition period, remove this once all access tokens are updated
       // TODO next-release
-      throw new KnownErrors.AccessTokenExpired(new Date());
+      throw new KnownErrors.AccessTokenExpired(new Date(), undefined, undefined, undefined);
     }
 
     try {

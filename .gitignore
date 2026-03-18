@@ -4,6 +4,8 @@ node-compile-cache/
 .envrc
 
 
+debug.log
+
 *.cpuprofile
 
 
@@ -11,6 +13,8 @@ node-compile-cache/
 
 
 .vercel
+.output
+.nitro
 
 # https://stackoverflow.com/questions/76510164/can-i-safely-delete-vite-config-ts-timestamp-files
 vite.config.ts.timestamp-*
@@ -33,7 +37,7 @@ tmp
 tsx-0
 
 vitest.config.ts.timestamp-*
-tsup.config.bundled_*
+tsdown.config.bundled_*
 
 # Dependencies
 node_modules

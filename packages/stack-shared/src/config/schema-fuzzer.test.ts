@@ -18,6 +18,9 @@ const projectSchemaFuzzerConfig = [{
       "123-some-branch-id": ["", "THIS IS A CONNECTION STRING OR SO"],
     }],
   }],
+  project: [{
+    requirePublishableClientKey: [true, false],
+  }],
 }] satisfies FuzzerConfig<ProjectConfigNormalizedOverride>;
 
 const branchSchemaFuzzerConfig = [{
@@ -229,18 +232,41 @@ const environmentSchemaFuzzerConfig = [{
     ...branchSchemaFuzzerConfig[0].emails[0],
     server: [{
       isShared: [true, false],
-      provider: ["resend", "smtp"] as const,
+      provider: ["resend", "smtp", "managed"] as const,
       host: ["example.com", "://super weird host that's not valid"],
       port: [1234, 0.12543, -100, Infinity],
       username: ["some-username", "some username with a space"],
       password: ["some-password", "some password with a space"],
       senderName: ["Some Sender"],
       senderEmail: ["some-sender@example.com", "some invalid email"],
+      managedSubdomain: ["mail.example.com", "invalid subdomain"],
+      managedSenderLocalPart: ["noreply", "some invalid local part"],
     }],
   }],
   payments: [{
     ...branchSchemaFuzzerConfig[0].payments[0],
     testMode: [false, true],
+  }],
+  analytics: [{
+    queryFolders: [{
+      "some-folder-id": [{
+        displayName: ["Some Folder", "Some Other Folder"],
+        sortOrder: [0, 1, 10, -5],
+        queries: [{
+          "some-query-id": [{
+            displayName: ["Some Query", "Some Other Query"],
+            sqlQuery: ["", "SELECT * FROM events", "SELECT * FROM users"],
+            description: ["", "A query description", "Another description"],
+          }],
+        }],
+      }],
+    }],
+  }],
+  customDashboards: [{
+    "12345678-1234-4234-9234-123456789012": [{
+      displayName: ["My Dashboard", "User Growth Dashboard"],
+      tsxSource: ["", "function Dashboard() { return <div>Hello</div>; }"],
+    }],
   }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;
 

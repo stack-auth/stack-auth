@@ -1,6 +1,6 @@
-import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
+import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const windows = [
   { key: "hour" as const },
@@ -34,13 +34,19 @@ export const GET = createSmartRouteHandler({
       }).defined(),
       capacity: yupObject({
         rate_per_second: yupNumber().defined(),
+        boost_multiplier: yupNumber().defined(),
         penalty_factor: yupNumber().defined(),
+        is_boost_active: yupBoolean().defined(),
+        boost_expires_at: yupString().nullable().defined(),
       }).defined(),
     }).defined(),
   }),
   handler: async ({ auth }) => {
-    const stats = await getEmailDeliveryStatsForTenancy(auth.tenancy.id);
-    const capacity = calculateCapacityRate(stats);
+    const [stats, boostExpiresAt] = await Promise.all([
+      getEmailDeliveryStatsForTenancy(auth.tenancy.id),
+      getEmailCapacityBoostExpiresAt(auth.tenancy.id),
+    ]);
+    const capacity = calculateCapacityRate(stats, boostExpiresAt);
 
     return {
       statusCode: 200,
@@ -57,7 +63,10 @@ export const GET = createSmartRouteHandler({
         }, {} as Record<typeof windows[number]["key"], { sent: number, bounced: number, marked_as_spam: number }>),
         capacity: {
           rate_per_second: capacity.ratePerSecond,
+          boost_multiplier: capacity.boostMultiplier,
           penalty_factor: capacity.penaltyFactor,
+          is_boost_active: capacity.isBoostActive,
+          boost_expires_at: boostExpiresAt?.toISOString() ?? null,
         },
       },
     };

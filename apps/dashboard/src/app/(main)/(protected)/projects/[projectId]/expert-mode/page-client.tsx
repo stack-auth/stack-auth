@@ -1,8 +1,9 @@
 "use client";
 
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Textarea, Typography } from "@/components/ui";
-import { useUpdateConfig } from "@/lib/config-update";
-import React from "react";
+import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import React, { useEffect, useMemo } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -44,43 +45,143 @@ function Gate(props: { onAuthorized: () => void }) {
   );
 }
 
+type ConfigLevel = "branch" | "environment";
+
+const CONFIG_LEVELS: { level: ConfigLevel, title: string, description: string }[] = [
+  {
+    level: "branch",
+    title: "Branch Config Override",
+    description: "Branch-level config (pushable). Overrides project defaults.",
+  },
+  {
+    level: "environment",
+    title: "Environment Config Override",
+    description: "Environment-level config. Overrides branch config. Used for secrets, API keys, etc.",
+  },
+];
+
+function ConfigOverrideEditor(props: {
+  level: ConfigLevel,
+  title: string,
+  description: string,
+}) {
+  const adminApp = useAdminApp();
+  const project = adminApp.useProject();
+
+  const [overrideJson, setOverrideJson] = React.useState<string | null>(null);
+  const [editedJson, setEditedJson] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  const [handleLoad, isLoading] = useAsyncCallback(async () => {
+    setLoadError(null);
+    try {
+      const override = await project.getConfigOverride(props.level);
+      const formatted = JSON.stringify(override, null, 2);
+      setOverrideJson(formatted);
+      setEditedJson(formatted);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to load config override";
+      setLoadError(message);
+    }
+  }, [project, props.level]);
+
+  // Load on first render
+  const [loaded, setLoaded] = React.useState(false);
+  useEffect(() => {
+    if (!loaded) {
+      setLoaded(true);
+      runAsynchronouslyWithAlert(handleLoad);
+    }
+  }, [loaded, handleLoad]);
+
+  const hasChanges = useMemo(() => {
+    if (overrideJson === null || editedJson === null) return false;
+    try {
+      // Compare parsed JSON to ignore whitespace differences
+      return JSON.stringify(JSON.parse(editedJson)) !== JSON.stringify(JSON.parse(overrideJson));
+    } catch {
+      // If edited JSON is invalid, consider it a change
+      return editedJson !== overrideJson;
+    }
+  }, [overrideJson, editedJson]);
+
+  const [handleSave, isSaving, saveError] = useAsyncCallback(async () => {
+    if (editedJson === null) return;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(editedJson);
+    } catch {
+      throw new Error("Invalid JSON. Please fix and try again.");
+    }
+
+    await project.replaceConfigOverride(props.level, parsed);
+    const formatted = JSON.stringify(parsed, null, 2);
+    setOverrideJson(formatted);
+    setEditedJson(formatted);
+  }, [project, props.level, editedJson]);
+
+  const handleDiscard = () => {
+    setEditedJson(overrideJson);
+  };
+
+  const displayError = loadError ?? (saveError instanceof Error ? saveError.message : saveError ? String(saveError) : null);
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle>{props.title}</CardTitle>
+        <Typography variant="secondary" type="footnote">
+          {props.description}
+        </Typography>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 flex-1">
+        {displayError && (
+          <Alert variant="destructive">{displayError}</Alert>
+        )}
+
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-[200px]">
+            <Typography variant="secondary">Loading...</Typography>
+          </div>
+        ) : (
+          <>
+            <Textarea
+              className="font-mono text-xs min-h-[300px] flex-1"
+              spellCheck={false}
+              value={editedJson ?? ""}
+              onChange={(e) => setEditedJson(e.target.value)}
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={handleDiscard}
+                disabled={isSaving || !hasChanges}
+                size="sm"
+              >
+                Discard
+              </Button>
+              <Button
+                onClick={handleSave}
+                loading={isSaving}
+                disabled={!hasChanges}
+                size="sm"
+              >
+                Replace Override
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExpertContent() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const completeConfig = project.useConfig();
-  const updateConfig = useUpdateConfig();
-
-  const [jsonInput, setJsonInput] = React.useState<string>("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<string | null>(null);
-
-  const handleSubmit = async () => {
-    setError(null);
-    setSuccess(null);
-    let parsed: any;
-    try {
-      parsed = jsonInput.trim() ? JSON.parse(jsonInput) : {};
-    } catch (e: any) {
-      setError("Invalid JSON. Please fix and try again.");
-      return;
-    }
-    setBusy(true);
-    try {
-      // Expert mode uses environment config (pushable: false) since we don't know what fields are being updated
-      await updateConfig({
-        adminApp,
-        configUpdate: parsed,
-        pushable: false,
-      });
-      setSuccess("Configuration override applied successfully.");
-      setJsonInput("");
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to update configuration.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <PageLayout title="Expert Mode" description="Internal configuration viewer and override tools" fillWidth>
@@ -93,11 +194,23 @@ function ExpertContent() {
         </div>
       </Alert>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Current Config */}
-        <Card className="min-h-[300px]">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {CONFIG_LEVELS.map(({ level, title, description }) => (
+          <ConfigOverrideEditor
+            key={level}
+            level={level}
+            title={title}
+            description={description}
+          />
+        ))}
+
+        {/* Complete Rendered Config (read-only) */}
+        <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle>Current complete config (read-only)</CardTitle>
+            <CardTitle>Complete Rendered Config</CardTitle>
+            <Typography variant="secondary" type="footnote">
+              The final merged config after all overrides and defaults are applied. Read-only.
+            </Typography>
           </CardHeader>
           <CardContent>
             <div className="border rounded-md bg-muted/30 p-2 overflow-auto text-xs leading-5 max-h-[60vh]">
@@ -107,52 +220,7 @@ function ExpertContent() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Update Config Override */}
-        <Card className="min-h-[300px] flex flex-col">
-          <CardHeader>
-            <CardTitle>Update Config Overrides</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 flex-1">
-            <Typography variant="secondary" type="footnote">
-              Paste a JSON object representing config overrides. Keep it minimal — only include keys you want to change.
-            </Typography>
-
-            {error && (
-              <Alert variant="destructive">{error}</Alert>
-            )}
-            {success && (
-              <Alert>{success}</Alert>
-            )}
-
-            <Textarea
-              className="font-mono text-xs min-h-[200px] flex-1"
-              spellCheck={false}
-              placeholder={`{\n  "some.config.key": true\n}`}
-              value={jsonInput}
-              onChange={(e) => setJsonInput(e.target.value)}
-            />
-
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setJsonInput("");
-                  setError(null);
-                  setSuccess(null);
-                }}
-                disabled={busy}
-              >
-                Reset
-              </Button>
-              <Button onClick={handleSubmit} loading={busy} disabled={busy}>
-                Apply Override
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </PageLayout>
   );
 }
-

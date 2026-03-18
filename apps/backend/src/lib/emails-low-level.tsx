@@ -10,12 +10,12 @@ import { runAsynchronously, wait } from '@stackframe/stack-shared/dist/utils/pro
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
 import nodemailer from 'nodemailer';
-import { Resend } from 'resend';
-import { getTenancy } from './tenancies';
 
 export function isSecureEmailPort(port: number | string) {
+  // "secure" in most SMTP clients means implicit TLS from byte 1 (SMTPS)
+  // STARTTLS ports (25/587/2587) should return false.
   let parsedPort = parseInt(port.toString());
-  return parsedPort === 465;
+  return parsedPort === 465 || parsedPort === 2465;
 }
 
 export type LowLevelEmailConfig = {
@@ -46,9 +46,9 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
 }>> {
   let finished = false;
   runAsynchronously(async () => {
-    await wait(10000);
+    await wait(15_000);
     if (!finished) {
-      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 10s; maybe the email service is too slow?", {
+      captureError("email-send-timeout", new StackAssertionError("Email send took longer than 15s; maybe the email service is too slow?", {
         config: options.emailConfig.type === 'shared' ? "shared" : pick(options.emailConfig, ['host', 'port', 'username', 'senderEmail', 'senderName']),
         to: options.to,
         subject: options.subject,
@@ -72,17 +72,25 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
           host: options.emailConfig.host,
           port: options.emailConfig.port,
           secure: options.emailConfig.secure,
+          connectionTimeout: 15000,
+          greetingTimeout: 10000,
+          socketTimeout: 20000,
+          dnsTimeout: 7000,
           auth: {
             user: options.emailConfig.username,
             pass: options.emailConfig.password,
           },
         });
 
-        await transporter.sendMail({
-          from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
-          ...options,
-          to: toArray,
-        });
+        try {
+          await transporter.sendMail({
+            from: `"${options.emailConfig.senderName}" <${options.emailConfig.senderEmail}>`,
+            ...options,
+            to: toArray,
+          });
+        } finally {
+          transporter.close();
+        }
 
         return Result.ok(undefined);
       } catch (error) {
@@ -204,103 +212,21 @@ export async function lowLevelSendEmailDirectWithoutRetries(options: LowLevelSen
   canRetry: boolean,
   message?: string,
 }>> {
-  return await _lowLevelSendEmailWithoutRetries(options);
-}
-
-// currently unused, although in the future we may want to use this to minimize the number of requests to Resend
-export async function lowLevelSendEmailResendBatchedDirect(resendApiKey: string, emailOptions: LowLevelSendEmailOptions[]) {
-  if (emailOptions.length === 0) {
-    return Result.ok([]);
-  }
-  if (emailOptions.length > 100) {
-    throw new StackAssertionError("sendEmailResendBatchedDirect expects at most 100 emails to be sent at once", { emailOptions });
-  }
-  if (emailOptions.some(option => option.tenancyId !== emailOptions[0].tenancyId)) {
-    throw new StackAssertionError("sendEmailResendBatchedDirect expects all emails to be sent from the same tenancy", { emailOptions });
-  }
-  const tenancy = await getTenancy(emailOptions[0].tenancyId);
-  if (!tenancy) {
-    throw new StackAssertionError("Tenancy not found");
-  }
-  const resend = new Resend(resendApiKey);
-  const result = await Result.retry(async (_) => {
-    const { data, error } = await resend.batch.send(emailOptions.map((option) => ({
-      from: option.emailConfig.senderEmail,
-      to: option.to,
-      subject: option.subject,
-      html: option.html ?? "",
-      text: option.text,
-    })));
-
-    if (data) {
-      return Result.ok(data.data);
-    }
-    if (error.name === "rate_limit_exceeded" || error.name === "internal_server_error") {
-      // these are the errors we want to retry
-      return Result.error(error);
-    }
-    throw new StackAssertionError("Failed to send email with Resend", { error });
-  }, 3, { exponentialDelayBase: 2000 });
-
-  return result;
-}
-
-export async function lowLevelSendEmailDirectViaProvider(options: LowLevelSendEmailOptions): Promise<Result<undefined, {
-  rawError: any,
-  errorType: string,
-  canRetry: boolean,
-  message?: string,
-}>> {
   if (!options.to) {
     throw new StackAssertionError("No recipient email address provided to sendEmail", omit(options, ['emailConfig']));
   }
 
-  class DoNotRetryError extends Error {
-    constructor(public readonly errorObj: {
-      rawError: any,
-      errorType: string,
-      canRetry: boolean,
-      message?: string,
-    }) {
-      super("This error should never be caught anywhere else but inside the lowLevelSendEmailDirectViaProvider function, something went wrong if you see this!");
-    }
-  }
-
-  let result;
-  try {
-    result = await Result.retry(async (attempt) => {
-      const result = await lowLevelSendEmailDirectWithoutRetries(options);
-
-      if (result.status === 'error') {
-        const extraData = {
-          host: options.emailConfig.host,
-          from: options.emailConfig.senderEmail,
-          to: options.to,
-          subject: options.subject,
-          error: result.error,
-        };
-
-        if (result.error.canRetry) {
-          console.warn("Failed to send email, but error is possibly transient so retrying.", extraData, result.error.rawError);
-          return Result.error(result.error);
-        }
-
-        console.warn("Failed to send email, and error is not transient, so not retrying.", extraData, result.error.rawError);
-        throw new DoNotRetryError(result.error);
-      }
-
-      return result;
-    }, 3, { exponentialDelayBase: 2000 });
-  } catch (error) {
-    if (error instanceof DoNotRetryError) {
-      return Result.error(error.errorObj);
-    }
-    throw error;
-  }
+  const result = await _lowLevelSendEmailWithoutRetries(options);
 
   if (result.status === 'error') {
-    console.warn("Failed to send email after all retries!", result.error);
-    return Result.error(result.error.errors[0]);
+    console.warn("Failed to send email.", {
+      host: options.emailConfig.host,
+      from: options.emailConfig.senderEmail,
+      to: options.to,
+      subject: options.subject,
+      error: result.error,
+    }, result.error.rawError);
   }
-  return Result.ok(undefined);
+
+  return result;
 }

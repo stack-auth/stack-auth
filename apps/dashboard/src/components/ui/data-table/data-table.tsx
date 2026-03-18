@@ -1,6 +1,5 @@
 "use client";
 
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -36,6 +35,7 @@ export function TableView<TData, TValue>(props: {
   columns: ColumnDef<TData, TValue>[],
   toolbarRender?: (table: TableType<TData>) => React.ReactNode,
   showDefaultToolbar?: boolean,
+  showResetFilters?: boolean,
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
   onRowClick?: (row: TData) => void,
@@ -46,6 +46,7 @@ export function TableView<TData, TValue>(props: {
         table={props.table}
         toolbarRender={props.toolbarRender}
         showDefaultToolbar={props.showDefaultToolbar}
+        showResetFilters={props.showResetFilters}
         defaultColumnFilters={props.defaultColumnFilters}
         defaultSorting={props.defaultSorting}
       />
@@ -56,7 +57,11 @@ export function TableView<TData, TValue>(props: {
               <TableRow key={headerGroup.id} >
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      style={header.column.columnDef.size != null ? { width: header.getSize() } : undefined}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -75,15 +80,18 @@ export function TableView<TData, TValue>(props: {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={(ev) => {
+                  onClick={props.onRowClick ? (ev) => {
                     // only trigger onRowClick if the element is a direct descendant; don't trigger for portals
                     if (ev.target instanceof Node && ev.currentTarget.contains(ev.target)) {
                       props.onRowClick?.(row.original);
                     }
-                  }}
+                  } : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      style={cell.column.columnDef.size != null ? { width: cell.column.getSize() } : undefined}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
@@ -114,10 +122,12 @@ type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[],
   data: TData[],
   toolbarRender?: (table: TableType<TData>) => React.ReactNode,
+  onTableReady?: (table: TableType<TData>) => void,
   defaultVisibility?: VisibilityState,
   defaultColumnFilters: ColumnFiltersState,
   defaultSorting: SortingState,
   showDefaultToolbar?: boolean,
+  showResetFilters?: boolean,
   onRowClick?: (row: TData) => void,
 }
 
@@ -125,10 +135,12 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   toolbarRender,
+  onTableReady,
   defaultVisibility,
   defaultColumnFilters,
   defaultSorting,
   showDefaultToolbar = true,
+  showResetFilters,
   onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
@@ -143,6 +155,7 @@ export function DataTable<TData, TValue>({
     columns={columns}
     data={data}
     toolbarRender={toolbarRender}
+    onTableReady={onTableReady}
     defaultVisibility={defaultVisibility}
     sorting={sorting}
     setSorting={setSorting}
@@ -157,86 +170,7 @@ export function DataTable<TData, TValue>({
     globalFilter={globalFilter}
     setGlobalFilter={setGlobalFilter}
     showDefaultToolbar={showDefaultToolbar}
-    onRowClick={onRowClick}
-  />;
-}
-
-type DataTableManualPaginationProps<TData, TValue> = DataTableProps<TData, TValue> & {
-  onUpdate: (options: {
-    cursor: string,
-    limit: number,
-    sorting: SortingState,
-    columnFilters: ColumnFiltersState,
-    globalFilters: any,
-  }) => Promise<{ nextCursor: string | null }>,
-}
-
-export function DataTableManualPagination<TData, TValue>({
-  columns,
-  data,
-  toolbarRender,
-  defaultVisibility,
-  defaultColumnFilters,
-  defaultSorting,
-  onRowClick,
-  onUpdate,
-  showDefaultToolbar = true,
-}: DataTableManualPaginationProps<TData, TValue>) {
-  const [sorting, setSorting] = React.useState<SortingState>(defaultSorting);
-  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 10 });
-  const [cursors, setCursors] = React.useState<Record<number, string>>({});
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(defaultColumnFilters);
-  const [globalFilter, setGlobalFilter] = React.useState<any>();
-  const [refreshCounter, setRefreshCounter] = React.useState(0);
-
-  React.useEffect(() => {
-    runAsynchronouslyWithAlert(async () => {
-      const { nextCursor } = await onUpdate({
-        cursor: cursors[pagination.pageIndex],
-        limit: pagination.pageSize,
-        sorting,
-        columnFilters,
-        globalFilters: globalFilter,
-      });
-      setCursors(c => {
-        if (!nextCursor) return c;
-        const nextIndex = pagination.pageIndex + 1;
-        return c[nextIndex] === nextCursor ? c : { ...c, [nextIndex]: nextCursor };
-      });
-    });
-  }, [pagination, sorting, columnFilters, refreshCounter, cursors, globalFilter, onUpdate]);
-
-  // Reset to first page when filters change
-  React.useEffect(() => {
-    setPagination(pagination => ({ ...pagination, pageIndex: 0 }));
-    setCursors({});
-  }, [columnFilters, sorting, pagination.pageSize]);
-
-  // Refresh the users when the global filter changes. Delay to prevent unnecessary re-renders.
-  React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setRefreshCounter(x => x + 1);
-    }, 3_000);
-    return () => clearTimeout(timer);
-  }, [globalFilter]);
-
-  return <DataTableBase
-    columns={columns}
-    data={data}
-    toolbarRender={toolbarRender}
-    sorting={sorting}
-    setSorting={setSorting}
-    pagination={pagination}
-    setPagination={setPagination}
-    columnFilters={columnFilters}
-    setColumnFilters={setColumnFilters}
-    rowCount={pagination.pageSize * Object.keys(cursors).length + (cursors[pagination.pageIndex + 1] ? 1 : 0)}
-    globalFilter={globalFilter}
-    setGlobalFilter={setGlobalFilter}
-    defaultColumnFilters={defaultColumnFilters}
-    defaultSorting={defaultSorting}
-    defaultVisibility={defaultVisibility}
-    showDefaultToolbar={showDefaultToolbar}
+    showResetFilters={showResetFilters}
     onRowClick={onRowClick}
   />;
 }
@@ -259,6 +193,7 @@ function DataTableBase<TData, TValue>({
   columns,
   data,
   toolbarRender,
+  onTableReady,
   defaultVisibility,
   sorting,
   setSorting,
@@ -274,10 +209,12 @@ function DataTableBase<TData, TValue>({
   manualPagination = true,
   manualFiltering = true,
   showDefaultToolbar = true,
+  showResetFilters,
   onRowClick,
 }: DataTableBaseProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultVisibility || {});
+  const calledOnTableReadyRef = React.useRef(false);
 
   const table: TableType<TData> = useReactTable({
     data,
@@ -310,11 +247,19 @@ function DataTableBase<TData, TValue>({
     rowCount,
   });
 
+  React.useEffect(() => {
+    if (!calledOnTableReadyRef.current && onTableReady) {
+      onTableReady(table);
+      calledOnTableReadyRef.current = true;
+    }
+  }, [table, onTableReady]);
+
   return <TableView
     table={table}
     columns={columns}
     toolbarRender={toolbarRender}
     showDefaultToolbar={showDefaultToolbar}
+    showResetFilters={showResetFilters}
     defaultColumnFilters={defaultColumnFilters}
     defaultSorting={defaultSorting}
     onRowClick={onRowClick}

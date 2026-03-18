@@ -546,6 +546,22 @@ export const projectLogoFullDarkModeUrlSchema = urlSchema.max(MAX_IMAGE_SIZE_BAS
 export const projectDescriptionSchema = yupString().nullable().meta({ openapiField: { description: 'A human readable description of the project', exampleValue: 'A music streaming service' } });
 export const projectCreatedAtMillisSchema = yupNumber().meta({ openapiField: { description: _createdAtMillisDescription('project'), exampleValue: 1630000000000 } });
 export const projectIsProductionModeSchema = yupBoolean().meta({ openapiField: { description: 'Whether the project is in production mode', exampleValue: true } });
+export const projectOnboardingStatusValues = [
+  "config_choice",
+  "apps_selection",
+  "auth_setup",
+  "domain_setup",
+  "email_theme_setup",
+  "payments_setup",
+  "completed",
+] as const;
+export type ProjectOnboardingStatus = typeof projectOnboardingStatusValues[number];
+export const projectOnboardingStatusSchema = yupString().oneOf(projectOnboardingStatusValues).meta({
+  openapiField: {
+    description: "The current dashboard onboarding stage for this project.",
+    exampleValue: "config_choice",
+  },
+});
 // Project config
 export const projectConfigIdSchema = yupString().meta({ openapiField: { description: _idDescription('project config'), exampleValue: 'd09201f0-54f5-40bd-89ff-6d1815ddad24' } });
 export const projectAllowLocalhostSchema = yupBoolean().meta({ openapiField: { description: 'Whether localhost is allowed as a domain for this project. Should only be allowed in development mode', exampleValue: true } });
@@ -599,6 +615,15 @@ export const emailTemplateListSchema = yupRecord(
     themeId: templateThemeIdSchema,
   })
 ).meta({ openapiField: { description: 'Record of email template IDs to their display name and source code' } });
+
+// Custom dashboards
+export const customDashboardsSchema = yupRecord(
+  yupString().uuid(),
+  yupObject({
+    displayName: yupString().meta({ openapiField: { description: 'Custom dashboard name', exampleValue: 'User Growth Dashboard' } }).defined(),
+    tsxSource: yupString().meta({ openapiField: { description: 'Custom dashboard source code tsx component' } }).defined(),
+  })
+).meta({ openapiField: { description: 'Record of custom dashboard IDs to their display name and source code' } });
 
 // Payments
 export const customerTypeSchema = yupString().oneOf(['user', 'team', 'custom']);
@@ -733,6 +758,10 @@ export const userTotpSecretMutationSchema = base64Schema.nullable().meta({ opena
 // Auth
 export const restrictedReasonTypes = ["anonymous", "email_not_verified", "restricted_by_administrator"] as const;
 export type RestrictedReasonType = typeof restrictedReasonTypes[number];
+export const restrictedReasonSchema = yupObject({
+  type: yupString().oneOf(restrictedReasonTypes).defined(),
+});
+export type RestrictedReason = yup.InferType<typeof restrictedReasonSchema>;
 
 export const accessTokenPayloadSchema = yupObject({
   sub: yupString().defined(),
@@ -750,9 +779,8 @@ export const accessTokenPayloadSchema = yupObject({
   selected_team_id: yupString().defined().nullable(),
   is_anonymous: yupBoolean().defined(),
   is_restricted: yupBoolean().defined(),
-  restricted_reason: yupObject({
-    type: yupString().oneOf(restrictedReasonTypes).defined(),
-  }).defined().nullable(),
+  restricted_reason: restrictedReasonSchema.defined().nullable(),
+  requires_totp_mfa: yupBoolean().defined(),
 });
 export const signInEmailSchema = strictEmailSchema(undefined).meta({ openapiField: { description: 'The email to sign in with.', exampleValue: 'johndoe@example.com' } });
 export const emailOtpSignInCallbackUrlSchema = urlSchema.meta({ openapiField: { description: 'The base callback URL to construct the magic link from. A query parameter `code` with the verification code will be appended to it. The page should then make a request to the `/auth/otp/sign-in` endpoint.', exampleValue: 'https://example.com/handler/magic-link-callback' } });

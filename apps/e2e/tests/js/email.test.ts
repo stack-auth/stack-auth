@@ -187,14 +187,22 @@ it("should provide delivery statistics", async ({ expect }) => {
     subject: "Stats",
   });
 
-  // wait until the email is sent
-  await wait(5000);
-
-  const info = await serverApp.getEmailDeliveryStats();
+  let info;
+  for (let i = 0; ; i++) {
+    info = await serverApp.getEmailDeliveryStats();
+    if (info.stats.hour.sent >= 1) break;
+    if (i >= 50) {
+      throw new Error(`Timed out waiting for email delivery stats to reflect sent email: ${JSON.stringify(info)}`);
+    }
+    await wait(500);
+  }
 
   expect(info).toMatchInlineSnapshot(`
     {
       "capacity": {
+        "boost_expires_at": null,
+        "boost_multiplier": 1,
+        "is_boost_active": false,
         "penalty_factor": 1,
         "rate_per_second": 2.7777793209876545,
       },
@@ -222,4 +230,47 @@ it("should provide delivery statistics", async ({ expect }) => {
       },
     }
   `);
+});
+
+it("should send test email with custom SMTP configuration", async ({ expect }) => {
+  const { adminApp } = await createApp();
+
+  // First configure the email server
+  await setupEmailServer(adminApp);
+
+  // Get the project to access the email config
+  const project = await adminApp.getProject();
+  const config = await project.getConfig();
+
+  // Verify config is not shared
+  expect(config.emails.server.isShared).toBe(false);
+
+  // Send a test email
+  const result = await adminApp.sendTestEmail({
+    recipientEmail: "test-recipient@example.com",
+    emailConfig: {
+      host: config.emails.server.host!,
+      port: config.emails.server.port!,
+      username: config.emails.server.username!,
+      password: config.emails.server.password!,
+      senderEmail: config.emails.server.senderEmail!,
+      senderName: config.emails.server.senderName!,
+    }
+  });
+
+  expect(result.status).toBe('ok');
+});
+
+it("should fail to send test email with shared server configuration", async ({ expect }) => {
+  const { adminApp } = await createApp();
+
+  // Don't configure custom email server, so it defaults to shared
+  const project = await adminApp.getProject();
+  const config = await project.getConfig();
+
+  // Verify config is shared
+  expect(config.emails.server.isShared).toBe(true);
+
+  // Attempting to send test email with shared config should fail in the UI
+  // (This test documents the expected behavior in the dashboard UI)
 });

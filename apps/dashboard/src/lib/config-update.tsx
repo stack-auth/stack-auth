@@ -2,6 +2,7 @@
 
 import { Link } from "@/components/link";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import { getPublicEnvVar } from "@/lib/env";
 import type { PushedConfigSource, StackAdminApp } from "@stackframe/stack";
 import type { EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import React, { createContext, useCallback, useContext, useState } from "react";
@@ -43,27 +44,33 @@ export function ConfigUpdateDialogProvider({ children }: { children: React.React
     // Fetch the source first
     const project = await adminApp.getProject();
     const source = await project.getPushedConfigSource();
+    const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
-    // For unlinked sources, save directly without showing a dialog
-    if (source.type === "unlinked") {
-      await project.updatePushedConfig(configUpdate as any);
-      return true;
+    let shouldUpdate = true;
+    if (source.type !== "unlinked") {
+      shouldUpdate = await new Promise((resolve) => {
+        setDialogState({
+          isOpen: true,
+          adminApp,
+          configUpdate,
+          resolve,
+          source,
+          isLoadingSource: false,
+          commitMessage: "",
+          // Temporary: 50/50 chance for GitHub dialog
+          showConnectWithGitHub: Math.random() < 0.5,
+        });
+      });
     }
 
-    // Show dialog for other source types
-    return await new Promise((resolve) => {
-      setDialogState({
-        isOpen: true,
-        adminApp,
-        configUpdate,
-        resolve,
-        source,
-        isLoadingSource: false,
-        commitMessage: "",
-        // Temporary: 50/50 chance for GitHub dialog
-        showConnectWithGitHub: Math.random() < 0.5,
-      });
-    });
+    if (shouldUpdate) {
+      await project.updatePushedConfig(configUpdate);
+      if (!isLocalEmulator) {
+        await project.resetConfigOverrideKeys("environment", Object.keys(configUpdate));
+      }
+      return true;
+    }
+    return false;
   }, []);
 
   const handleClose = useCallback((result: boolean) => {
@@ -256,6 +263,7 @@ export type UpdateConfigOptions = {
  */
 export function useUpdateConfig() {
   const { showPushableDialog } = useConfigUpdateDialog();
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return useCallback(async (options: UpdateConfigOptions): Promise<boolean> => {
     const { adminApp, configUpdate, pushable } = options;
@@ -264,14 +272,17 @@ export function useUpdateConfig() {
       // Show dialog (or save directly if unlinked) based on source type
       return await showPushableDialog(adminApp, configUpdate);
     } else {
+      if (isLocalEmulator) {
+        alert("These settings are read-only in the local emulator. Update them in your production deployment instead.");
+        return false;
+      }
       // Update environment config directly
       const project = await adminApp.getProject();
-      // Cast to any because the strict type guard prevents direct usage
       // eslint-disable-next-line no-restricted-syntax -- this is the hook implementation itself
-      await project.updateConfig(configUpdate as any);
+      await project.updateConfig(configUpdate);
       return true;
     }
-  }, [showPushableDialog]);
+  }, [isLocalEmulator, showPushableDialog]);
 }
 
 /**

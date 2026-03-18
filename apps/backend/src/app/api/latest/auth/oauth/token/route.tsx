@@ -1,4 +1,6 @@
-import { oauthServer } from "@/oauth";
+import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
+import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
+import { getProjectBranchFromClientId, oauthServer } from "@/oauth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { InvalidClientError, InvalidGrantError, InvalidRequestError, Request as OAuthRequest, Response as OAuthResponse, ServerError } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -15,6 +17,8 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     body: yupObject({
       grant_type: yupString().oneOf(["authorization_code", "refresh_token"]).defined(),
+      client_id: yupString().optional(),
+      client_secret: yupString().optional(),
     }).unknown().defined(),
   }).defined(),
   response: yupObject({
@@ -24,6 +28,25 @@ export const POST = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler(req, fullReq) {
+    // Pre-validate the publishable client key to provide specific error messages
+    // before the OAuth library processes the request
+    const clientId = req.body.client_id;
+    const clientSecret = req.body.client_secret;
+
+    if (clientId) {
+      const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(clientId), true);
+      if (tenancy) {
+        if (clientSecret) {
+          const keyCheck = await checkApiKeySet(tenancy.project.id, { publishableClientKey: clientSecret });
+          if (keyCheck.status === "error") {
+            throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidOAuthClientIdOrSecret());
+          }
+        } else if (tenancy.config.project.requirePublishableClientKey) {
+          throw new KnownErrors.PublishableClientKeyRequiredForProject(tenancy.project.id);
+        }
+      }
+    }
+
     const oauthRequest = new OAuthRequest({
       headers: {
         ...fullReq.headers,

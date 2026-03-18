@@ -1,5 +1,6 @@
 import { CodeExample } from '../lib/code-examples';
 import { apiKeysExamples } from './api-keys';
+import { conceptsExamples } from './concepts';
 import { customizationExamples } from './customization';
 import { paymentsExamples } from './payments';
 import { sdkEmailsExamples } from './sdk-emails';
@@ -10,6 +11,7 @@ import { viteExamples } from './vite-example';
 const allExamples: Record<string, Record<string, Record<string, CodeExample[]>>> = {
   'setup': setupExamples,
   'apps': {...apiKeysExamples, ...paymentsExamples },
+  'concepts': conceptsExamples,
   'getting-started': viteExamples,
   'sdk': {
     ...sdkEmailsExamples,

@@ -1,3 +1,4 @@
+import type { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { XOR } from "@stackframe/stack-shared/dist/utils/types";
 
 export type AdminSentEmail = {
@@ -36,6 +37,18 @@ export type AdminEmailOutboxSimpleStatus =
   | "ok"
   | "error";
 
+export type AdminEmailOutboxCreatedWith = "draft" | "programmatic-call";
+
+// Error entry from a failed send attempt
+export type AdminSendAttemptError = {
+  attemptNumber: number,
+  timestamp: string,
+  externalMessage: string,
+  externalDetails: Record<string, unknown>,
+  internalMessage: string,
+  internalDetails: Record<string, unknown>,
+};
+
 // =============================== BASE TYPES ===============================
 
 // Base fields present on all emails
@@ -43,11 +56,22 @@ type AdminEmailOutboxBase = {
   id: string,
   createdAt: Date,
   updatedAt: Date,
+  tsxSource: string,
+  themeId: string | null,
   to: AdminEmailOutboxRecipient,
   scheduledAt: Date,
+  // Source tracking for grouping emails by template/draft
+  createdWith: AdminEmailOutboxCreatedWith,
+  emailDraftId: string | null,
+  emailProgrammaticCallTemplateId: string | null,
+  variables: Record<string, Json>,
   isPaused: false,
   hasRendered: false,
   hasDelivered: false,
+  // Retry tracking fields
+  sendRetries: number,
+  nextSendRetryAt: Date | null,
+  sendAttemptErrors: AdminSendAttemptError[] | null,
 };
 
 // Fields available after rendering completes successfully
@@ -209,6 +233,8 @@ type SendEmailOptionsBase = {
   themeId?: string | null | false,
   subject?: string,
   notificationCategoryName?: string,
+  scheduledAt?: Date,
+  variables?: Record<string, unknown>,
 }
 
 
@@ -219,10 +245,7 @@ export type SendEmailOptions = SendEmailOptionsBase
   ]>
   & XOR<[
     { html: string },
-    {
-      templateId: string,
-      variables?: Record<string, any>,
-    },
+    { templateId: string },
     { draftId: string }
   ]>
 
@@ -241,7 +264,10 @@ export type EmailDeliveryStats = {
 
 export type EmailDeliveryCapacity = {
   rate_per_second: number,
+  boost_multiplier: number,
   penalty_factor: number,
+  is_boost_active: boolean,
+  boost_expires_at: string | null,
 };
 
 export type EmailDeliveryInfo = {

@@ -403,6 +403,99 @@ it("should fail rendering with non-existent theme id", async ({ expect }) => {
   `);
 });
 
+it("should delete an email draft", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Delete Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const draftSource = `import { Container } from "@react-email/components";
+import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+export function EmailTemplate({ user, project }: Props) {
+  return (
+    <Container>
+      <Subject value="Draft to Delete" />
+      <NotificationCategory value="Transactional" />
+      <div>This draft will be deleted</div>
+    </Container>
+  );
+}`;
+
+  // Create a draft
+  const createRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      display_name: "Draft to Delete",
+      theme_id: false,
+      tsx_source: draftSource,
+    },
+  });
+  expect(createRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "id": "<stripped UUID>" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  const draftId = createRes.body.id as string;
+
+  // Verify it exists
+  const getRes1 = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(getRes1.status).toBe(200);
+
+  // Delete it
+  const deleteRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  expect(deleteRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "ok": "ok" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Verify it no longer exists - return 404 instead of a Prisma error
+  const getRes2 = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(getRes2.status).toBe(404);
+
+  // Verify it's not in the list
+  const listRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(listRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "drafts": [] },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should return error when deleting non-existent draft", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts 404 Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const nonExistentId = "00000000-0000-0000-0000-000000000000";
+  const deleteRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${nonExistentId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  // Return a proper 404 so niceBackendFetch doesn't throw
+  expect(deleteRes.status).toBe(404);
+});
+
 it("should reject draft that throws an error when rendered", async ({ expect }) => {
   await Project.createAndSwitch({
     display_name: "Email Drafts Invalid JSX Project",

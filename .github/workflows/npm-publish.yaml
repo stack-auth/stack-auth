@@ -43,6 +43,6 @@ jobs:
 
       - name: Publish packages
         # pnpm publish skips versions that already exist on npm by default
-        run: pnpm publish -r --no-git-checks
+        run: pnpm publish -r --no-git-checks --access public
         env:
           NPM_CONFIG_PROVENANCE: true

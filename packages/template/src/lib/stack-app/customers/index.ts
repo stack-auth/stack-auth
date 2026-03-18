@@ -58,6 +58,7 @@ export type CustomerProduct = {
   stackable: boolean,
   type: "one_time" | "subscription",
   subscription: null | {
+    subscriptionId: string | null,
     currentPeriodEnd: Date | null,
     cancelAtPeriodEnd: boolean,
     isCancelable: boolean,

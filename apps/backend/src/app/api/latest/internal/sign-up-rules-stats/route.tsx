@@ -55,7 +55,10 @@ export const GET = createSmartRouteHandler({
     const result = await client.query({
       query: `
         SELECT
-          data.ruleId as rule_id,
+          COALESCE(
+            NULLIF(CAST(data.rule_id, 'Nullable(String)'), ''),
+            NULLIF(CAST(data.ruleId, 'Nullable(String)'), '')
+          ) as rule_id,
           data.action as action,
           toStartOfHour(event_at) as hour
         FROM analytics_internal.events
@@ -72,11 +75,13 @@ export const GET = createSmartRouteHandler({
       },
       format: "JSONEachRow",
     });
-    const rows: {
-      rule_id: string,
+    const rawRows: {
+      rule_id: string | null,
       action: "allow" | "reject" | "restrict" | "log",
       hour: string,
     }[] = await result.json();
+
+    const rows = rawRows.filter((row): row is typeof row & { rule_id: string } => row.rule_id != null && row.rule_id !== '');
 
     // Group by rule and hour for sparkline data
     const ruleTriggersMap = new Map<string, {

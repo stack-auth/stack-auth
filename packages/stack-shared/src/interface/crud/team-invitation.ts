@@ -5,6 +5,7 @@ import { yupObject } from "../../schema-fields";
 export const teamInvitationDetailsClientReadSchema = yupObject({
   id: schemaFields.yupString().uuid().defined(),
   team_id: schemaFields.teamIdSchema.defined(),
+  team_display_name: schemaFields.yupString().defined(),
   expires_at_millis: schemaFields.yupNumber().defined(),
   recipient_email: schemaFields.emailSchema.defined(),
 }).defined();

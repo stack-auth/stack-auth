@@ -96,6 +96,7 @@ export const GET = createSmartRouteHandler({
             product: productToInlineProduct(product.product),
             type: product.type,
             subscription: product.subscription ? {
+              subscription_id: product.subscription.subscriptionId,
               current_period_end: product.subscription.currentPeriodEnd ? product.subscription.currentPeriodEnd.toISOString() : null,
               cancel_at_period_end: product.subscription.cancelAtPeriodEnd,
               is_cancelable: product.subscription.isCancelable,

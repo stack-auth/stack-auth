@@ -100,6 +100,9 @@ jobs:
       - name: Wait on QStash
         run: pnpx wait-on tcp:localhost:6725
 
+      - name: Wait on ClickHouse
+        run: pnpx wait-on http://localhost:6736/ping
+
       - name: Initialize database
         run: pnpm run db:init
 
