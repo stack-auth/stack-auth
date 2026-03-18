@@ -73,6 +73,8 @@ export const POST = createSmartRouteHandler({
 });
 
 const SAFE_CLICKHOUSE_ERROR_CODES = [
+  43, // ILLEGAL_TYPE_OF_ARGUMENT
+  47, // UNKNOWN_IDENTIFIER
   62, // SYNTAX_ERROR
   159, // TIMEOUT_EXCEEDED
   164, // READONLY
