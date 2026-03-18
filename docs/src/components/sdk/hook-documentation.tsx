@@ -40,39 +40,36 @@ function SyntaxHighlightedCode({ code, language = 'typescript' }: { code: string
     if (!isClient) return;
 
     const updateHighlightedCode = async () => {
-      try {
-        const isDarkMode = document.documentElement.classList.contains('dark') ||
-          getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
-        const theme = isDarkMode ? 'github-dark' : 'github-light';
+      const isDarkMode = document.documentElement.classList.contains('dark') ||
+        getComputedStyle(document.documentElement).getPropertyValue('--fd-background').includes('0 0% 3.9%');
+      const theme = isDarkMode ? 'github-dark' : 'github-light';
 
-        const html = await codeToHtml(code, {
-          lang: language,
-          theme,
-          transformers: [{
-            pre(node) {
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
-            },
-            code(node) {
-              if (node.properties.style) {
-                node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
-              }
+      const html = await codeToHtml(code, {
+        lang: language,
+        theme,
+        transformers: [{
+          pre(node) {
+            if (node.properties.style) {
+              node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
             }
-          }]
-        });
-        setHighlightedCode(html);
-      } catch (error) {
-        console.error('Error highlighting code:', error);
-        setHighlightedCode(`<pre><code>${code}</code></pre>`);
-      }
+          },
+          code(node) {
+            if (node.properties.style) {
+              node.properties.style = (node.properties.style as string).replace(/background[^;]*;?/g, '');
+            }
+          }
+        }]
+      });
+      setHighlightedCode(html);
     };
 
-    runAsynchronously(updateHighlightedCode);
+    const onError = () => setHighlightedCode('');
+
+    runAsynchronously(updateHighlightedCode, { onError });
 
     // Listen for theme changes
     const observer = new MutationObserver(() => {
-      runAsynchronously(updateHighlightedCode);
+      runAsynchronously(updateHighlightedCode, { onError });
     });
 
     observer.observe(document.documentElement, {
