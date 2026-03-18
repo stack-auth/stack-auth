@@ -381,7 +381,7 @@ export function HookDocumentation({ hookInfo }: HookDocumentationProps) {
                   const simplifiedType = simplifyOptionsType(param.type);
                   return (
                     <ParamField
-                      key={index}
+                      key={param.name}
                       path={param.name}
                       type={simplifiedType}
                       required={!param.optional}
