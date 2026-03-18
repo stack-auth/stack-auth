@@ -103,19 +103,17 @@ async function main() {
       targetOutputData = loadOutputData(OUTPUT_FILE_PATH);
 
       // TODO next-release these are hacks for the migration, delete them
-      if (targetOutputData) {
-        targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
-          if ("config" in output.responseJson) {
-            delete output.responseJson.config.id;
-            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
-              // `any` because this is historical output JSON from disk.
-              // We intentionally keep this "migration hack" untyped.
-              .filter((provider: any) => provider.enabled)
-              .map((provider: any) => omit(provider, ["enabled"]));
-          }
-          return output;
-        });
-      }
+      targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
+        if ("config" in output.responseJson) {
+          delete output.responseJson.config.id;
+          output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
+            // `any` because this is historical output JSON from disk.
+            // We intentionally keep this "migration hack" untyped.
+            .filter((provider: any) => provider.enabled)
+            .map((provider: any) => omit(provider, ["enabled"]));
+        }
+        return output;
+      });
 
       console.log(`Loaded previous output data for verification`);
     } catch (error) {
@@ -189,30 +187,6 @@ async function main() {
       ]);
       void currentProject;
 
-      // Fetch users with pagination
-      const PAGE_LIMIT = 1000;
-      const allUsers: any[] = [];
-      let cursor: string | undefined = undefined;
-      while (allUsers.length < maxUsersPerProject) {
-        const remainingToFetch = maxUsersPerProject - allUsers.length;
-        const limit = Math.min(PAGE_LIMIT, remainingToFetch);
-        const cursorParam: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-        const usersPage = await expectStatusCode(200, `/api/v1/users?limit=${limit}${cursorParam}`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        });
-        allUsers.push(...usersPage.items);
-        if (!usersPage.pagination?.next_cursor) {
-          break;
-        }
-        cursor = usersPage.pagination.next_cursor;
-      }
-      const users = { items: allUsers.slice(0, maxUsersPerProject) };
-
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
       const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
       const paymentsVerifier = tenancy && paymentsConfig
@@ -239,86 +213,114 @@ async function main() {
       const verifiedTeams = new Set<string>();
 
       if (!skipUsers) {
-        for (let j = 0; j < users.items.length; j++) {
-          const user = users.items[j];
-          await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
-            // get user individually
-            await expectStatusCode(200, `/api/v1/users/${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
+        let userCount = 0;
+        if (tenancy) {
+          // TS thinks this could be undefined (no default in switch), ESLint disagrees
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+          const prisma = (await getPrismaClientForTenancy(tenancy))!;
+          userCount = await prisma.projectUser.count({ where: { tenancyId: tenancy.id } });
+        }
 
-            // list project permissions
-            const projectPermissions = await expectStatusCode(200, `/api/v1/project-permissions?user_id=${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-            for (const projectPermission of projectPermissions.items) {
-              // `any` because these endpoint response types aren't imported here,
-              // and this script is intentionally tolerant of response shape changes.
-              if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
-                throw new StackAssertionError(deindent`
-                  Project permission ${projectPermission.id} not found in project permission definitions.
-                `);
-              }
-            }
+        // Process users page-by-page to avoid holding all users in memory at once
+        const PAGE_LIMIT = 1000;
+        let userCursor: string | undefined = undefined;
+        let usersProcessed = 0;
+        let hasMore = true;
 
-            // list teams
-            const teams = await expectStatusCode(200, `/api/v1/teams?user_id=${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-
-            for (const team of teams.items) {
-              await recurse(`[team ${team.id}] ${team.name}`, async (recurse) => {
-                // list team permissions
-                const teamPermissions = await expectStatusCode(200, `/api/v1/team-permissions?team_id=${team.id}`, {
-                  method: "GET",
-                  headers: {
-                    "x-stack-project-id": projectId,
-                    "x-stack-access-type": "admin",
-                    "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-                  },
-                });
-                for (const teamPermission of teamPermissions.items) {
-                  // `any` because these endpoint response types aren't imported here,
-                  // and this script is intentionally tolerant of response shape changes.
-                  if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
-                    throw new StackAssertionError(deindent`
-                      Team permission ${teamPermission.id} not found in team permission definitions.
-                    `);
-                  }
-                }
-              });
-
-              if (paymentsVerifier && !verifiedTeams.has(team.id)) {
-                await paymentsVerifier.verifyCustomerPayments({
-                  customerType: "team",
-                  customerId: team.id,
-                });
-                verifiedTeams.add(team.id);
-              }
-            }
-
-            if (paymentsVerifier) {
-              await paymentsVerifier.verifyCustomerPayments({
-                customerType: "user",
-                customerId: user.id,
-              });
-            }
+        while (hasMore && usersProcessed < maxUsersPerProject) {
+          const remainingToFetch = maxUsersPerProject - usersProcessed;
+          const limit = Math.min(PAGE_LIMIT, remainingToFetch);
+          const cursorParam: string = userCursor ? `&cursor=${encodeURIComponent(userCursor)}` : "";
+          const usersPage = await expectStatusCode(200, `/api/v1/users?limit=${limit}${cursorParam}`, {
+            method: "GET",
+            headers: {
+              "x-stack-project-id": projectId,
+              "x-stack-access-type": "admin",
+              "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+            },
           });
+
+          for (const user of usersPage.items) {
+            if (usersProcessed >= maxUsersPerProject) break;
+            usersProcessed++;
+            await recurse(`[user ${usersProcessed}/${userCount}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
+              await expectStatusCode(200, `/api/v1/users/${user.id}`, {
+                method: "GET",
+                headers: {
+                  "x-stack-project-id": projectId,
+                  "x-stack-access-type": "admin",
+                  "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                },
+              });
+
+              const projectPermissions = await expectStatusCode(200, `/api/v1/project-permissions?user_id=${user.id}`, {
+                method: "GET",
+                headers: {
+                  "x-stack-project-id": projectId,
+                  "x-stack-access-type": "admin",
+                  "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                },
+              });
+              for (const projectPermission of projectPermissions.items) {
+                // `any` because these endpoint response types aren't imported here,
+                // and this script is intentionally tolerant of response shape changes.
+                if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
+                  throw new StackAssertionError(deindent`
+                      Project permission ${projectPermission.id} not found in project permission definitions.
+                    `);
+                }
+              }
+
+              const teams = await expectStatusCode(200, `/api/v1/teams?user_id=${user.id}`, {
+                method: "GET",
+                headers: {
+                  "x-stack-project-id": projectId,
+                  "x-stack-access-type": "admin",
+                  "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                },
+              });
+
+              for (const team of teams.items) {
+                await recurse(`[team ${team.id}] ${team.name}`, async (recurse) => {
+                  const teamPermissions = await expectStatusCode(200, `/api/v1/team-permissions?team_id=${team.id}`, {
+                    method: "GET",
+                    headers: {
+                      "x-stack-project-id": projectId,
+                      "x-stack-access-type": "admin",
+                      "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                    },
+                  });
+                  for (const teamPermission of teamPermissions.items) {
+                    // `any` because these endpoint response types aren't imported here,
+                    // and this script is intentionally tolerant of response shape changes.
+                    if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
+                      throw new StackAssertionError(deindent`
+                          Team permission ${teamPermission.id} not found in team permission definitions.
+                        `);
+                    }
+                  }
+                });
+
+                if (paymentsVerifier && !verifiedTeams.has(team.id)) {
+                  await paymentsVerifier.verifyCustomerPayments({
+                    customerType: "team",
+                    customerId: team.id,
+                  });
+                    verifiedTeams.add(team.id);
+                }
+              }
+
+              if (paymentsVerifier) {
+                await paymentsVerifier.verifyCustomerPayments({
+                  customerType: "user",
+                  customerId: user.id,
+                });
+              }
+            });
+          }
+
+          hasMore = !!usersPage.pagination?.next_cursor;
+          userCursor = usersPage.pagination?.next_cursor ?? undefined;
         }
 
         if (paymentsVerifier) {

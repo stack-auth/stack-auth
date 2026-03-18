@@ -96,7 +96,7 @@ export function createApiHelpers(options: {
   }
 
   function verifyOutputCompleteness() {
-    // targetOutputData is old output file. 
+    // targetOutputData is old output file.
     if (!targetOutputData) return;
     for (const [endpoint, expectedOutputs] of Object.entries(targetOutputData)) {
       const actualCount = outputCountByEndpoint.get(endpoint) ?? 0;
