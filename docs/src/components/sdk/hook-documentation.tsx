@@ -149,9 +149,9 @@ function simplifyOptionsType(optionsType: string): string {
     return `{ ${parts.join('; ')}; ... }`;
   }
 
-  // If still too long, truncate
+  // If still too long, truncate with an ellipsis object
   if (cleaned.length > 60) {
-    return 'GetUserOptions';
+    return '{ ... }';
   }
 
   return cleaned;
@@ -211,7 +211,9 @@ function formatHookSignatures(hookName: string, signatures: string[]): string {
 
       // Prefer the most general signature (with union return type or null)
       if (parsed.returnType.includes('null') || parsed.returnType.includes('|')) {
-        return `declare function ${hookName}(options?: GetUserOptions): ${parsed.returnType};`;
+        const params = parsed.params.trim() ? simplifyOptionsType(parsed.params) : '';
+        const paramStr = params ? `options?: ${params}` : '';
+        return `declare function ${hookName}(${paramStr}): ${parsed.returnType};`;
       }
     }
   }
@@ -220,7 +222,9 @@ function formatHookSignatures(hookName: string, signatures: string[]): string {
   for (const sig of signatures) {
     const parsed = parseSignatureComponents(sig);
     if (parsed && !parsed.returnType.includes('Internal')) {
-      return `declare function ${hookName}(options?: GetUserOptions): ${parsed.returnType};`;
+      const params = parsed.params.trim() ? simplifyOptionsType(parsed.params) : '';
+      const paramStr = params ? `options?: ${params}` : '';
+      return `declare function ${hookName}(${paramStr}): ${parsed.returnType};`;
     }
   }
 
