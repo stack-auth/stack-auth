@@ -26,6 +26,10 @@ import {
   waitForSyncedTeamMemberDeletion,
   waitForSyncedTeamPermission,
   waitForSyncedTeamPermissionDeletion,
+  waitForSyncedProjectPermission,
+  waitForSyncedProjectPermissionDeletion,
+  waitForCondition,
+  waitForSyncedNotificationPreference,
   waitForTable
 } from './external-db-sync-utils';
 
@@ -956,6 +960,168 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   /**
    * What it does:
+   * - Creates a user, grants a project permission, verifies in external DB,
+   *   revokes the permission, and verifies removal.
+   */
+  test('ProjectPermission CRUD sync (Postgres)', async () => {
+    const dbName = 'project_permission_crud_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    // Create a project permission definition via config
+    await Project.updateConfig({
+      "rbac.permissions": { "test_perm": { scope: "project" } },
+    });
+
+    const user = await User.create({ primary_email: 'pp-crud@example.com' });
+
+    // Grant a project permission
+    const grantResponse = await niceBackendFetch(`/api/v1/project-permissions/${user.userId}/test_perm`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+    expect(grantResponse.status).toBe(201);
+
+    await waitForSyncedProjectPermission(client, user.userId, 'test_perm');
+
+    const res1 = await client.query(`SELECT * FROM "project_permissions" WHERE "user_id" = $1 AND "permission_id" = $2`, [user.userId, 'test_perm']);
+    expect(res1.rows.length).toBe(1);
+
+    // Revoke the permission
+    await niceBackendFetch(`/api/v1/project-permissions/${user.userId}/test_perm`, {
+      accessType: 'admin',
+      method: 'DELETE',
+    });
+
+    await waitForSyncedProjectPermissionDeletion(client, user.userId, 'test_perm');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a user + project permission, queries ClickHouse analytics API to verify.
+   */
+  test('ProjectPermission sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    // Create a project permission definition via config
+    await Project.updateConfig({
+      "rbac.permissions": { "ch_test_perm": { scope: "project" } },
+    });
+
+    const user = await User.create({ primary_email: 'pp-ch@example.com' });
+
+    await niceBackendFetch(`/api/v1/project-permissions/${user.userId}/ch_test_perm`, {
+      accessType: 'admin',
+      method: 'POST',
+      body: {},
+    });
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT user_id, permission_id FROM project_permissions WHERE permission_id = {perm:String}",
+        params: { perm: 'ch_test_perm' },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBe(1);
+    expect(response!.body.result[0].permission_id).toBe('ch_test_perm');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a user, updates a notification preference, verifies in external DB.
+   */
+  test('NotificationPreference sync (Postgres)', async () => {
+    const dbName = 'notification_pref_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    });
+
+    const client = dbManager.getClient(dbName);
+
+    const user = await User.create({ primary_email: 'np-crud@example.com' });
+
+    // Update a notification preference
+    const updateResponse = await niceBackendFetch(`/api/v1/emails/notification-preference/${user.userId}/4f6f8873-3d04-46bd-8bef-18338b1a1b4c`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { enabled: false },
+    });
+    expect(updateResponse.status).toBe(200);
+
+    await waitForSyncedNotificationPreference(client, user.userId, '4f6f8873-3d04-46bd-8bef-18338b1a1b4c');
+
+    const res1 = await client.query(`SELECT * FROM "notification_preferences" WHERE "user_id" = $1 AND "notification_category_id" = $2`, [user.userId, '4f6f8873-3d04-46bd-8bef-18338b1a1b4c']);
+    expect(res1.rows.length).toBe(1);
+    expect(res1.rows[0].enabled).toBe(false);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
+   * - Creates a user + notification preference, queries ClickHouse analytics API to verify.
+   */
+  test('NotificationPreference sync (ClickHouse)', async ({ expect }) => {
+    await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+    const user = await User.create({ primary_email: 'np-ch@example.com' });
+
+    await niceBackendFetch(`/api/v1/emails/notification-preference/${user.userId}/4f6f8873-3d04-46bd-8bef-18338b1a1b4c`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { enabled: false },
+    });
+
+    await InternalApiKey.createAndSetProjectKeys();
+
+    const timeoutMs = 180_000;
+    const intervalMs = 2_000;
+    const start = performance.now();
+
+    let response;
+    while (performance.now() - start < timeoutMs) {
+      response = await runQueryForCurrentProject({
+        query: "SELECT user_id, notification_category_id, enabled FROM notification_preferences WHERE notification_category_id = {cat:String}",
+        params: { cat: '4f6f8873-3d04-46bd-8bef-18338b1a1b4c' },
+      });
+      expect(response.status).toBe(200);
+      if (response.body.result.length === 1) {
+        break;
+      }
+      await wait(intervalMs);
+    }
+
+    expect(response!.body.result.length).toBe(1);
+    expect(response!.body.result[0].notification_category_id).toBe('4f6f8873-3d04-46bd-8bef-18338b1a1b4c');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
    * - Sends a team invitation, verifies in external DB, revokes it, verifies removal.
    */
   test('TeamInvitation sync (Postgres)', async () => {
@@ -1153,17 +1319,20 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     });
     expect(sendResponse.status).toBe(200);
 
-    // Wait for the email to be processed (rendered + sent)
-    await wait(8_000);
-
-    // Get the email ID from the outbox API
-    const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
-      method: "GET",
-      accessType: "server",
-    });
-    expect(listResponse.status).toBe(200);
-    expect(listResponse.body.items.length).toBeGreaterThanOrEqual(1);
-    const emailId = listResponse.body.items[0].id;
+    // Poll the outbox API until the email appears
+    let emailId!: string;
+    await waitForCondition(
+      async () => {
+        const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+          method: "GET",
+          accessType: "server",
+        });
+        if (listResponse.status !== 200 || listResponse.body.items.length === 0) return false;
+        emailId = listResponse.body.items[0].id;
+        return true;
+      },
+      { timeoutMs: 30_000, intervalMs: 500, description: 'email to appear in outbox' }
+    );
 
     const client = dbManager.getClient(dbName);
 
@@ -1224,9 +1393,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       },
     });
     expect(sendResponse.status).toBe(200);
-
-    // Wait for the email to be processed
-    await wait(8_000);
 
     await InternalApiKey.createAndSetProjectKeys();
 
@@ -1302,9 +1468,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       },
     });
     expect(sendResponse.status).toBe(200);
-
-    // Wait for the email to finish sending
-    await wait(8_000);
 
     const client = dbManager.getClient(dbName);
 

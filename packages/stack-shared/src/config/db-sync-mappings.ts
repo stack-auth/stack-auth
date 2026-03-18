@@ -1752,4 +1752,311 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
+  "project_permissions": {
+    sourceTables: { "ProjectUserDirectPermission": "ProjectUserDirectPermission" },
+    targetTable: "project_permissions",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "project_permissions" (
+          "user_id" uuid NOT NULL,
+          "permission_id" text NOT NULL,
+          "created_at" timestamp without time zone NOT NULL,
+          PRIMARY KEY ("user_id", "permission_id")
+        );
+        REVOKE ALL ON "project_permissions" FROM PUBLIC;
+        GRANT SELECT ON "project_permissions" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.project_permissions (
+          project_id String,
+          branch_id String,
+          user_id UUID,
+          permission_id String,
+          created_at DateTime64(3, 'UTC'),
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        PARTITION BY toYYYYMM(created_at)
+        ORDER BY (project_id, branch_id, user_id, permission_id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "ProjectUserDirectPermission"."projectUserId" AS "user_id",
+            "ProjectUserDirectPermission"."permissionId" AS "permission_id",
+            "ProjectUserDirectPermission"."createdAt" AS "created_at",
+            "ProjectUserDirectPermission"."sequenceId" AS "sync_sequence_id",
+            "ProjectUserDirectPermission"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "ProjectUserDirectPermission"
+          JOIN "Tenancy" ON "Tenancy"."id" = "ProjectUserDirectPermission"."tenancyId"
+          WHERE "ProjectUserDirectPermission"."tenancyId" = $1::uuid
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
+            "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'ProjectUserDirectPermission'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
+        SELECT
+          "ProjectUserDirectPermission"."projectUserId" AS "user_id",
+          "ProjectUserDirectPermission"."permissionId" AS "permission_id",
+          "ProjectUserDirectPermission"."createdAt" AS "created_at",
+          "ProjectUserDirectPermission"."sequenceId" AS "sequence_id",
+          "ProjectUserDirectPermission"."tenancyId",
+          false AS "is_deleted"
+        FROM "ProjectUserDirectPermission"
+        WHERE "ProjectUserDirectPermission"."tenancyId" = $1::uuid
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
+          "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'ProjectUserDirectPermission'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "user_id",
+            $2::text AS "permission_id",
+            $3::timestamp without time zone AS "created_at",
+            $4::bigint AS "sequence_id",
+            $5::boolean AS "is_deleted",
+            $6::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "project_permissions" pp
+          USING params p
+          WHERE p."is_deleted" = true AND pp."user_id" = p."user_id" AND pp."permission_id" = p."permission_id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "project_permissions" (
+            "user_id",
+            "permission_id",
+            "created_at"
+          )
+          SELECT
+            p."user_id",
+            p."permission_id",
+            p."created_at"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("user_id", "permission_id") DO UPDATE SET
+            "created_at" = EXCLUDED."created_at"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
+  "notification_preferences": {
+    sourceTables: { "UserNotificationPreference": "UserNotificationPreference" },
+    targetTable: "notification_preferences",
+    targetTableSchemas: {
+      postgres: `
+        CREATE TABLE IF NOT EXISTS "notification_preferences" (
+          "id" uuid PRIMARY KEY NOT NULL,
+          "user_id" uuid NOT NULL,
+          "notification_category_id" text NOT NULL,
+          "enabled" boolean NOT NULL DEFAULT true
+        );
+        REVOKE ALL ON "notification_preferences" FROM PUBLIC;
+        GRANT SELECT ON "notification_preferences" TO PUBLIC;
+
+        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
+          "mapping_name" text PRIMARY KEY NOT NULL,
+          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
+          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
+        );
+      `.trim(),
+      clickhouse: `
+        CREATE TABLE IF NOT EXISTS analytics_internal.notification_preferences (
+          project_id String,
+          branch_id String,
+          id UUID,
+          user_id UUID,
+          notification_category_id String,
+          enabled UInt8,
+          sync_sequence_id Int64,
+          sync_is_deleted UInt8,
+          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+        )
+        ENGINE ReplacingMergeTree(sync_sequence_id)
+        ORDER BY (project_id, branch_id, id);
+      `.trim(),
+    },
+    internalDbFetchQueries: {
+      clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "UserNotificationPreference"."id" AS "id",
+            "UserNotificationPreference"."projectUserId" AS "user_id",
+            "UserNotificationPreference"."notificationCategoryId" AS "notification_category_id",
+            "UserNotificationPreference"."enabled" AS "enabled",
+            "UserNotificationPreference"."sequenceId" AS "sync_sequence_id",
+            "UserNotificationPreference"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "UserNotificationPreference"
+          JOIN "Tenancy" ON "Tenancy"."id" = "UserNotificationPreference"."tenancyId"
+          WHERE "UserNotificationPreference"."tenancyId" = $1::uuid
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+            ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
+            ("DeletedRow"."data"->>'notificationCategoryId')::uuid AS "notification_category_id",
+            ("DeletedRow"."data"->>'enabled')::boolean AS "enabled",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'UserNotificationPreference'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
+        SELECT
+          "UserNotificationPreference"."id" AS "id",
+          "UserNotificationPreference"."projectUserId" AS "user_id",
+          "UserNotificationPreference"."notificationCategoryId" AS "notification_category_id",
+          "UserNotificationPreference"."enabled" AS "enabled",
+          "UserNotificationPreference"."sequenceId" AS "sequence_id",
+          "UserNotificationPreference"."tenancyId",
+          false AS "is_deleted"
+        FROM "UserNotificationPreference"
+        WHERE "UserNotificationPreference"."tenancyId" = $1::uuid
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+          ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
+          ("DeletedRow"."data"->>'notificationCategoryId')::uuid AS "notification_category_id",
+          ("DeletedRow"."data"->>'enabled')::boolean AS "enabled",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'UserNotificationPreference'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
+      LIMIT 1000
+    `.trim(),
+    externalDbUpdateQueries: {
+      postgres: `
+        WITH params AS (
+          SELECT
+            $1::uuid AS "id",
+            $2::uuid AS "user_id",
+            $3::text AS "notification_category_id",
+            $4::boolean AS "enabled",
+            $5::bigint AS "sequence_id",
+            $6::boolean AS "is_deleted",
+            $7::text AS "mapping_name"
+        ),
+        deleted AS (
+          DELETE FROM "notification_preferences" np
+          USING params p
+          WHERE p."is_deleted" = true AND np."id" = p."id"
+          RETURNING 1
+        ),
+        upserted AS (
+          INSERT INTO "notification_preferences" (
+            "id",
+            "user_id",
+            "notification_category_id",
+            "enabled"
+          )
+          SELECT
+            p."id",
+            p."user_id",
+            p."notification_category_id",
+            p."enabled"
+          FROM params p
+          WHERE p."is_deleted" = false
+          ON CONFLICT ("id") DO UPDATE SET
+            "user_id" = EXCLUDED."user_id",
+            "notification_category_id" = EXCLUDED."notification_category_id",
+            "enabled" = EXCLUDED."enabled"
+          RETURNING 1
+        )
+        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
+        SELECT p."mapping_name", p."sequence_id", now() FROM params p
+        ON CONFLICT ("mapping_name") DO UPDATE SET
+          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
+          "updated_at" = now();
+      `.trim(),
+    },
+  },
 } as const;

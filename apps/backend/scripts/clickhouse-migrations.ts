@@ -30,6 +30,10 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: EMAIL_OUTBOXES_VIEW_SQL });
   await client.exec({ query: SESSION_REPLAYS_TABLE_BASE_SQL });
   await client.exec({ query: SESSION_REPLAYS_VIEW_SQL });
+  await client.exec({ query: PROJECT_PERMISSIONS_TABLE_BASE_SQL });
+  await client.exec({ query: PROJECT_PERMISSIONS_VIEW_SQL });
+  await client.exec({ query: NOTIFICATION_PREFERENCES_TABLE_BASE_SQL });
+  await client.exec({ query: NOTIFICATION_PREFERENCES_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
@@ -48,6 +52,8 @@ export async function runClickhouseMigrations() {
     "GRANT SELECT ON default.team_invitations TO limited_user;",
     "GRANT SELECT ON default.email_outboxes TO limited_user;",
     "GRANT SELECT ON default.session_replays TO limited_user;",
+    "GRANT SELECT ON default.project_permissions TO limited_user;",
+    "GRANT SELECT ON default.notification_preferences TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
@@ -75,6 +81,12 @@ export async function runClickhouseMigrations() {
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS session_replays_project_isolation ON default.session_replays FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS project_permissions_project_isolation ON default.project_permissions FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS notification_preferences_project_isolation ON default.notification_preferences FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -542,6 +554,69 @@ AS
 SELECT project_id, branch_id, id, user_id, refresh_token_id,
        started_at, last_event_at, created_at, chunk_count
 FROM analytics_internal.session_replays
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const PROJECT_PERMISSIONS_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.project_permissions (
+    project_id       String,
+    branch_id        String,
+    user_id          UUID,
+    permission_id    String,
+    created_at       DateTime64(3, 'UTC'),
+    sync_sequence_id Int64,
+    sync_is_deleted  UInt8,
+    sync_created_at  DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (project_id, branch_id, user_id, permission_id);
+`;
+
+const PROJECT_PERMISSIONS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.project_permissions
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  user_id,
+  permission_id,
+  created_at
+FROM analytics_internal.project_permissions
+FINAL
+WHERE sync_is_deleted = 0;
+`;
+
+const NOTIFICATION_PREFERENCES_TABLE_BASE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.notification_preferences (
+    project_id             String,
+    branch_id              String,
+    id                     UUID,
+    user_id                UUID,
+    notification_category_id String,
+    enabled                UInt8,
+    sync_sequence_id       Int64,
+    sync_is_deleted        UInt8,
+    sync_created_at        DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE ReplacingMergeTree(sync_sequence_id)
+ORDER BY (project_id, branch_id, id);
+`;
+
+const NOTIFICATION_PREFERENCES_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.notification_preferences
+SQL SECURITY DEFINER
+AS
+SELECT
+  project_id,
+  branch_id,
+  id,
+  user_id,
+  notification_category_id,
+  enabled
+FROM analytics_internal.notification_preferences
 FINAL
 WHERE sync_is_deleted = 0;
 `;

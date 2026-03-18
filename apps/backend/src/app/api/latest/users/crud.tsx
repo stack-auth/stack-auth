@@ -2,7 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
-import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncNotificationPreferenceDeletionsForUser, recordExternalDbSyncProjectPermissionDeletionsForUser, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -1208,6 +1208,16 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       await recordExternalDbSyncTeamPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncProjectPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncNotificationPreferenceDeletionsForUser(tx, {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
       });

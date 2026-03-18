@@ -438,6 +438,20 @@ export async function deletePermissionDefinition(
       },
     });
   } else {
+    const projectPermissions = await sourceOfTruthTx.projectUserDirectPermission.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        permissionId: options.permissionId,
+      },
+      select: { id: true },
+    });
+    for (const perm of projectPermissions) {
+      await recordExternalDbSyncDeletion(sourceOfTruthTx, {
+        tableName: "ProjectUserDirectPermission",
+        tenancyId: options.tenancy.id,
+        permissionDbId: perm.id,
+      });
+    }
     await sourceOfTruthTx.projectUserDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
@@ -471,12 +485,12 @@ export async function grantProjectPermission(
         permissionId: options.permissionId,
       },
     },
-    create: {
+    create: withExternalDbSyncUpdate({
       permissionId: options.permissionId,
       projectUserId: options.userId,
       tenancyId: options.tenancy.id,
-    },
-    update: {},
+    }),
+    update: withExternalDbSyncUpdate({}),
   });
 
   return {
@@ -493,6 +507,23 @@ export async function revokeProjectPermission(
     permissionId: string,
   }
 ) {
+  const permissionRecord = await tx.projectUserDirectPermission.findUniqueOrThrow({
+    where: {
+      tenancyId_projectUserId_permissionId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        permissionId: options.permissionId,
+      },
+    },
+    select: { id: true },
+  });
+
+  await recordExternalDbSyncDeletion(tx, {
+    tableName: "ProjectUserDirectPermission",
+    tenancyId: options.tenancy.id,
+    permissionDbId: permissionRecord.id,
+  });
+
   await tx.projectUserDirectPermission.delete({
     where: {
       tenancyId_projectUserId_permissionId: {

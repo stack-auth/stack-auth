@@ -59,6 +59,16 @@ type ExternalDbSyncTarget =
     permissionDbId: string,
   }
   | {
+    tableName: "ProjectUserDirectPermission",
+    tenancyId: string,
+    permissionDbId: string,
+  }
+  | {
+    tableName: "UserNotificationPreference",
+    tenancyId: string,
+    notificationPreferenceId: string,
+  }
+  | {
     tableName: "VerificationCode_TEAM_INVITATION",
     tenancyId: string,
     verificationCodeProjectId: string,
@@ -284,6 +294,80 @@ export async function recordExternalDbSyncDeletion(
     if (insertedCount !== 1) {
       throw new StackAssertionError(
         `Expected to insert 1 DeletedRow entry for TeamMemberDirectPermission, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "ProjectUserDirectPermission") {
+    assertUuid(target.permissionDbId, "permissionDbId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUserDirectPermission',
+        jsonb_build_object(
+          'tenancyId', "tenancyId",
+          'projectUserId', "projectUserId",
+          'permissionId', "permissionId"
+        ),
+        to_jsonb("ProjectUserDirectPermission".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUserDirectPermission"
+      WHERE "id" = ${target.permissionDbId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserDirectPermission, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "UserNotificationPreference") {
+    assertUuid(target.notificationPreferenceId, "notificationPreferenceId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'UserNotificationPreference',
+        jsonb_build_object(
+          'tenancyId', "tenancyId",
+          'id', "id"
+        ),
+        to_jsonb("UserNotificationPreference".*),
+        NOW(),
+        TRUE
+      FROM "UserNotificationPreference"
+      WHERE "id" = ${target.notificationPreferenceId}::uuid
+        AND "tenancyId" = ${target.tenancyId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for UserNotificationPreference, got ${insertedCount}.`
       );
     }
     return;
@@ -598,6 +682,83 @@ export async function recordExternalDbSyncTeamMemberDeletionsForUser(
       NOW(),
       TRUE
     FROM "TeamMember"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncProjectPermissionDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ProjectUserDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("ProjectUserDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "ProjectUserDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncNotificationPreferenceDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'UserNotificationPreference',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'id', "id"
+      ),
+      to_jsonb("UserNotificationPreference".*),
+      NOW(),
+      TRUE
+    FROM "UserNotificationPreference"
     WHERE "tenancyId" = ${options.tenancyId}::uuid
       AND "projectUserId" = ${options.projectUserId}::uuid
     FOR UPDATE

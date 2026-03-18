@@ -368,6 +368,34 @@ export async function waitForSyncedSessionReplay(client: Client, replayId: strin
   );
 }
 
+export async function waitForSyncedProjectPermission(client: Client, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "project_permissions" WHERE "user_id" = $1 AND "permission_id" = $2`, [userId, permissionId], {
+    shouldExist: true,
+    description: `project permission (user=${userId}, perm=${permissionId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedProjectPermissionDeletion(client: Client, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "project_permissions" WHERE "user_id" = $1 AND "permission_id" = $2`, [userId, permissionId], {
+    shouldExist: false,
+    description: `project permission (user=${userId}, perm=${permissionId}) to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedNotificationPreference(client: Client, userId: string, notificationCategoryId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "notification_preferences" WHERE "user_id" = $1 AND "notification_category_id" = $2`, [userId, notificationCategoryId], {
+    shouldExist: true,
+    description: `notification preference (user=${userId}, category=${notificationCategoryId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedNotificationPreferenceDeletion(client: Client, notificationPreferenceId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "notification_preferences" WHERE "id" = $1`, [notificationPreferenceId], {
+    shouldExist: false,
+    description: `notification preference ${notificationPreferenceId} to be removed from external DB`,
+  });
+}
+
 export async function waitForSyncedEmailOutboxByStatus(client: Client, status: string) {
   await waitForExternalDbRow(
     client,

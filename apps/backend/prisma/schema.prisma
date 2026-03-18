@@ -236,7 +236,12 @@ model ProjectUserDirectPermission {
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@unique([tenancyId, projectUserId, permissionId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserDirectPermission_shouldUpdateSequenceId_idx")
+  @@index([tenancyId, sequenceId], name: "ProjectUserDirectPermission_tenancyId_sequenceId_idx")
 }
 
 model TeamMemberDirectPermission {
@@ -1089,8 +1094,13 @@ model UserNotificationPreference {
   enabled     Boolean
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([tenancyId, id])
   @@unique([tenancyId, projectUserId, notificationCategoryId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "UserNotificationPreference_shouldUpdateSequenceId_idx")
+  @@index([tenancyId, sequenceId], name: "UserNotificationPreference_tenancyId_sequenceId_idx")
 }
 
 model ThreadMessage {
