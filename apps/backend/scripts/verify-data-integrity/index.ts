@@ -3,12 +3,12 @@ import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
-import { createApiHelpers, type OutputData } from "./api";
+import { createApiHelpers, loadOutputData, type OutputData } from "./api";
 import { createPaymentsVerifier } from "./payments-verifier";
 import { createRecurse } from "./recurse";
 import { verifyStripePayoutIntegrity } from "./stripe-payout-integrity";
@@ -19,7 +19,6 @@ const STRIPE_SECRET_KEY = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 const USE_MOCK_STRIPE_API = STRIPE_SECRET_KEY === "sk_test_mockstripekey";
 
 let targetOutputData: OutputData | undefined = undefined;
-const currentOutputData: OutputData = {};
 
 async function main() {
   console.log();
@@ -83,7 +82,6 @@ async function main() {
   const maxUsersPerProject = maxUsersPerProjectFlag
     ? parseInt(maxUsersPerProjectFlag.split("=")[1], 10)
     : Infinity;
-
   const { recurse, collectedErrors } = createRecurse({ noBail });
 
   if (noBail) {
@@ -102,7 +100,7 @@ async function main() {
       throw new Error(`Cannot verify output: ${OUTPUT_FILE_PATH} does not exist`);
     }
     try {
-      targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, "utf8"));
+      targetOutputData = loadOutputData(OUTPUT_FILE_PATH);
 
       // TODO next-release these are hacks for the migration, delete them
       if (targetOutputData) {
@@ -125,9 +123,9 @@ async function main() {
     }
   }
 
-  const { expectStatusCode } = createApiHelpers({
-    currentOutputData,
+  const { expectStatusCode, verifyOutputCompleteness } = createApiHelpers({
     targetOutputData,
+    outputFilePath: shouldSaveOutput ? OUTPUT_FILE_PATH : undefined,
   });
 
   const projects = await prismaClient.project.findMany({
@@ -335,13 +333,8 @@ async function main() {
     });
   }
 
-  if (targetOutputData && !deepPlainEquals(currentOutputData, targetOutputData)) {
-    throw new StackAssertionError(deindent`
-      Output data mismatch between final and target output data.
-    `);
-  }
+  verifyOutputCompleteness();
   if (shouldSaveOutput) {
-    fs.writeFileSync(OUTPUT_FILE_PATH, JSON.stringify(currentOutputData, null, 2));
     console.log(`Output saved to ${OUTPUT_FILE_PATH}`);
   }
 
