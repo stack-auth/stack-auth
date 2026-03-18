@@ -883,8 +883,9 @@ function main() {
   for (const category of ['objects', 'types', 'hooks', 'mixins']) {
     const filePath = path.join(OUTPUT_DIR, `${category}.json`);
     fs.writeFileSync(filePath, JSON.stringify(docs[category], null, 2));
+    console.log(`  Generated ${category}.json`);
   }
-  console.log(`SDK docs JSON generated at ${OUTPUT_DIR}`);
+  console.log(`SDK type reference generated at ${OUTPUT_DIR}`);
 }
 
 main();
