@@ -820,11 +820,11 @@ function collectDocs() {
 
   const entryFile = program.getSourceFile(path.join(SRC_DIR, 'index.ts'));
   if (!entryFile) {
-    throw new Error('Could not find src/index.ts');
+    throw new Error(`Could not find src/index.ts. Current directory: ${process.cwd()}, SRC_DIR: ${SRC_DIR}`);
   }
   const entrySymbol = checker.getSymbolAtLocation(entryFile);
   if (!entrySymbol) {
-    throw new Error('Could not resolve exports for src/index.ts');
+    throw new Error(`Could not resolve exports for src/index.ts. The file may be empty or have syntax errors.`);
   }
 
   const exportedSymbols = checker.getExportsOfModule(entrySymbol);
