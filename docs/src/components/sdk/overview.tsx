@@ -79,8 +79,8 @@ export function SDKOverview({ sections }: SDKOverviewProps) {
                 key={itemIndex}
                 href={buildSDKUrl(item.href)}
                 className={cn(
-                  'group relative flex items-center gap-3 p-4 rounded-lg border transition-all duration-200',
-                  'hover:shadow-md hover:shadow-fd-primary/5 hover:border-fd-primary/20',
+                  'group relative flex items-center gap-3 p-4 rounded-lg border transition-colors hover:transition-none',
+                  'hover:border-fd-primary/20',
                   'bg-fd-card/30 hover:bg-fd-card/50',
                   'border-fd-border hover:border-fd-primary/30'
                 )}
