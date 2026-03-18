@@ -220,13 +220,9 @@ async function main() {
       const verifiedTeams = new Set<string>();
 
       if (!skipUsers) {
-        let userCount = 0;
-        if (tenancy) {
-          // TS thinks this could be undefined (no default in switch), ESLint disagrees
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          const prisma = (await getPrismaClientForTenancy(tenancy))!;
-          userCount = await prisma.projectUser.count({ where: { tenancyId: tenancy.id } });
-        }
+        const userCount = tenancy
+          ? await (await getPrismaClientForTenancy(tenancy)).projectUser.count({ where: { tenancyId: tenancy.id } })
+          : 0;
 
         // Process users page-by-page to avoid holding all users in memory at once
         const PAGE_LIMIT = 1000;

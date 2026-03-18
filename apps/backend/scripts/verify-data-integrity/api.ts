@@ -31,7 +31,7 @@ export function loadOutputData(filePath: string): OutputData {
   const firstLine = lines[0];
   try {
     const parsed = JSON.parse(firstLine);
-    if ("endpoint" in parsed && "output" in parsed) {
+    if (typeof parsed === "object" && parsed !== null && "endpoint" in parsed && "output" in parsed) {
       for (const line of lines) {
         if (!line.trim()) continue;
         const { endpoint, output } = JSON.parse(line);
