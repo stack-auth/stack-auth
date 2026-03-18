@@ -9,10 +9,10 @@ import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KE
 
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
 
-function extractTypedConfigObjectString(content: string): string {
-  const configMatch = content.match(/defineStackConfig\((.+)\);\s*$/s);
+function extractConfigObjectString(content: string): string {
+  const configMatch = content.match(/export const config:\s*StackConfig\s*=\s*(.+);\s*$/s);
   if (!configMatch) {
-    throw new Error(`Could not extract typed config object from file:\n${content}`);
+    throw new Error(`Could not extract config object from file:\n${content}`);
   }
   return configMatch[1];
 }
@@ -320,9 +320,8 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import { defineStackConfig } from "@stackframe/stack-shared/config";');
-    expect(content).toContain("defineStackConfig(");
-    expect(content).toContain("export const config");
+    expect(content).toContain('import type { StackConfig } from "@stackframe/stack-shared/config";');
+    expect(content).toContain("export const config: StackConfig");
   });
 
   it("config push succeeds", async ({ expect }) => {
@@ -384,9 +383,9 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import { defineStackConfig } from "@stackframe/stack-shared/config";');
-    expect(content).toContain("export const config");
-    expect(JSON.parse(extractTypedConfigObjectString(content))).toMatchObject({
+    expect(content).toContain('import type { StackConfig } from "@stackframe/stack-shared/config";');
+    expect(content).toContain("export const config: StackConfig");
+    expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
         installed: {
           authentication: { enabled: true },
@@ -407,7 +406,7 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(JSON.parse(extractTypedConfigObjectString(content))).toMatchObject({
+    expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
         installed: {
           authentication: { enabled: true },

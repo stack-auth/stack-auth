@@ -1,13 +1,10 @@
 import { Command } from "commander";
-import { createRequire } from "node:module";
 import * as path from "path";
 import * as fs from "fs";
 import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
-import { renderConfigFile } from "../lib/stack-config-file.js";
-
-const _require = createRequire(import.meta.url);
+import { renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -44,7 +41,7 @@ export function registerConfigCommand(program: Command) {
         throw new CliError(`Config file already exists: ${filePath}. Re-run with --overwrite to replace it.`);
       }
 
-      const content = renderConfigFile(configOverride);
+      const content = renderConfigFileContent(configOverride);
 
       fs.writeFileSync(filePath, content);
       console.log(`Config written to ${filePath}`);
@@ -71,16 +68,12 @@ export function registerConfigCommand(program: Command) {
       }
 
       const { createJiti } = await import("jiti");
-      const jiti = createJiti(import.meta.url, {
-        alias: {
-          "@stackframe/stack-shared/config": _require.resolve("@stackframe/stack-shared/config"),
-        },
-      });
+      const jiti = createJiti(import.meta.url);
       const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = configModule.config;
       if (!isPlainObject(config)) {
-        throw new CliError('Config file must export a plain `config` object. Example: import { defineStackConfig } from "@stackframe/stack-shared/config"; export const config = defineStackConfig({ ... });');
+        throw new CliError('Config file must export a plain `config` object. Example: import type { StackConfig } from "@stackframe/stack-shared/config"; export const config: StackConfig = { ... };');
       }
 
       await project.replaceConfigOverride("branch", config);
