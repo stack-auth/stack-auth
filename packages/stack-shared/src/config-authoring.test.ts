@@ -35,6 +35,7 @@ defineStackConfig({
   payments: {
     items: {
       todos: {
+        displayName: "Todo Slots",
         // @ts-expect-error Invalid enum values should fail type-checking.
         customerType: "workspace",
       },

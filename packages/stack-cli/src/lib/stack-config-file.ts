@@ -1,16 +1,10 @@
-import { isValidConfig, normalize } from "@stackframe/stack-shared/dist/config/format";
-import { CliError } from "./errors.js";
-
-const stackConfigImportStatement = 'import { defineStackConfig } from "@stackframe/stack-shared/config";';
+import { renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { CliError } from "./errors";
 
 export function renderConfigFile(config: unknown): string {
-  if (!isValidConfig(config)) {
-    throw new CliError("Config file content is invalid.");
+  try {
+    return renderConfigFileContent(config);
+  } catch (error) {
+    throw new CliError(error instanceof Error ? error.message : "Config file content is invalid. The file must export a 'config' object.");
   }
-
-  const normalizedConfig = normalize(config, {
-    onDotIntoNonObject: "ignore",
-    onDotIntoNull: "empty-object",
-  });
-  return `${stackConfigImportStatement}\n\nexport const config = defineStackConfig(${JSON.stringify(normalizedConfig, null, 2)});\n`;
 }

@@ -345,6 +345,17 @@ describe("Stack CLI", () => {
     expect(stderr).toContain(".js or .ts");
   });
 
+  it("config push rejects array config export", async ({ expect }) => {
+    const badConfigPath = path.join(tmpDir, "config-array.ts");
+    fs.writeFileSync(badConfigPath, "export const config = [];\n");
+    const { stderr, exitCode } = await runCli(
+      ["config", "push", "--config-file", badConfigPath],
+      { STACK_PROJECT_ID: createdProjectId },
+    );
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("plain `config` object");
+  });
+
   it("config pull rejects overwriting an existing file without --overwrite", async ({ expect }) => {
     const existingConfigPath = path.join(tmpDir, "existing-config.ts");
     fs.writeFileSync(existingConfigPath, "existing\n");

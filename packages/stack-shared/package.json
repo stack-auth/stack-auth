@@ -26,11 +26,11 @@
       "default": "./dist/esm/index.js"
     },
     "./config": {
-      "types": "./src/config-authoring.ts",
+      "types": "./dist/config-authoring.d.ts",
       "require": {
-        "default": "./src/config-authoring.ts"
+        "default": "./dist/config-authoring.js"
       },
-      "default": "./src/config-authoring.ts"
+      "default": "./dist/esm/config-authoring.js"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
