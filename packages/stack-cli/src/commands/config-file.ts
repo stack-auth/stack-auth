@@ -67,10 +67,9 @@ export function registerConfigCommand(program: Command) {
         throw new CliError(`Config file not found: ${filePath}`);
       }
 
-      let configModule: { config?: unknown };
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url);
-      configModule = await jiti.import(filePath);
+      const configModule: { config?: unknown } = await jiti.import(filePath);
 
       const config = configModule.config;
       if (!isPlainObject(config)) {
