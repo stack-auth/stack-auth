@@ -131,9 +131,9 @@ export function ObjectDocumentation({ objectInfo }: ObjectDocumentationProps) {
                 <pre className="text-xs bg-fd-code p-3 rounded border overflow-x-auto">
                   <code>
                     {objectInfo.signatures.map((sig, index) => (
-                      <div key={index} className="mb-2 last:mb-0">
+                      <span key={index} className="block mb-2 last:mb-0">
                         {sig}
-                      </div>
+                      </span>
                     ))}
                   </code>
                 </pre>
