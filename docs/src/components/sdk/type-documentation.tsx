@@ -1112,39 +1112,46 @@ export function TypeFromJson({
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    async function loadTypeInfo() {
-      try {
-        setLoading(true);
-        setError(null);
+    const controller = new AbortController();
 
-        // Try types.json first, then mixins.json
-        const typesResponse = await fetch('/sdk-docs/types.json');
+    async function loadTypeInfo() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const typesResponse = await fetch('/sdk-docs/types.json', { signal: controller.signal });
         if (typesResponse.ok) {
-          const typesData = await typesResponse.json();
-          if (typesData[typeName]) {
-            setTypeInfo(typesData[typeName]);
+          const typesData: Partial<Record<string, TypeInfo>> = await typesResponse.json();
+          const found = typesData[typeName];
+          if (found) {
+            if (!controller.signal.aborted) setTypeInfo(found);
             return;
           }
         }
 
-        // Try mixins.json
-        const mixinsResponse = await fetch('/sdk-docs/mixins.json');
+        const mixinsResponse = await fetch('/sdk-docs/mixins.json', { signal: controller.signal });
         if (mixinsResponse.ok) {
-          const mixinsData = await mixinsResponse.json();
-          if (mixinsData[typeName]) {
-            setTypeInfo(mixinsData[typeName]);
+          const mixinsData: Partial<Record<string, TypeInfo>> = await mixinsResponse.json();
+          const found = mixinsData[typeName];
+          if (found) {
+            if (!controller.signal.aborted) setTypeInfo(found);
             return;
           }
         }
 
         throw new Error(`Type "${typeName}" not found in types.json or mixins.json`);
       } catch (err) {
+        if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
     runAsynchronously(loadTypeInfo());
+
+    return () => controller.abort();
   }, [typeName]);
 
   if (loading) {

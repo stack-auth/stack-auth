@@ -160,32 +160,43 @@ export function ObjectFromJson({ objectName }: { objectName: string }) {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    async function loadObjectInfo() {
-      try {
-        setLoading(true);
-        setError(null);
+    const controller = new AbortController();
 
-        // Load the objects.json file
-        const response = await fetch('/sdk-docs/objects.json');
+    async function loadObjectInfo() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch('/sdk-docs/objects.json', { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`Failed to load objects.json: ${response.statusText}`);
         }
 
-        const objectsData = await response.json();
+        const objectsData: Partial<Record<string, ObjectInfo>> = await response.json();
         const foundObject = objectsData[objectName];
 
         if (!foundObject) {
-          throw new Error(`Object "${objectName}" not found in objects.json`);
+          const availableKeys = Object.keys(objectsData);
+          const preview = availableKeys.slice(0, 10).join(', ');
+          const suffix = availableKeys.length > 10 ? `, ... (${availableKeys.length} total)` : '';
+          throw new Error(`Object "${objectName}" not found in objects.json. Available objects: ${preview}${suffix}`);
         }
 
-        setObjectInfo(foundObject);
+        if (!controller.signal.aborted) {
+          setObjectInfo(foundObject);
+        }
       } catch (err) {
+        if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
     runAsynchronously(loadObjectInfo());
+
+    return () => controller.abort();
   }, [objectName]);
 
   if (loading) {
