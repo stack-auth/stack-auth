@@ -122,6 +122,9 @@ function ClickableCodeblock({
               const topPosition = linePosition.top; // No extra padding needed now
               const height = linePosition.height;
 
+              const isSafeAnchor = area.anchor.startsWith('#') && /^#[a-z0-9-]+$/i.test(area.anchor);
+              if (!isSafeAnchor) return null;
+
               return (
                 <div
                   key={index}
@@ -134,7 +137,6 @@ function ClickableCodeblock({
                   }}
                   aria-label={`Navigate to ${area.anchor}`}
                   onClick={() => {
-                    // Navigate on click
                     window.location.hash = area.anchor;
                   }}
                   onKeyDown={(e) => {
