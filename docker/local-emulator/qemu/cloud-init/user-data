@@ -2,5 +2,5 @@
 write_files:
   - path: /etc/motd
     content: |
-      Stack Auth local emulator now uses the split role-specific cloud-init
-      definitions in docker/local-emulator/qemu/cloud-init/{deps,dev-server}.
+      Stack Auth local emulator uses the unified cloud-init definition in
+      docker/local-emulator/qemu/cloud-init/emulator/.

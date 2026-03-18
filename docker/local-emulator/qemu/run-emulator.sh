@@ -9,14 +9,11 @@ IMAGE_DIR="$SCRIPT_DIR/images"
 RUN_DIR="/tmp/stack-emulator-run"
 FILE_BRIDGE_SCRIPT="$SCRIPT_DIR/host-file-bridge.mjs"
 
-DEPS_RAM="${EMULATOR_DEPS_RAM:-4096}"
-DEPS_CPUS="${EMULATOR_DEPS_CPUS:-4}"
-APP_RAM="${EMULATOR_APP_RAM:-6144}"
-APP_CPUS="${EMULATOR_APP_CPUS:-4}"
+VM_RAM="${EMULATOR_RAM:-4096}"
+VM_CPUS="${EMULATOR_CPUS:-4}"
 PORT_PREFIX="${PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}"
 FILE_BRIDGE_PORT="${EMULATOR_FILE_BRIDGE_PORT:-${PORT_PREFIX}16}"
 READY_TIMEOUT="${EMULATOR_READY_TIMEOUT:-240}"
-DEPS_HOST_ALIAS="10.0.2.2"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -161,43 +158,32 @@ select_accelerator() {
 
 select_accelerator
 
-instance_dir() {
-  echo "$RUN_DIR/$1"
-}
+VM_DIR="$RUN_DIR/vm"
 
-image_path_for_role() {
-  echo "$IMAGE_DIR/stack-emulator-$1-$ARCH.qcow2"
+image_path() {
+  echo "$IMAGE_DIR/stack-emulator-$ARCH.qcow2"
 }
 
 runtime_iso_path() {
-  echo "$(instance_dir "$1")/runtime-config.iso"
+  echo "$VM_DIR/runtime-config.iso"
 }
 
 SNAPSHOT_NAME="ready"
 IS_SNAPSHOT_RESTORE=false
 
-role_has_snapshot() {
-  local role_dir
-  role_dir="$(instance_dir "$1")"
-  [ -f "$role_dir/disk.qcow2" ] &&
-    qemu-img snapshot -l "$role_dir/disk.qcow2" 2>/dev/null | grep -q "$SNAPSHOT_NAME"
-}
-
-can_restore_snapshots() {
-  role_has_snapshot deps && role_has_snapshot dev-server
+vm_has_snapshot() {
+  [ -f "$VM_DIR/disk.qcow2" ] &&
+    qemu-img snapshot -l "$VM_DIR/disk.qcow2" 2>/dev/null | grep -q "$SNAPSHOT_NAME"
 }
 
 save_snapshot() {
-  local role="$1"
-  local role_dir
-  role_dir="$(instance_dir "$role")"
-  if [ ! -S "$role_dir/monitor.sock" ]; then
-    warn "No monitor socket for ${role}, skipping snapshot"
+  if [ ! -S "$VM_DIR/monitor.sock" ]; then
+    warn "No monitor socket, skipping snapshot"
     return 1
   fi
 
-  log "Saving ${role} snapshot..."
-  local out_file="$role_dir/savevm.out"
+  log "Saving VM snapshot..."
+  local out_file="$VM_DIR/savevm.out"
   rm -f "$out_file"
 
   (
@@ -205,7 +191,7 @@ save_snapshot() {
     sleep 0.3
     printf '{"execute":"human-monitor-command","arguments":{"command-line":"savevm %s"}}\n' "$SNAPSHOT_NAME"
     sleep 180
-  ) | socat -t 180 - "UNIX-CONNECT:$role_dir/monitor.sock" > "$out_file" 2>/dev/null &
+  ) | socat -t 180 - "UNIX-CONNECT:$VM_DIR/monitor.sock" > "$out_file" 2>/dev/null &
   local pid=$!
 
   local elapsed=0
@@ -215,6 +201,7 @@ save_snapshot() {
     if [ -f "$out_file" ] && [ "$(grep -c '"return"' "$out_file" 2>/dev/null)" -ge 2 ]; then
       kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
       rm -f "$out_file"
+      log "Snapshot saved."
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -224,22 +211,18 @@ save_snapshot() {
 
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
   rm -f "$out_file"
-  warn "Snapshot save timed out for ${role}"
+  warn "Snapshot save timed out"
   return 1
 }
 
 prepare_runtime_config_iso() {
-  local role="$1"
-  local role_dir
-  role_dir="$(instance_dir "$role")"
-  local cfg_dir="$role_dir/runtime-config"
+  local cfg_dir="$VM_DIR/runtime-config"
   local cfg_iso
-  cfg_iso="$(runtime_iso_path "$role")"
+  cfg_iso="$(runtime_iso_path)"
   rm -rf "$cfg_dir"
   mkdir -p "$cfg_dir"
   cat > "$cfg_dir/runtime.env" <<EOF
 STACK_EMULATOR_PORT_PREFIX=$PORT_PREFIX
-STACK_EMULATOR_DEPS_HOST=$DEPS_HOST_ALIAS
 STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL=http://10.0.2.2:${FILE_BRIDGE_PORT}
 STACK_LOCAL_EMULATOR_FILE_BRIDGE_TOKEN=${FILE_BRIDGE_TOKEN}
 EOF
@@ -283,6 +266,10 @@ app_ready() {
     service_is_up "${PORT_PREFIX}01" http /handler/sign-in
 }
 
+all_ready() {
+  deps_ready && app_ready
+}
+
 wait_for_condition() {
   local label="$1"
   local timeout="$2"
@@ -306,25 +293,22 @@ wait_for_condition() {
 }
 
 build_qemu_cmd() {
-  local role="$1"
-  local role_dir
-  role_dir="$(instance_dir "$role")"
   local base_img
-  base_img="$(image_path_for_role "$role")"
+  base_img="$(image_path)"
 
   if [ ! -f "$base_img" ]; then
     err "Missing QEMU image: $base_img"
-    err "Run docker/local-emulator/qemu/build-image.sh $ARCH $role first."
+    err "Run docker/local-emulator/qemu/build-image.sh $ARCH first."
     exit 1
   fi
 
-  mkdir -p "$role_dir"
+  mkdir -p "$VM_DIR"
   local has_snapshot=false
-  if [ -f "$role_dir/disk.qcow2" ] && role_has_snapshot "$role"; then
+  if [ -f "$VM_DIR/disk.qcow2" ] && vm_has_snapshot; then
     has_snapshot=true
   else
-    rm -f "$role_dir/disk.qcow2"
-    qemu-img create -f qcow2 -b "$base_img" -F qcow2 "$role_dir/disk.qcow2" >/dev/null
+    rm -f "$VM_DIR/disk.qcow2"
+    qemu-img create -f qcow2 -b "$base_img" -F qcow2 "$VM_DIR/disk.qcow2" >/dev/null
   fi
 
   local qemu_bin machine cpu firmware_args=()
@@ -348,31 +332,20 @@ build_qemu_cmd() {
   esac
 
   local netdev="user,id=net0"
-  if [ "$role" = "deps" ]; then
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}22-:22"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}28-:5432"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}29-:2500"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}05-:9001"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}30-:1100"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}13-:8071"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}21-:9090"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}25-:8080"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}36-:8123"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}37-:9009"
-  else
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}23-:22"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}01-:${PORT_PREFIX}01"
-    netdev+=",hostfwd=tcp::${PORT_PREFIX}02-:${PORT_PREFIX}02"
-  fi
-
-  local ram cpus
-  if [ "$role" = "deps" ]; then
-    ram="$DEPS_RAM"
-    cpus="$DEPS_CPUS"
-  else
-    ram="$APP_RAM"
-    cpus="$APP_CPUS"
-  fi
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}22-:22"
+  # Deps services
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}28-:5432"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}29-:2500"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}05-:9001"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}30-:1100"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}13-:8071"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}21-:9090"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}25-:8080"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}36-:8123"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}37-:9009"
+  # App services
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}01-:${PORT_PREFIX}01"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}02-:${PORT_PREFIX}02"
 
   QEMU_CMD=(
     "$qemu_bin"
@@ -381,18 +354,19 @@ build_qemu_cmd() {
     -cpu "$cpu"
     "${firmware_args[@]}"
     -boot order=c
-    -m "$ram"
-    -smp "$cpus"
-    -drive "file=$role_dir/disk.qcow2,format=qcow2,if=virtio"
-    -drive "file=$(runtime_iso_path "$role"),format=raw,if=virtio,readonly=on"
+    -m "$VM_RAM"
+    -smp "$VM_CPUS"
+    -drive "file=$VM_DIR/disk.qcow2,format=qcow2,if=virtio"
+    -drive "file=$(runtime_iso_path),format=raw,if=virtio,readonly=on"
     -netdev "$netdev"
     -device virtio-net-pci,netdev=net0
-    -chardev "socket,id=monitor,path=$role_dir/monitor.sock,server=on,wait=off"
+    -device virtio-balloon-pci
+    -chardev "socket,id=monitor,path=$VM_DIR/monitor.sock,server=on,wait=off"
     -mon "chardev=monitor,mode=control"
-    -serial "file:$role_dir/serial.log"
+    -serial "file:$VM_DIR/serial.log"
     -display none
     -daemonize
-    -pidfile "$role_dir/qemu.pid"
+    -pidfile "$VM_DIR/qemu.pid"
   )
 
   if [ "$has_snapshot" = "true" ]; then
@@ -402,24 +376,19 @@ build_qemu_cmd() {
 }
 
 is_running() {
-  local role_dir
-  role_dir="$(instance_dir "$1")"
-  if [ ! -f "$role_dir/qemu.pid" ]; then
+  if [ ! -f "$VM_DIR/qemu.pid" ]; then
     return 1
   fi
   local pid
-  pid="$(cat "$role_dir/qemu.pid")"
+  pid="$(cat "$VM_DIR/qemu.pid")"
   kill -0 "$pid" 2>/dev/null
 }
 
-tail_role_logs() {
-  local role="$1"
-  local role_dir
-  role_dir="$(instance_dir "$role")"
-  if [ -f "$role_dir/serial.log" ]; then
+tail_vm_logs() {
+  if [ -f "$VM_DIR/serial.log" ]; then
     echo ""
-    warn "Last serial log lines for ${role}:"
-    tail -40 "$role_dir/serial.log" || true
+    warn "Last serial log lines:"
+    tail -40 "$VM_DIR/serial.log" || true
   fi
 }
 
@@ -434,30 +403,24 @@ ensure_ports_free() {
   done
 }
 
-start_role() {
-  local role="$1"
-  local role_dir
-  role_dir="$(instance_dir "$role")"
-  mkdir -p "$role_dir"
-  : > "$role_dir/serial.log"
-  prepare_runtime_config_iso "$role"
-  build_qemu_cmd "$role"
+start_vm() {
+  mkdir -p "$VM_DIR"
+  : > "$VM_DIR/serial.log"
+  prepare_runtime_config_iso
+  build_qemu_cmd
   "${QEMU_CMD[@]}"
 }
 
-stop_role() {
-  local role="$1"
-  local role_dir
-  role_dir="$(instance_dir "$role")"
-  if [ ! -f "$role_dir/qemu.pid" ]; then
+stop_vm() {
+  if [ ! -f "$VM_DIR/qemu.pid" ]; then
     return 0
   fi
   local pid
-  pid="$(cat "$role_dir/qemu.pid")"
+  pid="$(cat "$VM_DIR/qemu.pid")"
   if kill -0 "$pid" 2>/dev/null; then
-    if [ -S "$role_dir/monitor.sock" ]; then
-      echo '{"execute":"qmp_capabilities"}' | socat - UNIX-CONNECT:"$role_dir/monitor.sock" >/dev/null 2>&1 || true
-      echo '{"execute":"system_powerdown"}' | socat - UNIX-CONNECT:"$role_dir/monitor.sock" >/dev/null 2>&1 || true
+    if [ -S "$VM_DIR/monitor.sock" ]; then
+      echo '{"execute":"qmp_capabilities"}' | socat - UNIX-CONNECT:"$VM_DIR/monitor.sock" >/dev/null 2>&1 || true
+      echo '{"execute":"system_powerdown"}' | socat - UNIX-CONNECT:"$VM_DIR/monitor.sock" >/dev/null 2>&1 || true
       sleep 3
     fi
     if kill -0 "$pid" 2>/dev/null; then
@@ -466,13 +429,9 @@ stop_role() {
       kill -9 "$pid" 2>/dev/null || true
     fi
   fi
-  rm -f "$role_dir/qemu.pid" "$role_dir/monitor.sock" "$role_dir/serial.log"
-  rm -rf "$role_dir/runtime-config"
-  rm -f "$role_dir/runtime-config.iso"
-}
-
-all_ready() {
-  deps_ready && app_ready
+  rm -f "$VM_DIR/qemu.pid" "$VM_DIR/monitor.sock" "$VM_DIR/serial.log"
+  rm -rf "$VM_DIR/runtime-config"
+  rm -f "$VM_DIR/runtime-config.iso"
 }
 
 cmd_start() {
@@ -485,8 +444,7 @@ cmd_start() {
   info "Starting QEMU local emulator"
   info "Arch: $ARCH | Accel: $ACCEL | Prefix: $PORT_PREFIX"
 
-  start_role deps
-  start_role dev-server
+  start_vm
 
   if [ "$IS_SNAPSHOT_RESTORE" = "true" ]; then
     info "Restoring from snapshot..."
@@ -495,34 +453,30 @@ cmd_start() {
       return 0
     fi
     warn "Snapshot restore failed. Resetting and doing fresh boot..."
-    stop_role dev-server
-    stop_role deps
-    rm -rf "$(instance_dir deps)" "$(instance_dir dev-server)"
+    stop_vm
+    rm -rf "$VM_DIR"
     IS_SNAPSHOT_RESTORE=false
-    start_role deps
-    start_role dev-server
+    start_vm
   fi
 
-  info "Deps VM: ${DEPS_RAM}MB/${DEPS_CPUS} CPUs | App VM: ${APP_RAM}MB/${APP_CPUS} CPUs"
+  info "VM: ${VM_RAM}MB / ${VM_CPUS} CPUs"
 
   if ! wait_for_condition "deps services" "$READY_TIMEOUT" deps_ready; then
-    tail_role_logs deps
+    tail_vm_logs
     exit 1
   fi
 
   if ! wait_for_condition "dashboard/backend" "$READY_TIMEOUT" app_ready; then
-    tail_role_logs dev-server
+    tail_vm_logs
     exit 1
   fi
 
-  save_snapshot deps
-  save_snapshot dev-server
+  save_snapshot
   log "All services are green. Snapshot saved for fast restart."
 }
 
 cmd_stop() {
-  stop_role dev-server
-  stop_role deps
+  stop_vm
   stop_file_bridge
   log "QEMU emulator stopped."
 }
@@ -547,16 +501,11 @@ print_service_status() {
 }
 
 cmd_status() {
-  echo "Guests:"
-  if is_running deps; then
-    echo -e "  ${GREEN}●${NC} deps"
+  echo "VM:"
+  if is_running; then
+    echo -e "  ${GREEN}●${NC} emulator"
   else
-    echo -e "  ${RED}●${NC} deps"
-  fi
-  if is_running dev-server; then
-    echo -e "  ${GREEN}●${NC} dev-server"
-  else
-    echo -e "  ${RED}●${NC} dev-server"
+    echo -e "  ${RED}●${NC} emulator"
   fi
   echo ""
   echo "Services:"

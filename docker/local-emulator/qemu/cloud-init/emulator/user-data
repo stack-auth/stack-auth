@@ -1,6 +1,6 @@
 #cloud-config
 
-hostname: stack-emulator-dev-server
+hostname: stack-emulator
 manage_etc_hosts: true
 
 users:
@@ -15,6 +15,8 @@ chpasswd:
     stack:stack-emulator
   expire: false
 
+ssh_pwauth: true
+
 package_update: true
 package_upgrade: false
 
@@ -22,6 +24,7 @@ packages:
   - docker.io
   - ca-certificates
   - curl
+  - netcat-openbsd
   - qemu-guest-agent
 
 write_files:
@@ -87,7 +90,7 @@ write_files:
       STACK_SPOTIFY_CLIENT_SECRET=MOCK
       STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS=true
 
-  - path: /usr/local/bin/install-stack-app-container
+  - path: /usr/local/bin/install-emulator-containers
     permissions: '0755'
     content: |
       #!/bin/bash
@@ -101,6 +104,24 @@ write_files:
       until docker info >/dev/null 2>&1; do sleep 1; done
 
       gzip -dc /mnt/stack-bundle/img.tgz | docker load
+
+  - path: /usr/local/bin/run-stack-deps-container
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      docker rm -f stack-deps >/dev/null 2>&1 || true
+      exec docker run \
+        --rm \
+        --name stack-deps \
+        --network host \
+        -v stack-postgres-data:/data/postgres \
+        -v stack-redis-data:/data/redis \
+        -v stack-clickhouse-data:/data/clickhouse \
+        -v stack-minio-data:/data/minio \
+        -v stack-inbucket-data:/data/inbucket \
+        stack-local-emulator-deps
 
   - path: /usr/local/bin/render-stack-env
     permissions: '0755'
@@ -117,6 +138,9 @@ write_files:
       source /etc/stack-auth/local-emulator.base.env
       set +a
 
+      # Deps runs in the same VM, so always localhost
+      DEPS_HOST=127.0.0.1
+
       cat > /run/stack-auth/local-emulator.env <<EOF
       NEXT_PUBLIC_STACK_PORT_PREFIX=${STACK_EMULATOR_PORT_PREFIX}
       STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL=${STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL}
@@ -129,23 +153,23 @@ write_files:
       NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}02
       NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}01
       NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}13
-      STACK_DATABASE_CONNECTION_STRING=postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}28/stackframe
-      STACK_EMAIL_HOST=${STACK_EMULATOR_DEPS_HOST}
-      STACK_EMAIL_PORT=${STACK_EMULATOR_PORT_PREFIX}29
+      STACK_DATABASE_CONNECTION_STRING=postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@${DEPS_HOST}:5432/stackframe
+      STACK_EMAIL_HOST=${DEPS_HOST}
+      STACK_EMAIL_PORT=2500
       STACK_EMAIL_SECURE=false
       STACK_EMAIL_USERNAME=does-not-matter
       STACK_EMAIL_PASSWORD=does-not-matter
       STACK_EMAIL_SENDER=noreply@example.com
       STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR=10000
-      STACK_SVIX_SERVER_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}13
-      STACK_S3_ENDPOINT=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}21
+      STACK_SVIX_SERVER_URL=http://${DEPS_HOST}:8071
+      STACK_S3_ENDPOINT=http://${DEPS_HOST}:9090
       STACK_S3_PUBLIC_ENDPOINT=http://localhost:${STACK_EMULATOR_PORT_PREFIX}21/stack-storage
-      STACK_QSTASH_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}25
-      STACK_CLICKHOUSE_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}36
+      STACK_QSTASH_URL=http://${DEPS_HOST}:8080
+      STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${STACK_EMULATOR_PORT_PREFIX}01/handler/email-verification
-      STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}05
+      STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
       STACK_EMAIL_MONITOR_USE_INBUCKET=true
-      STACK_OAUTH_MOCK_URL=http://${STACK_EMULATOR_DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}14
+      STACK_OAUTH_MOCK_URL=http://${DEPS_HOST}:${STACK_EMULATOR_PORT_PREFIX}14
       BACKEND_PORT=${STACK_EMULATOR_PORT_PREFIX}02
       DASHBOARD_PORT=${STACK_EMULATOR_PORT_PREFIX}01
       NEXT_PUBLIC_STACK_DOCS_BASE_URL=${NEXT_PUBLIC_STACK_DOCS_BASE_URL}
@@ -225,29 +249,41 @@ write_files:
         --env-file /run/stack-auth/local-emulator.env \
         stack-local-emulator-app
 
-  - path: /usr/local/bin/stack-ready-signal
+  - path: /usr/local/bin/wait-for-deps
     permissions: '0755'
     content: |
       #!/bin/bash
       set -euo pipefail
 
-      mkdir -p /mnt/stack-runtime
-      runtime_device="$(readlink -f /dev/disk/by-label/STACKCFG)"
-      mountpoint -q /mnt/stack-runtime || mount -o ro "$runtime_device" /mnt/stack-runtime
-      source /mnt/stack-runtime/runtime.env
+      until nc -z 127.0.0.1 5432 >/dev/null 2>&1; do sleep 1; done
+      until curl -sf http://127.0.0.1:8123/ping >/dev/null 2>&1; do sleep 1; done
+      until curl -sf http://127.0.0.1:8071/api/v1/health/ >/dev/null 2>&1; do sleep 1; done
+      until curl -sf http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1; do sleep 1; done
+      until [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]; do sleep 1; done
 
-      until curl -sf "http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}02/health?db=1" >/dev/null 2>&1; do sleep 1; done
-      until curl -sf "http://127.0.0.1:${STACK_EMULATOR_PORT_PREFIX}01/handler/sign-in" >/dev/null 2>&1; do sleep 1; done
-      echo "STACK_EMULATOR_READY" > /dev/console 2>/dev/null || true
-      echo "STACK_EMULATOR_READY" > /dev/ttyAMA0 2>/dev/null || true
-      echo "STACK_EMULATOR_READY" > /dev/ttyS0 2>/dev/null || true
+  - path: /etc/systemd/system/stack-deps.service
+    content: |
+      [Unit]
+      Description=Stack Auth local emulator deps container
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+      ExecStart=/usr/local/bin/run-stack-deps-container
+      ExecStop=/usr/bin/docker stop stack-deps
+
+      [Install]
+      WantedBy=multi-user.target
 
   - path: /etc/systemd/system/stack-app.service
     content: |
       [Unit]
       Description=Stack Auth local emulator app container
       Wants=network-online.target docker.service
-      After=network-online.target docker.service
+      After=network-online.target docker.service stack-deps.service
 
       [Service]
       Restart=always
@@ -259,25 +295,14 @@ write_files:
       [Install]
       WantedBy=multi-user.target
 
-  - path: /etc/systemd/system/stack-ready.service
-    content: |
-      [Unit]
-      Description=Stack Auth app readiness signal
-      After=stack-app.service
-
-      [Service]
-      Type=oneshot
-      ExecStart=/usr/local/bin/stack-ready-signal
-
-      [Install]
-      WantedBy=multi-user.target
-
 runcmd:
   - mkdir -p /etc/stack-auth
-  - bash /usr/local/bin/install-stack-app-container
+  - bash /usr/local/bin/install-emulator-containers
   - systemctl daemon-reload
-  - systemctl enable --now stack-app.service
-  - systemctl start stack-ready.service
+  - systemctl enable stack-deps.service
+  - systemctl enable stack-app.service
+  - systemctl start stack-deps.service
+  - bash /usr/local/bin/wait-for-deps
   - echo "STACK_CLOUD_INIT_DONE" > /dev/console 2>/dev/null || true
   - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyAMA0 2>/dev/null || true
   - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyS0 2>/dev/null || true

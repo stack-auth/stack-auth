@@ -10,11 +10,10 @@ CLOUD_INIT_ROOT="$SCRIPT_DIR/cloud-init"
 PREPARE_IMAGE_BUNDLE_SCRIPT="$SCRIPT_DIR/prepare-image-bundle.sh"
 
 DEBIAN_VERSION="${DEBIAN_VERSION:-13}"
-DISK_SIZE="${EMULATOR_DISK_SIZE:-16G}"
+DISK_SIZE="${EMULATOR_DISK_SIZE:-12G}"
 RAM="${EMULATOR_BUILD_RAM:-4096}"
-CPUS="${EMULATOR_BUILD_CPUS:-4}"
+CPUS="${EMULATOR_BUILD_CPUS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 PROVISION_TIMEOUT="${EMULATOR_PROVISION_TIMEOUT:-1800}"
-PARALLEL_BUILDS="${EMULATOR_BUILD_PARALLEL:-2}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,23 +26,16 @@ err()  { echo -e "${RED}[build]${NC} $*" >&2; }
 
 detect_host
 TARGET_ARCH="${1:-$HOST_ARCH}"
-TARGET_ROLE="${2:-all}"
 
 TARGET_ARCHS=()
 case "$TARGET_ARCH" in
   arm64) TARGET_ARCHS=(arm64) ;;
   amd64) TARGET_ARCHS=(amd64) ;;
   both) TARGET_ARCHS=(arm64 amd64) ;;
-  *) err "Usage: $0 [arm64|amd64|both] [all|deps|dev-server]"; exit 1 ;;
+  *) err "Usage: $0 [arm64|amd64|both]"; exit 1 ;;
 esac
 
-TARGET_ROLES=()
-case "$TARGET_ROLE" in
-  all) TARGET_ROLES=(deps dev-server) ;;
-  deps) TARGET_ROLES=(deps) ;;
-  dev-server) TARGET_ROLES=(dev-server) ;;
-  *) err "Usage: $0 [arm64|amd64|both] [all|deps|dev-server]"; exit 1 ;;
-esac
+DOCKER_IMAGES=(stack-local-emulator-deps stack-local-emulator-app)
 
 check_deps() {
   local missing=()
@@ -123,79 +115,46 @@ qemu_cmd_prefix_for_arch() {
   esac
 }
 
-image_name_for_role() {
-  case "$1" in
-    deps) echo "stack-local-emulator-deps" ;;
-    dev-server) echo "stack-local-emulator-app" ;;
-    *) return 1 ;;
-  esac
-}
-
-prepare_cloud_init_dir() {
-  local role="$1"
-  local out_dir="$2"
-  mkdir -p "$out_dir"
-  cp "$CLOUD_INIT_ROOT/$role/meta-data" "$out_dir/meta-data"
-  cp "$CLOUD_INIT_ROOT/$role/user-data" "$out_dir/user-data"
-}
-
-make_seed_iso() {
-  local iso_path="$1"
-  local role="$2"
-  local seed_dir
-  seed_dir="$(mktemp -d)"
-  prepare_cloud_init_dir "$role" "$seed_dir"
-  make_iso_from_dir "$iso_path" "cidata" "$seed_dir"
-  rm -rf "$seed_dir"
-}
-
-prepare_role_bundle() {
-  local role="$1"
-  local out_path="$2"
-  local image_name
-  image_name="$(image_name_for_role "$role")"
-  "$PREPARE_IMAGE_BUNDLE_SCRIPT" "$out_path" "$image_name"
-}
-
 final_image_name() {
-  echo "$IMAGE_DIR/stack-emulator-$1-$2.qcow2"
+  echo "$IMAGE_DIR/stack-emulator-$1.qcow2"
 }
 
 prepare_bundle_artifacts() {
   local arch="$1"
-  local role="$2"
-  local bundle_tgz="$IMAGE_DIR/${role}-${arch}-docker-image.tar.gz"
-  local bundle_meta="$bundle_tgz.image-id"
-  local image_name image_id cached_image_id
-  image_name="$(image_name_for_role "$role")"
-  image_id="$(docker image inspect --format '{{.ID}}' "$image_name")"
-  cached_image_id=""
+  local bundle_tgz="$IMAGE_DIR/emulator-${arch}-docker-images.tar.gz"
+  local bundle_meta="$bundle_tgz.image-ids"
+
+  local current_ids=""
+  for img in "${DOCKER_IMAGES[@]}"; do
+    current_ids+="$(docker image inspect --format '{{.ID}}' "$img")"$'\n'
+  done
+
+  local cached_ids=""
   if [ -f "$bundle_meta" ]; then
-    cached_image_id="$(cat "$bundle_meta")"
+    cached_ids="$(cat "$bundle_meta")"
   fi
 
-  if [ -f "$bundle_tgz" ] && [ "$cached_image_id" = "$image_id" ]; then
+  if [ -f "$bundle_tgz" ] && [ "$cached_ids" = "$current_ids" ]; then
     log "Reusing bundle: $bundle_tgz"
     return 0
   fi
 
-  log "Creating Docker image bundle for ${role} (${arch})..."
-  prepare_role_bundle "$role" "$bundle_tgz"
-  printf "%s" "$image_id" > "$bundle_meta"
+  log "Creating Docker image bundle (${arch})..."
+  "$PREPARE_IMAGE_BUNDLE_SCRIPT" "$bundle_tgz" "${DOCKER_IMAGES[@]}"
+  printf "%s" "$current_ids" > "$bundle_meta"
 }
 
 build_one() {
-  local role="$1"
-  local arch="$2"
+  local arch="$1"
   local base_img="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
+  local bundle_tgz="$IMAGE_DIR/emulator-${arch}-docker-images.tar.gz"
   local final_img
-  final_img="$(final_image_name "$role" "$arch")"
-  local bundle_tgz="$IMAGE_DIR/${role}-${arch}-docker-image.tar.gz"
+  final_img="$(final_image_name "$arch")"
 
-  log "━━━ Building ${role} image (${arch}) ━━━"
+  log "━━━ Building emulator image (${arch}) ━━━"
 
   local tmp_dir
-  tmp_dir="$(mktemp -d /tmp/stack-qemu-build-${role}-${arch}-XXXXXX)"
+  tmp_dir="$(mktemp -d /tmp/stack-qemu-build-${arch}-XXXXXX)"
   local tmp_img="$tmp_dir/disk.qcow2"
   local seed_iso="$tmp_dir/seed.iso"
   local bundle_iso="$tmp_dir/bundle.iso"
@@ -208,7 +167,13 @@ build_one() {
   cp "$base_img" "$tmp_img"
   qemu-img resize "$tmp_img" "$DISK_SIZE" >/dev/null 2>&1 || true
 
-  make_seed_iso "$seed_iso" "$role"
+  local seed_dir
+  seed_dir="$(mktemp -d)"
+  mkdir -p "$seed_dir"
+  cp "$CLOUD_INIT_ROOT/emulator/meta-data" "$seed_dir/meta-data"
+  cp "$CLOUD_INIT_ROOT/emulator/user-data" "$seed_dir/user-data"
+  make_iso_from_dir "$seed_iso" "cidata" "$seed_dir"
+  rm -rf "$seed_dir"
 
   mkdir -p "$bundle_dir"
   cp "$bundle_tgz" "$bundle_dir/img.tgz"
@@ -240,12 +205,12 @@ build_one() {
     fi
     sleep 5
     elapsed=$((SECONDS - start_time))
-    printf "\r  [%3ds / %ds] provisioning %s..." "$elapsed" "$PROVISION_TIMEOUT" "$role"
+    printf "\r  [%3ds / %ds] provisioning emulator..." "$elapsed" "$PROVISION_TIMEOUT"
   done
   echo ""
 
   if ! grep -q "STACK_CLOUD_INIT_DONE" "$serial_log" 2>/dev/null; then
-    err "Provisioning timed out for ${role} (${arch})"
+    err "Provisioning timed out for emulator (${arch})"
     tail -50 "$serial_log" >&2 || true
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
@@ -263,14 +228,14 @@ build_one() {
   done
 
   if kill -0 "$pid" 2>/dev/null; then
-    warn "Guest did not power off cleanly for ${role}; forcing shutdown."
+    warn "Guest did not power off cleanly; forcing shutdown."
     kill "$pid" 2>/dev/null || true
     sleep 2
     kill -9 "$pid" 2>/dev/null || true
   fi
 
   cp "$tmp_img" "$final_img"
-  cp "$serial_log" "$IMAGE_DIR/provision-${role}-${arch}.log"
+  cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log"
   rm -rf "$tmp_dir"
 
   qemu-img convert -O qcow2 -c "$final_img" "$final_img.tmp"
@@ -278,42 +243,14 @@ build_one() {
 
   local size
   size="$(du -h "$final_img" | cut -f1)"
-  log "━━━ ${role} image ready: $final_img (${size}) ━━━"
-}
-
-build_all_for_arch() {
-  local arch="$1"
-  local base_img="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
-  download_cloud_image "$arch" "$base_img"
-
-  local pids=()
-  local role
-  for role in "${TARGET_ROLES[@]}"; do
-    prepare_bundle_artifacts "$arch" "$role" &
-    pids+=("$!")
-  done
-  for pid in "${pids[@]}"; do
-    wait "$pid"
-  done
-
-  pids=()
-  for role in "${TARGET_ROLES[@]}"; do
-    if [ "${#TARGET_ROLES[@]}" -gt 1 ] && [ "$PARALLEL_BUILDS" -gt 1 ]; then
-      build_one "$role" "$arch" &
-      pids+=("$!")
-    else
-      build_one "$role" "$arch"
-    fi
-  done
-  if [ "${#pids[@]}" -gt 0 ]; then
-    for pid in "${pids[@]}"; do
-      wait "$pid"
-    done
-  fi
+  log "━━━ Emulator image ready: $final_img (${size}) ━━━"
 }
 
 for arch in "${TARGET_ARCHS[@]}"; do
-  build_all_for_arch "$arch"
+  local_base="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
+  download_cloud_image "$arch" "$local_base"
+  prepare_bundle_artifacts "$arch"
+  build_one "$arch"
 done
 
 log "Done. Start with: docker/local-emulator/qemu/run-emulator.sh start"
