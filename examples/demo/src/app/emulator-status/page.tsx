@@ -137,7 +137,7 @@ export default function EmulatorStatusPage() {
                   {summary.down > 0 && (
                     <span className="text-red-600 dark:text-red-400 font-medium">{summary.down} down</span>
                   )}
-                  {data != null && <span>updated {new Date(data.timestamp).toLocaleTimeString()}</span>}
+                  <span>updated {new Date(data.timestamp).toLocaleTimeString()}</span>
                 </div>
               </div>
             ) : null}

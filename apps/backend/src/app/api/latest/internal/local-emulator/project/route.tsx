@@ -4,9 +4,7 @@ import {
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
   LOCAL_EMULATOR_OWNER_TEAM_ID,
   isLocalEmulatorEnabled,
-  readConfigFileContentIfExists,
   readConfigFromFile,
-  writeConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -192,11 +190,6 @@ export const POST = createSmartRouteHandler({
     }
 
     const absoluteFilePath = path.resolve(req.body.absolute_file_path);
-
-    const fileContent = await readConfigFileContentIfExists(absoluteFilePath) ?? "";
-    if (fileContent.trim() === "") {
-      await writeConfigToFile(absoluteFilePath, {});
-    }
 
     await assertLocalEmulatorOwnerTeamReadiness();
 

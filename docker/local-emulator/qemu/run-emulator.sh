@@ -7,13 +7,12 @@ source "$SCRIPT_DIR/common.sh"
 
 IMAGE_DIR="$SCRIPT_DIR/images"
 RUN_DIR="/tmp/stack-emulator-run"
-FILE_BRIDGE_SCRIPT="$SCRIPT_DIR/host-file-bridge.mjs"
 
 VM_RAM="${EMULATOR_RAM:-4096}"
 VM_CPUS="${EMULATOR_CPUS:-4}"
 PORT_PREFIX="${PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}"
-FILE_BRIDGE_PORT="${EMULATOR_FILE_BRIDGE_PORT:-${PORT_PREFIX}16}"
 READY_TIMEOUT="${EMULATOR_READY_TIMEOUT:-240}"
+CONFIG_FILE=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -26,113 +25,6 @@ warn() { echo -e "${YELLOW}[emulator]${NC} $*"; }
 err()  { echo -e "${RED}[emulator]${NC} $*" >&2; }
 info() { echo -e "${CYAN}[emulator]${NC} $*"; }
 
-file_bridge_pidfile() {
-  echo "$RUN_DIR/host-file-bridge.pid"
-}
-
-file_bridge_logfile() {
-  echo "$RUN_DIR/host-file-bridge.log"
-}
-
-file_bridge_tokenfile() {
-  echo "$RUN_DIR/host-file-bridge.token"
-}
-
-ensure_file_bridge_token() {
-  local token_file
-  token_file="$(file_bridge_tokenfile)"
-  # Deterministic token so snapshots can reuse the same value across restarts
-  FILE_BRIDGE_TOKEN="$(printf 'stack-local-emulator-%s' "$PORT_PREFIX" | shasum -a 256 | head -c 48)"
-  mkdir -p "$RUN_DIR"
-  printf "%s" "$FILE_BRIDGE_TOKEN" > "$token_file"
-}
-
-is_file_bridge_running() {
-  local pidfile
-  pidfile="$(file_bridge_pidfile)"
-  if [ ! -f "$pidfile" ]; then
-    return 1
-  fi
-  local pid
-  pid="$(cat "$pidfile")"
-  kill -0 "$pid" 2>/dev/null
-}
-
-start_file_bridge() {
-  ensure_file_bridge_token
-  if is_file_bridge_running; then
-    return 0
-  fi
-
-  if [ ! -f "$FILE_BRIDGE_SCRIPT" ]; then
-    err "Missing host file bridge script: $FILE_BRIDGE_SCRIPT"
-    exit 1
-  fi
-
-  local pid
-  pid="$(
-    STACK_QEMU_FILE_BRIDGE_PORT="$FILE_BRIDGE_PORT" \
-    STACK_QEMU_FILE_BRIDGE_HOST="0.0.0.0" \
-    STACK_QEMU_FILE_BRIDGE_TOKEN="$FILE_BRIDGE_TOKEN" \
-      python3 - "$FILE_BRIDGE_SCRIPT" "$(file_bridge_logfile)" <<'PY'
-import os
-import subprocess
-import sys
-
-script_path = sys.argv[1]
-log_path = sys.argv[2]
-
-with open(log_path, "ab", buffering=0) as log_file:
-    process = subprocess.Popen(
-        ["node", script_path],
-        stdin=subprocess.DEVNULL,
-        stdout=log_file,
-        stderr=log_file,
-        start_new_session=True,
-        env=os.environ.copy(),
-        close_fds=True,
-    )
-
-print(process.pid)
-PY
-  )"
-  echo "$pid" > "$(file_bridge_pidfile)"
-
-  local elapsed=0
-  while [ "$elapsed" -lt 15 ]; do
-    if curl -sf "http://127.0.0.1:${FILE_BRIDGE_PORT}/health" >/dev/null 2>&1; then
-      return 0
-    fi
-    if ! kill -0 "$pid" 2>/dev/null; then
-      err "Host file bridge exited unexpectedly."
-      tail -40 "$(file_bridge_logfile)" 2>/dev/null || true
-      exit 1
-    fi
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
-
-  err "Timed out waiting for host file bridge on port ${FILE_BRIDGE_PORT}."
-  tail -40 "$(file_bridge_logfile)" 2>/dev/null || true
-  exit 1
-}
-
-stop_file_bridge() {
-  local pidfile
-  pidfile="$(file_bridge_pidfile)"
-  if [ ! -f "$pidfile" ]; then
-    return 0
-  fi
-
-  local pid
-  pid="$(cat "$pidfile")"
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    sleep 1
-    kill -9 "$pid" 2>/dev/null || true
-  fi
-  rm -f "$pidfile" "$(file_bridge_logfile)" "$(file_bridge_tokenfile)"
-}
 
 detect_host
 ARCH="${EMULATOR_ARCH:-$HOST_ARCH}"
@@ -221,11 +113,13 @@ prepare_runtime_config_iso() {
   cfg_iso="$(runtime_iso_path)"
   rm -rf "$cfg_dir"
   mkdir -p "$cfg_dir"
-  cat > "$cfg_dir/runtime.env" <<EOF
-STACK_EMULATOR_PORT_PREFIX=$PORT_PREFIX
-STACK_LOCAL_EMULATOR_FILE_BRIDGE_URL=http://10.0.2.2:${FILE_BRIDGE_PORT}
-STACK_LOCAL_EMULATOR_FILE_BRIDGE_TOKEN=${FILE_BRIDGE_TOKEN}
-EOF
+  {
+    printf "STACK_EMULATOR_PORT_PREFIX=%s\n" "$PORT_PREFIX"
+    if [ -n "$CONFIG_FILE" ]; then
+      printf "STACK_LOCAL_EMULATOR_CONFIG_CONTENT=%s\n" "$(base64 < "$CONFIG_FILE")"
+    fi
+  } > "$cfg_dir/runtime.env"
+  cp "$SCRIPT_DIR/../base.env" "$cfg_dir/base.env"
   make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
 }
 
@@ -332,7 +226,6 @@ build_qemu_cmd() {
   esac
 
   local netdev="user,id=net0"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}22-:22"
   # Deps services
   netdev+=",hostfwd=tcp::${PORT_PREFIX}28-:5432"
   netdev+=",hostfwd=tcp::${PORT_PREFIX}29-:2500"
@@ -393,7 +286,7 @@ tail_vm_logs() {
 }
 
 ensure_ports_free() {
-  local ports=("${PORT_PREFIX}01" "${PORT_PREFIX}02" "${PORT_PREFIX}05" "${PORT_PREFIX}13" "${PORT_PREFIX}16" "${PORT_PREFIX}21" "${PORT_PREFIX}25" "${PORT_PREFIX}28" "${PORT_PREFIX}29" "${PORT_PREFIX}30" "${PORT_PREFIX}36" "${PORT_PREFIX}37")
+  local ports=("${PORT_PREFIX}01" "${PORT_PREFIX}02" "${PORT_PREFIX}05" "${PORT_PREFIX}13" "${PORT_PREFIX}21" "${PORT_PREFIX}25" "${PORT_PREFIX}28" "${PORT_PREFIX}29" "${PORT_PREFIX}30" "${PORT_PREFIX}36" "${PORT_PREFIX}37")
   local port
   for port in "${ports[@]}"; do
     if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -435,9 +328,13 @@ stop_vm() {
 }
 
 cmd_start() {
+  if [ -n "$CONFIG_FILE" ] && [ ! -f "$CONFIG_FILE" ]; then
+    err "Config file not found: $CONFIG_FILE"
+    exit 1
+  fi
+
   ensure_ports_free
   mkdir -p "$RUN_DIR"
-  start_file_bridge
 
   IS_SNAPSHOT_RESTORE=false
 
@@ -477,7 +374,6 @@ cmd_start() {
 
 cmd_stop() {
   stop_vm
-  stop_file_bridge
   log "QEMU emulator stopped."
 }
 
@@ -513,7 +409,6 @@ cmd_status() {
   print_service_status "Backend" "${PORT_PREFIX}02" http "/health?db=1"
   print_service_status "PostgreSQL" "${PORT_PREFIX}28" tcp
   print_service_status "Inbucket HTTP" "${PORT_PREFIX}05" http /
-  print_service_status "Host File Bridge" "${FILE_BRIDGE_PORT}" http /health
   print_service_status "Svix" "${PORT_PREFIX}13" http /api/v1/health/
   print_service_status "MinIO" "${PORT_PREFIX}21" http /minio/health/live
   print_service_status "QStash" "${PORT_PREFIX}25" http / 401
@@ -541,7 +436,24 @@ print(f"Startup time: {end_time - start_time:.1f}s")
 PY
 }
 
-ACTION="${1:-start}"
+ACTION="start"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config-file)
+      CONFIG_FILE="$2"
+      shift 2
+      ;;
+    start|stop|reset|status|bench)
+      ACTION="$1"
+      shift
+      ;;
+    *)
+      echo "Usage: $0 [start|stop|reset|status|bench] [--config-file <path>]"
+      exit 1
+      ;;
+  esac
+done
 
 case "$ACTION" in
   start) cmd_start ;;
@@ -549,8 +461,4 @@ case "$ACTION" in
   reset) cmd_reset ;;
   status) cmd_status ;;
   bench) cmd_bench ;;
-  *)
-    echo "Usage: $0 [start|stop|reset|status|bench]"
-    exit 1
-    ;;
 esac

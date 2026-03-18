@@ -7,7 +7,6 @@ source "$SCRIPT_DIR/common.sh"
 
 IMAGE_DIR="$SCRIPT_DIR/images"
 CLOUD_INIT_ROOT="$SCRIPT_DIR/cloud-init"
-PREPARE_IMAGE_BUNDLE_SCRIPT="$SCRIPT_DIR/prepare-image-bundle.sh"
 
 DEBIAN_VERSION="${DEBIAN_VERSION:-13}"
 DISK_SIZE="${EMULATOR_DISK_SIZE:-12G}"
@@ -140,7 +139,16 @@ prepare_bundle_artifacts() {
   fi
 
   log "Creating Docker image bundle (${arch})..."
-  "$PREPARE_IMAGE_BUNDLE_SCRIPT" "$bundle_tgz" "${DOCKER_IMAGES[@]}"
+  for img in "${DOCKER_IMAGES[@]}"; do
+    if ! docker image inspect "$img" >/dev/null 2>&1; then
+      err "Missing Docker image: $img. Build the local emulator images first, then rerun the QEMU image build."
+      exit 1
+    fi
+  done
+  local tmp_bundle="${bundle_tgz}.tmp"
+  rm -f "$tmp_bundle"
+  docker save "${DOCKER_IMAGES[@]}" | gzip -c > "$tmp_bundle"
+  mv "$tmp_bundle" "$bundle_tgz"
   printf "%s" "$current_ids" > "$bundle_meta"
 }
 

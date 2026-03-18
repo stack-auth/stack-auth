@@ -11,7 +11,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
-import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "./local-emulator";
+import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile } from "./local-emulator";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
@@ -265,14 +265,6 @@ export async function setBranchConfigOverride(options: {
   branchConfigOverride: BranchConfigOverride,
 }): Promise<void> {
   const newConfig = migrateConfigOverride("branch", options.branchConfigOverride);
-
-  if (isLocalEmulatorEnabled() && await isLocalEmulatorProject(options.projectId)) {
-    const filePath = await getLocalEmulatorFilePath(options.projectId);
-    if (filePath) {
-      await writeConfigToFile(filePath, newConfig);
-      return;
-    }
-  }
 
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);

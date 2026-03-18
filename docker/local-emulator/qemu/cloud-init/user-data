@@ -1,6 +1,0 @@
-#cloud-config
-write_files:
-  - path: /etc/motd
-    content: |
-      Stack Auth local emulator uses the unified cloud-init definition in
-      docker/local-emulator/qemu/cloud-init/emulator/.
