@@ -84,6 +84,10 @@ async function main() {
     : Infinity;
   const { recurse, collectedErrors } = createRecurse({ noBail });
 
+  if (shouldSaveOutput && shouldVerifyOutput) {
+    throw new Error("Cannot use --save-output and --verify-output at the same time.");
+  }
+
   if (noBail) {
     console.log(`Running in no-bail mode: will continue on errors and report all at the end.`);
   }
@@ -103,17 +107,20 @@ async function main() {
       targetOutputData = loadOutputData(OUTPUT_FILE_PATH);
 
       // TODO next-release these are hacks for the migration, delete them
-      targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
-        if ("config" in output.responseJson) {
-          delete output.responseJson.config.id;
-          output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
-            // `any` because this is historical output JSON from disk.
-            // We intentionally keep this "migration hack" untyped.
-            .filter((provider: any) => provider.enabled)
-            .map((provider: any) => omit(provider, ["enabled"]));
-        }
-        return output;
-      });
+      const projectCurrentOutputs = targetOutputData.get("/api/v1/internal/projects/current");
+      if (projectCurrentOutputs) {
+        targetOutputData.set("/api/v1/internal/projects/current", projectCurrentOutputs.map(output => {
+          if ("config" in output.responseJson) {
+            delete output.responseJson.config.id;
+            output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
+              // `any` because this is historical output JSON from disk.
+              // We intentionally keep this "migration hack" untyped.
+              .filter((provider: any) => provider.enabled)
+              .map((provider: any) => omit(provider, ["enabled"]));
+          }
+          return output;
+        }));
+      }
 
       console.log(`Loaded previous output data for verification`);
     } catch (error) {
@@ -121,7 +128,7 @@ async function main() {
     }
   }
 
-  const { expectStatusCode, verifyOutputCompleteness } = createApiHelpers({
+  const { expectStatusCode, verifyOutputCompleteness, finalizeOutput } = createApiHelpers({
     targetOutputData,
     outputFilePath: shouldSaveOutput ? OUTPUT_FILE_PATH : undefined,
   });
@@ -306,7 +313,7 @@ async function main() {
                     customerType: "team",
                     customerId: team.id,
                   });
-                    verifiedTeams.add(team.id);
+                  verifiedTeams.add(team.id);
                 }
               }
 
@@ -337,6 +344,7 @@ async function main() {
 
   verifyOutputCompleteness();
   if (shouldSaveOutput) {
+    finalizeOutput();
     console.log(`Output saved to ${OUTPUT_FILE_PATH}`);
   }
 

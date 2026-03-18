@@ -9,7 +9,7 @@ export type EndpointOutput = {
   responseJson: any,
 };
 
-export type OutputData = Record<string, EndpointOutput[]>;
+export type OutputData = Map<string, EndpointOutput[]>;
 
 export type ExpectStatusCode = <T = any>(
   expectedStatusCode: number,
@@ -19,23 +19,23 @@ export type ExpectStatusCode = <T = any>(
 
 /**
  * Reads an output file that may be in either format:
- * - Legacy: a single JSON object keyed by endpoint (`OutputData`)
+ * - Legacy: a single JSON object keyed by endpoint. This was old
  * - JSONL: one JSON object per line, each `{ endpoint, output }`
  */
 export function loadOutputData(filePath: string): OutputData {
   const content = fs.readFileSync(filePath, "utf8").trim();
-  if (!content) return {};
+  const data: OutputData = new Map();
+  if (!content) return data;
 
   const firstLine = content.split("\n")[0];
   try {
     const parsed = JSON.parse(firstLine);
     if ("endpoint" in parsed && "output" in parsed) {
-      const data: OutputData = {};
       for (const line of content.split("\n")) {
         if (!line.trim()) continue;
         const { endpoint, output } = JSON.parse(line);
-        if (!(endpoint in data)) data[endpoint] = [];
-        data[endpoint].push(output);
+        if (!data.has(endpoint)) data.set(endpoint, []);
+        data.get(endpoint)!.push(output);
       }
       return data;
     }
@@ -43,7 +43,11 @@ export function loadOutputData(filePath: string): OutputData {
     // Not JSONL — fall through to legacy parse
   }
 
-  return JSON.parse(content);
+  const legacy = JSON.parse(content) as Record<string, EndpointOutput[]>;
+  for (const [endpoint, outputs] of Object.entries(legacy)) {
+    data.set(endpoint, outputs);
+  }
+  return data;
 }
 
 export function createApiHelpers(options: {
@@ -51,15 +55,17 @@ export function createApiHelpers(options: {
   /**
    * When set, each API response is streamed to this file as JSONL
    * (one `{ endpoint, output }` object per line). This avoids
-   * accumulating all responses in memory.
+   * accumulating all responses in memory. Writes go to a temporary
+   * file first; call `finalizeOutput()` to rename it to the final path.
    */
   outputFilePath?: string,
 }) {
   const { targetOutputData, outputFilePath } = options;
   const outputCountByEndpoint = new Map<string, number>();
+  const tmpFilePath = outputFilePath ? `${outputFilePath}.tmp` : undefined;
 
-  if (outputFilePath) {
-    fs.writeFileSync(outputFilePath, "");
+  if (tmpFilePath) {
+    fs.writeFileSync(tmpFilePath, "");
   }
 
   function appendOutputData(endpoint: string, output: EndpointOutput) {
@@ -67,38 +73,38 @@ export function createApiHelpers(options: {
     outputCountByEndpoint.set(endpoint, count);
 
     if (targetOutputData) {
-      if (!(endpoint in targetOutputData)) {
+      const targetEndpointOutputs = targetOutputData.get(endpoint);
+      if (!targetEndpointOutputs) {
         throw new StackAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
             Expected ${endpoint} to be in targetOutputData, but it is not.
         `, { endpoint });
       }
-      if (targetOutputData[endpoint].length < count) {
+      if (targetEndpointOutputs.length < count) {
         throw new StackAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
-            Expected ${targetOutputData[endpoint].length} outputs but got at least ${count}.
+            Expected ${targetEndpointOutputs.length} outputs but got at least ${count}.
         `, { endpoint });
       }
-      if (!(deepPlainEquals(targetOutputData[endpoint][count - 1], output))) {
+      if (!(deepPlainEquals(targetEndpointOutputs[count - 1], output))) {
         throw new StackAssertionError(deindent`
           Output data mismatch for endpoint ${endpoint}:
             Expected output[${JSON.stringify(endpoint)}][${count - 1}] to be:
-              ${JSON.stringify(targetOutputData[endpoint][count - 1], null, 2)}
+              ${JSON.stringify(targetEndpointOutputs[count - 1], null, 2)}
             but got:
               ${JSON.stringify(output, null, 2)}.
         `, { endpoint });
       }
     }
 
-    if (outputFilePath) {
-      fs.appendFileSync(outputFilePath, JSON.stringify({ endpoint, output }) + "\n");
+    if (tmpFilePath) {
+      fs.appendFileSync(tmpFilePath, JSON.stringify({ endpoint, output }) + "\n");
     }
   }
 
   function verifyOutputCompleteness() {
-    // targetOutputData is old output file.
     if (!targetOutputData) return;
-    for (const [endpoint, expectedOutputs] of Object.entries(targetOutputData)) {
+    for (const [endpoint, expectedOutputs] of targetOutputData) {
       const actualCount = outputCountByEndpoint.get(endpoint) ?? 0;
       if (actualCount !== expectedOutputs.length) {
         throw new StackAssertionError(deindent`
@@ -106,6 +112,12 @@ export function createApiHelpers(options: {
             Expected ${expectedOutputs.length} outputs but got ${actualCount}.
         `, { endpoint, expectedCount: expectedOutputs.length, actualCount });
       }
+    }
+  }
+
+  function finalizeOutput() {
+    if (tmpFilePath && outputFilePath) {
+      fs.renameSync(tmpFilePath, outputFilePath);
     }
   }
 
@@ -145,5 +157,6 @@ export function createApiHelpers(options: {
     appendOutputData,
     expectStatusCode,
     verifyOutputCompleteness,
+    finalizeOutput,
   };
 }
