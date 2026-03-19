@@ -424,6 +424,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         clientVersion,
         ...(publishableClientKey != null ? { publishableClientKey } : {}),
         secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
+        prepareRequest: async () => {
+          if (this._emulatorInitPromise) await this._emulatorInitPromise;
+        },
       }),
     });
 

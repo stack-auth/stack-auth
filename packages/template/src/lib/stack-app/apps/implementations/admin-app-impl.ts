@@ -148,6 +148,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
           secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
           superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey({ isEmulator }),
         },
+        prepareRequest: async () => {
+          if (this._emulatorInitPromise) await this._emulatorInitPromise;
+        },
       }),
     });
 
