@@ -79,8 +79,6 @@ export function registerEmulatorCommand(program: Command) {
   emulator
     .command("pull")
     .description("Download the latest emulator image from GitHub Releases")
-    .option("--snapshot", "Download snapshot image (instant boot)", true)
-    .option("--base", "Download base image (clean boot)")
     .option("--arch <arch>", "Target architecture (arm64 or amd64)")
     .option("--branch <branch>", `Release branch (default: ${DEFAULT_BRANCH})`)
     .option("--tag <tag>", "Specific release tag")
@@ -89,9 +87,8 @@ export function registerEmulatorCommand(program: Command) {
       const arch = opts.arch || detectArch();
       const repo = opts.repo || DEFAULT_REPO;
       const branch = opts.branch || DEFAULT_BRANCH;
-      const variant = opts.base ? "base" : "snapshot";
       const tag = opts.tag || `emulator-${branch}-latest`;
-      const asset = `stack-emulator-${arch}-${variant}.qcow2`;
+      const asset = `stack-emulator-${arch}.qcow2`;
 
       const qemuDir = findQemuDir();
       const imageDir = join(qemuDir, "images");
@@ -100,7 +97,7 @@ export function registerEmulatorCommand(program: Command) {
       const dest = join(imageDir, `stack-emulator-${arch}.qcow2`);
       const tmpDest = `${dest}.download`;
 
-      console.log(`Pulling ${variant} image for ${arch} from release ${tag}...`);
+      console.log(`Pulling image for ${arch} from release ${tag}...`);
 
       try {
         execSync(
@@ -116,13 +113,6 @@ export function registerEmulatorCommand(program: Command) {
 
       renameSync(tmpDest, dest);
       console.log(`Downloaded: ${dest}`);
-
-      if (variant === "snapshot") {
-        const runDir = join(qemuDir, "run", "vm");
-        mkdirSync(runDir, { recursive: true });
-        execSync(`cp ${JSON.stringify(dest)} ${JSON.stringify(join(runDir, "disk.qcow2"))}`);
-        console.log("Snapshot image installed — next start will restore instantly.");
-      }
     });
 
   emulator
@@ -135,7 +125,7 @@ export function registerEmulatorCommand(program: Command) {
       const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
 
       if (!existsSync(img)) {
-        console.log("No emulator image found. Pulling latest snapshot...");
+        console.log("No emulator image found. Pulling latest...");
         // Re-invoke pull via the same program
         await program.parseAsync(["node", "stack", "emulator", "pull", "--arch", arch], { from: "user" });
       }
@@ -145,15 +135,10 @@ export function registerEmulatorCommand(program: Command) {
 
   emulator
     .command("stop")
-    .description("Stop the emulator (saves snapshot)")
-    .option("--no-snapshot", "Skip saving snapshot before stopping")
-    .action(async (opts) => {
+    .description("Stop the emulator")
+    .action(async () => {
       const qemuDir = findQemuDir();
-      const env: Record<string, string> = {};
-      if (opts.snapshot === false) {
-        env.SKIP_SNAPSHOT = "true";
-      }
-      await runScript(qemuDir, "run-emulator.sh", ["stop"], env);
+      await runScript(qemuDir, "run-emulator.sh", ["stop"]);
     });
 
   emulator
@@ -170,14 +155,6 @@ export function registerEmulatorCommand(program: Command) {
     .action(async () => {
       const qemuDir = findQemuDir();
       await runScript(qemuDir, "run-emulator.sh", ["status"]);
-    });
-
-  emulator
-    .command("snapshot")
-    .description("Save a snapshot of the running emulator")
-    .action(async () => {
-      const qemuDir = findQemuDir();
-      await runScript(qemuDir, "run-emulator.sh", ["snapshot"]);
     });
 
   emulator

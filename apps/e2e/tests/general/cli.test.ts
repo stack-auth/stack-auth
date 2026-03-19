@@ -463,3 +463,56 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
   });
 });
+
+// Emulator CLI tests — no backend required, just validates help/arg parsing
+describe("Stack CLI — Emulator", () => {
+  function runCliBare(
+    args: string[],
+  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
+    return new Promise((resolve) => {
+      execFile("node", [CLI_BIN, ...args], {
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
+        timeout: 15_000,
+      }, (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+          exitCode: error ? (error as any).code ?? 1 : 0,
+        });
+      });
+    });
+  }
+
+  it("emulator help shows subcommands", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("pull");
+    expect(stdout).toContain("run");
+    expect(stdout).toContain("stop");
+    expect(stdout).toContain("reset");
+    expect(stdout).toContain("status");
+    expect(stdout).toContain("build");
+    expect(stdout).toContain("list-releases");
+  });
+
+  it("emulator pull help shows options", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "pull", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--arch");
+    expect(stdout).toContain("--branch");
+    expect(stdout).toContain("--tag");
+    expect(stdout).toContain("--repo");
+  });
+
+  it("emulator build help shows arch option", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "build", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--arch");
+  });
+
+  it("emulator list-releases help shows repo option", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "list-releases", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--repo");
+  });
+});

@@ -6,5 +6,8 @@ export const config = {
   "apps.installed.api-keys.enabled": true,
   "apps.installed.webhooks.enabled": true,
   "apps.installed.launch-checklist.enabled": true,
-  "auth.password.allowSignIn": true
+  "auth.otp.allowSignIn": true,
+  "onboarding.requireEmailVerification": true,
+  "auth.passkey.allowSignIn": true,
+  "auth.password.allowSignIn": false
 };

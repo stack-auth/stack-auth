@@ -65,7 +65,7 @@ jobs:
           chmod +x docker/local-emulator/qemu/build-image.sh
           docker/local-emulator/qemu/build-image.sh ${{ matrix.arch }}
 
-      - name: Start emulator (creates runtime state)
+      - name: Start emulator and verify
         run: |
           chmod +x docker/local-emulator/qemu/run-emulator.sh
           EMULATOR_ARCH=${{ matrix.arch }} \
@@ -77,36 +77,21 @@ jobs:
           EMULATOR_ARCH=${{ matrix.arch }} \
             docker/local-emulator/qemu/run-emulator.sh status
 
-      - name: Stop emulator (saves snapshot)
+      - name: Stop emulator
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
             docker/local-emulator/qemu/run-emulator.sh stop
 
-      - name: Package snapshot image
+      - name: Package image
         run: |
-          SNAPSHOT_IMG="docker/local-emulator/qemu/run/vm/disk.qcow2"
           BASE_IMG="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.qcow2"
+          cp "$BASE_IMG" "stack-emulator-${{ matrix.arch }}.qcow2"
 
-          # Compress snapshot image (contains VM state for instant restore)
-          qemu-img convert -p -O qcow2 -c "$SNAPSHOT_IMG" \
-            "stack-emulator-${{ matrix.arch }}-snapshot.qcow2"
-
-          # Copy base image (no snapshot, clean boot)
-          cp "$BASE_IMG" "stack-emulator-${{ matrix.arch }}-base.qcow2"
-
-      - name: Upload snapshot artifact
+      - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qemu-emulator-${{ matrix.arch }}-snapshot
-          path: stack-emulator-${{ matrix.arch }}-snapshot.qcow2
-          retention-days: 30
-          compression-level: 0
-
-      - name: Upload base artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: qemu-emulator-${{ matrix.arch }}-base
-          path: stack-emulator-${{ matrix.arch }}-base.qcow2
+          name: qemu-emulator-${{ matrix.arch }}
+          path: stack-emulator-${{ matrix.arch }}.qcow2
           retention-days: 30
           compression-level: 0
 
@@ -156,15 +141,12 @@ jobs:
           ### Images
           | File | Description |
           |------|-------------|
-          | `stack-emulator-arm64-snapshot.qcow2` | ARM64 with pre-warmed snapshot (instant boot) |
-          | `stack-emulator-arm64-base.qcow2` | ARM64 base image (clean boot) |
-          | `stack-emulator-amd64-snapshot.qcow2` | AMD64 with pre-warmed snapshot (instant boot) |
-          | `stack-emulator-amd64-base.qcow2` | AMD64 base image (clean boot) |
+          | `stack-emulator-arm64.qcow2` | ARM64 emulator image |
+          | `stack-emulator-amd64.qcow2` | AMD64 emulator image |
 
           ### Usage
           ```bash
-          # Pull and run the latest emulator via Stack CLI
-          stack emulator pull --snapshot
+          stack emulator pull
           stack emulator run
           ```
           EOF

@@ -59,11 +59,8 @@ runtime_iso_path() {
   echo "$VM_DIR/runtime-config.iso"
 }
 
-SNAPSHOT_NAME="ready"
-IS_SNAPSHOT_RESTORE=false
-
 # Returns a fast fingerprint (size:mtime) of the base QEMU image.
-# Used to detect whether the image has changed since the snapshot was saved.
+# Used to detect whether the image has changed since the overlay was created.
 base_image_fingerprint() {
   local img="$1"
   case "$HOST_OS" in
@@ -71,55 +68,6 @@ base_image_fingerprint() {
     linux)  stat -c "%s:%Y" "$img" 2>/dev/null ;;
     *)      stat -f "%z:%m" "$img" 2>/dev/null || stat -c "%s:%Y" "$img" 2>/dev/null ;;
   esac
-}
-
-vm_has_snapshot() {
-  [ -f "$VM_DIR/disk.qcow2" ] &&
-    qemu-img snapshot -l "$VM_DIR/disk.qcow2" 2>/dev/null | grep -q "$SNAPSHOT_NAME"
-}
-
-save_snapshot() {
-  if [ ! -S "$VM_DIR/monitor.sock" ]; then
-    warn "No monitor socket, skipping snapshot"
-    return 1
-  fi
-
-  log "Saving VM snapshot..."
-  local out_file="$VM_DIR/savevm.out"
-  rm -f "$out_file"
-
-  (
-    printf '{"execute":"qmp_capabilities"}\n'
-    sleep 0.3
-    printf '{"execute":"human-monitor-command","arguments":{"command-line":"savevm %s"}}\n' "$SNAPSHOT_NAME"
-    sleep 180
-  ) | socat -t 180 - "UNIX-CONNECT:$VM_DIR/monitor.sock" > "$out_file" 2>/dev/null &
-  local pid=$!
-
-  local elapsed=0
-  local snap_start=$SECONDS
-  while [ "$elapsed" -lt 120 ]; do
-    sleep 2
-    elapsed=$((SECONDS - snap_start))
-    printf "\r  [%3ds] saving snapshot..." "$elapsed"
-    if [ -f "$out_file" ] && [ "$(grep -c '"return"' "$out_file" 2>/dev/null)" -ge 2 ]; then
-      echo ""
-      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
-      rm -f "$out_file"
-      base_image_fingerprint "$(image_path)" > "$VM_DIR/base-image.fingerprint"
-      log "Snapshot saved."
-      return 0
-    fi
-    if ! kill -0 "$pid" 2>/dev/null; then
-      break
-    fi
-  done
-  echo ""
-
-  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
-  rm -f "$out_file"
-  warn "Snapshot save timed out"
-  return 1
 }
 
 prepare_runtime_config_iso() {
@@ -209,21 +157,20 @@ build_qemu_cmd() {
   fi
 
   mkdir -p "$VM_DIR"
-  local has_snapshot=false
   local fingerprint_file="$VM_DIR/base-image.fingerprint"
   local current_fp
   current_fp="$(base_image_fingerprint "$base_img")"
-  if [ -f "$VM_DIR/disk.qcow2" ] && vm_has_snapshot; then
+  if [ -f "$VM_DIR/disk.qcow2" ]; then
     if [ -f "$fingerprint_file" ] && [ "$(cat "$fingerprint_file")" = "$current_fp" ]; then
-      has_snapshot=true
+      log "Reusing existing overlay disk (changes persist)"
     else
-      warn "QEMU base image has changed — discarding stale snapshot."
+      warn "QEMU base image has changed — recreating overlay."
       rm -f "$VM_DIR/disk.qcow2" "$fingerprint_file"
     fi
   fi
-  if [ "$has_snapshot" = "false" ]; then
-    rm -f "$VM_DIR/disk.qcow2"
+  if [ ! -f "$VM_DIR/disk.qcow2" ]; then
     qemu-img create -f qcow2 -b "$base_img" -F qcow2 "$VM_DIR/disk.qcow2" >/dev/null
+    base_image_fingerprint "$base_img" > "$fingerprint_file"
   fi
 
   local qemu_bin machine cpu firmware_args=()
@@ -284,10 +231,6 @@ build_qemu_cmd() {
     -pidfile "$VM_DIR/qemu.pid"
   )
 
-  if [ "$has_snapshot" = "true" ]; then
-    QEMU_CMD+=(-loadvm "$SNAPSHOT_NAME")
-    IS_SNAPSHOT_RESTORE=true
-  fi
 }
 
 is_running() {
@@ -353,25 +296,10 @@ cmd_start() {
   ensure_ports_free
   mkdir -p "$RUN_DIR"
 
-  IS_SNAPSHOT_RESTORE=false
-
   info "Starting QEMU local emulator"
   info "Arch: $ARCH | Accel: $ACCEL | Prefix: $PORT_PREFIX"
 
   start_vm
-
-  if [ "$IS_SNAPSHOT_RESTORE" = "true" ]; then
-    info "Restoring from snapshot..."
-    if wait_for_condition "services (snapshot)" 30 all_ready; then
-      log "All services are green (restored from snapshot)."
-      return 0
-    fi
-    warn "Snapshot restore failed. Resetting and doing fresh boot..."
-    stop_vm
-    rm -rf "$VM_DIR"
-    IS_SNAPSHOT_RESTORE=false
-    start_vm
-  fi
 
   info "VM: ${VM_RAM}MB / ${VM_CPUS} CPUs"
 
@@ -385,8 +313,7 @@ cmd_start() {
     exit 1
   fi
 
-  save_snapshot
-  log "All services are green. Snapshot saved for fast restart."
+  log "All services are green. Overlay disk preserves changes across restarts."
 }
 
 cmd_stop() {
