@@ -1,7 +1,7 @@
 import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy, Tenancy } from "@/lib/tenancies";
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { Prisma, VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -277,7 +277,7 @@ export function createVerificationCodeHandler<
       const { project, branchId } = parseProjectBranchCombo(revokeOptions);
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
-      await globalPrismaClient.$transaction(async (tx) => {
+      await retryTransaction(globalPrismaClient, async (tx) => {
         // Record deletion for external DB sync if this is a TEAM_INVITATION code
         if (options.type === 'TEAM_INVITATION') {
           await recordExternalDbSyncDeletion(tx, {
