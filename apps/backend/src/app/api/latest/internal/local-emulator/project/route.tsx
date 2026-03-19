@@ -5,6 +5,7 @@ import {
   LOCAL_EMULATOR_OWNER_TEAM_ID,
   isLocalEmulatorEnabled,
   readConfigFromFile,
+  writeConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -196,6 +197,10 @@ export const POST = createSmartRouteHandler({
     const projectId = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
+
+    if (Object.keys(fileConfig).length === 0) {
+      await writeConfigToFile(absoluteFilePath, {});
+    }
 
     return {
       statusCode: 200 as const,

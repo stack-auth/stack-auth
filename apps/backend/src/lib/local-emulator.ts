@@ -55,11 +55,14 @@ async function resolveConfigFilePath(filePath: string): Promise<string> {
 }
 
 export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
-  const resolvedPath = await resolveConfigFilePath(filePath);
-  const content = await fs.readFile(resolvedPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  });
+  const envContent = getEnvVariable("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", "");
+  const resolvedPath = envContent ? filePath : await resolveConfigFilePath(filePath);
+  const content = envContent
+    ? Buffer.from(envContent, "base64").toString("utf-8")
+    : await fs.readFile(resolvedPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
 
   if (content === null || content.trim() === "") {
     return {};
@@ -76,6 +79,7 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
 
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
   const resolvedPath = await resolveConfigFilePath(filePath);
+  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
   const configString = JSON.stringify(config, null, 2);
   const content = `export const config = ${configString};\n`;
   await fs.writeFile(resolvedPath, content, "utf-8");
