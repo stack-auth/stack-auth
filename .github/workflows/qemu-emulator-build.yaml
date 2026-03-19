@@ -1,0 +1,189 @@
+name: Build & Publish QEMU Emulator Images
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    paths:
+      - 'docker/local-emulator/**'
+      - 'packages/stack-cli/src/commands/emulator.ts'
+      - '.github/workflows/qemu-emulator-build.yaml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish images to GitHub Releases'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+env:
+  EMULATOR_IMAGE_NAME: stack-local-emulator
+
+jobs:
+  build:
+    name: Build QEMU Image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubicloud-standard-8
+            docker_platform: linux/amd64
+          - arch: arm64
+            runner: ubicloud-standard-8-arm
+            docker_platform: linux/arm64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install QEMU dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-utils genisoimage socat qemu-efi-aarch64
+
+      - name: Build Docker emulator image
+        run: |
+          docker buildx build \
+            --platform ${{ matrix.docker_platform }} \
+            --tag ${{ env.EMULATOR_IMAGE_NAME }} \
+            --load \
+            -f docker/local-emulator/Dockerfile \
+            .
+
+      - name: Build QEMU image
+        run: |
+          chmod +x docker/local-emulator/qemu/build-image.sh
+          docker/local-emulator/qemu/build-image.sh ${{ matrix.arch }}
+
+      - name: Start emulator (creates runtime state)
+        run: |
+          chmod +x docker/local-emulator/qemu/run-emulator.sh
+          EMULATOR_ARCH=${{ matrix.arch }} \
+          EMULATOR_READY_TIMEOUT=300 \
+            docker/local-emulator/qemu/run-emulator.sh start
+
+      - name: Verify services are healthy
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh status
+
+      - name: Stop emulator (saves snapshot)
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh stop
+
+      - name: Package snapshot image
+        run: |
+          SNAPSHOT_IMG="docker/local-emulator/qemu/run/vm/disk.qcow2"
+          BASE_IMG="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.qcow2"
+
+          # Compress snapshot image (contains VM state for instant restore)
+          qemu-img convert -p -O qcow2 -c "$SNAPSHOT_IMG" \
+            "stack-emulator-${{ matrix.arch }}-snapshot.qcow2"
+
+          # Copy base image (no snapshot, clean boot)
+          cp "$BASE_IMG" "stack-emulator-${{ matrix.arch }}-base.qcow2"
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-emulator-${{ matrix.arch }}-snapshot
+          path: stack-emulator-${{ matrix.arch }}-snapshot.qcow2
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload base artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-emulator-${{ matrix.arch }}-base
+          path: stack-emulator-${{ matrix.arch }}-base.qcow2
+          retention-days: 30
+          compression-level: 0
+
+  publish:
+    name: Publish to GitHub Releases
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          SHORT_SHA="${GITHUB_SHA:0:8}"
+          BRANCH="${GITHUB_REF_NAME}"
+          DATE="$(date -u +%Y%m%d)"
+          TAG="emulator-${BRANCH}-${DATE}-${SHORT_SHA}"
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
+
+          for f in artifacts/qemu-emulator-*/*.qcow2; do
+            cp "$f" release/
+          done
+
+          ls -lh release/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ env.RELEASE_TAG }}" \
+            --title "QEMU Emulator — ${{ github.ref_name }} (${{ env.SHORT_SHA }})" \
+            --notes "$(cat <<'EOF'
+          ## QEMU Emulator Images
+
+          Built from \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`
+
+          ### Images
+          | File | Description |
+          |------|-------------|
+          | `stack-emulator-arm64-snapshot.qcow2` | ARM64 with pre-warmed snapshot (instant boot) |
+          | `stack-emulator-arm64-base.qcow2` | ARM64 base image (clean boot) |
+          | `stack-emulator-amd64-snapshot.qcow2` | AMD64 with pre-warmed snapshot (instant boot) |
+          | `stack-emulator-amd64-base.qcow2` | AMD64 base image (clean boot) |
+
+          ### Usage
+          ```bash
+          # Pull and run the latest emulator via Stack CLI
+          stack emulator pull --snapshot
+          stack emulator run
+          ```
+          EOF
+          )" \
+            --prerelease \
+            release/*
+
+      - name: Update latest tag for branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG="emulator-${{ github.ref_name }}-latest"
+          # Delete existing latest release if it exists
+          gh release delete "$LATEST_TAG" --yes 2>/dev/null || true
+          git tag -d "$LATEST_TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$LATEST_TAG" 2>/dev/null || true
+
+          gh release create "$LATEST_TAG" \
+            --title "QEMU Emulator — ${{ github.ref_name }} (latest)" \
+            --notes "Latest emulator images from \`${{ github.ref_name }}\`. Auto-updated on each build." \
+            --prerelease \
+            release/*
