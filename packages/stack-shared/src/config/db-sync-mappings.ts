@@ -822,7 +822,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             'client_read_only_metadata', COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb),
             'server_metadata', COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb),
             'is_anonymous', "ProjectUser"."isAnonymous",
-            'last_active_at_millis', CASE WHEN "ProjectUser"."lastActiveAt" IS NOT NULL THEN EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000 ELSE NULL END
+            'last_active_at_millis', CASE WHEN "ProjectUser"."lastActiveAt" IS NOT NULL THEN EXTRACT(EPOCH FROM "ProjectUser"."lastActiveAt") * 1000 ELSE NULL END
           ) AS "user",
           "TeamMember"."createdAt" AS "created_at",
           "TeamMember"."sequenceId" AS "sequence_id",
