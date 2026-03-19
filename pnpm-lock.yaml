@@ -1696,12 +1696,6 @@ importers:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)
 
-  packages/private:
-    devDependencies:
-      rimraf:
-        specifier: ^6.1.2
-        version: 6.1.2
-
   packages/react:
     dependencies:
       '@hookform/resolvers':
