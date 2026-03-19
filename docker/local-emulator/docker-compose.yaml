@@ -1,12 +1,12 @@
-# Stack Auth Local Emulator — all-in-one deps + app via docker compose.
+# Stack Auth Local Emulator — all-in-one image via docker compose.
 # Ports follow the ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}XX convention.
 
 services:
-  stack-deps:
+  stack-local:
     build:
-      context: .
-      dockerfile: Dockerfile
-    image: stack-local-emulator-deps
+      context: ../..
+      dockerfile: docker/local-emulator/Dockerfile
+    image: stack-local-emulator
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28:5432"    # PostgreSQL
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}29:2500"    # Inbucket SMTP
@@ -17,33 +17,14 @@ services:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}25:8080"    # QStash
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}36:8123"    # ClickHouse HTTP
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}37:9009"    # ClickHouse Native
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01:8101"    # Dashboard
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02:8102"    # Backend
     volumes:
       - postgres-data:/data/postgres
       - redis-data:/data/redis
       - clickhouse-data:/data/clickhouse
       - minio-data:/data/minio
       - inbucket-data:/data/inbucket
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres && curl -sf http://127.0.0.1:8123/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  stack-app:
-    build:
-      context: ../..
-      dockerfile: docker/server/Dockerfile
-    image: stack-local-emulator-app
-    depends_on:
-      stack-deps:
-        condition: service_healthy
-    ports:
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01:8101"    # Dashboard
-      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02:8102"    # Backend
-    volumes:
       - "${HOME}:${HOME}"
       - "/tmp:/tmp"
     env_file: ./base.env
@@ -56,24 +37,24 @@ services:
       STACK_S3_PUBLIC_ENDPOINT: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21/stack-storage"
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01/handler/email-verification"
       STACK_OAUTH_MOCK_URL: "http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}14"
-      BACKEND_PORT: "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02"
-      DASHBOARD_PORT: "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01"
-      # Deps service hostnames (stack-deps container, not localhost)
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@stack-deps:5432/stackframe"
-      STACK_EMAIL_HOST: "stack-deps"
-      STACK_SVIX_SERVER_URL: "http://stack-deps:8071"
-      STACK_S3_ENDPOINT: "http://stack-deps:9090"
-      STACK_QSTASH_URL: "http://stack-deps:8080"
-      STACK_CLICKHOUSE_URL: "http://stack-deps:8123"
-      STACK_EMAIL_MONITOR_INBUCKET_API_URL: "http://stack-deps:9001"
+      BACKEND_PORT: "8102"
+      DASHBOARD_PORT: "8101"
+      # Everything is in one container, so deps are at localhost
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@127.0.0.1:5432/stackframe"
+      STACK_EMAIL_HOST: "127.0.0.1"
+      STACK_SVIX_SERVER_URL: "http://127.0.0.1:8071"
+      STACK_S3_ENDPOINT: "http://127.0.0.1:9090"
+      STACK_QSTASH_URL: "http://127.0.0.1:8080"
+      STACK_CLICKHOUSE_URL: "http://127.0.0.1:8123"
+      STACK_EMAIL_MONITOR_INBUCKET_API_URL: "http://127.0.0.1:9001"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8102/health?db=1 >/dev/null && curl -fsS http://127.0.0.1:8101/handler/sign-in >/dev/null"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U postgres && curl -sf http://127.0.0.1:8123/ping && curl -fsS 'http://127.0.0.1:8102/health?db=1' >/dev/null && curl -fsS http://127.0.0.1:8101/handler/sign-in >/dev/null"]
       interval: 10s
       timeout: 5s
-      retries: 24
-      start_period: 60s
+      retries: 30
+      start_period: 120s
 
 volumes:
   postgres-data:

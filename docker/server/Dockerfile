@@ -59,35 +59,6 @@ RUN cd apps/backend && pnpm build-self-host-migration-script
 
 
 
-# Prune node_modules for runtime: remove dev tools, heavy UI packages,
-# duplicate framework copies, and native binaries not needed by the
-# migration script or server at runtime.
-FROM builder AS migration-pruner
-RUN cp -a /app/node_modules /pruned-node_modules && \
-    cd /pruned-node_modules/.pnpm && \
-    rm -rf \
-      # Dev tools (never needed at runtime)
-      typescript@* eslint@* eslint-*@* @typescript-eslint+*@* \
-      prettier@* vitest@* jsdom@* turbo@* turbo-*@* \
-      tsdown@* @changesets+*@* codebuff@* \
-      @testing-library+*@* vite@* vite-*@* @vitejs+*@* \
-      # Heavy UI packages (already traced into Next.js standalone bundles)
-      monaco-editor@* \
-      three@* three-globe@* globe.gl@* react-globe*@* \
-      react-icons@* lucide-react@* @phosphor-icons+*@* \
-      # Large optional packages not needed by migration script
-      posthog-js@* \
-      @prisma+studio-core@* @prisma+dev@* @prisma+query-plan-executor@* \
-      convex@* @electric-sql+*@* \
-      # Duplicate Next.js copies (keep only one for next/headers.js resolution)
-      'next@16.1.5_@babel+core@7.29.0*' 'next@16.1.5_@babel+core@7.28.5*' \
-      next@14* @next+swc-*@14* \
-      # Native build binaries not needed at runtime
-      @esbuild+*@* esbuild@* @rolldown+*@* \
-      # Duplicate date-fns versions (keep v4 only)
-      date-fns@2* date-fns@3*
-
-
 # Final image
 FROM node:${NODE_VERSION}-slim
 
@@ -96,7 +67,7 @@ WORKDIR /app
 # Install packages needed for deployment
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y curl openssl socat && \
+    apt-get install -y openssl socat && \
     rm -rf /var/lib/apt/lists
 
 # Copy built backend
@@ -111,8 +82,8 @@ COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 COPY --from=builder --chown=node:node /app/apps/dashboard/public ./apps/dashboard/public
 
-# Restore pruned workspace node_modules needed by non-Next runtime scripts (e.g. migrations)
-COPY --from=migration-pruner --chown=node:node /pruned-node_modules ./node_modules
+# Restore workspace node_modules needed by non-Next runtime scripts (e.g. migrations)
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
 
 # Add the entrypoint script

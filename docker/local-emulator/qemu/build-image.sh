@@ -34,7 +34,7 @@ case "$TARGET_ARCH" in
   *) err "Usage: $0 [arm64|amd64|both]"; exit 1 ;;
 esac
 
-DOCKER_IMAGES=(stack-local-emulator-deps stack-local-emulator-app)
+DOCKER_IMAGES=(stack-local-emulator)
 
 check_deps() {
   local missing=()

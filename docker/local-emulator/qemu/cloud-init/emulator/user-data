@@ -43,24 +43,6 @@ write_files:
 
       gzip -dc /mnt/stack-bundle/img.tgz | docker load
 
-  - path: /usr/local/bin/run-stack-deps-container
-    permissions: '0755'
-    content: |
-      #!/bin/bash
-      set -euo pipefail
-
-      docker rm -f stack-deps >/dev/null 2>&1 || true
-      exec docker run \
-        --rm \
-        --name stack-deps \
-        --network host \
-        -v stack-postgres-data:/data/postgres \
-        -v stack-redis-data:/data/redis \
-        -v stack-clickhouse-data:/data/clickhouse \
-        -v stack-minio-data:/data/minio \
-        -v stack-inbucket-data:/data/inbucket \
-        stack-local-emulator-deps
-
   - path: /usr/local/bin/render-stack-env
     permissions: '0755'
     content: |
@@ -76,7 +58,7 @@ write_files:
       source /mnt/stack-runtime/base.env
       set +a
 
-      # Deps runs in the same VM, so always localhost
+      # Everything runs in the same container, so always localhost
       DEPS_HOST=127.0.0.1
       P="$STACK_EMULATOR_PORT_PREFIX"
 
@@ -111,21 +93,26 @@ write_files:
       COMPUTED
       } > /run/stack-auth/local-emulator.env
 
-  - path: /usr/local/bin/run-stack-app-container
+  - path: /usr/local/bin/run-stack-container
     permissions: '0755'
     content: |
       #!/bin/bash
       set -euo pipefail
 
       /usr/local/bin/render-stack-env
-      docker rm -f stack-app >/dev/null 2>&1 || true
+      docker rm -f stack >/dev/null 2>&1 || true
       exec docker run \
         --rm \
-        --name stack-app \
+        --name stack \
         --network host \
         --add-host host.docker.internal:host-gateway \
         --env-file /run/stack-auth/local-emulator.env \
-        stack-local-emulator-app
+        -v stack-postgres-data:/data/postgres \
+        -v stack-redis-data:/data/redis \
+        -v stack-clickhouse-data:/data/clickhouse \
+        -v stack-minio-data:/data/minio \
+        -v stack-inbucket-data:/data/inbucket \
+        stack-local-emulator
 
   - path: /usr/local/bin/wait-for-deps
     permissions: '0755'
@@ -139,10 +126,10 @@ write_files:
       until curl -sf http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1; do sleep 1; done
       until [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]; do sleep 1; done
 
-  - path: /etc/systemd/system/stack-deps.service
+  - path: /etc/systemd/system/stack.service
     content: |
       [Unit]
-      Description=Stack Auth local emulator deps container
+      Description=Stack Auth local emulator
       Wants=network-online.target docker.service
       After=network-online.target docker.service
 
@@ -150,25 +137,8 @@ write_files:
       Restart=always
       RestartSec=5
       TimeoutStartSec=0
-      ExecStart=/usr/local/bin/run-stack-deps-container
-      ExecStop=/usr/bin/docker stop stack-deps
-
-      [Install]
-      WantedBy=multi-user.target
-
-  - path: /etc/systemd/system/stack-app.service
-    content: |
-      [Unit]
-      Description=Stack Auth local emulator app container
-      Wants=network-online.target docker.service
-      After=network-online.target docker.service stack-deps.service
-
-      [Service]
-      Restart=always
-      RestartSec=5
-      TimeoutStartSec=0
-      ExecStart=/usr/local/bin/run-stack-app-container
-      ExecStop=/usr/bin/docker stop stack-app
+      ExecStart=/usr/local/bin/run-stack-container
+      ExecStop=/usr/bin/docker stop stack
 
       [Install]
       WantedBy=multi-user.target
@@ -178,10 +148,18 @@ runcmd:
   - systemctl mask ssh || true
   - bash /usr/local/bin/install-emulator-containers
   - systemctl daemon-reload
-  - systemctl enable stack-deps.service
-  - systemctl enable stack-app.service
-  - systemctl start stack-deps.service
+  - systemctl enable stack.service
+  - docker run --rm --name stack-build-init
+      --network host
+      -e STACK_DEPS_ONLY=true
+      -v stack-postgres-data:/data/postgres
+      -v stack-redis-data:/data/redis
+      -v stack-clickhouse-data:/data/clickhouse
+      -v stack-minio-data:/data/minio
+      -v stack-inbucket-data:/data/inbucket
+      -d stack-local-emulator
   - bash /usr/local/bin/wait-for-deps
+  - docker stop stack-build-init || true
   - echo "STACK_CLOUD_INIT_DONE" > /dev/console 2>/dev/null || true
   - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyAMA0 2>/dev/null || true
   - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyS0 2>/dev/null || true
