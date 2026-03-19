@@ -35,7 +35,8 @@ RUN apt-get update && \
       gosu \
       procps \
       libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get purge -y --auto-remove gnupg2 lsb-release \
+    && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/i18n
 
 # Inbucket
 COPY --from=inbucket-bin /opt/inbucket /opt/inbucket
@@ -53,8 +54,7 @@ COPY --from=minio-bin /usr/bin/minio /usr/local/bin/minio
 COPY --from=mc-bin /usr/bin/mc /usr/local/bin/mc
 
 # QStash
-COPY --from=qstash-bin /qstash-binary /usr/local/bin/qstash
-RUN chmod +x /usr/local/bin/qstash
+COPY --from=qstash-bin --chmod=755 /qstash-binary /usr/local/bin/qstash
 
 RUN mkdir -p \
     /data/postgres \
