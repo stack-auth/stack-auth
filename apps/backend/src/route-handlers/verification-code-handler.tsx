@@ -277,25 +277,27 @@ export function createVerificationCodeHandler<
       const { project, branchId } = parseProjectBranchCombo(revokeOptions);
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
 
-      // Record deletion for external DB sync if this is a TEAM_INVITATION code
-      if (options.type === 'TEAM_INVITATION') {
-        await recordExternalDbSyncDeletion(globalPrismaClient, {
-          tableName: "VerificationCode_TEAM_INVITATION",
-          tenancyId: tenancy.id,
-          verificationCodeProjectId: project.id,
-          verificationCodeBranchId: branchId,
-          verificationCodeId: revokeOptions.id,
-        });
-      }
+      await globalPrismaClient.$transaction(async (tx) => {
+        // Record deletion for external DB sync if this is a TEAM_INVITATION code
+        if (options.type === 'TEAM_INVITATION') {
+          await recordExternalDbSyncDeletion(tx, {
+            tableName: "VerificationCode_TEAM_INVITATION",
+            tenancyId: tenancy.id,
+            verificationCodeProjectId: project.id,
+            verificationCodeBranchId: branchId,
+            verificationCodeId: revokeOptions.id,
+          });
+        }
 
-      await globalPrismaClient.verificationCode.delete({
-        where: {
-          projectId_branchId_id: {
-            projectId: project.id,
-            branchId,
-            id: revokeOptions.id,
+        await tx.verificationCode.delete({
+          where: {
+            projectId_branchId_id: {
+              projectId: project.id,
+              branchId,
+              id: revokeOptions.id,
+            },
           },
-        },
+        });
       });
     },
     async validateCode(tenancyIdAndCode: string) {
