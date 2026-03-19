@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { KnownErrors } from "../known-errors";
 import { InternalSession } from "../sessions";
 import { Result } from "../utils/results";
 import { StackClientInterface } from "./client-interface";
@@ -26,6 +27,20 @@ function createJsonResponse(body: unknown): Response {
     status: 200,
     headers: {
       "Content-Type": "application/json",
+    },
+  });
+}
+
+function createKnownErrorResponse(error: InstanceType<typeof KnownErrors[keyof typeof KnownErrors]>): Response {
+  return new Response(JSON.stringify({
+    code: error.errorCode,
+    message: error.message,
+    details: error.details,
+  }), {
+    status: error.statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      "x-stack-known-error": error.errorCode,
     },
   });
 }
@@ -102,6 +117,24 @@ describe("StackClientInterface bot challenge compatibility", () => {
     });
   });
 
+  it("returns BotChallengeFailed as a Result error for magic link requests", async () => {
+    const fetchMock = vi.fn(async () => createKnownErrorResponse(
+      new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed"),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface();
+    const result = await iface.sendMagicLinkEmail("user@example.com", "https://app.example.com/callback", {
+      phase: "visible",
+    });
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") {
+      throw new Error("Expected magic link request to fail with BotChallengeFailed");
+    }
+    expect(result.error).toBeInstanceOf(KnownErrors.BotChallengeFailed);
+  });
+
   it("omits bot challenge from credential signup requests when no token is provided", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({
       access_token: "access-token",
@@ -122,6 +155,30 @@ describe("StackClientInterface bot challenge compatibility", () => {
       email: "user@example.com",
       password: "password",
     });
+  });
+
+  it("returns BotChallengeFailed as a Result error for credential signup requests", async () => {
+    const fetchMock = vi.fn(async () => createKnownErrorResponse(
+      new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed"),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface();
+    const result = await iface.signUpWithCredential(
+      "user@example.com",
+      "password",
+      undefined,
+      createSession(),
+      {
+        phase: "visible",
+      },
+    );
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") {
+      throw new Error("Expected credential signup to fail with BotChallengeFailed");
+    }
+    expect(result.error).toBeInstanceOf(KnownErrors.BotChallengeFailed);
   });
 
   it("omits bot challenge from OAuth URLs when no token is provided", async () => {
@@ -214,6 +271,31 @@ describe("StackClientInterface bot challenge compatibility", () => {
       method: "GET",
     });
     expect(requestInit).not.toHaveProperty("credentials");
+  });
+
+  it("returns BotChallengeFailed as a Result error for OAuth authorization", async () => {
+    const fetchMock = vi.fn(async () => createKnownErrorResponse(
+      new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed"),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {} as Window & typeof globalThis);
+
+    const iface = createClientInterface();
+    const result = await iface.authorizeOAuth({
+      provider: "github",
+      redirectUrl: "https://app.example.com/oauth/callback",
+      errorRedirectUrl: "https://app.example.com/error",
+      codeChallenge: "code-challenge",
+      state: "state",
+      type: "authenticate",
+      session: createSession(),
+    });
+
+    expect(result.status).toBe("error");
+    if (result.status !== "error") {
+      throw new Error("Expected OAuth authorization to fail with BotChallengeFailed");
+    }
+    expect(result.error).toBeInstanceOf(KnownErrors.BotChallengeFailed);
   });
 
   it("serializes bot challenge unavailability for credential signup requests", async () => {

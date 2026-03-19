@@ -52,6 +52,15 @@ type BotChallengeInput = {
   phase?: "invisible" | "visible",
 };
 
+const botChallengeKnownErrors = [
+  KnownErrors.BotChallengeRequired,
+  KnownErrors.BotChallengeFailed,
+] as const;
+
+function isBotChallengeKnownError(error: unknown): error is KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"] {
+  return KnownErrors.BotChallengeRequired.isInstance(error) || KnownErrors.BotChallengeFailed.isInstance(error);
+}
+
 function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefined, context: string) {
   const challengeToken = botChallenge?.token?.trim() || undefined;
   if (botChallenge?.phase === "visible") {
@@ -633,7 +642,7 @@ export class StackClientInterface {
     email: string,
     callbackUrl: string,
     botChallenge?: BotChallengeInput,
-  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeRequired"]>> {
+  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
       {
@@ -648,7 +657,7 @@ export class StackClientInterface {
         }),
       },
       null,
-      [KnownErrors.RedirectUrlNotWhitelisted, KnownErrors.BotChallengeRequired]
+      [KnownErrors.RedirectUrlNotWhitelisted, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -951,7 +960,7 @@ export class StackClientInterface {
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
     botChallenge?: BotChallengeInput,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"]>> {
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -967,7 +976,7 @@ export class StackClientInterface {
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, KnownErrors.BotChallengeRequired]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -1156,7 +1165,7 @@ export class StackClientInterface {
     providerScope?: string,
     botChallenge?: BotChallengeInput,
     session: InternalSession,
-  }): Promise<Result<string, KnownErrors["BotChallengeRequired"]>> {
+  }): Promise<Result<string, KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     if (typeof window === "undefined") {
       throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
     }
@@ -1180,7 +1189,7 @@ export class StackClientInterface {
 
     const processedResponse = await this._processResponse(rawRes);
     if (processedResponse.status === "error") {
-      if (KnownErrors.BotChallengeRequired.isInstance(processedResponse.error)) {
+      if (isBotChallengeKnownError(processedResponse.error)) {
         return Result.error(processedResponse.error);
       }
       throw processedResponse.error;

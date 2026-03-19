@@ -32,6 +32,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -2166,6 +2167,50 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return null;
   }
 
+  private _normalizeBotChallengeResult<T, E>(result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>): Result<T, E | KnownErrors["BotChallengeFailed"]> {
+    if (result.status === "ok") {
+      return result;
+    }
+
+    if (KnownErrors.BotChallengeRequired.isInstance(result.error)) {
+      captureError("bot-challenge-unexpected-after-flow", result.error);
+      return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
+    }
+
+    return Result.error(result.error);
+  }
+
+  private async _executeResultWithBotChallengeFlow<T, E>(options: {
+    action: TurnstileAction,
+    execute: (challenge: { token?: string, phase?: "invisible" | "visible" }) => Promise<Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>>,
+  }): Promise<Result<T, E | KnownErrors["BotChallengeFailed"]>> {
+    const siteKeys = this._getBotChallengeSiteKeys();
+    let result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>;
+
+    try {
+      if (siteKeys) {
+        result = await withBotChallengeFlow({
+          ...siteKeys,
+          action: options.action,
+          execute: options.execute,
+          isChallengeRequired: (flowResult) => {
+            return flowResult.status === "error" && KnownErrors.BotChallengeRequired.isInstance(flowResult.error);
+          },
+        });
+      } else {
+        result = await options.execute({});
+      }
+    } catch (e) {
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure) {
+        return Result.error(flowFailure.knownError);
+      }
+      throw e;
+    }
+
+    return this._normalizeBotChallengeResult(result);
+  }
+
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
@@ -2286,44 +2331,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     callbackUrl?: string,
   }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>> {
     const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
-    const siteKeys = this._getBotChallengeSiteKeys();
-
-    // When bot challenge is not configured, send directly without challenge flow
-    if (!siteKeys) {
-      return await this._interface.sendMagicLinkEmail(email, callbackUrl) as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>;
-    }
-
-    // Run the send through the bot challenge invisible → visible flow
-    let flowResult;
-    try {
-      flowResult = await withBotChallengeFlow({
-        ...siteKeys,
-        action: "send_magic_link_email",
-        execute: async (challenge) => {
-          return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
-            token: challenge.token,
-            phase: challenge.phase,
-          });
-        },
-        isChallengeRequired: (result) => {
-          return result.status === "error" && KnownErrors.BotChallengeRequired.isInstance(result.error);
-        },
-      });
-    } catch (e) {
-      const flowFailure = this._getBotChallengeFlowFailure(e);
-      if (flowFailure) {
-        return Result.error(flowFailure.knownError);
-      }
-      throw e;
-    }
-
-    // BotChallengeRequired should have been consumed by withBotChallengeFlow;
-    // if it leaks through, convert to BotChallengeFailed and preserve the original error for debugging
-    if (flowResult.status === "error" && KnownErrors.BotChallengeRequired.isInstance(flowResult.error)) {
-      captureError("bot-challenge-unexpected-after-flow", flowResult.error);
-      return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
-    }
-    return flowResult as Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>;
+    return await this._executeResultWithBotChallengeFlow({
+      action: "send_magic_link_email",
+      execute: async (challenge) => {
+        return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
+          token: challenge.token,
+          phase: challenge.phase,
+        });
+      },
+    });
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2715,7 +2731,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
-    const siteKeys = this._getBotChallengeSiteKeys();
 
     const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible" }) => {
       let result = await this._interface.signUpWithCredential(
@@ -2752,27 +2767,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
 
     let result;
-    if (siteKeys) {
-      try {
-        result = await withBotChallengeFlow({
-          ...siteKeys,
-          action: "sign_up_with_credential",
-          execute: executeSignUp,
-          isChallengeRequired: (r) => {
-            return r.status === "error" && KnownErrors.BotChallengeRequired.isInstance(r.error);
-          },
-        });
-      } catch (e) {
-        const flowFailure = this._getBotChallengeFlowFailure(e);
-        if (flowFailure) {
-          return Result.error(flowFailure.knownError);
-        }
-        throw e;
-      }
-    } else {
-      // Server safe: just call execute with no bot challenge params
-      result = await executeSignUp({});
-    }
+    result = await this._executeResultWithBotChallengeFlow({
+      action: "sign_up_with_credential",
+      execute: executeSignUp,
+    });
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
@@ -2781,13 +2779,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       }
       return Result.ok(undefined);
     } else {
-      // BotChallengeRequired should have been consumed by withBotChallengeFlow;
-      // if it leaks through, capture for debugging and convert to BotChallengeFailed
-      if (KnownErrors.BotChallengeRequired.isInstance(result.error)) {
-        captureError("bot-challenge-unexpected-after-flow", result.error);
-        return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
-      }
-      return Result.error(result.error) as Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>;
+      return Result.error(result.error);
     }
   }
 
