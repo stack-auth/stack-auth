@@ -6,7 +6,7 @@ import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-sha
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
-import { getBestEffortEndUserRequestContext } from "./end-users";
+import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
 import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
@@ -23,6 +23,7 @@ export type SignUpRuleOptions = {
   ipAddress: string | null,
   ipTrusted: boolean | null,
   countryCode: string | null,
+  requestContext?: BestEffortEndUserRequestContext | null,
   turnstileAssessment: SignUpTurnstileAssessment,
 };
 
@@ -122,9 +123,11 @@ export async function createOrUpgradeAnonymousUserWithRules(
 ): Promise<UsersCrud["Admin"]["Read"]> {
   const email = createOrUpdate.primary_email ?? currentUser?.primary_email ?? null;
   const primaryEmailVerified = createOrUpdate.primary_email_verified ?? currentUser?.primary_email_verified ?? false;
-  const endUserRequestContext = signUpRuleOptions.ipAddress !== null && signUpRuleOptions.ipTrusted !== null && signUpRuleOptions.countryCode !== null
-    ? null
-    : await getBestEffortEndUserRequestContext();
+  const endUserRequestContext = signUpRuleOptions.requestContext !== undefined
+    ? signUpRuleOptions.requestContext
+    : signUpRuleOptions.ipAddress !== null && signUpRuleOptions.ipTrusted !== null
+      ? null
+      : await getBestEffortEndUserRequestContext();
   const requestIpAddress = signUpRuleOptions.ipAddress ?? endUserRequestContext?.ipAddress ?? null;
   const requestIpTrusted = signUpRuleOptions.ipTrusted ?? endUserRequestContext?.ipTrusted ?? null;
   // EndUserLocation.countryCode is string | undefined; coerce to string | null for downstream consumers

@@ -31,7 +31,7 @@ import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -2150,6 +2150,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return { visibleSiteKey, invisibleSiteKey };
   }
 
+  private _getBotChallengeFlowFailure(error: unknown): { type: "cancelled" | "failed", knownError: KnownErrors["BotChallengeFailed"] } | null {
+    if (error instanceof BotChallengeUserCancelledError) {
+      return {
+        type: "cancelled",
+        knownError: new KnownErrors.BotChallengeFailed("Bot challenge cancelled by user"),
+      };
+    }
+    if (error instanceof BotChallengeExecutionFailedError) {
+      return {
+        type: "failed",
+        knownError: new KnownErrors.BotChallengeFailed(error.message),
+      };
+    }
+    return null;
+  }
+
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
@@ -2294,8 +2310,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
       });
     } catch (e) {
-      if (e instanceof BotChallengeUserCancelledError) {
-        return Result.error(new KnownErrors.BotChallengeFailed("Bot challenge cancelled by user"));
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure) {
+        return Result.error(flowFailure.knownError);
       }
       throw e;
     }
@@ -2610,8 +2627,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         authorizeResult = await executeOAuth({});
       }
     } catch (e) {
-      if (e instanceof BotChallengeUserCancelledError) {
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure?.type === "cancelled") {
         return;
+      }
+      if (flowFailure?.type === "failed") {
+        throw flowFailure.knownError;
       }
       throw e;
     }
@@ -2729,14 +2750,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     let result;
     if (siteKeys) {
-      result = await withBotChallengeFlow({
-        ...siteKeys,
-        action: "sign_up_with_credential",
-        execute: executeSignUp,
-        isChallengeRequired: (r) => {
-          return r.status === "error" && KnownErrors.BotChallengeRequired.isInstance(r.error);
-        },
-      });
+      try {
+        result = await withBotChallengeFlow({
+          ...siteKeys,
+          action: "sign_up_with_credential",
+          execute: executeSignUp,
+          isChallengeRequired: (r) => {
+            return r.status === "error" && KnownErrors.BotChallengeRequired.isInstance(r.error);
+          },
+        });
+      } catch (e) {
+        const flowFailure = this._getBotChallengeFlowFailure(e);
+        if (flowFailure) {
+          return Result.error(flowFailure.knownError);
+        }
+        throw e;
+      }
     } else {
       // Server safe: just call execute with no bot challenge params
       result = await executeSignUp({});

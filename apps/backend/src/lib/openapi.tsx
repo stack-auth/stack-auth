@@ -117,6 +117,36 @@ function isMaybeRequestSchemaForAudience(requestDescribe: yup.SchemaObjectDescri
   return true;
 }
 
+function getResponseDescriptions(responseSchema: yup.AnySchema): yup.SchemaObjectDescription[] {
+  const schemaInfo = responseSchema.meta()?.stackSchemaInfo;
+  const responseSchemas = schemaInfo?.type === "union" ? schemaInfo.items : [responseSchema];
+
+  return responseSchemas.map((schema) => {
+    const responseDescribe = schema.describe();
+    if (!isSchemaObjectDescription(responseDescribe)) {
+      throw new Error('Response schema must be a yup.ObjectSchema');
+    }
+    return responseDescribe;
+  });
+}
+
+function mergeParsedResponses(parsedResponses: any[]) {
+  const [firstResponse, ...remainingResponses] = parsedResponses;
+  if (!firstResponse) {
+    throw new StackAssertionError("Expected at least one parsed response");
+  }
+
+  return remainingResponses.reduce((acc, response) => {
+    return {
+      ...acc,
+      responses: {
+        ...acc.responses,
+        ...response.responses,
+      },
+    };
+  }, firstResponse);
+}
+
 
 function parseRouteHandler(options: {
   handler: SmartRouteHandler,
@@ -130,9 +160,8 @@ function parseRouteHandler(options: {
     if (overload.metadata?.hidden) continue;
 
     const requestDescribe = overload.request.describe();
-    const responseDescribe = overload.response.describe();
     if (!isSchemaObjectDescription(requestDescribe)) throw new Error('Request schema must be a yup.ObjectSchema');
-    if (!isSchemaObjectDescription(responseDescribe)) throw new Error('Response schema must be a yup.ObjectSchema');
+    const responseDescribes = getResponseDescriptions(overload.response);
 
     // estimate whether this overload is the right one based on a heuristic
     if (!isMaybeRequestSchemaForAudience(requestDescribe, options.audience)) {
@@ -150,18 +179,20 @@ function parseRouteHandler(options: {
       `);
     }
 
-    result = parseOverload({
-      metadata: overload.metadata,
-      method: options.method,
-      path: options.path,
-      pathDesc: undefinedIfMixed(requestDescribe.fields.params),
-      parameterDesc: undefinedIfMixed(requestDescribe.fields.query),
-      headerDesc: undefinedIfMixed(requestDescribe.fields.headers),
-      requestBodyDesc: undefinedIfMixed(requestDescribe.fields.body),
-      responseDesc: undefinedIfMixed(responseDescribe.fields.body),
-      responseTypeDesc: undefinedIfMixed(responseDescribe.fields.bodyType) ?? throwErr('Response type must be defined and not mixed', { options, bodyTypeField: responseDescribe.fields.bodyType }),
-      statusCodeDesc: undefinedIfMixed(responseDescribe.fields.statusCode) ?? throwErr('Status code must be defined and not mixed', { options, statusCodeField: responseDescribe.fields.statusCode }),
-    });
+    result = mergeParsedResponses(responseDescribes.map((responseDescribe) => {
+      return parseOverload({
+        metadata: overload.metadata,
+        method: options.method,
+        path: options.path,
+        pathDesc: undefinedIfMixed(requestDescribe.fields.params),
+        parameterDesc: undefinedIfMixed(requestDescribe.fields.query),
+        headerDesc: undefinedIfMixed(requestDescribe.fields.headers),
+        requestBodyDesc: undefinedIfMixed(requestDescribe.fields.body),
+        responseDesc: undefinedIfMixed(responseDescribe.fields.body),
+        responseTypeDesc: undefinedIfMixed(responseDescribe.fields.bodyType) ?? throwErr('Response type must be defined and not mixed', { options, bodyTypeField: responseDescribe.fields.bodyType }),
+        statusCodeDesc: undefinedIfMixed(responseDescribe.fields.statusCode) ?? throwErr('Status code must be defined and not mixed', { options, statusCodeField: responseDescribe.fields.statusCode }),
+      });
+    }));
   }
 
   return result;

@@ -1,4 +1,5 @@
 import { getRequestContextAndBotChallengeAssessment, botChallengeFlowRequestSchemaFields } from "@/lib/turnstile";
+import { serializeStoredSignUpRequestContext } from "@/lib/sign-up-context";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailOtpSignInCallbackUrlSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -39,7 +40,7 @@ export const POST = createSmartRouteHandler({
 
     await ensureUserForEmailAllowsOtp(tenancy, email);
 
-    const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(botChallenge, "send_magic_link_email", tenancy);
+    const { requestContext, turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(botChallenge, "send_magic_link_email", tenancy);
 
     const { nonce } = await signInVerificationCodeHandler.sendCode(
       {
@@ -49,6 +50,7 @@ export const POST = createSmartRouteHandler({
         data: {
           turnstile_result: turnstileAssessment.status,
           turnstile_visible_challenge_result: turnstileAssessment.visibleChallengeResult,
+          ...serializeStoredSignUpRequestContext(requestContext),
         },
       },
       { email }

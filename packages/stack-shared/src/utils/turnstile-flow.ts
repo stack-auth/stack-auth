@@ -9,6 +9,13 @@ export class BotChallengeUserCancelledError extends Error {
   }
 }
 
+export class BotChallengeExecutionFailedError extends Error {
+  constructor(message = "Bot challenge could not be completed", options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "BotChallengeExecutionFailedError";
+  }
+}
+
 
 // ── Invisible challenge ────────────────────────────────────────────────
 
@@ -248,7 +255,9 @@ export async function withBotChallengeFlow<T>(options: WithBotChallengeFlowOptio
   } catch (e) {
     if (e instanceof BotChallengeUserCancelledError) throw e;
     captureError("turnstile-flow-visible-challenge-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during visible Turnstile challenge", { cause: e }));
-    return await options.execute({});
+    throw new BotChallengeExecutionFailedError("Visible bot challenge could not be completed", {
+      cause: e,
+    });
   }
 
   return await options.execute({ token: visibleToken, phase: "visible" });

@@ -113,6 +113,7 @@ export async function verifyTurnstileToken(params: {
   expectedAction: TurnstileAction,
   isAllowedHostname?: (hostname: string) => boolean,
   secretKey?: string,
+  captureRejectedAsError?: boolean,
 }): Promise<SignUpTurnstileAssessment> {
   const token = params.token?.trim() ?? "";
   if (!token) {
@@ -134,12 +135,14 @@ export async function verifyTurnstileToken(params: {
   const data = result.data;
 
   if (!data.success) {
-    captureError("turnstile-siteverify-rejected", new StackAssertionError("Turnstile siteverify returned success=false", {
-      errorCodes: data["error-codes"],
-      expectedAction: params.expectedAction,
-      receivedAction: data.action,
-      hostname: data.hostname,
-    }));
+    if (params.captureRejectedAsError ?? true) {
+      captureError("turnstile-siteverify-rejected", new StackAssertionError("Turnstile siteverify returned success=false", {
+        errorCodes: data["error-codes"],
+        expectedAction: params.expectedAction,
+        receivedAction: data.action,
+        hostname: data.hostname,
+      }));
+    }
     return { status: "invalid" };
   }
 
@@ -165,7 +168,10 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   phase?: "invisible" | "visible",
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
-  const assessment = await verifyTurnstileToken(params);
+  const assessment = await verifyTurnstileToken({
+    ...params,
+    captureRejectedAsError: params.phase !== "invisible",
+  });
 
   switch (params.phase) {
     case undefined: {
@@ -261,6 +267,21 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
     });
     await expect(verifyTurnstileToken({ ...baseParams, token: "real-token", remoteIp: "127.0.0.1" }))
       .resolves.toEqual({ status: "error" });
+  });
+
+  test("can suppress captureError for expected siteverify rejections", async ({ expect }) => {
+    const errorsModule = await import("@stackframe/stack-shared/dist/utils/errors");
+    const captureErrorSpy = vi.spyOn(errorsModule, "captureError").mockImplementation(() => {});
+    stubFetch({ success: false, action: "sign_up_with_credential" });
+
+    await expect(verifyTurnstileToken({
+      ...baseParams,
+      token: "real-token",
+      remoteIp: "127.0.0.1",
+      captureRejectedAsError: false,
+    })).resolves.toEqual({ status: "invalid" });
+
+    expect(captureErrorSpy).not.toHaveBeenCalled();
   });
 
   const allowMyapp = (h: string) => h === "myapp.com" || matchHostnamePattern("*.myapp.com", h);

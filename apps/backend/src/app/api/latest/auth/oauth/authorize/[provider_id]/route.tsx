@@ -5,14 +5,15 @@ import { getRequestContextAndBotChallengeAssessment, botChallengeFlowRequestSche
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import type { SmartResponse } from "@/route-handlers/smart-response";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
-import * as yup from "yup";
+import type { InferType, Schema } from "yup";
 
 const outerOAuthFlowExpirationInMinutes = 10;
 
@@ -52,15 +53,25 @@ export const GET = createSmartRouteHandler({
       response_type: yupString().defined(),
     }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
-  response: yupObject({
-    // The SDK uses stack_response_mode=json so it can intercept bot challenges before navigating.
-    // The redirect path (default) is the legacy browser-direct flow.
-    statusCode: yupNumber().oneOf([200]).defined(),
-    bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({
-      location: yupString().defined(),
+  response: yupUnion(
+    yupObject({
+      // The SDK uses stack_response_mode=json so it can intercept bot challenges before navigating.
+      // The redirect path (default) is the legacy browser-direct flow.
+      statusCode: yupNumber().oneOf([200]).defined(),
+      bodyType: yupString().oneOf(["json"]).defined(),
+      body: yupObject({
+        location: yupString().defined(),
+      }).defined(),
     }).defined(),
-  }),
+    yupObject({
+      statusCode: yupNumber().oneOf([307]).defined(),
+      headers: yupObject({
+        location: yupArray(yupString().defined()).defined(),
+      }).defined(),
+      bodyType: yupString().oneOf(["text"]).defined(),
+      body: yupString().defined(),
+    }).defined(),
+  ) as unknown as Schema<SmartResponse>,
   async handler({ params, query }, fullReq) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
@@ -138,7 +149,7 @@ export const GET = createSmartRouteHandler({
           turnstileResult: turnstileAssessment.status,
           turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
           responseMode: query.stack_response_mode,
-        } satisfies yup.InferType<typeof oauthCookieSchema>,
+        } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },
     });

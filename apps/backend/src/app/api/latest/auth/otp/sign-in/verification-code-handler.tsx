@@ -3,7 +3,7 @@ import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-chann
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
-import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
+import { buildSignUpRuleOptions, deserializeStoredSignUpRequestContext, reconstructTurnstileAssessment, storedSignUpRequestContextSchemaFields } from "@/lib/sign-up-context";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -78,6 +78,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   data: yupObject({
     turnstile_result: yupString().oneOf(turnstileResultValues).defined(),
     turnstile_visible_challenge_result: yupString().oneOf(turnstileResultValues).optional(),
+    ...storedSignUpRequestContextSchemaFields,
   }),
   method: yupObject({
     email: emailSchema.defined(),
@@ -125,13 +126,11 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
         buildSignUpRuleOptions({
           authMethod: 'otp',
           oauthProvider: null,
-          requestContext: null,
+          requestContext: deserializeStoredSignUpRequestContext(data),
           turnstileAssessment: reconstructTurnstileAssessment(
             data.turnstile_result,
             data.turnstile_visible_challenge_result,
           ),
-          // Request context is not available in the verification code handler because the
-          // sign-in code is verified in a separate request from where it was sent
         })
       );
       isNewUser = true;
