@@ -3,10 +3,11 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { stackAppInternalsSymbol, useStackApp, useUser } from "@stackframe/stack";
 import { turnstileDevelopmentKeys } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
 import { executeTurnstileInvisible, showTurnstileVisibleChallenge, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
 import { Button, Card, CardContent, CardFooter, CardHeader, Input, Label, PasswordInput, Typography } from "@stackframe/stack-ui";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function createSuggestedEmail() {
   const suffix = crypto.randomUUID().slice(0, 8);
@@ -19,6 +20,8 @@ const testKeys = {
   forceChallenge: turnstileDevelopmentKeys.forcedChallengeSiteKey,
 };
 
+const authReturnStorageKey = "turnstile-auth-demo-last-redirect";
+
 type FlowResult = {
   status: "success" | "error" | "info",
   message: string,
@@ -27,6 +30,88 @@ type FlowResult = {
 type SignupResult =
   | { ok: true, accessToken: string, refreshToken: string }
   | { ok: false, code: string, message: string };
+
+type MagicLinkSendResult =
+  | { ok: true, nonce: string }
+  | { ok: false, code: string, message: string };
+
+type OAuthAuthorizeResult =
+  | { ok: true, location: string }
+  | { ok: false, code: string, message: string };
+
+function getDebugInternals(app: ReturnType<typeof useStackApp>): {
+  sendRequest: (path: string, init: RequestInit) => Promise<Response>,
+  signInWithTokens: (tokens: { accessToken: string, refreshToken: string }) => Promise<void>,
+} {
+  const candidate = app[stackAppInternalsSymbol];
+  const sendRequest = Reflect.get(candidate, "sendRequest");
+  const signInWithTokens = Reflect.get(candidate, "signInWithTokens");
+
+  if (typeof sendRequest !== "function") {
+    throw new Error("Expected demo app internals to expose sendRequest for Turnstile debug flows");
+  }
+  if (typeof signInWithTokens !== "function") {
+    throw new Error("Expected demo app internals to expose signInWithTokens for Turnstile debug flows");
+  }
+
+  return {
+    sendRequest: async (path, init) => await sendRequest(path, init),
+    signInWithTokens: async (tokens) => await signInWithTokens(tokens),
+  };
+}
+
+function getDemoApiUrl(): string {
+  const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+    ?? process.env.NEXT_PUBLIC_STACK_URL;
+
+  if (typeof baseUrl !== "string" || baseUrl.length === 0) {
+    throw new Error("Expected NEXT_PUBLIC_STACK_API_URL to be configured for Turnstile OAuth debug flows");
+  }
+
+  return `${baseUrl.replace(/\/$/, "")}/api/v1`;
+}
+
+function getAppAbsoluteUrl(path: string): string {
+  return new URL(path, window.location.origin).toString();
+}
+
+function getCurrentRelativeUrl(): string {
+  const currentUrl = new URL(window.location.href);
+  currentUrl.hash = "";
+  return `${currentUrl.pathname}${currentUrl.search}`;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function createPkcePair(): Promise<{ challenge: string }> {
+  const verifier = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const challengeBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  return {
+    challenge: toBase64Url(challengeBytes),
+  };
+}
+
+async function createOAuthDebugState(): Promise<{ codeChallenge: string, state: string }> {
+  const codeVerifier = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const challengeBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier)));
+  const codeChallenge = toBase64Url(challengeBytes);
+  const state = crypto.randomUUID();
+
+  document.cookie = [
+    `stack-oauth-outer-${encodeURIComponent(state)}=${encodeURIComponent(codeVerifier)}`,
+    "Path=/",
+    "Max-Age=3600",
+    "SameSite=Lax",
+  ].join("; ");
+
+  return {
+    codeChallenge,
+    state,
+  };
+}
 
 /**
  * Sends a signup request through the SDK's internal request pipeline.
@@ -84,22 +169,146 @@ function isChallengeRequired(result: SignupResult): boolean {
   return !result.ok && result.code === "BOT_CHALLENGE_REQUIRED";
 }
 
+async function debugMagicLinkSend(
+  sendRequest: (path: string, init: RequestInit) => Promise<Response>,
+  options: {
+    email: string,
+    callbackUrl: string,
+    turnstileToken?: string,
+    turnstilePhase?: "invisible" | "visible",
+  },
+): Promise<MagicLinkSendResult> {
+  const bodyObj: Record<string, unknown> = {
+    email: options.email,
+    callback_url: options.callbackUrl,
+  };
+  if (options.turnstileToken) {
+    bodyObj.bot_challenge_token = options.turnstileToken;
+  }
+  if (options.turnstilePhase) {
+    bodyObj.bot_challenge_phase = options.turnstilePhase;
+  }
+
+  try {
+    const res = await sendRequest("/auth/otp/send-sign-in-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bodyObj),
+    });
+    if (res.ok) {
+      const resBody = await res.json().catch(() => ({}));
+      return { ok: true, nonce: typeof resBody.nonce === "string" ? resBody.nonce : "" };
+    }
+    const resBody = await res.json().catch(() => ({}));
+    return { ok: false, code: resBody.code ?? `HTTP_${res.status}`, message: resBody.message ?? res.statusText };
+  } catch (e: unknown) {
+    if (e instanceof KnownErrors.BotChallengeRequired) {
+      return { ok: false, code: "BOT_CHALLENGE_REQUIRED", message: e.message };
+    }
+    if (e instanceof KnownErrors.RedirectUrlNotWhitelisted) {
+      return { ok: false, code: "REDIRECT_URL_NOT_WHITELISTED", message: e.message };
+    }
+    throw e;
+  }
+}
+
+function isMagicLinkChallengeRequired(result: MagicLinkSendResult): boolean {
+  return !result.ok && result.code === "BOT_CHALLENGE_REQUIRED";
+}
+
+async function debugOAuthAuthorize(
+  options: {
+    apiUrl: string,
+    provider: "github" | "google",
+    projectId: string,
+    publishableClientKey: string,
+    codeChallenge: string,
+    state: string,
+    redirectUrl: string,
+    errorRedirectUrl: string,
+    turnstileToken?: string,
+    turnstilePhase?: "invisible" | "visible",
+  },
+): Promise<OAuthAuthorizeResult> {
+  const params = new URLSearchParams({
+    client_id: options.projectId,
+    client_secret: options.publishableClientKey,
+    redirect_uri: options.redirectUrl,
+    scope: "legacy",
+    state: options.state,
+    grant_type: "authorization_code",
+    code_challenge: options.codeChallenge,
+    code_challenge_method: "S256",
+    response_type: "code",
+    type: "authenticate",
+    error_redirect_url: options.errorRedirectUrl,
+    stack_response_mode: "json",
+  });
+
+  if (options.turnstileToken) {
+    params.set("bot_challenge_token", options.turnstileToken);
+  }
+  if (options.turnstilePhase) {
+    params.set("bot_challenge_phase", options.turnstilePhase);
+  }
+
+  try {
+    const res = await fetch(`${options.apiUrl}/auth/oauth/authorize/${options.provider}?${params.toString()}`, {
+      method: "GET",
+    });
+    if (res.ok) {
+      const resBody = await res.json().catch(() => ({}));
+      if (typeof resBody.location !== "string") {
+        return { ok: false, code: "MISSING_LOCATION", message: "OAuth authorize response did not include a redirect location." };
+      }
+      return { ok: true, location: resBody.location };
+    }
+    const resBody = await res.json().catch(() => ({}));
+    return { ok: false, code: resBody.code ?? `HTTP_${res.status}`, message: resBody.message ?? res.statusText };
+  } catch (e: unknown) {
+    if (e instanceof KnownErrors.BotChallengeRequired) {
+      return { ok: false, code: "BOT_CHALLENGE_REQUIRED", message: e.message };
+    }
+    throw e;
+  }
+}
+
+function isOAuthChallengeRequired(result: OAuthAuthorizeResult): boolean {
+  return !result.ok && result.code === "BOT_CHALLENGE_REQUIRED";
+}
+
 export default function TurnstileSignupPageClient() {
   const app = useStackApp();
   const user = useUser({ includeRestricted: true });
   const [email, setEmail] = useState(() => createSuggestedEmail());
   const [password, setPassword] = useState("Demo-password-123!");
 
-  // SDK signup state
-  const [sdkResult, setSdkResult] = useState<FlowResult | null>(null);
+  const [sdkActionResult, setSdkActionResult] = useState<FlowResult | null>(null);
+  const [loadingSdkAction, setLoadingSdkAction] = useState<string | null>(null);
+  const [returnMessage, setReturnMessage] = useState<string | null>(null);
 
   // Debug card state
   const [loadingFlow, setLoadingFlow] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<FlowResult | null>(null);
 
-  const internals = app[stackAppInternalsSymbol] as any;
-  const sendRequest: (path: string, init: RequestInit) => Promise<Response> = internals.sendRequest;
-  const signInWithTokens: (tokens: { accessToken: string, refreshToken: string }) => Promise<void> = internals.signInWithTokens;
+  const internals = getDebugInternals(app);
+  const sendRequest = internals.sendRequest;
+  const signInWithTokens = internals.signInWithTokens;
+  const apiUrl = getDemoApiUrl();
+  const oauthClientSecret = app[stackAppInternalsSymbol].toClientJson().publishableClientKey
+    ?? process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
+    ?? process.env.STACK_PUBLISHABLE_CLIENT_KEY
+    ?? publishableClientKeyNotNecessarySentinel;
+
+  useEffect(() => {
+    const redirectSource = window.sessionStorage.getItem(authReturnStorageKey);
+    if (redirectSource == null) {
+      return;
+    }
+
+    window.sessionStorage.removeItem(authReturnStorageKey);
+    setReturnMessage(`Returned from the ${redirectSource} flow. If the provider account was new, this also exercised OAuth sign-up with Turnstile enabled.`);
+  }, []);
 
   function freshEmail() {
     const e = createSuggestedEmail();
@@ -107,19 +316,46 @@ export default function TurnstileSignupPageClient() {
     return e;
   }
 
+  function getOAuthCallbackUrlForTurnstileLab() {
+    const callbackUrl = new URL(getAppAbsoluteUrl(app.urls.oauthCallback));
+    callbackUrl.searchParams.set("after_auth_return_to", getCurrentRelativeUrl());
+    return callbackUrl.toString();
+  }
+
+  async function runSdkAction(id: string, fn: () => Promise<FlowResult>) {
+    setLoadingSdkAction(id);
+    setSdkActionResult(null);
+    try {
+      setSdkActionResult(await fn());
+    } catch (e) {
+      if (e instanceof BotChallengeUserCancelledError) {
+        setSdkActionResult({ status: "error", message: "Turnstile challenge cancelled by user." });
+      } else {
+        setSdkActionResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
+      }
+    } finally {
+      setLoadingSdkAction(null);
+    }
+  }
+
   if (user != null) {
     return (
       <div className="container mx-auto p-6 max-w-4xl">
         <Card>
           <CardHeader>
-            <Typography type="h2">Turnstile Signup Demo</Typography>
+            <Typography type="h2">Turnstile Auth Lab</Typography>
           </CardHeader>
           <CardContent className="space-y-3">
             <Typography>
               Signed in as <span className="font-mono">{user.primaryEmail ?? user.id}</span>.
             </Typography>
+            {returnMessage && (
+              <Typography className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-200">
+                {returnMessage}
+              </Typography>
+            )}
             <Typography className="text-sm text-gray-600 dark:text-gray-300">
-              Sign out to rerun the flows from a clean state.
+              Sign out to rerun password, magic-link, OAuth, and hosted flows from a clean state.
             </Typography>
           </CardContent>
           <CardFooter className="flex gap-3">
@@ -136,27 +372,118 @@ export default function TurnstileSignupPageClient() {
   }
 
   // ── SDK signup ──
-  async function handleSdkSignUp() {
-    setSdkResult(null);
-    try {
-      const result = await app.signUpWithCredential({
-        email,
-        password,
-        noRedirect: true,
-        noVerificationCallback: true,
-      });
-      if (result.status === "error") {
-        setSdkResult({ status: "error", message: result.error.message });
-      } else {
-        setSdkResult({ status: "success", message: "Signup succeeded. Turnstile was handled transparently by the SDK." });
-      }
-    } catch (e) {
-      if (e instanceof BotChallengeUserCancelledError) {
-        setSdkResult({ status: "error", message: "Turnstile challenge cancelled by user." });
-      } else {
-        setSdkResult({ status: "error", message: e instanceof Error ? e.message : String(e) });
-      }
+  async function handleSdkSignUp(): Promise<FlowResult> {
+    const result = await app.signUpWithCredential({
+      email,
+      password,
+      noRedirect: true,
+      noVerificationCallback: true,
+    });
+    if (result.status === "error") {
+      return { status: "error", message: result.error.message };
     }
+
+    return { status: "success", message: "Password sign-up succeeded. Turnstile was handled transparently by the SDK." };
+  }
+
+  async function handleMagicLinkSend(): Promise<FlowResult> {
+    const result = await app.sendMagicLinkEmail(email);
+    if (result.status === "error") {
+      return { status: "error", message: result.error.message };
+    }
+
+    return {
+      status: "success",
+      message: `Magic link / OTP send succeeded for ${email}. Complete it from Inbucket or your inbox to continue the user flow.`,
+    };
+  }
+
+  async function handleOAuthStart(provider: "github" | "google"): Promise<FlowResult> {
+    window.sessionStorage.setItem(authReturnStorageKey, `${provider} OAuth`);
+    await app.signInWithOAuth(provider, { returnTo: getOAuthCallbackUrlForTurnstileLab() });
+    return {
+      status: "info",
+      message: `Redirecting to ${provider} OAuth...`,
+    };
+  }
+
+  async function handleMagicLinkVisibleDrill(): Promise<FlowResult> {
+    const drillEmail = freshEmail();
+    const callbackUrl = getAppAbsoluteUrl(app.urls.magicLinkCallback);
+
+    const firstRes = await debugMagicLinkSend(sendRequest, {
+      email: drillEmail,
+      callbackUrl,
+      turnstileToken: "mock-turnstile-invalid",
+      turnstilePhase: "invisible",
+    });
+
+    if (!isMagicLinkChallengeRequired(firstRes)) {
+      return { status: "error", message: `Expected BOT_CHALLENGE_REQUIRED, got: ${firstRes.ok ? "ok" : firstRes.code}` };
+    }
+
+    const visibleToken = await showTurnstileVisibleChallenge(testKeys.forceChallenge, "send_magic_link_email");
+    const secondRes = await debugMagicLinkSend(sendRequest, {
+      email: drillEmail,
+      callbackUrl,
+      turnstileToken: visibleToken,
+      turnstilePhase: "visible",
+    });
+
+    if (!secondRes.ok) {
+      return { status: "error", message: `Visible retry failed: ${secondRes.code} — ${secondRes.message}` };
+    }
+
+    return {
+      status: "success",
+      message: `Magic link / OTP send succeeded after a forced visible challenge for ${drillEmail}. Complete the link or code from Inbucket to continue the new-user flow.`,
+    };
+  }
+
+  async function handleOAuthVisibleDrill(provider: "github" | "google"): Promise<FlowResult> {
+    const oauthDebugState = await createOAuthDebugState();
+
+    const firstRes = await debugOAuthAuthorize({
+      apiUrl,
+      provider,
+      projectId: app.projectId,
+      publishableClientKey: oauthClientSecret,
+      codeChallenge: oauthDebugState.codeChallenge,
+      state: oauthDebugState.state,
+      redirectUrl: getOAuthCallbackUrlForTurnstileLab(),
+      errorRedirectUrl: getAppAbsoluteUrl(app.urls.error),
+      turnstileToken: "mock-turnstile-invalid",
+      turnstilePhase: "invisible",
+    });
+
+    if (!isOAuthChallengeRequired(firstRes)) {
+      return { status: "error", message: `Expected BOT_CHALLENGE_REQUIRED, got: ${firstRes.ok ? "ok" : firstRes.code}` };
+    }
+
+    const visibleToken = await showTurnstileVisibleChallenge(testKeys.forceChallenge, "oauth_authenticate");
+    const secondRes = await debugOAuthAuthorize({
+      apiUrl,
+      provider,
+      projectId: app.projectId,
+      publishableClientKey: oauthClientSecret,
+      codeChallenge: oauthDebugState.codeChallenge,
+      state: oauthDebugState.state,
+      redirectUrl: getOAuthCallbackUrlForTurnstileLab(),
+      errorRedirectUrl: getAppAbsoluteUrl(app.urls.error),
+      turnstileToken: visibleToken,
+      turnstilePhase: "visible",
+    });
+
+    if (!secondRes.ok) {
+      return { status: "error", message: `Visible retry failed: ${secondRes.code} — ${secondRes.message}` };
+    }
+
+    window.sessionStorage.setItem(authReturnStorageKey, `${provider} OAuth visible challenge`);
+    window.location.assign(secondRes.location);
+    return {
+      status: "info",
+      message: `Redirecting to ${provider} OAuth after the forced visible challenge...`,
+    };
   }
 
   // ── Debug flow runner ──
@@ -356,11 +683,13 @@ export default function TurnstileSignupPageClient() {
   return (
     <div className="container mx-auto p-6 max-w-5xl space-y-8">
       {/* Header */}
-      <div className="space-y-2">
-        <Typography type="h1">Turnstile Signup Demo</Typography>
-        <Typography className="text-gray-600 dark:text-gray-300">
-          Test the SDK&apos;s transparent Turnstile integration and exercise individual flows.
-        </Typography>
+      <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_35%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.92))] p-8 shadow-sm dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_35%),linear-gradient(135deg,_rgba(15,23,42,0.96),_rgba(2,6,23,0.9))]">
+        <div className="space-y-3">
+          <Typography type="h1">Turnstile Auth Lab</Typography>
+          <Typography className="max-w-3xl text-gray-600 dark:text-gray-300">
+            Exercise password sign-up, magic links, OAuth sign-up, and hosted auth screens with Turnstile turned on. The upper grid uses real SDK entrypoints; the lower grid still exposes the raw password-debug scenarios.
+          </Typography>
+        </div>
       </div>
 
       {/* Shared credentials */}
@@ -399,35 +728,162 @@ export default function TurnstileSignupPageClient() {
         </CardFooter>
       </Card>
 
-      {/* SDK signup (recommended) */}
+      {/* SDK coverage */}
       <Card>
         <CardHeader>
-          <Typography type="h3">SDK signup (recommended)</Typography>
+          <Typography type="h3">SDK auth coverage</Typography>
           <Typography className="text-sm text-gray-500">
-            Calls <span className="font-mono">app.signUpWithCredential()</span> — Turnstile is handled entirely by the SDK.
+            These are the real consumer-facing auth entrypoints. Turnstile is handled by the SDK and hosted flows without any custom demo glue.
           </Typography>
         </CardHeader>
-        <CardContent>
-          {sdkResult && (
+        <CardContent className="space-y-4">
+          {sdkActionResult && (
             <Typography className={
-              sdkResult.status === "error" ? "text-red-600 dark:text-red-400"
-                : sdkResult.status === "success" ? "text-green-700 dark:text-green-300"
+              sdkActionResult.status === "error" ? "text-red-600 dark:text-red-400"
+                : sdkActionResult.status === "success" ? "text-green-700 dark:text-green-300"
                   : "text-blue-600 dark:text-blue-300"
             }>
-              {sdkResult.message}
+              {sdkActionResult.message}
             </Typography>
           )}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="border-dashed">
+              <CardHeader>
+                <Typography type="h4">Password sign-up</Typography>
+              </CardHeader>
+              <CardContent>
+                <Typography className="text-sm text-gray-500">
+                  Calls <span className="font-mono">app.signUpWithCredential()</span>. This is the cleanest example of transparent Turnstile handling for direct sign-up.
+                </Typography>
+              </CardContent>
+              <CardFooter>
+                <Button loading={loadingSdkAction === "sdk-signup"} onClick={async () => await runSdkAction("sdk-signup", handleSdkSignUp)}>
+                  Sign up with SDK
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardHeader>
+                <Typography type="h4">Magic link / OTP send</Typography>
+              </CardHeader>
+              <CardContent>
+                <Typography className="text-sm text-gray-500">
+                  Calls <span className="font-mono">app.sendMagicLinkEmail()</span>. For a brand-new email, completing the link covers the new-user flow backed by the OTP send endpoint.
+                </Typography>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  variant="secondary"
+                  loading={loadingSdkAction === "magic-link"}
+                  onClick={async () => await runSdkAction("magic-link", handleMagicLinkSend)}
+                >
+                  Send magic link
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardHeader>
+                <Typography type="h4">OAuth sign-up / sign-in</Typography>
+              </CardHeader>
+              <CardContent>
+                <Typography className="text-sm text-gray-500">
+                  Starts <span className="font-mono">app.signInWithOAuth()</span>. If the provider account is new, the callback path creates the user and applies sign-up rules with stored Turnstile context.
+                </Typography>
+              </CardContent>
+              <CardFooter className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  loading={loadingSdkAction === "oauth-github"}
+                  onClick={async () => await runSdkAction("oauth-github", async () => await handleOAuthStart("github"))}
+                >
+                  GitHub OAuth
+                </Button>
+                <Button
+                  variant="secondary"
+                  loading={loadingSdkAction === "oauth-google"}
+                  onClick={async () => await runSdkAction("oauth-google", async () => await handleOAuthStart("google"))}
+                >
+                  Google OAuth
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardHeader>
+                <Typography type="h4">Hosted flows</Typography>
+              </CardHeader>
+              <CardContent>
+                <Typography className="text-sm text-gray-500">
+                  Opens the hosted Stack screens so you can verify Turnstile behavior in the out-of-the-box UI too.
+                </Typography>
+              </CardContent>
+              <CardFooter className="flex gap-2">
+                <Link href={app.urls.signUp} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+                  Hosted sign-up
+                </Link>
+                <Link href={app.urls.signIn} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+                  Hosted sign-in
+                </Link>
+              </CardFooter>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardHeader>
+                <Typography type="h4">Forced visible: magic link / OTP</Typography>
+              </CardHeader>
+              <CardContent>
+                <Typography className="text-sm text-gray-500">
+                  Deterministically triggers <span className="font-mono">BOT_CHALLENGE_REQUIRED</span> on the send step, then opens the visible challenge before retrying.
+                </Typography>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  variant="secondary"
+                  loading={loadingSdkAction === "magic-link-visible"}
+                  onClick={async () => await runSdkAction("magic-link-visible", handleMagicLinkVisibleDrill)}
+                >
+                  Force visible challenge
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardHeader>
+                <Typography type="h4">Forced visible: OAuth authorize</Typography>
+              </CardHeader>
+              <CardContent>
+                <Typography className="text-sm text-gray-500">
+                  Forces the visible Turnstile step during OAuth authorize, then redirects into the provider login once the challenge passes.
+                </Typography>
+              </CardContent>
+              <CardFooter className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  loading={loadingSdkAction === "oauth-github-visible"}
+                  onClick={async () => await runSdkAction("oauth-github-visible", async () => await handleOAuthVisibleDrill("github"))}
+                >
+                  GitHub visible
+                </Button>
+                <Button
+                  variant="secondary"
+                  loading={loadingSdkAction === "oauth-google-visible"}
+                  onClick={async () => await runSdkAction("oauth-google-visible", async () => await handleOAuthVisibleDrill("google"))}
+                >
+                  Google visible
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
         </CardContent>
-        <CardFooter>
-          <Button onClick={handleSdkSignUp}>Sign up with SDK</Button>
-        </CardFooter>
       </Card>
 
       {/* Debug flows */}
       <div className="space-y-4">
-        <Typography type="h2">Debug flows</Typography>
+        <Typography type="h2">Password flow debugger</Typography>
         <Typography className="text-sm text-gray-600 dark:text-gray-300">
-          Each card sends controlled Turnstile params to the backend via the SDK&apos;s internal request pipeline. A fresh email is generated per attempt.
+          Each card sends controlled Turnstile params to the backend via the SDK&apos;s internal request pipeline. A fresh email is generated per attempt so you can reproduce individual password sign-up states.
         </Typography>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -598,6 +1054,9 @@ export default function TurnstileSignupPageClient() {
           </Link>
           <Link href={app.urls.signUp} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
             Open hosted sign-up
+          </Link>
+          <Link href={app.urls.signIn} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+            Open hosted sign-in
           </Link>
         </CardFooter>
       </Card>

@@ -233,9 +233,8 @@ export async function withBotChallengeFlow<T>(options: WithBotChallengeFlowOptio
     } catch (e) {
       if (e instanceof BotChallengeUserCancelledError) throw e;
       // Both challenges failed (e.g. Cloudflare down) — proceed without token.
-      // Backend treats missing token as "invalid" for risk scoring but won't block signup.
       captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
-      return await options.execute({});
+      return await options.execute({ phase: "visible" });
     }
   }
 

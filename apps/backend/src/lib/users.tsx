@@ -12,7 +12,7 @@ import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -26,6 +26,20 @@ export type SignUpRuleOptions = {
   requestContext?: BestEffortEndUserRequestContext | null,
   turnstileAssessment: SignUpTurnstileAssessment,
 };
+
+function shouldAllowSignUpAfterVisibleBotChallengeFailure(): boolean {
+  return getEnvBoolean("STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+}
+
+function isVisibleBotChallengeFailure(assessment: SignUpTurnstileAssessment): boolean {
+  return assessment.visibleChallengeResult != null && assessment.visibleChallengeResult !== "ok";
+}
+
+function assertVisibleBotChallengePassedForSignUp(assessment: SignUpTurnstileAssessment) {
+  if (isVisibleBotChallengeFailure(assessment) && !shouldAllowSignUpAfterVisibleBotChallengeFailure()) {
+    throw new KnownErrors.BotChallengeFailed("Visible bot challenge could not be completed");
+  }
+}
 
 async function persistSignUpHeuristicFacts(params: {
   tenancy: Tenancy,
@@ -93,6 +107,49 @@ import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
   expect(getDerivedSignUpCountryCode("de", "test@example.com")).toBe("DE");
 });
 
+import.meta.vitest?.describe("visible bot challenge sign-up policy", () => {
+  const { expect, test, beforeEach, afterEach } = import.meta.vitest!;
+  const processEnv = Reflect.get(process, "env");
+  const originalFlag = Reflect.get(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+
+  beforeEach(() => {
+    Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+  });
+
+  afterEach(() => {
+    if (originalFlag === undefined) {
+      Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+    } else {
+      Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
+    }
+  });
+
+  test("blocks sign-up by default after a visible challenge failure", () => {
+    expect(() => assertVisibleBotChallengePassedForSignUp({
+      status: "error",
+      visibleChallengeResult: "error",
+    })).toThrowError("Visible bot challenge could not be completed");
+  });
+
+  test("allows sign-up when visible challenge failure override is enabled", () => {
+    Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
+
+    expect(() => assertVisibleBotChallengePassedForSignUp({
+      status: "error",
+      visibleChallengeResult: "error",
+    })).not.toThrow();
+  });
+
+  test("treats invalid visible challenges as bypassable failures when the override is enabled", () => {
+    Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
+
+    expect(() => assertVisibleBotChallengePassedForSignUp({
+      status: "invalid",
+      visibleChallengeResult: "invalid",
+    })).not.toThrow();
+  });
+});
+
 /**
  * Creates or upgrades an anonymous user with sign-up rule evaluation.
  *
@@ -121,6 +178,8 @@ export async function createOrUpgradeAnonymousUserWithRules(
   allowedErrorTypes: (new (...args: any) => any)[],
   signUpRuleOptions: SignUpRuleOptions,
 ): Promise<UsersCrud["Admin"]["Read"]> {
+  assertVisibleBotChallengePassedForSignUp(signUpRuleOptions.turnstileAssessment);
+
   const email = createOrUpdate.primary_email ?? currentUser?.primary_email ?? null;
   const primaryEmailVerified = createOrUpdate.primary_email_verified ?? currentUser?.primary_email_verified ?? false;
   const endUserRequestContext = signUpRuleOptions.requestContext !== undefined

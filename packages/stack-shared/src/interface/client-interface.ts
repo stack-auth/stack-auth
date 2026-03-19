@@ -56,7 +56,11 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
   const challengeToken = botChallenge?.token?.trim() || undefined;
   if (botChallenge?.phase === "visible") {
     if (challengeToken == null) {
-      throw new StackAssertionError(`${context} visible bot challenge retries require a token.`);
+      // We use the otherwise-invalid "visible phase with no token" shape as a sentinel
+      // for "the visible fallback could not be completed because challenge infra was unavailable".
+      return {
+        bot_challenge_unavailable: "true",
+      };
     }
 
     return {

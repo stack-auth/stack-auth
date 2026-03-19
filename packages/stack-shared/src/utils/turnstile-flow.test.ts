@@ -71,4 +71,31 @@ describe("withBotChallengeFlow", () => {
       expect.any(Error),
     );
   });
+
+  it("marks the challenge as unavailable when both phase-1 challenge attempts fail", async () => {
+    const { withBotChallengeFlow } = await import("./turnstile-flow");
+
+    loadTurnstileScriptMock
+      .mockRejectedValueOnce(new Error("invisible unavailable"))
+      .mockRejectedValueOnce(new Error("visible unavailable"));
+
+    const execute = vi.fn(async ({ phase }: { phase?: "invisible" | "visible" }) => ({
+      phase,
+    }));
+
+    await expect(withBotChallengeFlow({
+      visibleSiteKey: "visible-site-key",
+      invisibleSiteKey: "invisible-site-key",
+      action: "sign_up_with_credential",
+      execute,
+      isChallengeRequired: () => false,
+    })).resolves.toEqual({ phase: "visible" });
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith({ phase: "visible" });
+    expect(captureErrorMock).toHaveBeenCalledWith(
+      "turnstile-flow-all-challenges-failed",
+      expect.any(Error),
+    );
+  });
 });

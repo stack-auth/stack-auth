@@ -2740,7 +2740,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             options.password,
             undefined, // No email verification
             session,
-            { token: challenge.token, phase: challenge.phase },
+            {
+              token: challenge.token,
+              phase: challenge.phase,
+            },
           );
         }
       }

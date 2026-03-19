@@ -86,6 +86,22 @@ describe("StackClientInterface bot challenge compatibility", () => {
     });
   });
 
+  it("serializes bot challenge unavailability for magic link requests", async () => {
+    const fetchMock = vi.fn(async () => createJsonResponse({ nonce: "nonce" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface();
+    await iface.sendMagicLinkEmail("user@example.com", "https://app.example.com/callback", {
+      phase: "visible",
+    });
+
+    expect(getRequestBody(fetchMock)).toStrictEqual({
+      email: "user@example.com",
+      callback_url: "https://app.example.com/callback",
+      bot_challenge_unavailable: "true",
+    });
+  });
+
   it("omits bot challenge from credential signup requests when no token is provided", async () => {
     const fetchMock = vi.fn(async () => createJsonResponse({
       access_token: "access-token",
@@ -145,6 +161,26 @@ describe("StackClientInterface bot challenge compatibility", () => {
     });
   });
 
+  it("serializes bot challenge unavailability in OAuth URLs", async () => {
+    const iface = createClientInterface();
+    const oauthUrl = await iface.getOAuthUrl({
+      provider: "github",
+      redirectUrl: "https://app.example.com/oauth/callback",
+      errorRedirectUrl: "https://app.example.com/error",
+      codeChallenge: "code-challenge",
+      state: "state",
+      type: "authenticate",
+      botChallenge: {
+        phase: "visible",
+      },
+      session: createSession(),
+    });
+
+    expect(Object.fromEntries(new URL(oauthUrl).searchParams.entries())).toMatchObject({
+      bot_challenge_unavailable: "true",
+    });
+  });
+
   it("authorizes OAuth via a JSON response instead of relying on manual redirects", async () => {
     const fetchCalls: [input: RequestInfo | URL, init?: RequestInit][] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -180,10 +216,15 @@ describe("StackClientInterface bot challenge compatibility", () => {
     expect(requestInit).not.toHaveProperty("credentials");
   });
 
-  it("still requires a token for visible credential bot challenge retries", async () => {
-    const iface = createClientInterface();
+  it("serializes bot challenge unavailability for credential signup requests", async () => {
+    const fetchMock = vi.fn(async () => createJsonResponse({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
 
-    await expect(iface.signUpWithCredential(
+    const iface = createClientInterface();
+    await iface.signUpWithCredential(
       "user@example.com",
       "password",
       undefined,
@@ -191,6 +232,12 @@ describe("StackClientInterface bot challenge compatibility", () => {
       {
         phase: "visible",
       },
-    )).rejects.toThrowError("Credential sign-up visible bot challenge retries require a token.");
+    );
+
+    expect(getRequestBody(fetchMock)).toStrictEqual({
+      email: "user@example.com",
+      password: "password",
+      bot_challenge_unavailable: "true",
+    });
   });
 });

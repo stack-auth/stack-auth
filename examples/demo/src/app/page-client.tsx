@@ -23,10 +23,10 @@ export default function PageClient() {
         </CardHeader>
         <CardContent className='space-y-2'>
           <Typography>
-            Turnstile fraud protection is handled transparently by the SDK — no consumer code required.
+            Turnstile fraud protection is handled transparently by the SDK and hosted pages.
           </Typography>
           <Typography className='text-sm'>
-            Status: enabled
+            Coverage: password sign-up, magic links, OAuth, and hosted auth
           </Typography>
         </CardContent>
         <CardFooter>
@@ -34,7 +34,7 @@ export default function PageClient() {
             <Button onClick={() => router.push(app.urls.signUp)}>Open hosted sign-up</Button>
             <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open hosted sign-in</Button>
             <Button variant='secondary' onClick={() => router.push('/turnstile-signup')}>
-              Debug demo
+              Open auth lab
             </Button>
           </div>
         </CardFooter>

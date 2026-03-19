@@ -1,6 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import {
@@ -25,11 +25,13 @@ export type SignUpTurnstileAssessment = {
 export type BotChallengeFlowRequest = {
   bot_challenge_token?: string,
   bot_challenge_phase?: TurnstilePhase,
+  bot_challenge_unavailable?: "true",
 };
 
 export const botChallengeFlowRequestSchemaFields = {
   bot_challenge_token: yupString().optional(),
   bot_challenge_phase: yupString().oneOf(turnstilePhaseValues).optional(),
+  bot_challenge_unavailable: yupString().oneOf(["true"]).optional(),
 } as const;
 
 type SiteverifyResponse = {
@@ -64,6 +66,17 @@ function getSecretKey(override?: string): string {
 
 function getSiteverifyUrl(): string {
   return getEnvVariable("STACK_TURNSTILE_SITEVERIFY_URL", "https://challenges.cloudflare.com/turnstile/v0/siteverify");
+}
+
+const visibleChallengeSignupBypassActions = new Set<TurnstileAction>([
+  "sign_up_with_credential",
+  "send_magic_link_email",
+  "oauth_authenticate",
+]);
+
+function shouldAllowInvalidVisibleChallengeBypass(expectedAction: TurnstileAction): boolean {
+  return getEnvBoolean("STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE")
+    && visibleChallengeSignupBypassActions.has(expectedAction);
 }
 
 
@@ -166,9 +179,17 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   expectedAction: TurnstileAction,
   isAllowedHostname?: (hostname: string) => boolean,
   phase?: "invisible" | "visible",
+  challengeUnavailable?: boolean,
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
   const phase = params.phase;
+  if (params.challengeUnavailable) {
+    if (params.token != null || phase != null) {
+      throw new StackAssertionError("challengeUnavailable cannot be combined with a bot challenge token or phase");
+    }
+    return { status: "error", visibleChallengeResult: "error" };
+  }
+
   const assessment = await verifyTurnstileToken({
     ...params,
     // Invisible rejection is often the normal escalation path into a visible challenge,
@@ -190,6 +211,9 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   }
 
   if (assessment.status !== "ok") {
+    if (shouldAllowInvalidVisibleChallengeBypass(params.expectedAction)) {
+      return { status: "invalid", visibleChallengeResult: "invalid" };
+    }
     throw new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed");
   }
 
@@ -217,6 +241,7 @@ export async function getRequestContextAndBotChallengeAssessment(
     expectedAction,
     isAllowedHostname: (hostname) => isAllowedTurnstileHostname(hostname, tenancy),
     phase: botChallenge.bot_challenge_phase,
+    challengeUnavailable: botChallenge.bot_challenge_unavailable === "true",
   });
   return { requestContext, turnstileAssessment };
 }
@@ -359,11 +384,21 @@ import.meta.vitest?.describe("verifyTurnstileToken(...)", () => {
 });
 
 import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(...)", () => {
-  const { vi, test, afterEach } = import.meta.vitest!;
+  const { vi, test, afterEach, beforeEach } = import.meta.vitest!;
+  const processEnv = Reflect.get(process, "env");
+  const originalFlag = Reflect.get(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
 
+  beforeEach(() => {
+    Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    if (originalFlag === undefined) {
+      Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+    } else {
+      Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
+    }
   });
 
   const baseParams = {
@@ -391,5 +426,34 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
     }));
     await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({ ...baseParams, token: "visible-token", phase: "visible" }))
       .resolves.toEqual({ status: "invalid", visibleChallengeResult: "ok" });
+  });
+
+  test("returns a distinct visible-failure assessment when the challenge was unavailable", async ({ expect }) => {
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      ...baseParams,
+      token: undefined,
+      challengeUnavailable: true,
+    })).resolves.toEqual({ status: "error", visibleChallengeResult: "error" });
+  });
+
+  test("can downgrade visible invalid responses into a scored assessment when bypass is enabled", async ({ expect }) => {
+    Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", "true");
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ success: false }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      ...baseParams,
+      token: "visible-token",
+      phase: "visible",
+    })).resolves.toEqual({ status: "invalid", visibleChallengeResult: "invalid" });
+  });
+
+  test("rejects contradictory unavailable and token inputs", async ({ expect }) => {
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      ...baseParams,
+      token: "visible-token",
+      phase: "visible",
+      challengeUnavailable: true,
+    })).rejects.toThrowError("challengeUnavailable cannot be combined with a bot challenge token or phase");
   });
 });
