@@ -91,7 +91,7 @@ qemu_cmd_prefix_for_arch() {
       if [ "$HOST_ARCH" = "arm64" ]; then
         case "$HOST_OS" in
           darwin) accel="hvf" ;;
-          linux) [ -e /dev/kvm ] && accel="kvm" ;;
+          linux) [ -w /dev/kvm ] && accel="kvm" ;;
         esac
       fi
       local firmware
@@ -104,7 +104,7 @@ qemu_cmd_prefix_for_arch() {
       if [ "$HOST_ARCH" = "amd64" ]; then
         case "$HOST_OS" in
           darwin) accel="hvf" ;;
-          linux) [ -e /dev/kvm ] && accel="kvm" ;;
+          linux) [ -w /dev/kvm ] && accel="kvm" ;;
         esac
       else
         cpu="qemu64"

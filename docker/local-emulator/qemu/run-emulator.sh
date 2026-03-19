@@ -38,7 +38,7 @@ select_accelerator() {
         fi
         ;;
       linux)
-        if [ -e /dev/kvm ]; then
+        if [ -w /dev/kvm ]; then
           accel="kvm"
         fi
         ;;
@@ -327,6 +327,8 @@ cmd_reset() {
   log "Emulator state reset. Next start will be a fresh boot."
 }
 
+STATUS_FAILED=0
+
 print_service_status() {
   local name="$1"
   local port="$2"
@@ -337,15 +339,18 @@ print_service_status() {
     echo -e "  ${GREEN}●${NC} $name (:$port)"
   else
     echo -e "  ${RED}●${NC} $name (:$port)"
+    STATUS_FAILED=1
   fi
 }
 
 cmd_status() {
+  STATUS_FAILED=0
   echo "VM:"
   if is_running; then
     echo -e "  ${GREEN}●${NC} emulator"
   else
     echo -e "  ${RED}●${NC} emulator"
+    STATUS_FAILED=1
   fi
   echo ""
   echo "Services:"
@@ -357,6 +362,7 @@ cmd_status() {
   print_service_status "MinIO" "${PORT_PREFIX}21" http /minio/health/live
   print_service_status "QStash" "${PORT_PREFIX}25" http / 401
   print_service_status "ClickHouse" "${PORT_PREFIX}36" http /ping
+  exit "$STATUS_FAILED"
 }
 
 cmd_bench() {
