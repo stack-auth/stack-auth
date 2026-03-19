@@ -56,8 +56,8 @@ async function resolveConfigFilePath(filePath: string): Promise<string> {
 
 export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
   const resolvedPath = await resolveConfigFilePath(filePath);
-  const content = await fs.readFile(resolvedPath, "utf-8").catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+  const content = await fs.readFile(resolvedPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
     throw error;
   });
 
@@ -66,7 +66,7 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
   }
 
   const jiti = createJiti(import.meta.url, { cache: false });
-  const mod = jiti.evalModule(content, { filename: resolvedPath }) as Record<string, unknown>;
+  const mod: Record<string, unknown> = jiti.evalModule(content, { filename: resolvedPath });
   const config = mod.config;
   if (!isValidConfig(config)) {
     throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);

@@ -27,9 +27,6 @@ export default function Header() {
           <Link href="/anonymous-test" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
             Anonymous Test
           </Link>
-          <Link href="/emulator-status" className="text-sm hover:text-gray-600 dark:hover:text-gray-300">
-            Emulator Status
-          </Link>
         </div>
 
         <div className="flex items-center justify-end gap-5">

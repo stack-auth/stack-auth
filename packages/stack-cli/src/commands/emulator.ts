@@ -1,27 +1,23 @@
 import { Command } from "commander";
-import { execSync, spawn } from "child_process";
-import { existsSync, mkdirSync, renameSync, unlinkSync, createWriteStream } from "fs";
+import { execFileSync, execSync, spawn } from "child_process";
+import { existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 import { CliError } from "../lib/errors.js";
 
 const DEFAULT_REPO = "stack-auth/stack-auth";
 const DEFAULT_BRANCH = "dev";
 
-function detectArch(): string {
-  const arch = process.arch;
-  if (arch === "arm64") {
-    return "arm64";
-  } else if (arch === "x64") {
-    return "amd64";
-  } else {
-    throw new CliError(`Unsupported architecture: ${arch}`);
+type EmulatorArch = "arm64" | "amd64";
+
+function detectArch(): EmulatorArch {
+  switch (process.arch) {
+    case "arm64": return "arm64";
+    case "x64": return "amd64";
+    default: throw new CliError(`Unsupported architecture: ${process.arch}`);
   }
 }
 
 function findQemuDir(): string {
-  // Walk up from this file to find the repo root, then locate qemu dir
-  // When running from the repo, it's relative to the monorepo root
-  // Try common locations
   const candidates = [
     resolve(process.cwd(), "docker/local-emulator/qemu"),
     resolve(process.cwd(), "../docker/local-emulator/qemu"),
@@ -38,34 +34,35 @@ function findQemuDir(): string {
   );
 }
 
-function runScript(qemuDir: string, script: string, args: string[], env?: Record<string, string>) {
-  const scriptPath = join(qemuDir, script);
-  const result = spawn(scriptPath, args, {
-    stdio: "inherit",
-    env: { ...process.env, ...env },
-    cwd: qemuDir,
-  });
-
-  return new Promise<void>((resolve, reject) => {
-    result.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new CliError(`${script} exited with code ${code}`));
-      }
+function runScript(qemuDir: string, script: string, args: string[], env?: Record<string, string>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(join(qemuDir, script), args, {
+      stdio: "inherit",
+      env: { ...process.env, ...env },
+      cwd: qemuDir,
     });
-    result.on("error", (err) => {
+
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new CliError(`${script} exited with code ${code}`));
+    });
+    child.on("error", (err) => {
       reject(new CliError(`Failed to run ${script}: ${err.message}`));
     });
   });
 }
 
+function runEmulatorAction(action: string, env?: Record<string, string>): Promise<void> {
+  return runScript(findQemuDir(), "run-emulator.sh", [action], env);
+}
+
 function ghRelease(args: string[]): string {
   try {
-    return execSync(`gh ${args.join(" ")}`, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    return execFileSync("gh", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch (err: unknown) {
     if (err instanceof Error && "stderr" in err) {
-      throw new CliError(`GitHub CLI error: ${(err as { stderr: string }).stderr}`);
+      const { stderr } = err as Error & { stderr: string };
+      throw new CliError(`GitHub CLI error: ${stderr}`);
     }
     throw new CliError("GitHub CLI (gh) is required. Install: https://cli.github.com/");
   }
@@ -84,7 +81,7 @@ export function registerEmulatorCommand(program: Command) {
     .option("--tag <tag>", "Specific release tag")
     .option("--repo <repo>", `GitHub repository (default: ${DEFAULT_REPO})`)
     .action(async (opts) => {
-      const arch = opts.arch || detectArch();
+      const arch: EmulatorArch = opts.arch || detectArch();
       const repo = opts.repo || DEFAULT_REPO;
       const branch = opts.branch || DEFAULT_BRANCH;
       const tag = opts.tag || `emulator-${branch}-latest`;
@@ -94,7 +91,7 @@ export function registerEmulatorCommand(program: Command) {
       const imageDir = join(qemuDir, "images");
       mkdirSync(imageDir, { recursive: true });
 
-      const dest = join(imageDir, `stack-emulator-${arch}.qcow2`);
+      const dest = join(imageDir, asset);
       const tmpDest = `${dest}.download`;
 
       console.log(`Pulling image for ${arch} from release ${tag}...`);
@@ -120,13 +117,12 @@ export function registerEmulatorCommand(program: Command) {
     .description("Start the emulator (auto-pulls if no image exists)")
     .option("--arch <arch>", "Target architecture")
     .action(async (opts) => {
-      const arch = opts.arch || detectArch();
+      const arch: EmulatorArch = opts.arch || detectArch();
       const qemuDir = findQemuDir();
       const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
 
       if (!existsSync(img)) {
         console.log("No emulator image found. Pulling latest...");
-        // Re-invoke pull via the same program
         await program.parseAsync(["node", "stack", "emulator", "pull", "--arch", arch], { from: "user" });
       }
 
@@ -136,26 +132,17 @@ export function registerEmulatorCommand(program: Command) {
   emulator
     .command("stop")
     .description("Stop the emulator")
-    .action(async () => {
-      const qemuDir = findQemuDir();
-      await runScript(qemuDir, "run-emulator.sh", ["stop"]);
-    });
+    .action(() => runEmulatorAction("stop"));
 
   emulator
     .command("reset")
     .description("Reset emulator state for a fresh boot")
-    .action(async () => {
-      const qemuDir = findQemuDir();
-      await runScript(qemuDir, "run-emulator.sh", ["reset"]);
-    });
+    .action(() => runEmulatorAction("reset"));
 
   emulator
     .command("status")
     .description("Show emulator and service health")
-    .action(async () => {
-      const qemuDir = findQemuDir();
-      await runScript(qemuDir, "run-emulator.sh", ["status"]);
-    });
+    .action(() => runEmulatorAction("status"));
 
   emulator
     .command("build")
@@ -163,8 +150,7 @@ export function registerEmulatorCommand(program: Command) {
     .option("--arch <arch>", "Target architecture (arm64, amd64, or both)")
     .action(async (opts) => {
       const arch = opts.arch || detectArch();
-      const qemuDir = findQemuDir();
-      await runScript(qemuDir, "build-image.sh", [arch]);
+      await runScript(findQemuDir(), "build-image.sh", [arch]);
     });
 
   emulator
@@ -174,19 +160,14 @@ export function registerEmulatorCommand(program: Command) {
     .action(async (opts) => {
       const repo = opts.repo || DEFAULT_REPO;
       console.log(`Available emulator releases from ${repo}:\n`);
-      try {
-        const output = ghRelease(["release", "list", "--repo", repo, "--limit", "20"]);
-        const lines = output.split("\n").filter((l) => l.toLowerCase().includes("emulator"));
-        if (lines.length === 0) {
-          console.log("No emulator releases found.");
-        } else {
-          for (const line of lines) {
-            console.log(line);
-          }
+      const output = ghRelease(["release", "list", "--repo", repo, "--limit", "20"]);
+      const lines = output.split("\n").filter((l) => l.toLowerCase().includes("emulator"));
+      if (lines.length === 0) {
+        console.log("No emulator releases found.");
+      } else {
+        for (const line of lines) {
+          console.log(line);
         }
-      } catch (err) {
-        if (err instanceof CliError) throw err;
-        throw new CliError("Failed to list releases. Ensure GitHub CLI (gh) is installed and authenticated.");
       }
     });
 }
