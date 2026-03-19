@@ -246,7 +246,8 @@ build_one() {
   cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log"
   rm -rf "$tmp_dir"
 
-  qemu-img convert -O qcow2 -c "$final_img" "$final_img.tmp"
+  log "Compressing final image (this may take several minutes)..."
+  qemu-img convert -p -O qcow2 -c "$final_img" "$final_img.tmp"
   mv "$final_img.tmp" "$final_img"
 
   local size

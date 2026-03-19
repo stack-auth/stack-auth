@@ -87,10 +87,13 @@ save_snapshot() {
   local pid=$!
 
   local elapsed=0
+  local snap_start=$SECONDS
   while [ "$elapsed" -lt 120 ]; do
     sleep 2
-    elapsed=$((elapsed + 2))
+    elapsed=$((SECONDS - snap_start))
+    printf "\r  [%3ds] saving snapshot..." "$elapsed"
     if [ -f "$out_file" ] && [ "$(grep -c '"return"' "$out_file" 2>/dev/null)" -ge 2 ]; then
+      echo ""
       kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
       rm -f "$out_file"
       log "Snapshot saved."
@@ -100,6 +103,7 @@ save_snapshot() {
       break
     fi
   done
+  echo ""
 
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
   rm -f "$out_file"
