@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 IMAGE_DIR="$SCRIPT_DIR/images"
-RUN_DIR="/tmp/stack-emulator-run"
+RUN_DIR="${EMULATOR_RUN_DIR:-$SCRIPT_DIR/run}"
 
 VM_RAM="${EMULATOR_RAM:-4096}"
 VM_CPUS="${EMULATOR_CPUS:-4}"
