@@ -8,7 +8,7 @@ import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIc
 import { useUser } from '@stackframe/stack';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -411,9 +411,10 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
                     <Button
                       variant={userUpvotes.has(request.id) ? "default" : "outline"}
                       size="sm"
-                      onClick={async (e) => {
+                      disabled={user == null}
+                      onClick={(e) => {
                         e.stopPropagation();
-                        await handleUpvote(request.id);
+                        runAsynchronouslyWithAlert(handleUpvote(request.id));
                       }}
                       className="h-6 w-6 p-0 rounded-md"
                     >

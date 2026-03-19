@@ -1,5 +1,5 @@
 import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
-import { getEmailConfig, normalizeEmail, sendEmailToMany } from "@/lib/emails";
+import { normalizeEmail, sendEmailToMany } from "@/lib/emails";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -63,8 +63,6 @@ async function sendInternalOperationsEmail(options: {
   subject: string,
   htmlContent: string,
 }) {
-  await getEmailConfig(options.tenancy);
-
   const recipients = getInternalFeedbackRecipients();
   const tsxSource = createTemplateComponentFromHtml(options.htmlContent);
 

@@ -20,7 +20,7 @@ type FeaturebaseUpvoter = {
 };
 
 type FeaturebaseListResponse<T> = {
-  results: T[],
+  results?: T[],
   error?: string,
 };
 
@@ -83,7 +83,7 @@ export const GET = createSmartRouteHandler({
       });
     }
 
-    const posts = data.results;
+    const posts = data.results ?? [];
 
     const activePosts = posts.filter((post) =>
       !post.mergedToSubmissionId &&
@@ -103,7 +103,7 @@ export const GET = createSmartRouteHandler({
 
         if (upvoteResponse.ok) {
           const upvoteData: FeaturebaseListResponse<FeaturebaseUpvoter> = await upvoteResponse.json();
-          const upvoters = upvoteData.results;
+          const upvoters = upvoteData.results ?? [];
           userHasUpvoted = upvoters.some((upvoter) =>
             upvoter.userId === featurebaseUser.userId
           );
