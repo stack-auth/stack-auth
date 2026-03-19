@@ -66,7 +66,7 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
   }
 
   const jiti = createJiti(import.meta.url, { cache: false });
-  const mod: Record<string, unknown> = jiti.evalModule(content, { filename: resolvedPath });
+  const mod = jiti.evalModule(content, { filename: resolvedPath }) as Record<string, unknown>;
   const config = mod.config;
   if (!isValidConfig(config)) {
     throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);

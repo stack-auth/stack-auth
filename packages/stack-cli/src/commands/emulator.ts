@@ -11,9 +11,15 @@ type EmulatorArch = "arm64" | "amd64";
 
 function detectArch(): EmulatorArch {
   switch (process.arch) {
-    case "arm64": return "arm64";
-    case "x64": return "amd64";
-    default: throw new CliError(`Unsupported architecture: ${process.arch}`);
+    case "arm64": {
+      return "arm64";
+    }
+    case "x64": {
+      return "amd64";
+    }
+    default: {
+      throw new CliError(`Unsupported architecture: ${process.arch}`);
+    }
   }
 }
 
