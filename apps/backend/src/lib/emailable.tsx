@@ -106,15 +106,15 @@ export async function checkEmailWithEmailable(
   const retryDelayBase = options?.retryExponentialDelayBaseMs ?? RETRY_BACKOFF_BASE_MS;
 
   return await traceSpan("checking email address with Emailable", async () => {
-    let response: EmailableVerifyResponse;
+    const client = clientFactory(apiKey);
+    let raw: unknown;
     try {
-      const client = clientFactory(apiKey);
-      const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
-      response = validateVerifyResponse(raw);
+      raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
     } catch (error) {
       captureError("emailable-api-error", error);
       return { status: "error", error, emailableScore: null };
     }
+    const response = validateVerifyResponse(raw);
 
     if (response.state === "undeliverable" || response.disposable) {
       return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
@@ -163,5 +163,11 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
   test("returns error on API error", async ({ expect }) => {
     const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: errorClient });
     expect(result.status).toBe("error");
+  });
+
+  test("throws on malformed Emailable response bodies", async ({ expect }) => {
+    const malformedClient = fakeClient(async () => "definitely not an object");
+    await expect(checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient }))
+      .rejects.toThrowError("Emailable returned a non-object response body");
   });
 });

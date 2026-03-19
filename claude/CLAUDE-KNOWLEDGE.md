@@ -239,3 +239,9 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
+
+Q: What should the backend OpenAPI generator do when a public route declares multiple response shapes?
+A: Treat the response as a union of response objects instead of assuming a single yup object schema. On March 19, 2026, `pnpm codegen` failed after the OAuth authorize route honestly declared both `200/json` and `307/text`; the root fix was in `apps/backend/src/lib/openapi.tsx`, where the parser now unwraps union response schemas and merges their generated OpenAPI `responses` blocks.
+
+Q: How should stored OTP verification-code payloads evolve when new fraud fields are added?
+A: Make newly added stored-data fields backward-compatible for already-issued codes. On March 19, 2026, OTP sign-in verification needed `turnstile_result` plus stored request-context fields, but existing codes in the database still had `{}` data; the fix was to make those schema fields optional in `apps/backend/src/app/api/latest/auth/otp/sign-in/verification-code-handler.tsx` / `apps/backend/src/lib/sign-up-context.ts` and fall back to a neutral `{ status: "error" }` Turnstile assessment when the stored result is absent.

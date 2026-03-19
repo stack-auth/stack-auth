@@ -168,32 +168,35 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   phase?: "invisible" | "visible",
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
+  const phase = params.phase;
   const assessment = await verifyTurnstileToken({
     ...params,
-    captureRejectedAsError: params.phase !== "invisible",
+    // Invisible rejection is often the normal escalation path into a visible challenge,
+    // so only capture rejections as errors once we're outside that first phase.
+    captureRejectedAsError: phase !== "invisible",
   });
 
-  switch (params.phase) {
-    case undefined: {
-      // Legacy clients: return raw assessment without challenge flow
-      return assessment;
-    }
-    case "invisible": {
-      if (assessment.status !== "ok") {
-        throw new KnownErrors.BotChallengeRequired();
-      }
-      return assessment;
-    }
-    case "visible": {
-      if (assessment.status !== "ok") {
-        throw new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed");
-      }
-      // Visible passed but invisible failed — always record "invalid" rather than
-      // trusting a client-supplied value (a malicious client could claim "error"
-      // to avoid the risk-score penalty that "invalid" carries).
-      return { status: "invalid", visibleChallengeResult: "ok" };
-    }
+  if (phase == null) {
+    // Legacy clients do not participate in the multi-phase challenge flow, so they
+    // still receive the raw assessment directly.
+    return assessment;
   }
+
+  if (phase === "invisible") {
+    if (assessment.status !== "ok") {
+      throw new KnownErrors.BotChallengeRequired();
+    }
+    return assessment;
+  }
+
+  if (assessment.status !== "ok") {
+    throw new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed");
+  }
+
+  // Visible passed but invisible failed — always record "invalid" rather than
+  // trusting a client-supplied value (a malicious client could claim "error"
+  // to avoid the risk-score penalty that "invalid" carries).
+  return { status: "invalid", visibleChallengeResult: "ok" };
 }
 
 

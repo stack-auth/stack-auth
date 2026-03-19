@@ -3,7 +3,7 @@ import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-chann
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getSoleTenancyFromProjectBranch, Tenancy } from "@/lib/tenancies";
 import { createAuthTokens } from "@/lib/tokens";
-import { buildSignUpRuleOptions, deserializeStoredSignUpRequestContext, reconstructTurnstileAssessment, storedSignUpRequestContextSchemaFields } from "@/lib/sign-up-context";
+import { buildSignUpRuleOptions, deserializeStoredSignUpRequestContext, deserializeStoredTurnstileAssessment, storedSignUpRequestContextSchemaFields } from "@/lib/sign-up-context";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -76,7 +76,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
   },
   type: VerificationCodeType.ONE_TIME_PASSWORD,
   data: yupObject({
-    turnstile_result: yupString().oneOf(turnstileResultValues).defined(),
+    turnstile_result: yupString().oneOf(turnstileResultValues).optional(),
     turnstile_visible_challenge_result: yupString().oneOf(turnstileResultValues).optional(),
     ...storedSignUpRequestContextSchemaFields,
   }),
@@ -127,7 +127,7 @@ export const signInVerificationCodeHandler = createVerificationCodeHandler({
           authMethod: 'otp',
           oauthProvider: null,
           requestContext: deserializeStoredSignUpRequestContext(data),
-          turnstileAssessment: reconstructTurnstileAssessment(
+          turnstileAssessment: deserializeStoredTurnstileAssessment(
             data.turnstile_result,
             data.turnstile_visible_challenge_result,
           ),

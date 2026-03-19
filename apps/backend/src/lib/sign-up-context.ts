@@ -1,13 +1,13 @@
-import { yupBoolean, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupBoolean, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { BestEffortEndUserRequestContext } from "./end-users";
 import { SignUpTurnstileAssessment } from "./turnstile";
 import { SignUpRuleOptions } from "./users";
 
 export const storedSignUpRequestContextSchemaFields = {
-  sign_up_ip_address: yupString().nullable().defined(),
-  sign_up_ip_trusted: yupBoolean().nullable().defined(),
-  sign_up_country_code: yupString().nullable().defined(),
+  sign_up_ip_address: yupString().nullable().optional(),
+  sign_up_ip_trusted: yupBoolean().nullable().optional(),
+  sign_up_country_code: yupString().nullable().optional(),
 } as const;
 
 export type StoredSignUpRequestContext = {
@@ -24,16 +24,20 @@ export function serializeStoredSignUpRequestContext(requestContext: BestEffortEn
   };
 }
 
-export function deserializeStoredSignUpRequestContext(data: StoredSignUpRequestContext): BestEffortEndUserRequestContext | null {
-  if (data.sign_up_ip_address == null && data.sign_up_ip_trusted == null && data.sign_up_country_code == null) {
+export function deserializeStoredSignUpRequestContext(data: Partial<StoredSignUpRequestContext>): BestEffortEndUserRequestContext | null {
+  const signUpIpAddress = data.sign_up_ip_address ?? null;
+  const signUpIpTrusted = data.sign_up_ip_trusted ?? null;
+  const signUpCountryCode = data.sign_up_country_code ?? null;
+
+  if (signUpIpAddress == null && signUpIpTrusted == null && signUpCountryCode == null) {
     return null;
   }
 
   return {
-    ipAddress: data.sign_up_ip_address,
-    ipTrusted: data.sign_up_ip_trusted,
-    location: data.sign_up_country_code == null ? null : {
-      countryCode: data.sign_up_country_code,
+    ipAddress: signUpIpAddress,
+    ipTrusted: signUpIpTrusted,
+    location: signUpCountryCode == null ? null : {
+      countryCode: signUpCountryCode,
     },
   };
 }
@@ -72,3 +76,32 @@ export function reconstructTurnstileAssessment(
   }
   return { status };
 }
+
+export function deserializeStoredTurnstileAssessment(
+  status: SignUpTurnstileAssessment["status"] | undefined,
+  visibleChallengeResult?: SignUpTurnstileAssessment["visibleChallengeResult"],
+): SignUpTurnstileAssessment {
+  if (status == null) {
+    return { status: "error" };
+  }
+  return reconstructTurnstileAssessment(status, visibleChallengeResult);
+}
+
+
+// ── Tests ──────────────────────────────────────────────────────────────
+
+import.meta.vitest?.describe("stored sign-up context helpers", () => {
+  const { expect, test } = import.meta.vitest!;
+
+  test("backward-compatible schema accepts missing stored request context fields", async () => {
+    await expect(yupObject(storedSignUpRequestContextSchemaFields).defined().validate({})).resolves.toEqual({});
+  });
+
+  test("missing stored request context deserializes to null", () => {
+    expect(deserializeStoredSignUpRequestContext({})).toBeNull();
+  });
+
+  test("missing stored turnstile result falls back to a neutral assessment", () => {
+    expect(deserializeStoredTurnstileAssessment(undefined)).toEqual({ status: "error" });
+  });
+});

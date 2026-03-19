@@ -576,14 +576,18 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     };
 
+    const sortDirection = query.desc === 'true' ? 'desc' : 'asc';
     const db = await prisma.projectUser.findMany({
       where,
       include: userFullInclude,
-      orderBy: {
-        [({
-          signed_up_at: 'signedUpAt',
-        } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
-      },
+      orderBy: [
+        {
+          [({
+            signed_up_at: 'signedUpAt',
+          } as const)[query.order_by ?? 'signed_up_at']]: sortDirection,
+        },
+        { projectUserId: sortDirection },
+      ],
       // +1 because we need to know if there is a next page
       take: query.limit ? query.limit + 1 : undefined,
       ...query.cursor ? {
