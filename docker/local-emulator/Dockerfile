@@ -92,10 +92,10 @@ RUN cp -a /app/node_modules /pruned-node_modules && \
 # ── Service binary stages ─────────────────────────────────────────────────────
 
 FROM inbucket/inbucket:3.1.0 AS inbucket-bin
-FROM svix/svix-server:latest AS svix-bin
+FROM svix/svix-server:v1.88.0 AS svix-bin
 FROM clickhouse/clickhouse-server:25.10 AS clickhouse-bin
-FROM minio/minio:latest AS minio-bin
-FROM minio/mc:latest AS mc-bin
+FROM minio/minio:RELEASE.2025-09-07T16-13-09Z AS minio-bin
+FROM minio/mc:RELEASE.2025-02-21T16-00-46Z AS mc-bin
 
 FROM bgodil/qstash:latest AS qstash-bin
 RUN cp $(which qstash) /qstash-binary 2>/dev/null || \

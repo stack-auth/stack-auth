@@ -159,13 +159,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LATEST_TAG="emulator-${{ github.ref_name }}-latest"
-          # Delete existing latest release if it exists
-          gh release delete "$LATEST_TAG" --yes 2>/dev/null || true
-          git tag -d "$LATEST_TAG" 2>/dev/null || true
-          git push origin ":refs/tags/$LATEST_TAG" 2>/dev/null || true
+          TITLE="QEMU Emulator — ${{ github.ref_name }} (latest)"
+          NOTES="Latest emulator images from \`${{ github.ref_name }}\`. Auto-updated on each build."
 
-          gh release create "$LATEST_TAG" \
-            --title "QEMU Emulator — ${{ github.ref_name }} (latest)" \
-            --notes "Latest emulator images from \`${{ github.ref_name }}\`. Auto-updated on each build." \
-            --prerelease \
-            release/*
+          if gh release view "$LATEST_TAG" >/dev/null 2>&1; then
+            gh release edit "$LATEST_TAG" \
+              --draft \
+              --prerelease \
+              --target "${{ github.sha }}" \
+              --title "$TITLE" \
+              --notes "$NOTES"
+          else
+            gh release create "$LATEST_TAG" \
+              --draft \
+              --prerelease \
+              --target "${{ github.sha }}" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+            || gh release edit "$LATEST_TAG" \
+              --draft \
+              --prerelease \
+              --target "${{ github.sha }}" \
+              --title "$TITLE" \
+              --notes "$NOTES"
+          fi
+
+          gh release upload "$LATEST_TAG" release/* --clobber
+          gh release edit "$LATEST_TAG" --draft=false --prerelease

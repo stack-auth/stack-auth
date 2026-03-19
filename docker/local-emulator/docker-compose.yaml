@@ -29,7 +29,7 @@ services:
       - "/tmp:/tmp"
     env_file: ./base.env
     environment:
-      # Port-prefixed URLs (host-specific)
+      # Port-prefixed URLs — need shell interpolation, can't go in env_file
       NEXT_PUBLIC_STACK_PORT_PREFIX: "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}"
       NEXT_PUBLIC_STACK_API_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02"
       NEXT_PUBLIC_STACK_DASHBOARD_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01"
@@ -37,16 +37,6 @@ services:
       STACK_S3_PUBLIC_ENDPOINT: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21/stack-storage"
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01/handler/email-verification"
       STACK_OAUTH_MOCK_URL: "http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}14"
-      BACKEND_PORT: "8102"
-      DASHBOARD_PORT: "8101"
-      # Everything is in one container, so deps are at localhost
-      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@127.0.0.1:5432/stackframe"
-      STACK_EMAIL_HOST: "127.0.0.1"
-      STACK_SVIX_SERVER_URL: "http://127.0.0.1:8071"
-      STACK_S3_ENDPOINT: "http://127.0.0.1:9090"
-      STACK_QSTASH_URL: "http://127.0.0.1:8080"
-      STACK_CLICKHOUSE_URL: "http://127.0.0.1:8123"
-      STACK_EMAIL_MONITOR_INBUCKET_API_URL: "http://127.0.0.1:9001"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

@@ -58,8 +58,11 @@ write_files:
       source /mnt/stack-runtime/base.env
       set +a
 
-      # Everything runs in the same container, so always localhost
+      # Container-local dependencies run on localhost. Host-only development
+      # services (such as the OAuth mock server) are reachable via the QEMU
+      # user-network host alias.
       DEPS_HOST=127.0.0.1
+      HOST_SERVICES_HOST=10.0.2.2
       P="$STACK_EMULATOR_PORT_PREFIX"
 
       {
@@ -87,7 +90,7 @@ write_files:
       STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${P}01/handler/email-verification
       STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
-      STACK_OAUTH_MOCK_URL=http://${DEPS_HOST}:${P}14
+      STACK_OAUTH_MOCK_URL=http://${HOST_SERVICES_HOST}:${P}14
       BACKEND_PORT=${P}02
       DASHBOARD_PORT=${P}01
       COMPUTED

@@ -299,7 +299,7 @@ export async function setBranchConfigOverride(options: {
   // In the local emulator, write config changes back to the config file
   if (isLocalEmulatorEnabled()) {
     const filePath = await getLocalEmulatorFilePath(options.projectId);
-    if (filePath) {
+    if (filePath != null) {
       await writeConfigToFile(filePath, newConfig);
     }
   }

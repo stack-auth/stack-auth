@@ -50,7 +50,12 @@ async function resolveConfigFilePath(filePath: string): Promise<string> {
     await fs.access(hostMountedPath);
     return hostMountedPath;
   } catch {
-    return filePath;
+    try {
+      await fs.access(path.dirname(hostMountedPath));
+      return hostMountedPath;
+    } catch {
+      return filePath;
+    }
   }
 }
 

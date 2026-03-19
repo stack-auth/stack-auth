@@ -107,10 +107,13 @@ export function registerEmulatorCommand(program: Command) {
           `gh release download ${JSON.stringify(tag)} --repo ${JSON.stringify(repo)} --pattern ${JSON.stringify(asset)} --output ${JSON.stringify(tmpDest)} --clobber`,
           { stdio: "inherit" }
         );
-      } catch {
+      } catch (err) {
         if (existsSync(tmpDest)) unlinkSync(tmpDest);
+        const reason = err instanceof Error
+          ? (err.stack ?? err.message)
+          : String(err);
         throw new CliError(
-          `Failed to download ${asset} from release ${tag}.\nRun 'stack emulator list-releases' to see available releases.`
+          `Failed to download ${asset} from release ${tag}: ${reason}\nRun 'stack emulator list-releases' to see available releases.`
         );
       }
 
