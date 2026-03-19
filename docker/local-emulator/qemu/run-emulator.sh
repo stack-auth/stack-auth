@@ -63,6 +63,17 @@ runtime_iso_path() {
 SNAPSHOT_NAME="ready"
 IS_SNAPSHOT_RESTORE=false
 
+# Returns a fast fingerprint (size:mtime) of the base QEMU image.
+# Used to detect whether the image has changed since the snapshot was saved.
+base_image_fingerprint() {
+  local img="$1"
+  case "$HOST_OS" in
+    darwin) stat -f "%z:%m" "$img" 2>/dev/null ;;
+    linux)  stat -c "%s:%Y" "$img" 2>/dev/null ;;
+    *)      stat -f "%z:%m" "$img" 2>/dev/null || stat -c "%s:%Y" "$img" 2>/dev/null ;;
+  esac
+}
+
 vm_has_snapshot() {
   [ -f "$VM_DIR/disk.qcow2" ] &&
     qemu-img snapshot -l "$VM_DIR/disk.qcow2" 2>/dev/null | grep -q "$SNAPSHOT_NAME"
@@ -96,6 +107,7 @@ save_snapshot() {
       echo ""
       kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
       rm -f "$out_file"
+      base_image_fingerprint "$(image_path)" > "$VM_DIR/base-image.fingerprint"
       log "Snapshot saved."
       return 0
     fi
@@ -202,9 +214,18 @@ build_qemu_cmd() {
 
   mkdir -p "$VM_DIR"
   local has_snapshot=false
+  local fingerprint_file="$VM_DIR/base-image.fingerprint"
+  local current_fp
+  current_fp="$(base_image_fingerprint "$base_img")"
   if [ -f "$VM_DIR/disk.qcow2" ] && vm_has_snapshot; then
-    has_snapshot=true
-  else
+    if [ -f "$fingerprint_file" ] && [ "$(cat "$fingerprint_file")" = "$current_fp" ]; then
+      has_snapshot=true
+    else
+      warn "QEMU base image has changed — discarding stale snapshot."
+      rm -f "$VM_DIR/disk.qcow2" "$fingerprint_file"
+    fi
+  fi
+  if [ "$has_snapshot" = "false" ]; then
     rm -f "$VM_DIR/disk.qcow2"
     qemu-img create -f qcow2 -b "$base_img" -F qcow2 "$VM_DIR/disk.qcow2" >/dev/null
   fi
