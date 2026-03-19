@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { execFileSync, execSync, spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 import { CliError } from "../lib/errors.js";
@@ -103,10 +103,18 @@ export function registerEmulatorCommand(program: Command) {
       console.log(`Pulling image for ${arch} from release ${tag}...`);
 
       try {
-        execSync(
-          `gh release download ${JSON.stringify(tag)} --repo ${JSON.stringify(repo)} --pattern ${JSON.stringify(asset)} --output ${JSON.stringify(tmpDest)} --clobber`,
-          { stdio: "inherit" }
-        );
+        execFileSync("gh", [
+          "release",
+          "download",
+          tag,
+          "--repo",
+          repo,
+          "--pattern",
+          asset,
+          "--output",
+          tmpDest,
+          "--clobber",
+        ], { stdio: "inherit" });
       } catch (err) {
         if (existsSync(tmpDest)) unlinkSync(tmpDest);
         const reason = err instanceof Error
