@@ -27,21 +27,22 @@ env:
 jobs:
   build:
     name: Build QEMU Image (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    runs-on: ubicloud-standard-8
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: ubicloud-standard-8
             docker_platform: linux/amd64
           - arch: arm64
-            runner: ubicloud-standard-8-arm
             docker_platform: linux/arm64
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Set up QEMU user-mode emulation
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,13 +64,14 @@ jobs:
       - name: Build QEMU image
         run: |
           chmod +x docker/local-emulator/qemu/build-image.sh
-          docker/local-emulator/qemu/build-image.sh ${{ matrix.arch }}
+          EMULATOR_PROVISION_TIMEOUT=6000 \
+            docker/local-emulator/qemu/build-image.sh ${{ matrix.arch }}
 
       - name: Start emulator and verify
         run: |
           chmod +x docker/local-emulator/qemu/run-emulator.sh
           EMULATOR_ARCH=${{ matrix.arch }} \
-          EMULATOR_READY_TIMEOUT=300 \
+          EMULATOR_READY_TIMEOUT=600 \
             docker/local-emulator/qemu/run-emulator.sh start
 
       - name: Verify services are healthy
