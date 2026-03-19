@@ -36,24 +36,55 @@ export async function isLocalEmulatorProject(projectId: string) {
   return project !== null;
 }
 
+/**
+ * Resolves the file path for config files in the local emulator.
+ *
+ * In the QEMU emulator, the host filesystem is mounted at /host via virtio-9p.
+ * The DB stores absolute host paths (e.g. /Users/foo/project/stack.config.ts), so we
+ * try /host/<path> first, then fall back to the original path for non-QEMU environments
+ * (e.g. Docker Compose where the path is directly accessible).
+ */
+async function resolveConfigFilePath(filePath: string): Promise<string> {
+  const hostMountedPath = path.join("/host", filePath);
+  try {
+    await fs.access(hostMountedPath);
+    return hostMountedPath;
+  } catch {
+    return filePath;
+  }
+}
+
 export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
-  const configContentBase64 = getEnvVariable("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", "");
-  const content = configContentBase64 !== ""
-    ? Buffer.from(configContentBase64, "base64").toString("utf-8")
-    : await fs.readFile(filePath, "utf-8").catch((error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
-    });
+  const resolvedPath = await resolveConfigFilePath(filePath);
+  const content = await fs.readFile(resolvedPath, "utf-8").catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
 
   if (content === null || content.trim() === "") {
     return {};
   }
 
   const jiti = createJiti(import.meta.url, { cache: false });
-  const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
+  const mod = jiti.evalModule(content, { filename: resolvedPath }) as Record<string, unknown>;
   const config = mod.config;
   if (!isValidConfig(config)) {
     throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);
   }
   return config;
+}
+
+export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
+  const resolvedPath = await resolveConfigFilePath(filePath);
+  const configString = JSON.stringify(config, null, 2);
+  const content = `export const config = ${configString};\n`;
+  await fs.writeFile(resolvedPath, content, "utf-8");
+}
+
+export async function getLocalEmulatorFilePath(projectId: string): Promise<string | null> {
+  const project = await globalPrismaClient.localEmulatorProject.findUnique({
+    where: { projectId },
+    select: { absoluteFilePath: true },
+  });
+  return project?.absoluteFilePath ?? null;
 }

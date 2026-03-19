@@ -11,7 +11,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import * as yup from "yup";
 import { RawQuery, globalPrismaClient, rawQuery } from "../prisma-client";
-import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile } from "./local-emulator";
+import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, getLocalEmulatorFilePath, isLocalEmulatorEnabled, isLocalEmulatorProject, readConfigFromFile, writeConfigToFile } from "./local-emulator";
 import { listPermissionDefinitionsFromConfig } from "./permissions";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
@@ -295,6 +295,14 @@ export async function setBranchConfigOverride(options: {
       config: newConfig,
     },
   });
+
+  // In the local emulator, write config changes back to the config file
+  if (isLocalEmulatorEnabled()) {
+    const filePath = await getLocalEmulatorFilePath(options.projectId);
+    if (filePath) {
+      await writeConfigToFile(filePath, newConfig);
+    }
+  }
 }
 
 /**

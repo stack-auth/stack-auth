@@ -93,12 +93,23 @@ write_files:
       COMPUTED
       } > /run/stack-auth/local-emulator.env
 
+  - path: /usr/local/bin/mount-host-fs
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      mkdir -p /host
+      if ! mountpoint -q /host; then
+        mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host 2>/dev/null || true
+      fi
+
   - path: /usr/local/bin/run-stack-container
     permissions: '0755'
     content: |
       #!/bin/bash
       set -euo pipefail
 
+      /usr/local/bin/mount-host-fs
       /usr/local/bin/render-stack-env
       docker rm -f stack >/dev/null 2>&1 || true
       exec docker run \
@@ -112,6 +123,7 @@ write_files:
         -v stack-clickhouse-data:/data/clickhouse \
         -v stack-minio-data:/data/minio \
         -v stack-inbucket-data:/data/inbucket \
+        -v /host:/host \
         stack-local-emulator
 
   - path: /usr/local/bin/wait-for-deps

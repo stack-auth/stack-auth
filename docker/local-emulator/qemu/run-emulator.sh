@@ -12,7 +12,6 @@ VM_RAM="${EMULATOR_RAM:-4096}"
 VM_CPUS="${EMULATOR_CPUS:-4}"
 PORT_PREFIX="${PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}"
 READY_TIMEOUT="${EMULATOR_READY_TIMEOUT:-240}"
-CONFIG_FILE=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -131,9 +130,6 @@ prepare_runtime_config_iso() {
   mkdir -p "$cfg_dir"
   {
     printf "STACK_EMULATOR_PORT_PREFIX=%s\n" "$PORT_PREFIX"
-    if [ -n "$CONFIG_FILE" ]; then
-      printf "STACK_LOCAL_EMULATOR_CONFIG_CONTENT=%s\n" "$(base64 < "$CONFIG_FILE")"
-    fi
   } > "$cfg_dir/runtime.env"
   cp "$SCRIPT_DIR/../base.env" "$cfg_dir/base.env"
   make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
@@ -279,6 +275,7 @@ build_qemu_cmd() {
     -netdev "$netdev"
     -device virtio-net-pci,netdev=net0
     -device virtio-balloon-pci
+    -virtfs "local,path=/,mount_tag=hostfs,security_model=none"
     -chardev "socket,id=monitor,path=$VM_DIR/monitor.sock,server=on,wait=off"
     -mon "chardev=monitor,mode=control"
     -serial "file:$VM_DIR/serial.log"
@@ -353,11 +350,6 @@ stop_vm() {
 }
 
 cmd_start() {
-  if [ -n "$CONFIG_FILE" ] && [ ! -f "$CONFIG_FILE" ]; then
-    err "Config file not found: $CONFIG_FILE"
-    exit 1
-  fi
-
   ensure_ports_free
   mkdir -p "$RUN_DIR"
 
@@ -465,16 +457,12 @@ ACTION="start"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --config-file)
-      CONFIG_FILE="$2"
-      shift 2
-      ;;
     start|stop|reset|status|bench)
       ACTION="$1"
       shift
       ;;
     *)
-      echo "Usage: $0 [start|stop|reset|status|bench] [--config-file <path>]"
+      echo "Usage: $0 [start|stop|reset|status|bench]"
       exit 1
       ;;
   esac
