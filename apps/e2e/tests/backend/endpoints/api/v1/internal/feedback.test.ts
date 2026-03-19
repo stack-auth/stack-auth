@@ -19,13 +19,22 @@ describe("POST /api/v1/internal/feedback", () => {
 
     expect(response).toMatchInlineSnapshot(`
       NiceResponse {
-        "status": 401,
+        "status": 400,
         "body": {
-          "code": "USER_AUTHENTICATION_REQUIRED",
-          "error": "User authentication required for this endpoint.",
+          "code": "SCHEMA_ERROR",
+          "details": {
+            "message": deindent\`
+              Request validation failed on POST /api/v1/internal/feedback:
+                - auth.user must be defined
+            \`,
+          },
+          "error": deindent\`
+            Request validation failed on POST /api/v1/internal/feedback:
+              - auth.user must be defined
+          \`,
         },
         "headers": Headers {
-          "x-stack-known-error": "USER_AUTHENTICATION_REQUIRED",
+          "x-stack-known-error": "SCHEMA_ERROR",
           <some fields may have been hidden>,
         },
       }
