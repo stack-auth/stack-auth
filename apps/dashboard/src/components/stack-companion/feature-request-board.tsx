@@ -71,9 +71,6 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
   // Fetch existing feature requests from secure backend
   const fetchFeatureRequests = useCallback(async () => {
     if (user == null) {
-      setExistingRequests([]);
-      setUserUpvotes(new Set());
-      setIsLoadingRequests(false);
       return;
     }
 
@@ -112,8 +109,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
   useEffect(() => {
     runAsynchronously(fetchFeatureRequests());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchFeatureRequests]);
 
   // Handle refresh button click
   const handleRefreshRequests = () => {
@@ -158,39 +154,23 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
       });
 
       if (response.ok) {
-        // Refresh the list to get updated upvote counts from server
         runAsynchronously(fetchFeatureRequests());
-      } else {
-        console.error('Failed to upvote feature request');
-        // Revert optimistic updates on failure
-        setUserUpvotes(prev => {
-          const newSet = new Set(prev);
-          newSet.add(postId);
-          return newSet;
-        });
-        setExistingRequests(prev => prev.map(request =>
-          request.id === postId
-            ? {
-              ...request,
-              upvotes: request.upvotes + 1
-            }
-            : request
-        ));
+        return;
       }
+
+      throw new StackAssertionError('Failed to upvote feature request', {
+        status: response.status,
+        responseText: await response.text(),
+      });
     } catch (error) {
-      console.error('Error upvoting feature request:', error);
-      // Revert optimistic updates on failure
       setUserUpvotes(prev => {
         const newSet = new Set(prev);
-        newSet.add(postId);
+        newSet.delete(postId);
         return newSet;
       });
       setExistingRequests(prev => prev.map(request =>
         request.id === postId
-          ? {
-            ...request,
-            upvotes: request.upvotes + 1
-          }
+          ? { ...request, upvotes: request.upvotes - 1 }
           : request
       ));
 

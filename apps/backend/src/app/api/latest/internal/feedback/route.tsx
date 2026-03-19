@@ -18,9 +18,9 @@ export const POST = createSmartRouteHandler({
       }).defined(),
     }).defined(),
     body: yupObject({
-      name: yupString().optional(),
+      name: yupString().optional().max(100),
       email: emailSchema.defined().nonEmpty(),
-      message: yupString().defined().nonEmpty(),
+      message: yupString().defined().nonEmpty().max(5000),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),

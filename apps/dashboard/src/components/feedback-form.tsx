@@ -20,6 +20,7 @@ export function FeedbackForm() {
   const domainFormSchema = yup.object({
     name: yup.string()
       .optional()
+      .max(100)
       .label("Your name")
       .default(user?.displayName),
     email: emailSchema
@@ -30,6 +31,7 @@ export function FeedbackForm() {
     message: yup.string()
       .defined()
       .nonEmpty("Message is required")
+      .max(5000)
       .label("Message")
       .meta({ type: "textarea" }),
   });

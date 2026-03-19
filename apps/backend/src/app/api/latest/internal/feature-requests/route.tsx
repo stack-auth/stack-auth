@@ -1,8 +1,28 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
-import { sendFeatureRequestNotificationEmail } from "@/lib/internal-feedback-emails";
 import { adaptSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+
+// Typed subset of the Featurebase v2 API responses; fields we don't use are omitted.
+// The response schema validated by yup on output acts as the runtime safety net.
+type FeaturebasePost = {
+  id: string,
+  title: string,
+  content: string | null,
+  upvotes: number,
+  date: string,
+  mergedToSubmissionId: string | null,
+  postStatus: { name: string, color: string, type: string } | null,
+};
+
+type FeaturebaseUpvoter = {
+  userId: string,
+};
+
+type FeaturebaseListResponse<T> = {
+  results: T[],
+  error?: string,
+};
 
 // GET /api/latest/internal/feature-requests
 export const GET = createSmartRouteHandler({
@@ -14,7 +34,6 @@ export const GET = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
       type: adaptSchema,
-      tenancy: adaptSchema.defined(),
       user: adaptSchema.defined(),
       project: yupObject({
         id: yupString().oneOf(["internal"]).defined(),
@@ -53,7 +72,7 @@ export const GET = createSmartRouteHandler({
       },
     });
 
-    const data = await response.json();
+    const data: FeaturebaseListResponse<FeaturebasePost> = await response.json();
 
     if (!response.ok) {
       throw new StackAssertionError(`Featurebase API error: ${data.error || 'Failed to fetch feature requests'}`, {
@@ -64,17 +83,15 @@ export const GET = createSmartRouteHandler({
       });
     }
 
-    const posts = data.results || [];
+    const posts = data.results;
 
-    // Filter out posts that have been merged into other posts or are completed
-    const activePosts = posts.filter((post: any) =>
+    const activePosts = posts.filter((post) =>
       !post.mergedToSubmissionId &&
       post.postStatus?.type !== 'completed'
     );
 
-    // Check upvote status for each post for the current user using Featurebase email
     const postsWithUpvoteStatus = await Promise.all(
-      activePosts.map(async (post: any) => {
+      activePosts.map(async (post) => {
         let userHasUpvoted = false;
 
         const upvoteResponse = await fetch(`https://do.featurebase.app/v2/posts/upvoters?submissionId=${post.id}`, {
@@ -85,9 +102,9 @@ export const GET = createSmartRouteHandler({
         });
 
         if (upvoteResponse.ok) {
-          const upvoteData = await upvoteResponse.json();
-          const upvoters = upvoteData.results || [];
-          userHasUpvoted = upvoters.some((upvoter: any) =>
+          const upvoteData: FeaturebaseListResponse<FeaturebaseUpvoter> = await upvoteResponse.json();
+          const upvoters = upvoteData.results;
+          userHasUpvoted = upvoters.some((upvoter) =>
             upvoter.userId === featurebaseUser.userId
           );
         }
@@ -122,7 +139,6 @@ export const POST = createSmartRouteHandler({
   request: yupObject({
     auth: yupObject({
       type: adaptSchema,
-      tenancy: adaptSchema.defined(),
       user: adaptSchema.defined(),
       project: yupObject({
         id: yupString().oneOf(["internal"]).defined(),
@@ -180,25 +196,6 @@ export const POST = createSmartRouteHandler({
 
     if (!response.ok) {
       throw new StackAssertionError(`Featurebase API error: ${data.error || 'Failed to create feature request'}`, { data });
-    }
-
-    try {
-      await sendFeatureRequestNotificationEmail({
-        tenancy: auth.tenancy,
-        user: auth.user,
-        title: body.title,
-        content: body.content ?? null,
-        featureRequestId: data.id,
-      });
-    } catch (error) {
-      captureError("feature-request-notification-email", new StackAssertionError(
-        "Feature request notification email failed after Featurebase post creation succeeded",
-        {
-          cause: error,
-          featureRequestId: data.id,
-          userId: auth.user.id,
-        },
-      ));
     }
 
     return {

@@ -6,7 +6,6 @@ import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { throwErr, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
-import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 
 const defaultRecipient = "team@stack-auth.com";
 const transactionalCategoryId = getNotificationCategoryByName("Transactional")?.id ?? throwErr("Transactional notification category not found");
@@ -110,58 +109,32 @@ export async function sendSupportFeedbackEmail(options: {
   });
 }
 
-export async function sendFeatureRequestNotificationEmail(options: {
-  tenancy: Tenancy,
-  user: UsersCrud["Admin"]["Read"],
-  title: string,
-  content: string | null,
-  featureRequestId: string,
-}) {
-  const featureRequestUrl = new URL(urlString`/p/${options.featureRequestId}`, "https://feedback.stack-auth.com").toString();
-
-  await sendInternalOperationsEmail({
-    tenancy: options.tenancy,
-    subject: `[Feature Request] ${options.title}`,
-    htmlContent: buildInternalEmailHtml({
-      heading: "New feature request submitted",
-      fields: [
-        { label: "Title", value: options.title },
-        { label: "Featurebase post ID", value: options.featureRequestId },
-        { label: "Featurebase URL", href: featureRequestUrl, linkText: featureRequestUrl },
-        { label: "Submitted by", value: options.user.display_name ?? "Not provided" },
-        { label: "Submitted email", value: options.user.primary_email ?? "Not provided" },
-        { label: "Stack Auth user ID", value: options.user.id },
-      ],
-      contentLabel: "Details",
-      contentBody: options.content ?? "Not provided",
-    }),
-  });
-}
-
 import.meta.vitest?.test("getInternalFeedbackRecipients()", ({ expect }) => {
   // eslint-disable-next-line no-restricted-syntax
   const previousValue = process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
 
-  // eslint-disable-next-line no-restricted-syntax
-  process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@stack-auth.com, team@stack-auth.com , another@example.com";
-  expect(getInternalFeedbackRecipients()).toEqual([
-    "team@stack-auth.com",
-    "another@example.com",
-  ]);
-
-  // eslint-disable-next-line no-restricted-syntax
-  process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "valid@example.com, ";
-  expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
-
-  // eslint-disable-next-line no-restricted-syntax
-  process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = ", ";
-  expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
-
-  if (previousValue === undefined) {
+  try {
     // eslint-disable-next-line no-restricted-syntax
-    delete process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
-  } else {
+    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@stack-auth.com, team@stack-auth.com , another@example.com";
+    expect(getInternalFeedbackRecipients()).toEqual([
+      "team@stack-auth.com",
+      "another@example.com",
+    ]);
+
     // eslint-disable-next-line no-restricted-syntax
-    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = previousValue;
+    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "valid@example.com, ";
+    expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
+
+    // eslint-disable-next-line no-restricted-syntax
+    process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = ", ";
+    expect(() => getInternalFeedbackRecipients()).toThrow("empty recipient");
+  } finally {
+    if (previousValue === undefined) {
+      // eslint-disable-next-line no-restricted-syntax
+      delete process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
+    } else {
+      // eslint-disable-next-line no-restricted-syntax
+      process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = previousValue;
+    }
   }
 });

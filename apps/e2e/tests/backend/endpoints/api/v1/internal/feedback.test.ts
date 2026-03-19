@@ -7,6 +7,31 @@ afterEach(() => {
 });
 
 describe("POST /api/v1/internal/feedback", () => {
+  it("should reject unauthenticated requests", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/internal/feedback", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: "test@example.com",
+        message: "This should be rejected",
+      },
+    });
+
+    expect(response).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 401,
+        "body": {
+          "code": "USER_AUTHENTICATION_REQUIRED",
+          "error": "User authentication required for this endpoint.",
+        },
+        "headers": Headers {
+          "x-stack-known-error": "USER_AUTHENTICATION_REQUIRED",
+          <some fields may have been hidden>,
+        },
+      }
+    `);
+  });
+
   it("should send support feedback to the configured internal inbox", async ({ expect }) => {
     const senderEmail = backendContext.value.mailbox.emailAddress;
     const signInResult = await Auth.Otp.signIn();
