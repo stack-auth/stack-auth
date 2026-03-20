@@ -16,6 +16,15 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
   runAsynchronously(trackPromise);
   event.waitUntil(trackPromise);
 
+  if (
+    pathname === '/SKILL.md' ||
+    pathname === '/SKILLS.md'
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/llms.txt';
+    return NextResponse.redirect(url, 307);
+  }
+
   // Redirect old concepts paths to new apps paths
   const movedToApps = [
     'api-keys',
@@ -70,8 +79,9 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
 
 export const config = {
   matcher: [
+    '/SKILL.md',
+    '/SKILLS.md',
     '/docs/:path*',
     '/api/:path*',
   ],
 };
-

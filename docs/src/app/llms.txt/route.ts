@@ -1,25 +1,36 @@
-import { getLLMText } from 'lib/get-llm-text';
+import { stringCompare } from '@stackframe/stack-shared/dist/utils/strings';
 import { apiSource, source } from 'lib/source';
 
 // cached forever
 export const revalidate = false;
 
 export async function GET() {
-  // Get all pages from both main docs and API docs
-  const docsPages = source.getPages();
-  const apiPages = apiSource.getPages();
+  const docsUrls = new Set<string>();
+  const apiUrls = new Set<string>();
 
-  // Process all pages
-  const docsPromises = docsPages.map(getLLMText);
-  const apiPromises = apiPages.map(getLLMText);
+  for (const page of source.getPages()) {
+    docsUrls.add(`/llms${page.url}`.slice('/llms/docs/'.length));
+  }
 
-  const [docsContent, apiContent] = await Promise.all([
-    Promise.all(docsPromises),
-    Promise.all(apiPromises)
-  ]);
+  for (const page of apiSource.getPages()) {
+    apiUrls.add(`/llms${page.url}`.slice('/llms/api/'.length));
+  }
 
-  // Combine all content
-  const allContent = [...docsContent, ...apiContent];
+  const body = [
+    '# Stack Auth Docs',
+    'docs base url: https://docs.stack-auth.com/llms/docs/',
+    '',
+    ...[...docsUrls].sort((left, right) => stringCompare(left, right)),
+    '',
+    'api base url: https://docs.stack-auth.com/llms/api/',
+    '',
+    ...[...apiUrls].sort((left, right) => stringCompare(left, right)),
+    '',
+  ].join('\n');
 
-  return new Response(allContent.join('\n\n'));
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
 }

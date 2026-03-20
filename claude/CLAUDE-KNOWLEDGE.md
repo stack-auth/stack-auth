@@ -99,3 +99,9 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
+
+Q: How can this docs app use Fumadocs `llms()` without upgrading the whole site to newer Fumadocs core types?
+A: Keep the main docs app on `fumadocs-core@15.3.3`, add an aliased dependency like `fumadocs-core-llms: npm:fumadocs-core@16.6.17`, and call the helper from a small JS shim (`docs/lib/fumadocs-llms.js`). That isolates the newer helper from the older app-wide Fumadocs types and keeps docs typecheck/lint passing.
+
+Q: What shape should Stack Auth docs `llms.txt` use for low-noise retrieval?
+A: Use a flat deduplicated list of route URLs derived from `source.getPages()` and `apiSource.getPages()`, sorted with `stringCompare()` from `@stackframe/stack-shared/dist/utils/strings`. Keep `/llm.txt`, `/skill.md`, and `/skills.md` as redirects to `/llms.txt`.
