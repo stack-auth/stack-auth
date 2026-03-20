@@ -55,7 +55,7 @@ write_files:
 
       set -a
       source /mnt/stack-runtime/runtime.env
-      source /mnt/stack-runtime/base.env
+      source /mnt/stack-runtime/.env.development
       set +a
 
       # Container-local dependencies run on localhost. Host-only development
@@ -67,7 +67,7 @@ write_files:
 
       {
         # Static vars from base config and runtime (e.g. API keys, feature flags)
-        cat /mnt/stack-runtime/base.env
+        cat /mnt/stack-runtime/.env.development
         cat /mnt/stack-runtime/runtime.env
 
         # Computed vars — depend on port prefix or deps host

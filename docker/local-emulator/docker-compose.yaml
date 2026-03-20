@@ -27,7 +27,7 @@ services:
       - inbucket-data:/data/inbucket
       - "${HOME}:${HOME}"
       - "/tmp:/tmp"
-    env_file: ./base.env
+    env_file: ./.env.development
     environment:
       # Port-prefixed URLs — need shell interpolation, can't go in env_file
       NEXT_PUBLIC_STACK_PORT_PREFIX: "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}"
