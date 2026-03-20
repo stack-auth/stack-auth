@@ -60,7 +60,7 @@ jobs:
         run: |
           chmod +x docker/local-emulator/qemu/run-emulator.sh
           EMULATOR_ARCH=${{ matrix.arch }} \
-          EMULATOR_READY_TIMEOUT=600 \
+          EMULATOR_READY_TIMEOUT=3200 \
             docker/local-emulator/qemu/run-emulator.sh start
 
       - name: Verify services are healthy
