@@ -7,8 +7,9 @@ export const revalidate = false;
 export async function GET(request: Request) {
   const docsUrls = new Set<string>();
   const apiUrls = new Set<string>();
-  const docsBaseUrl = new URL('/llms/docs/', request.url).toString();
-  const apiBaseUrl = new URL('/llms/api/', request.url).toString();
+  const origin = new URL(request.url).origin;
+  const docsBaseUrl = `${origin}/llms/docs/`;
+  const apiBaseUrl = `${origin}/llms/api/`;
 
   for (const page of source.getPages()) {
     const relativeUrl = page.url.replace(/^\/docs\/?/, '');

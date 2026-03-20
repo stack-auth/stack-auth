@@ -1,4 +1,3 @@
-import { notFound } from 'next/navigation';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getLLMText } from '../../../../lib/get-llm-text';
 import { apiSource, source } from '../../../../lib/source';
@@ -36,14 +35,19 @@ export async function GET(
   const page = resolvePage(slug);
 
   if (!page) {
-    notFound();
+    return new NextResponse(null, { status: 404 });
   }
 
-  return new NextResponse(await getLLMText(page), {
-    headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-    },
-  });
+  try {
+    return new NextResponse(await getLLMText(page), {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+    });
+  } catch (error) {
+    console.error('Error generating LLM text:', error);
+    return new NextResponse('Error generating content', { status: 500 });
+  }
 }
 
 export function generateStaticParams() {
