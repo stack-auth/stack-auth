@@ -2180,9 +2180,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return Result.error(result.error);
   }
 
+  private _toInterfaceBotChallengeInput(challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) {
+    if (challenge.unavailable) {
+      return {
+        phase: "visible" as const,
+      };
+    }
+
+    return {
+      token: challenge.token,
+      phase: challenge.phase,
+    };
+  }
+
   private async _executeResultWithBotChallengeFlow<T, E>(options: {
     action: TurnstileAction,
-    execute: (challenge: { token?: string, phase?: "invisible" | "visible" }) => Promise<Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>>,
+    execute: (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => Promise<Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>>,
   }): Promise<Result<T, E | KnownErrors["BotChallengeFailed"]>> {
     const siteKeys = this._getBotChallengeSiteKeys();
     let result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>;
@@ -2334,10 +2347,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._executeResultWithBotChallengeFlow({
       action: "send_magic_link_email",
       execute: async (challenge) => {
-        return await this._interface.sendMagicLinkEmail(email, callbackUrl, {
-          token: challenge.token,
-          phase: challenge.phase,
-        });
+        return await this._interface.sendMagicLinkEmail(email, callbackUrl, this._toInterfaceBotChallengeInput(challenge));
       },
     });
   }
@@ -2610,7 +2620,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const siteKeys = this._getBotChallengeSiteKeys();
     const { codeChallenge, state } = await saveVerifierAndState();
 
-    const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible" }) => {
+    const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
       return await this._interface.authorizeOAuth({
         provider,
         redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
@@ -2619,10 +2629,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
         codeChallenge,
         state,
-        botChallenge: {
-          token: challenge.token,
-          phase: challenge.phase,
-        },
+        botChallenge: this._toInterfaceBotChallengeInput(challenge),
         session,
       });
     };
@@ -2732,13 +2739,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
 
-    const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible" }) => {
+    const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
       let result = await this._interface.signUpWithCredential(
         options.email,
         options.password,
         emailVerificationRedirectUrl,
         session,
-        { token: challenge.token, phase: challenge.phase },
+        this._toInterfaceBotChallengeInput(challenge),
       );
 
       // If the auto-constructed redirect URL is not whitelisted, gracefully fall back
@@ -2755,10 +2762,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             options.password,
             undefined, // No email verification
             session,
-            {
-              token: challenge.token,
-              phase: challenge.phase,
-            },
+            this._toInterfaceBotChallengeInput(challenge),
           );
         }
       }

@@ -122,6 +122,7 @@
     "source.fixAll.eslint": "explicit",
     "source.organizeImports": "explicit"    
   },
+  "terminal.integrated.wordSeparators": " (){}',\"`─‘’“”|",
   "editor.formatOnSave": false,
   "[prisma]": {
     "editor.formatOnSave": true,

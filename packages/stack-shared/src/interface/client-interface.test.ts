@@ -117,6 +117,22 @@ describe("StackClientInterface bot challenge compatibility", () => {
     });
   });
 
+  it("serializes explicit bot challenge unavailability for magic link requests", async () => {
+    const fetchMock = vi.fn(async () => createJsonResponse({ nonce: "nonce" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface();
+    await iface.sendMagicLinkEmail("user@example.com", "https://app.example.com/callback", {
+      unavailable: true,
+    });
+
+    expect(getRequestBody(fetchMock)).toStrictEqual({
+      email: "user@example.com",
+      callback_url: "https://app.example.com/callback",
+      bot_challenge_unavailable: "true",
+    });
+  });
+
   it("returns BotChallengeFailed as a Result error for magic link requests", async () => {
     const fetchMock = vi.fn(async () => createKnownErrorResponse(
       new KnownErrors.BotChallengeFailed("Visible bot challenge verification failed"),

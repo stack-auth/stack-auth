@@ -50,6 +50,7 @@ export type ClientInterfaceOptions = {
 type BotChallengeInput = {
   token?: string,
   phase?: "invisible" | "visible",
+  unavailable?: true,
 };
 
 const botChallengeKnownErrors = [
@@ -62,11 +63,20 @@ function isBotChallengeKnownError(error: unknown): error is KnownErrors["BotChal
 }
 
 function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefined, context: string) {
+  if (botChallenge?.unavailable) {
+    if (botChallenge.token != null || botChallenge.phase != null) {
+      throw new StackAssertionError(`${context} bot challenge unavailability cannot be combined with a token or phase.`);
+    }
+
+    return {
+      bot_challenge_unavailable: "true" as const,
+    };
+  }
+
   const challengeToken = botChallenge?.token?.trim() || undefined;
   if (botChallenge?.phase === "visible") {
     if (challengeToken == null) {
-      // We use the otherwise-invalid "visible phase with no token" shape as a sentinel
-      // for "the visible fallback could not be completed because challenge infra was unavailable".
+      // Backward-compatible fallback for older callers; prefer `unavailable: true`.
       return {
         bot_challenge_unavailable: "true",
       };

@@ -79,8 +79,8 @@ describe("withBotChallengeFlow", () => {
       .mockRejectedValueOnce(new Error("invisible unavailable"))
       .mockRejectedValueOnce(new Error("visible unavailable"));
 
-    const execute = vi.fn(async ({ phase }: { phase?: "invisible" | "visible" }) => ({
-      phase,
+    const execute = vi.fn(async ({ unavailable }: { unavailable?: true }) => ({
+      unavailable,
     }));
 
     await expect(withBotChallengeFlow({
@@ -89,10 +89,10 @@ describe("withBotChallengeFlow", () => {
       action: "sign_up_with_credential",
       execute,
       isChallengeRequired: () => false,
-    })).resolves.toEqual({ phase: "visible" });
+    })).resolves.toEqual({ unavailable: true });
 
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith({ phase: "visible" });
+    expect(execute).toHaveBeenCalledWith({ unavailable: true });
     expect(captureErrorMock).toHaveBeenCalledWith(
       "turnstile-flow-all-challenges-failed",
       expect.any(Error),

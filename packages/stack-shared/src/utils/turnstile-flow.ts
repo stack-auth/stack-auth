@@ -199,6 +199,7 @@ export function showTurnstileVisibleChallenge(siteKey: string, action: Turnstile
 export type BotChallengeExecuteParams = {
   token?: string,
   phase?: "invisible" | "visible",
+  unavailable?: true,
 };
 
 export type WithBotChallengeFlowOptions<T> = {
@@ -232,9 +233,11 @@ export async function withBotChallengeFlow<T>(options: WithBotChallengeFlowOptio
       usedVisibleFallback = true;
     } catch (e) {
       if (e instanceof BotChallengeUserCancelledError) throw e;
-      // Both challenges failed (e.g. Cloudflare down) — proceed without token.
+      // Both challenges failed (for example Cloudflare is unreachable) — tell the
+      // server explicitly so it can distinguish challenge infra outages from a
+      // user submitting an invalid visible challenge.
       captureError("turnstile-flow-all-challenges-failed", e instanceof Error ? e : new StackAssertionError("Non-Error thrown during Turnstile challenge", { cause: e }));
-      return await options.execute({ phase: "visible" });
+      return await options.execute({ unavailable: true });
     }
   }
 

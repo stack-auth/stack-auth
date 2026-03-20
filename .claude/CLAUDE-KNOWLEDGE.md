@@ -118,9 +118,6 @@ The second is used internally for the actual JWT signing flow, while the first i
 A: The `jose.jwtVerify` function:
 1. Extracts the kid from the JWT header
 2. Looks for a key with matching kid in the provided JWK set
-
-## Q: How should Turnstile bot challenge errors be handled in the shared client interface?
-A: Client-interface methods that wrap auth flows must catch both `KnownErrors.BotChallengeRequired` and `KnownErrors.BotChallengeFailed` when the backend can emit either outcome. If `sendClientRequestAndCatchKnownError` only catches `BotChallengeRequired`, a server-side `BotChallengeFailed` escapes as a thrown exception instead of a `Result.error(...)`, which breaks graceful handling in sign-up, magic-link, and OAuth flows.
 3. Uses that key to verify the JWT signature
 4. If no matching kid is found, verification fails with an error
 

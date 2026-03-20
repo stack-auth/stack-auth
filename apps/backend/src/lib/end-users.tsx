@@ -42,6 +42,8 @@ type EndUserLocation = {
   tzIdentifier?: string,
 };
 
+type TrustedProxy = "" | "vercel" | "cloudflare";
+
 export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | null> {
   const endUserInfo = await getEndUserInfo();
   if (!endUserInfo) {
@@ -83,6 +85,68 @@ function getLocationInfo(endUserInfo: { maybeSpoofed: true, spoofedInfo: EndUser
   return endUserInfo.maybeSpoofed ? endUserInfo.spoofedInfo : endUserInfo.exactInfo;
 }
 
+function parseCoordinate(raw: string | null | undefined): number | undefined {
+  if (!raw) return undefined;
+  const parsed = parseFloat(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
+  | { maybeSpoofed: true, spoofedInfo: EndUserInfoInner }
+  | { maybeSpoofed: false, exactInfo: EndUserInfoInner }
+  | null {
+  const isVercelTrusted = trustedProxy === "vercel";
+  const isCloudflareTrusted = trustedProxy === "cloudflare";
+
+  // Only read proxy headers as trusted when the corresponding proxy is configured
+  const trustedIp = (isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
+    ?? (isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
+    ?? undefined;
+
+  // All other IP headers are always spoofable — including proxy headers when the proxy is not configured as trusted
+  const spoofableIp = allHeaders.get("x-real-ip")
+    ?? allHeaders.get("x-forwarded-for")?.split(",").at(0)
+    ?? (!isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
+    ?? (!isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
+    ?? undefined;
+
+  const ip = trustedIp ?? spoofableIp;
+
+  if (!ip || !isIpAddress(ip)) {
+    console.warn("getEndUserIp() found IP address in headers, but is invalid. This is most likely a misconfigured client", { ip, headers: Object.fromEntries(allHeaders) });
+    return null;
+  }
+
+  // Geo headers are only trustworthy when they come from a verified proxy.
+  // If a trusted proxy is configured but it did not provide its trusted IP header,
+  // treat its geo headers as spoofed too.
+  const geoLocation: EndUserLocation = {
+    countryCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country") : undefined)
+      ?? (isCloudflareTrusted ? allHeaders.get("cf-ipcountry") : undefined)
+      ?? undefined,
+    regionCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country-region") : undefined) || undefined,
+    cityName: (isVercelTrusted ? allHeaders.get("x-vercel-ip-city") : undefined) || undefined,
+    latitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-latitude") : null),
+    longitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-longitude") : null),
+    tzIdentifier: (isVercelTrusted ? allHeaders.get("x-vercel-ip-timezone") : undefined) || undefined,
+  };
+
+  // When no proxy is trusted, geo headers are spoofable — still include them but under spoofedInfo
+  const spoofedGeoLocation: EndUserLocation = trustedProxy === "" ? {
+    countryCode: (allHeaders.get("x-vercel-ip-country") ?? allHeaders.get("cf-ipcountry")) || undefined,
+    regionCode: allHeaders.get("x-vercel-ip-country-region") || undefined,
+    cityName: allHeaders.get("x-vercel-ip-city") || undefined,
+    latitude: parseCoordinate(allHeaders.get("x-vercel-ip-latitude")),
+    longitude: parseCoordinate(allHeaders.get("x-vercel-ip-longitude")),
+    tzIdentifier: allHeaders.get("x-vercel-ip-timezone") || undefined,
+  } : {};
+
+  if (trustedIp) {
+    return { maybeSpoofed: false, exactInfo: { ip, ...geoLocation } };
+  }
+  return { maybeSpoofed: true, spoofedInfo: { ip, ...(trustedProxy === "" ? spoofedGeoLocation : {}) } };
+}
+
 export async function getEndUserInfo(): Promise<
   // discriminated union to make sure the user is really explicit about checking the maybeSpoofed field
   | { maybeSpoofed: true, spoofedInfo: EndUserInfoInner }
@@ -100,12 +164,6 @@ export async function getEndUserInfo(): Promise<
   // https://stackoverflow.com/a/1114297
   const isClaimingToBeBrowser = ["Mozilla", "Chrome", "Safari"].some(header => allHeaders.get("User-Agent")?.includes(header));
 
-  const parseCoordinate = (raw: string | null | undefined): number | undefined => {
-    if (!raw) return undefined;
-    const parsed = parseFloat(raw);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  };
-
   if (isClaimingToBeBrowser) {
     // Determine which proxy we trust based on deployment configuration.
     // These headers can only be trusted when the origin is exclusively reachable through the proxy;
@@ -114,54 +172,7 @@ export async function getEndUserInfo(): Promise<
     if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare") {
       throw new StackAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", or empty/unset, but got: "${trustedProxy}"`);
     }
-    const isVercelTrusted = trustedProxy === "vercel";
-    const isCloudflareTrusted = trustedProxy === "cloudflare";
-
-    // Only read proxy headers as trusted when the corresponding proxy is configured
-    const trustedIp = (isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
-      ?? (isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
-      ?? undefined;
-
-    // All other IP headers are always spoofable — including proxy headers when the proxy is not configured as trusted
-    const spoofableIp = allHeaders.get("x-real-ip")
-      ?? allHeaders.get("x-forwarded-for")?.split(",").at(0)
-      ?? (!isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
-      ?? (!isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
-      ?? undefined;
-
-    const ip = trustedIp ?? spoofableIp;
-
-    if (!ip || !isIpAddress(ip)) {
-      console.warn("getEndUserIp() found IP address in headers, but is invalid. This is most likely a misconfigured client", { ip, headers: Object.fromEntries(allHeaders) });
-      return null;
-    }
-
-    // Geo headers are only trustworthy when they come from a verified proxy
-    const geoLocation: EndUserLocation = {
-      countryCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country") : undefined)
-        ?? (isCloudflareTrusted ? allHeaders.get("cf-ipcountry") : undefined)
-        ?? undefined,
-      regionCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country-region") : undefined) || undefined,
-      cityName: (isVercelTrusted ? allHeaders.get("x-vercel-ip-city") : undefined) || undefined,
-      latitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-latitude") : null),
-      longitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-longitude") : null),
-      tzIdentifier: (isVercelTrusted ? allHeaders.get("x-vercel-ip-timezone") : undefined) || undefined,
-    };
-
-    // When no proxy is trusted, geo headers are spoofable — still include them but under spoofedInfo
-    const spoofedGeoLocation: EndUserLocation = trustedProxy === "" ? {
-      countryCode: (allHeaders.get("x-vercel-ip-country") ?? allHeaders.get("cf-ipcountry")) || undefined,
-      regionCode: allHeaders.get("x-vercel-ip-country-region") || undefined,
-      cityName: allHeaders.get("x-vercel-ip-city") || undefined,
-      latitude: parseCoordinate(allHeaders.get("x-vercel-ip-latitude")),
-      longitude: parseCoordinate(allHeaders.get("x-vercel-ip-longitude")),
-      tzIdentifier: allHeaders.get("x-vercel-ip-timezone") || undefined,
-    } : {};
-
-    if (trustedIp) {
-      return { maybeSpoofed: false, exactInfo: { ip, ...geoLocation } };
-    }
-    return { maybeSpoofed: true, spoofedInfo: { ip, ...(trustedProxy !== "" ? geoLocation : spoofedGeoLocation) } };
+    return getBrowserEndUserInfo(allHeaders, trustedProxy);
   }
 
   /**
@@ -185,3 +196,53 @@ export async function getEndUserInfo(): Promise<
   // most likely it's a consumer of our REST API that doesn't use our SDKs
   return null;
 }
+
+import.meta.vitest?.describe("getBrowserEndUserInfo(...)", () => {
+  const { expect, test } = import.meta.vitest!;
+
+  test("does not trust Vercel geo headers when the trusted Vercel IP header is absent", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "203.0.113.10",
+      "x-vercel-ip-country": "DE",
+      "x-vercel-ip-country-region": "BE",
+      "x-vercel-ip-city": "Berlin",
+      "x-vercel-ip-latitude": "52.52",
+      "x-vercel-ip-longitude": "13.40",
+      "x-vercel-ip-timezone": "Europe/Berlin",
+    }), "vercel");
+
+    expect(result).toEqual({
+      maybeSpoofed: true,
+      spoofedInfo: {
+        ip: "203.0.113.10",
+      },
+    });
+  });
+
+  test("keeps trusted proxy geo headers when the trusted IP header is present", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-vercel-forwarded-for": "203.0.113.10",
+      "x-vercel-ip-country": "DE",
+      "x-vercel-ip-country-region": "BE",
+      "x-vercel-ip-city": "Berlin",
+      "x-vercel-ip-latitude": "52.52",
+      "x-vercel-ip-longitude": "13.40",
+      "x-vercel-ip-timezone": "Europe/Berlin",
+    }), "vercel");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "203.0.113.10",
+        countryCode: "DE",
+        regionCode: "BE",
+        cityName: "Berlin",
+        latitude: 52.52,
+        longitude: 13.4,
+        tzIdentifier: "Europe/Berlin",
+      },
+    });
+  });
+});
