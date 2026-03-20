@@ -8,6 +8,7 @@ import { describe, beforeAll, afterAll } from "vitest";
 import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_INTERNAL_PROJECT_ADMIN_KEY } from "../helpers";
 
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
+const CLI_SRC_BIN = path.resolve("packages/stack-cli/src/index.ts");
 
 function runCli(
   args: string[],
@@ -483,6 +484,23 @@ describe("Stack CLI — Emulator", () => {
     });
   }
 
+  function runCliBareFromSource(
+    args: string[],
+  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
+    return new Promise((resolve) => {
+      execFile("node", ["--import", "tsx", CLI_SRC_BIN, ...args], {
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
+        timeout: 15_000,
+      }, (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+          exitCode: error ? (error as any).code ?? 1 : 0,
+        });
+      });
+    });
+  }
+
   it("emulator help shows subcommands", async ({ expect }) => {
     const { stdout, exitCode } = await runCliBare(["emulator", "--help"]);
     expect(exitCode).toBe(0);
@@ -508,6 +526,12 @@ describe("Stack CLI — Emulator", () => {
     const { stdout, exitCode } = await runCliBare(["emulator", "build", "--help"]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("--arch");
+  });
+
+  it("emulator pull rejects invalid arch values", async ({ expect }) => {
+    const { stderr, exitCode } = await runCliBareFromSource(["emulator", "pull", "--arch", "sparc"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Invalid --arch: sparc; expected one of: arm64, amd64.");
   });
 
   it("emulator list-releases help shows repo option", async ({ expect }) => {

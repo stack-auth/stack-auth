@@ -366,24 +366,12 @@ cmd_status() {
 }
 
 cmd_bench() {
-  local start_time end_time
+  local elapsed
   cmd_stop >/dev/null 2>&1 || true
-  start_time="$(python3 - <<'PY'
-import time
-print(time.time())
-PY
-)"
+  SECONDS=0
   cmd_start
-  end_time="$(python3 - <<'PY'
-import time
-print(time.time())
-PY
-)"
-  python3 - <<PY
-start_time = float("${start_time}")
-end_time = float("${end_time}")
-print(f"Startup time: {end_time - start_time:.1f}s")
-PY
+  elapsed="$SECONDS"
+  printf "Startup time: %.1fs\n" "$elapsed"
 }
 
 ACTION="start"

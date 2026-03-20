@@ -96,11 +96,13 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
 
   const jiti = createJiti(import.meta.url, { cache: false });
   const mod = jiti.evalModule(content, { filename: resolvedPath });
-  const config = typeof mod === "object" && mod !== null && "config" in mod
-    ? mod.config
-    : throwErr(`Invalid config in ${filePath}. The file must export a 'config' object.`);
+  const invalidConfigMessage = `Invalid config in ${filePath}. The file must export a 'config' object.`;
+  if (typeof mod !== "object" || mod === null || !("config" in mod)) {
+    throw new StatusError(StatusError.BadRequest, invalidConfigMessage);
+  }
+  const config = mod.config;
   if (!isValidConfig(config)) {
-    throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);
+    throw new StatusError(StatusError.BadRequest, invalidConfigMessage);
   }
   return config;
 }

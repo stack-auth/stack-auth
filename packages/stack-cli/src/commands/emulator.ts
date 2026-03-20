@@ -6,8 +6,9 @@ import { CliError } from "../lib/errors.js";
 
 const DEFAULT_REPO = "stack-auth/stack-auth";
 const DEFAULT_BRANCH = "dev";
+const EMULATOR_ARCHES = ["arm64", "amd64"] as const;
 
-type EmulatorArch = "arm64" | "amd64";
+type EmulatorArch = typeof EMULATOR_ARCHES[number];
 type BuildTargetArch = EmulatorArch | "both";
 
 function detectArch(): EmulatorArch {
@@ -86,6 +87,18 @@ function parseBuildArch(arch: string | undefined): BuildTargetArch {
   throw new CliError(`Unsupported build architecture: ${resolvedArch}. Use arm64, amd64, or both.`);
 }
 
+function isValidEmulatorArch(arch: string): arch is EmulatorArch {
+  return arch === "arm64" || arch === "amd64";
+}
+
+function parseEmulatorArch(arch: string | undefined): EmulatorArch {
+  const resolvedArch = arch ?? detectArch();
+  if (isValidEmulatorArch(resolvedArch)) {
+    return resolvedArch;
+  }
+  throw new CliError(`Invalid --arch: ${resolvedArch}; expected one of: ${EMULATOR_ARCHES.join(", ")}.`);
+}
+
 async function pullImage(arch: EmulatorArch, opts: { repo?: string; branch?: string; tag?: string } = {}) {
   const repo = opts.repo ?? DEFAULT_REPO;
   const branch = opts.branch ?? DEFAULT_BRANCH;
@@ -141,7 +154,7 @@ export function registerEmulatorCommand(program: Command) {
     .option("--tag <tag>", "Specific release tag")
     .option("--repo <repo>", `GitHub repository (default: ${DEFAULT_REPO})`)
     .action(async (opts) => {
-      const arch: EmulatorArch = opts.arch || detectArch();
+      const arch = parseEmulatorArch(opts.arch);
       await pullImage(arch, {
         repo: opts.repo,
         branch: opts.branch,
@@ -154,7 +167,7 @@ export function registerEmulatorCommand(program: Command) {
     .description("Start the emulator (auto-pulls if no image exists)")
     .option("--arch <arch>", "Target architecture")
     .action(async (opts) => {
-      const arch: EmulatorArch = opts.arch || detectArch();
+      const arch = parseEmulatorArch(opts.arch);
       const qemuDir = findQemuDir();
       const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
 
