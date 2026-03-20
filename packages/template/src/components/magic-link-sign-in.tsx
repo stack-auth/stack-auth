@@ -8,7 +8,7 @@ import { Button, Input, InputOTP, InputOTPGroup, InputOTPSlot, Label, Typography
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as yup from "yup";
-import { useStackApp } from "..";
+import { useStackApp } from "../lib/hooks";
 import { useTranslation } from "../lib/translations";
 import { FormWarningText } from "./elements/form-warning";
 

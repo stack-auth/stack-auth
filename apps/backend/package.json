@@ -91,6 +91,7 @@
     "chokidar-cli": "^3.0.0",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
+    "emailable": "^3.1.1",
     "freestyle-sandboxes": "^0.1.6",
     "jiti": "^2.6.1",
     "jose": "^6.1.3",
