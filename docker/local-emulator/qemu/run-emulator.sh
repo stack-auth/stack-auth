@@ -313,7 +313,7 @@ cmd_start() {
     exit 1
   fi
 
-  log "All services are green. Overlay disk preserves changes across restarts."
+  log "All services are green. The qcow2 overlay preserves emulator state across restarts, while /host stays a live host share outside the VM disk."
 }
 
 cmd_stop() {

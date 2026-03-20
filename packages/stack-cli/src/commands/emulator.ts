@@ -8,6 +8,7 @@ const DEFAULT_REPO = "stack-auth/stack-auth";
 const DEFAULT_BRANCH = "dev";
 
 type EmulatorArch = "arm64" | "amd64";
+type BuildTargetArch = EmulatorArch | "both";
 
 function detectArch(): EmulatorArch {
   switch (process.arch) {
@@ -40,22 +41,26 @@ function findQemuDir(): string {
   );
 }
 
-function runScript(qemuDir: string, script: string, args: string[], env?: Record<string, string>): Promise<void> {
+function runCommand(cwd: string, command: string, args: string[], env?: Record<string, string>): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(join(qemuDir, script), args, {
+    const child = spawn(command, args, {
       stdio: "inherit",
       env: { ...process.env, ...env },
-      cwd: qemuDir,
+      cwd,
     });
 
     child.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new CliError(`${script} exited with code ${code}`));
+      else reject(new CliError(`${command} exited with code ${code}`));
     });
     child.on("error", (err) => {
-      reject(new CliError(`Failed to run ${script}: ${err.message}`));
+      reject(new CliError(`Failed to run ${command}: ${err.message}`));
     });
   });
+}
+
+function runScript(qemuDir: string, script: string, args: string[], env?: Record<string, string>): Promise<void> {
+  return runCommand(qemuDir, join(qemuDir, script), args, env);
 }
 
 function runEmulatorAction(action: string, env?: Record<string, string>): Promise<void> {
@@ -66,12 +71,61 @@ function ghRelease(args: string[]): string {
   try {
     return execFileSync("gh", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch (err: unknown) {
-    if (err instanceof Error && "stderr" in err) {
-      const { stderr } = err as Error & { stderr: string };
-      throw new CliError(`GitHub CLI error: ${stderr}`);
+    if (err instanceof Error && "stderr" in err && typeof err.stderr === "string") {
+      throw new CliError(`GitHub CLI error: ${err.stderr}`);
     }
     throw new CliError("GitHub CLI (gh) is required. Install: https://cli.github.com/");
   }
+}
+
+function parseBuildArch(arch: string | undefined): BuildTargetArch {
+  const resolvedArch = arch ?? detectArch();
+  if (resolvedArch === "arm64" || resolvedArch === "amd64" || resolvedArch === "both") {
+    return resolvedArch;
+  }
+  throw new CliError(`Unsupported build architecture: ${resolvedArch}. Use arm64, amd64, or both.`);
+}
+
+async function pullImage(arch: EmulatorArch, opts: { repo?: string; branch?: string; tag?: string } = {}) {
+  const repo = opts.repo ?? DEFAULT_REPO;
+  const branch = opts.branch ?? DEFAULT_BRANCH;
+  const tag = opts.tag ?? `emulator-${branch}-latest`;
+  const asset = `stack-emulator-${arch}.qcow2`;
+
+  const qemuDir = findQemuDir();
+  const imageDir = join(qemuDir, "images");
+  mkdirSync(imageDir, { recursive: true });
+
+  const dest = join(imageDir, asset);
+  const tmpDest = `${dest}.download`;
+
+  console.log(`Pulling image for ${arch} from release ${tag}...`);
+
+  try {
+    execFileSync("gh", [
+      "release",
+      "download",
+      tag,
+      "--repo",
+      repo,
+      "--pattern",
+      asset,
+      "--output",
+      tmpDest,
+      "--clobber",
+    ], { stdio: "inherit" });
+  } catch (err) {
+    if (existsSync(tmpDest)) unlinkSync(tmpDest);
+    const reason = err instanceof Error
+      ? (err.stack ?? err.message)
+      : String(err);
+    throw new CliError(
+      `Failed to download ${asset} from release ${tag}: ${reason}\nRun 'stack emulator list-releases' to see available releases.`
+    );
+  }
+
+  renameSync(tmpDest, dest);
+  console.log(`Downloaded: ${dest}`);
 }
 
 export function registerEmulatorCommand(program: Command) {
@@ -88,45 +142,11 @@ export function registerEmulatorCommand(program: Command) {
     .option("--repo <repo>", `GitHub repository (default: ${DEFAULT_REPO})`)
     .action(async (opts) => {
       const arch: EmulatorArch = opts.arch || detectArch();
-      const repo = opts.repo || DEFAULT_REPO;
-      const branch = opts.branch || DEFAULT_BRANCH;
-      const tag = opts.tag || `emulator-${branch}-latest`;
-      const asset = `stack-emulator-${arch}.qcow2`;
-
-      const qemuDir = findQemuDir();
-      const imageDir = join(qemuDir, "images");
-      mkdirSync(imageDir, { recursive: true });
-
-      const dest = join(imageDir, asset);
-      const tmpDest = `${dest}.download`;
-
-      console.log(`Pulling image for ${arch} from release ${tag}...`);
-
-      try {
-        execFileSync("gh", [
-          "release",
-          "download",
-          tag,
-          "--repo",
-          repo,
-          "--pattern",
-          asset,
-          "--output",
-          tmpDest,
-          "--clobber",
-        ], { stdio: "inherit" });
-      } catch (err) {
-        if (existsSync(tmpDest)) unlinkSync(tmpDest);
-        const reason = err instanceof Error
-          ? (err.stack ?? err.message)
-          : String(err);
-        throw new CliError(
-          `Failed to download ${asset} from release ${tag}: ${reason}\nRun 'stack emulator list-releases' to see available releases.`
-        );
-      }
-
-      renameSync(tmpDest, dest);
-      console.log(`Downloaded: ${dest}`);
+      await pullImage(arch, {
+        repo: opts.repo,
+        branch: opts.branch,
+        tag: opts.tag,
+      });
     });
 
   emulator
@@ -140,7 +160,7 @@ export function registerEmulatorCommand(program: Command) {
 
       if (!existsSync(img)) {
         console.log("No emulator image found. Pulling latest...");
-        await program.parseAsync(["node", "stack", "emulator", "pull", "--arch", arch], { from: "user" });
+        await pullImage(arch);
       }
 
       await runScript(qemuDir, "run-emulator.sh", ["start"], { EMULATOR_ARCH: arch });
@@ -166,7 +186,7 @@ export function registerEmulatorCommand(program: Command) {
     .description("Build the QEMU emulator image locally")
     .option("--arch <arch>", "Target architecture (arm64, amd64, or both)")
     .action(async (opts) => {
-      const arch = opts.arch || detectArch();
+      const arch = parseBuildArch(opts.arch);
       await runScript(findQemuDir(), "build-image.sh", [arch]);
     });
 

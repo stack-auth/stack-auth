@@ -1,6 +1,12 @@
 import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readConfigFromFile, writeConfigToFile } from "./local-emulator";
+import {
+  LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV,
+  readConfigFromFile,
+  writeConfigToFile,
+} from "./local-emulator";
 
 describe("local emulator config", () => {
   afterEach(() => {
@@ -32,22 +38,55 @@ describe("local emulator config", () => {
     await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).resolves.toEqual({});
   });
 
+  it("throws when the config module does not export config", async () => {
+    const content = `export default { auth: { allowLocalhost: true } };\n`;
+    vi.stubEnv("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", Buffer.from(content).toString("base64"));
+
+    await expect(readConfigFromFile("/irrelevant/path/stack.config.ts")).rejects.toThrow(
+      "Invalid config in /irrelevant/path/stack.config.ts. The file must export a 'config' object."
+    );
+  });
+
+  it("reads config files from the host mount when configured", async () => {
+    const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
+    const absoluteFilePath = "/Users/foo/project/stack.config.ts";
+    const mountedFilePath = path.join(hostMountRoot, absoluteFilePath);
+    await fs.mkdir(path.dirname(mountedFilePath), { recursive: true });
+    await fs.writeFile(mountedFilePath, `export const config = { auth: { allowLocalhost: true } };\n`, "utf-8");
+
+    vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);
+
+    await expect(readConfigFromFile(absoluteFilePath)).resolves.toMatchInlineSnapshot(`
+      {
+        "auth": {
+          "allowLocalhost": true,
+        },
+      }
+    `);
+  });
+
   it("writes new config files to the host mount when the mounted parent directory exists", async () => {
-    const accessSpy = vi.spyOn(fs, "access")
-      .mockRejectedValueOnce(Object.assign(new Error("missing file"), { code: "ENOENT" }))
-      .mockResolvedValueOnce(undefined);
-    const mkdirSpy = vi.spyOn(fs, "mkdir").mockResolvedValueOnce("/host/Users/foo/project");
-    const writeFileSpy = vi.spyOn(fs, "writeFile").mockResolvedValueOnce();
+    const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
+    const absoluteFilePath = "/Users/foo/project/stack.config.ts";
+    const mountedParentPath = path.join(hostMountRoot, "/Users/foo/project");
+    const mountedFilePath = path.join(hostMountRoot, absoluteFilePath);
+    await fs.mkdir(mountedParentPath, { recursive: true });
 
-    await writeConfigToFile("/Users/foo/project/stack.config.ts", { auth: { allowLocalhost: true } });
+    vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);
 
-    expect(accessSpy).toHaveBeenNthCalledWith(1, "/host/Users/foo/project/stack.config.ts");
-    expect(accessSpy).toHaveBeenNthCalledWith(2, "/host/Users/foo/project");
-    expect(mkdirSpy).toHaveBeenCalledWith("/host/Users/foo/project", { recursive: true });
-    expect(writeFileSpy).toHaveBeenCalledWith(
-      "/host/Users/foo/project/stack.config.ts",
-      `export const config = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`,
-      "utf-8",
+    await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
+
+    await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
+      `export const config = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
+    );
+  });
+
+  it("fails loudly when the QEMU host mount root is configured but unavailable", async () => {
+    const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
+    vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);
+
+    await expect(writeConfigToFile("/Users/foo/project/stack.config.ts", { auth: { allowLocalhost: true } })).rejects.toThrow(
+      `Local emulator host mount root ${hostMountRoot} is configured`
     );
   });
 });

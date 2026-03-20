@@ -7,12 +7,14 @@ source "$SCRIPT_DIR/common.sh"
 
 IMAGE_DIR="$SCRIPT_DIR/images"
 CLOUD_INIT_ROOT="$SCRIPT_DIR/cloud-init"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 DEBIAN_VERSION="${DEBIAN_VERSION:-13}"
 DISK_SIZE="${EMULATOR_DISK_SIZE:-12G}"
 RAM="${EMULATOR_BUILD_RAM:-4096}"
 CPUS="${EMULATOR_BUILD_CPUS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 PROVISION_TIMEOUT="${EMULATOR_PROVISION_TIMEOUT:-3200}"
+EMULATOR_IMAGE_NAME="${EMULATOR_IMAGE_NAME:-stack-local-emulator}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,7 +36,7 @@ case "$TARGET_ARCH" in
   *) err "Usage: $0 [arm64|amd64|both]"; exit 1 ;;
 esac
 
-DOCKER_IMAGES=(stack-local-emulator)
+DOCKER_IMAGES=("$EMULATOR_IMAGE_NAME")
 
 check_deps() {
   local missing=()
@@ -81,6 +83,28 @@ download_cloud_image() {
 
   log "Downloading Debian ${DEBIAN_VERSION} cloud image for ${arch}..."
   curl -fSL --progress-bar -o "$dest" "$url"
+}
+
+docker_platform_for_arch() {
+  case "$1" in
+    arm64) echo "linux/arm64" ;;
+    amd64) echo "linux/amd64" ;;
+    *) err "Unsupported target arch: $1"; exit 1 ;;
+  esac
+}
+
+build_local_emulator_image() {
+  local arch="$1"
+  local platform
+  platform="$(docker_platform_for_arch "$arch")"
+
+  log "Building Docker emulator image (${arch})..."
+  docker buildx build \
+    --platform "$platform" \
+    --tag "$EMULATOR_IMAGE_NAME" \
+    --load \
+    -f "$REPO_ROOT/docker/local-emulator/Dockerfile" \
+    "$REPO_ROOT"
 }
 
 qemu_cmd_prefix_for_arch() {
@@ -258,6 +282,7 @@ build_one() {
 for arch in "${TARGET_ARCHS[@]}"; do
   local_base="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
   download_cloud_image "$arch" "$local_base"
+  build_local_emulator_image "$arch"
   prepare_bundle_artifacts "$arch"
   build_one "$arch"
 done

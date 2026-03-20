@@ -74,6 +74,7 @@ write_files:
         cat <<COMPUTED
       NEXT_PUBLIC_STACK_PORT_PREFIX=${P}
       STACK_RUNTIME_WORK_DIR=/app
+      STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT=/host
       NEXT_PUBLIC_STACK_API_URL=http://localhost:${P}02
       NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:${P}01
       NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:${P}02
@@ -103,7 +104,10 @@ write_files:
       set -euo pipefail
       mkdir -p /host
       if ! mountpoint -q /host; then
-        mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host 2>/dev/null || true
+        if ! mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host; then
+          echo "Failed to mount host filesystem at /host" >&2
+          exit 1
+        fi
       fi
 
   - path: /usr/local/bin/run-stack-container

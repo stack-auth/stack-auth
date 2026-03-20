@@ -3,7 +3,7 @@ import path from "path";
 import { createJiti } from "jiti";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalPrismaClient } from "@/prisma-client";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
@@ -15,9 +15,14 @@ export const LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE =
   "Environment configuration overrides cannot be changed in the local emulator. Update this in your production deployment instead.";
 export const LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE =
   "This endpoint is only available in local emulator mode (set NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true).";
+export const LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV = "STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT";
 
 export function isLocalEmulatorEnabled() {
   return getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null && "code" in error;
 }
 
 export async function isLocalEmulatorProject(projectId: string) {
@@ -36,27 +41,43 @@ export async function isLocalEmulatorProject(projectId: string) {
   return project !== null;
 }
 
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (error) {
+    if (isErrnoException(error) && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 /**
  * Resolves the file path for config files in the local emulator.
  *
- * In the QEMU emulator, the host filesystem is mounted at /host via virtio-9p.
- * The DB stores absolute host paths (e.g. /Users/foo/project/stack.config.ts), so we
- * try /host/<path> first, then fall back to the original path for non-QEMU environments
- * (e.g. Docker Compose where the path is directly accessible).
+ * In the QEMU emulator, the host filesystem is mounted separately at /host, outside the
+ * guest qcow2 overlay. The DB stores absolute host paths (for example
+ * /Users/foo/project/stack.config.ts), so we map them to /host/<path> when the host mount
+ * is configured. We fail loudly if the host mount root is configured but inaccessible,
+ * because silently writing to a guest-local lookalike path would desync the dashboard from
+ * the user's real stack.config.ts file.
  */
 async function resolveConfigFilePath(filePath: string): Promise<string> {
-  const hostMountedPath = path.join("/host", filePath);
-  try {
-    await fs.access(hostMountedPath);
-    return hostMountedPath;
-  } catch {
-    try {
-      await fs.access(path.dirname(hostMountedPath));
+  const hostMountRoot = getEnvVariable(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, "");
+  if (hostMountRoot !== "") {
+    const hostMountedPath = path.join(hostMountRoot, filePath);
+    if (await pathExists(hostMountedPath) || await pathExists(path.dirname(hostMountedPath))) {
       return hostMountedPath;
-    } catch {
-      return filePath;
     }
+
+    throw new Error(
+      `Local emulator host mount root ${hostMountRoot} is configured, but ${hostMountedPath} is not accessible. ` +
+      "Restart the QEMU emulator so the host share is mounted, or choose a config path under the shared host root."
+    );
   }
+
+  return filePath;
 }
 
 export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
@@ -74,8 +95,10 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
   }
 
   const jiti = createJiti(import.meta.url, { cache: false });
-  const mod = jiti.evalModule(content, { filename: resolvedPath }) as Record<string, unknown>;
-  const config = mod.config;
+  const mod = jiti.evalModule(content, { filename: resolvedPath });
+  const config = typeof mod === "object" && mod !== null && "config" in mod
+    ? mod.config
+    : throwErr(`Invalid config in ${filePath}. The file must export a 'config' object.`);
   if (!isValidConfig(config)) {
     throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);
   }

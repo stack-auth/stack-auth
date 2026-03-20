@@ -34,9 +34,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            docker_platform: linux/amd64
           - arch: arm64
-            docker_platform: linux/arm64
 
     steps:
       - uses: actions/checkout@v6
@@ -51,15 +49,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-utils genisoimage socat qemu-efi-aarch64
-
-      - name: Build Docker emulator image
-        run: |
-          docker buildx build \
-            --platform ${{ matrix.docker_platform }} \
-            --tag ${{ env.EMULATOR_IMAGE_NAME }} \
-            --load \
-            -f docker/local-emulator/Dockerfile \
-            .
 
       - name: Build QEMU image
         run: |
@@ -80,6 +69,7 @@ jobs:
             docker/local-emulator/qemu/run-emulator.sh status
 
       - name: Stop emulator
+        if: ${{ always() }}
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
             docker/local-emulator/qemu/run-emulator.sh stop
@@ -127,18 +117,10 @@ jobs:
             cp "$f" release/
           done
 
-          ls -lh release/
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ env.RELEASE_TAG }}" \
-            --title "QEMU Emulator — ${{ github.ref_name }} (${{ env.SHORT_SHA }})" \
-            --notes "$(cat <<'EOF'
+          cat > release-notes.md <<'EOF'
           ## QEMU Emulator Images
 
-          Built from \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`
+          Built from `${{ github.ref_name }}` @ `${{ github.sha }}`
 
           ### Images
           | File | Description |
@@ -152,9 +134,28 @@ jobs:
           stack emulator run
           ```
           EOF
-          )" \
-            --prerelease \
-            release/*
+
+          ls -lh release/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="QEMU Emulator — ${{ github.ref_name }} ($SHORT_SHA)"
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "$TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+            gh release upload "$RELEASE_TAG" release/* --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$TITLE" \
+              --notes-file release-notes.md \
+              --prerelease \
+              release/*
+          fi
 
       - name: Update latest tag for branch
         env:
