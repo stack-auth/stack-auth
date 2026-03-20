@@ -1,6 +1,7 @@
 import { createOAuthUserAndAccount, findExistingOAuthAccount, getProjectUserIdFromOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
 import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
+import { getDisabledBotChallengeAssessment, isBotChallengeDisabled } from "@/lib/turnstile";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -135,7 +136,9 @@ export const POST = createSmartRouteHandler({
             authMethod: 'oauth',
             oauthProvider: 'apple',
             requestContext,
-            turnstileAssessment: { status: "invalid" },
+            turnstileAssessment: isBotChallengeDisabled()
+              ? getDisabledBotChallengeAssessment()
+              : { status: "invalid" },
             // Apple native OAuth doesn't pass a turnstile token because the
             // authentication happens in the native Apple sign-in flow outside our control
           }),

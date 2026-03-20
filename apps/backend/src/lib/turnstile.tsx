@@ -74,6 +74,14 @@ const visibleChallengeSignupBypassActions = new Set<TurnstileAction>([
   "oauth_authenticate",
 ]);
 
+export function isBotChallengeDisabled(): boolean {
+  return getEnvBoolean("STACK_DISABLE_BOT_CHALLENGE");
+}
+
+export function getDisabledBotChallengeAssessment(): SignUpTurnstileAssessment {
+  return { status: "ok" };
+}
+
 function shouldAllowInvalidVisibleChallengeBypass(expectedAction: TurnstileAction): boolean {
   return getEnvBoolean("STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE")
     && visibleChallengeSignupBypassActions.has(expectedAction);
@@ -182,6 +190,10 @@ export async function verifyTurnstileTokenWithOptionalVisibleChallenge(params: {
   challengeUnavailable?: boolean,
   secretKey?: string,
 }): Promise<SignUpTurnstileAssessment> {
+  if (isBotChallengeDisabled()) {
+    return getDisabledBotChallengeAssessment();
+  }
+
   const phase = params.phase;
   if (params.challengeUnavailable) {
     if (params.token != null || phase != null) {
@@ -387,9 +399,11 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
   const { vi, test, afterEach, beforeEach } = import.meta.vitest!;
   const processEnv = Reflect.get(process, "env");
   const originalFlag = Reflect.get(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+  const originalDisableFlag = Reflect.get(processEnv, "STACK_DISABLE_BOT_CHALLENGE");
 
   beforeEach(() => {
     Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
+    Reflect.deleteProperty(processEnv, "STACK_DISABLE_BOT_CHALLENGE");
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -398,6 +412,11 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
       Reflect.deleteProperty(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE");
     } else {
       Reflect.set(processEnv, "STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE", originalFlag);
+    }
+    if (originalDisableFlag === undefined) {
+      Reflect.deleteProperty(processEnv, "STACK_DISABLE_BOT_CHALLENGE");
+    } else {
+      Reflect.set(processEnv, "STACK_DISABLE_BOT_CHALLENGE", originalDisableFlag);
     }
   });
 
@@ -434,6 +453,21 @@ import.meta.vitest?.describe("verifyTurnstileTokenWithOptionalVisibleChallenge(.
       token: undefined,
       challengeUnavailable: true,
     })).resolves.toEqual({ status: "error", visibleChallengeResult: "error" });
+  });
+
+  test("skips all bot challenge verification when disabled", async ({ expect }) => {
+    Reflect.set(processEnv, "STACK_DISABLE_BOT_CHALLENGE", "true");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await expect(verifyTurnstileTokenWithOptionalVisibleChallenge({
+      ...baseParams,
+      token: undefined,
+      phase: "invisible",
+      challengeUnavailable: true,
+    })).resolves.toEqual({ status: "ok" });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   test("can downgrade visible invalid responses into a scored assessment when bypass is enabled", async ({ expect }) => {
