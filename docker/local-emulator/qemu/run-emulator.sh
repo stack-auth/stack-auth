@@ -79,7 +79,7 @@ prepare_runtime_config_iso() {
   {
     printf "STACK_EMULATOR_PORT_PREFIX=%s\n" "$PORT_PREFIX"
   } > "$cfg_dir/runtime.env"
-  cp "$SCRIPT_DIR/../.env.development" "$cfg_dir/.env.development"
+  cp "$SCRIPT_DIR/../.env.development" "$cfg_dir/base.env"
   make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
 }
 
