@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getLLMText } from '../../../../lib/get-llm-text';
 import { apiSource, source } from '../../../../lib/source';
@@ -35,33 +36,23 @@ export async function GET(
   const page = resolvePage(slug);
 
   if (!page) {
-    return NextResponse.redirect(new URL('/', request.url), 307);
+    notFound();
   }
 
-  try {
-    return new NextResponse(await getLLMText(page), {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-      },
-    });
-  } catch (error) {
-    console.error('Error generating LLM text:', error);
-    return new NextResponse('Error generating content', { status: 500 });
-  }
+  return new NextResponse(await getLLMText(page), {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
 }
 
 export function generateStaticParams() {
-  try {
-    const docsParams = source.generateParams().map((param) => ({
-      slug: ['docs', ...param.slug],
-    }));
-    const apiParams = apiSource.generateParams().map((param) => ({
-      slug: ['api', ...param.slug],
-    }));
+  const docsParams = source.generateParams().map((param) => ({
+    slug: ['docs', ...param.slug],
+  }));
+  const apiParams = apiSource.generateParams().map((param) => ({
+    slug: ['api', ...param.slug],
+  }));
 
-    return [...docsParams, ...apiParams];
-  } catch (error) {
-    console.error('Error generating static params:', error);
-    return [];
-  }
+  return [...docsParams, ...apiParams];
 }

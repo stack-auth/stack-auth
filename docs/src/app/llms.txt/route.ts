@@ -4,9 +4,11 @@ import { apiSource, source } from 'lib/source';
 // cached forever
 export const revalidate = false;
 
-export async function GET() {
+export async function GET(request: Request) {
   const docsUrls = new Set<string>();
   const apiUrls = new Set<string>();
+  const docsBaseUrl = new URL('/llms/docs/', request.url).toString();
+  const apiBaseUrl = new URL('/llms/api/', request.url).toString();
 
   for (const page of source.getPages()) {
     const relativeUrl = page.url.replace(/^\/docs\/?/, '');
@@ -24,11 +26,11 @@ export async function GET() {
 
   const body = [
     '# Stack Auth Docs',
-    'docs base url: https://docs.stack-auth.com/llms/docs/',
+    `docs base url: ${docsBaseUrl}`,
     '',
     ...[...docsUrls].sort((left, right) => stringCompare(left, right)),
     '',
-    'api base url: https://docs.stack-auth.com/llms/api/',
+    `api base url: ${apiBaseUrl}`,
     '',
     ...[...apiUrls].sort((left, right) => stringCompare(left, right)),
     '',
