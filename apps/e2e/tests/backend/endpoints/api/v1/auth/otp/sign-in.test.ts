@@ -344,6 +344,44 @@ it("should sign in with both codes when requesting two sign in codes before usin
   `);
 });
 
+it("should use the send-sign-in-code request context when creating a new OTP user", async ({ expect }) => {
+  backendContext.set({
+    ipData: {
+      ipAddress: "127.0.0.70",
+      country: "CA",
+      city: "Toronto",
+      region: "ON",
+      latitude: 43.6532,
+      longitude: -79.3832,
+      tzIdentifier: "America/Toronto",
+    },
+  });
+
+  const { sendSignInCodeResponse } = await Auth.Otp.sendSignInCode();
+  const signInCode = await Auth.Otp.getSignInCodeFromMailbox(sendSignInCodeResponse.body.nonce);
+
+  backendContext.set({
+    ipData: {
+      ipAddress: "127.0.0.71",
+      country: "US",
+      city: "New York",
+      region: "NY",
+      latitude: 40.7128,
+      longitude: -74.006,
+      tzIdentifier: "America/New_York",
+    },
+  });
+
+  const { userId } = await Auth.Otp.signInWithCode(signInCode);
+  const userResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+
+  expect(userResponse.status).toBe(200);
+  expect(userResponse.body.country_code).toBe("CA");
+});
+
 it.todo("should not sign in if e-mail's usedForAuth status has changed since sign-in code was sent");
 
 it.todo("should not sign in if account's otpEnabled status has changed since sign-in code was sent");
