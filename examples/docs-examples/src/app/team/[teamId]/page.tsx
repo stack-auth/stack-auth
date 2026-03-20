@@ -13,7 +13,12 @@ export default function TeamPage({ params }: { params: { teamId: string } }) {
   return (
     <div>
       <SelectedTeamSwitcher
-        urlMap={team => `/team/${team.id}`}
+        urlMap={(t) => {
+          if (t == null) {
+            throw new Error("SelectedTeamSwitcher urlMap expected a non-null team");
+          }
+          return `/team/${t.id}`;
+        }}
         selectedTeam={team}
       />
 

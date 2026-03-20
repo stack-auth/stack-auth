@@ -5,6 +5,10 @@ import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "..";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
+import { TranslationProvider } from "./translation-provider";
+// IF_PLATFORM react-like
+import { DevToolEntry } from "../dev-tool";
+// END_PLATFORM
 
 export const StackContext = React.createContext<null | {
   app: StackClientApp<true>,
@@ -23,6 +27,12 @@ export function StackProviderClient(props: {
   return (
     <StackContext.Provider value={{ app }}>
       {props.children}
+      {/* IF_PLATFORM react-like */}
+      {/* Same translation context as StackProvider-wrapped UI; dev tool previews render Stack components that use useTranslation(). */}
+      <TranslationProvider lang={undefined}>
+        <DevToolEntry />
+      </TranslationProvider>
+      {/* END_PLATFORM */}
     </StackContext.Provider>
   );
 }

@@ -99,3 +99,18 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
+
+Q: Why can a client bundle fail with `the chunking context does not support external modules (request: node:module)` after using `require("react-dom")` in `packages/template`?
+A: The ESM build rewrites `require(...)` to `createRequire(import.meta.url)` from `node:module`, which Turbopack rejects in client chunks. In client code like `packages/template/src/dev-tool/dev-tool-indicator.tsx`, import `createPortal` directly from `react-dom` instead of using runtime `require`.
+
+Q: Where does the Stack dev tool Config tab read the API URL and publishable key from?
+A: Use `app[stackAppInternalsSymbol].getConstructorOptions()` for `baseUrl` and `publishableClientKey`, resolve the API URL with `getBaseUrl` from `packages/template/src/lib/stack-app/apps/implementations/common.ts`, and show keys redacted (never the full secret server key in the browser).
+
+Q: Why does the Stack dev tool Components tab preview throw "Translation context not found"?
+A: `DevToolEntry` was rendered as a sibling of app `children` inside `StackProviderClient`, while `TranslationProvider` in `StackProvider` only wrapped `children`. Wrap `DevToolEntry` in `TranslationProvider` in `stack-provider-client.tsx` so previews and the panel use the same translation context as Stack UI components.
+
+Q: How does the Stack dev tool Components tab list every SDK component plus custom UI and show what is mounted?
+A: Built-in names come from `BUILTIN_STACK_DEV_TOOL_COMPONENT_NAMES` in `packages/template/src/dev-tool/builtin-component-names.ts` (always listed). Apps call `registerDevToolComponentCatalog([{ id, displayName? }])` once (e.g. in a root client provider) to list custom components. Each component that should report instances calls `useDevToolRegister('SameIdAsCatalog', props)` with a **stable** `props` reference where possible. The list shows green = at least one mounted instance on the current route, gray = not rendered; multiple instances expand into sub-rows.
+
+Q: Why did Next.js report `Can't resolve '../utils.js'` from `packages/stack/dist/esm/dev-tool/tabs/console-tab.js`?
+A: `tsdown` emits each source file as its own chunk and marks relative imports as external, so `console-tab.js` expects a sibling `utils.js`. If `utils.ts` was added but `packages/stack` was not fully rebuilt (or `dist` was partially updated), that file can be missing. Dev-tool URL/key helpers live in `dev-tool-context.tsx` so tabs import them from the same module as the context (no separate `dev-tool/utils` chunk). After template changes, run `pnpm run generate-sdks` and rebuild `@stackframe/stack` so `dist` stays consistent.

@@ -91,6 +91,7 @@ const nextConfig = {
   },
 
   async headers() {
+    const isDev = process.env.NODE_ENV === "development";
     return [
       {
         source: "/(.*)",
@@ -112,10 +113,12 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          {
+          // In development, omit X-Frame-Options so the Stack Auth dev tool
+          // indicator can embed the dashboard in an iframe.
+          ...(!isDev ? [{
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
-          },
+          }] : []),
           {
             key: "Content-Security-Policy",
             value: "",
