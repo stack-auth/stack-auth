@@ -18,7 +18,9 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
 
   if (
     pathname === '/SKILL.md' ||
-    pathname === '/SKILLS.md'
+    pathname === '/SKILLS.md' ||
+    pathname === '/skill.md' ||
+    pathname === '/skills.md'
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/llms.txt';
@@ -81,6 +83,8 @@ export const config = {
   matcher: [
     '/SKILL.md',
     '/SKILLS.md',
+    '/skill.md',
+    '/skills.md',
     '/docs/:path*',
     '/api/:path*',
   ],

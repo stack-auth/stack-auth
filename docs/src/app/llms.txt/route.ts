@@ -9,11 +9,17 @@ export async function GET() {
   const apiUrls = new Set<string>();
 
   for (const page of source.getPages()) {
-    docsUrls.add(`/llms${page.url}`.slice('/llms/docs/'.length));
+    const relativeUrl = page.url.replace(/^\/docs\/?/, '');
+    if (relativeUrl !== '') {
+      docsUrls.add(relativeUrl);
+    }
   }
 
   for (const page of apiSource.getPages()) {
-    apiUrls.add(`/llms${page.url}`.slice('/llms/api/'.length));
+    const relativeUrl = page.url.replace(/^\/api\/?/, '');
+    if (relativeUrl !== '') {
+      apiUrls.add(relativeUrl);
+    }
   }
 
   const body = [

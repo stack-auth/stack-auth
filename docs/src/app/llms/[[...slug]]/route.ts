@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getLLMText } from '../../../../lib/get-llm-text';
 import { apiSource, source } from '../../../../lib/source';
@@ -36,7 +35,7 @@ export async function GET(
   const page = resolvePage(slug);
 
   if (!page) {
-    redirect("/");
+    return NextResponse.redirect(new URL('/', request.url), 307);
   }
 
   try {

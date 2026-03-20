@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getLLMText } from '../../../../lib/get-llm-text';
 import { apiSource, source } from '../../../../lib/source';
@@ -6,7 +5,7 @@ import { apiSource, source } from '../../../../lib/source';
 export const revalidate = false;
 
 export async function GET(
-  _req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ slug?: string[] }> },
 ) {
   const { slug } = await params;
@@ -19,7 +18,9 @@ export async function GET(
     page = apiSource.getPage(slug);
   }
 
-  if (!page) redirect("/");
+  if (!page) {
+    return NextResponse.redirect(new URL('/', request.url), 307);
+  }
 
   try {
     return new NextResponse(await getLLMText(page));
