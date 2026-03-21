@@ -114,11 +114,24 @@ async function loadEngineFromPath(privateEnginePath: string): Promise<SignUpRisk
   return engine as SignUpRiskEngine;
 }
 
-async function getEngine(): Promise<SignUpRiskEngine> {
+async function getEngineWithLoader(load: () => Promise<SignUpRiskEngine>): Promise<SignUpRiskEngine> {
   if (cachedEnginePromise != null) return await cachedEnginePromise;
 
-  cachedEnginePromise = loadEngine();
-  return await cachedEnginePromise;
+  const enginePromise = load();
+  cachedEnginePromise = enginePromise;
+
+  try {
+    return await enginePromise;
+  } catch (error) {
+    if (cachedEnginePromise === enginePromise) {
+      cachedEnginePromise = null;
+    }
+    throw error;
+  }
+}
+
+async function getEngine(): Promise<SignUpRiskEngine> {
+  return await getEngineWithLoader(loadEngine);
 }
 
 
@@ -253,6 +266,24 @@ import.meta.vitest?.test("loadEngine returns zero-score engine when private engi
   const missingPrivateEnginePath = path.join(process.cwd(), "__missing-risk-engine__.js");
   const engine = await loadEngineFromPath(missingPrivateEnginePath);
   expect(engine).toBe(ZERO_SCORE_ENGINE);
+});
+
+import.meta.vitest?.test("getEngineWithLoader clears rejected cached promise", async ({ expect }) => {
+  let loadCallCount = 0;
+  const loader = async (): Promise<SignUpRiskEngine> => {
+    loadCallCount += 1;
+    throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine");
+  };
+
+  cachedEnginePromise = null;
+  try {
+    await expect(getEngineWithLoader(loader)).rejects.toThrow("Private engine does not export a valid signUpRiskEngine");
+    expect(cachedEnginePromise).toBeNull();
+    await expect(getEngineWithLoader(loader)).rejects.toThrow("Private engine does not export a valid signUpRiskEngine");
+    expect(loadCallCount).toBe(2);
+  } finally {
+    cachedEnginePromise = null;
+  }
 });
 
 import.meta.vitest?.test("calculateRiskAssessmentWithFallback returns zero scores on engine error", async ({ expect }) => {
