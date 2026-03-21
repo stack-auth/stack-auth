@@ -1,14 +1,4 @@
-import fs from "node:fs";
 import { withSentryConfig } from "@sentry/nextjs";
-import { fileURLToPath } from "node:url";
-
-const monorepoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const privateRiskEngineModuleName = "@private-sign-up-risk-engine";
-
-const resolvePath = (relativePath) => fileURLToPath(new URL(relativePath, import.meta.url));
-const privateRiskEngineAliasPath = fs.existsSync(resolvePath("../../packages/private/src/sign-up-risk-engine.ts"))
-  ? "../../packages/private/src/sign-up-risk-engine.ts"
-  : "./src/lib/private-sign-up-risk-engine-fallback.ts";
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -58,7 +48,6 @@ const nextConfig = {
   // optionally set output to "standalone" for Docker builds
   // https://nextjs.org/docs/pages/api-reference/next-config-js/output
   output: process.env.NEXT_CONFIG_OUTPUT,
-  outputFileTracingRoot: monorepoRoot,
 
   // we're open-source, so we can provide source maps
   productionBrowserSourceMaps: true,
@@ -68,21 +57,9 @@ const nextConfig = {
     serverMinification: false,  // needs to be disabled for oidc-provider to work, which relies on the original constructor names
   },
 
-  turbopack: {
-    root: monorepoRoot,
-    resolveAlias: {
-      [privateRiskEngineModuleName]: privateRiskEngineAliasPath,
-    },
-  },
-  
   serverExternalPackages: [
     'oidc-provider',
   ],
-
-  webpack(config) {
-    config.resolve.alias[privateRiskEngineModuleName] = resolvePath(privateRiskEngineAliasPath);
-    return config;
-  },
 
   async headers() {
     return [

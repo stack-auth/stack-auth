@@ -1,4 +1,4 @@
-[submodule "packages/private"]
-	path = packages/private
+[submodule "apps/backend/src/private"]
+	path = apps/backend/src/private
 	url = https://github.com/stack-auth/private.git
 	branch = main
