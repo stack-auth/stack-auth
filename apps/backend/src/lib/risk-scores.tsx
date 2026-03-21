@@ -1,11 +1,9 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
-import { normalizeEmail } from "./emails";
 import { createNeutralSignUpHeuristicFacts, type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
 import type { Tenancy } from "./tenancies";
 import type { SignUpTurnstileAssessment } from "./turnstile";
@@ -44,145 +42,69 @@ export type SignUpRiskRecentStats = {
   similarEmailCount: number,
 };
 
-export type SignUpRiskEngineDependencies = {
-  now: () => Date,
-  normalizeEmail: (email: string) => string,
-  isIpAddress: (ipAddress: string) => boolean,
-  createAssertionError: (message: string, details: Record<string, unknown>) => Error,
-  checkPrimaryEmailRisk: (email: string) => Promise<{ emailableScore: number | null }>,
-  loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => Promise<SignUpRiskRecentStats>,
-};
-
-export type SignUpRiskEngine = {
+type SignUpRiskEngine = {
   calculateRiskAssessment: (
     context: SignUpRiskScoreContext,
-    dependencies: SignUpRiskEngineDependencies,
+    dependencies: {
+      checkPrimaryEmailRisk: (email: string) => Promise<{ emailableScore: number | null }>,
+      loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => Promise<SignUpRiskRecentStats>,
+    },
   ) => Promise<SignUpRiskAssessment>,
-};
-
-
-// ── Fallback engine (zero scores) ──────────────────────────────────────
-
-const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
-
-const fallbackEngine: SignUpRiskEngine = {
-  async calculateRiskAssessment(_context, deps) {
-    console.debug("[risk-scores] Sign-up risk engine disabled (public build); skipping risk calculation.");
-    return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(deps.now()) };
-  },
 };
 
 
 // ── Private engine loader ──────────────────────────────────────────────
 
-const PRIVATE_MODULE_PATH = "dist/sign-up-risk-engine.js";
-const PRIVATE_PACKAGE_IMPORT = "@stackframe/private/dist/sign-up-risk-engine.js";
+const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
+const PRIVATE_ENGINE_SUBPATH = "packages/private/dist/index.js";
 
-const _testOverrides = {
-  rootPath: null as string | null,
-  importer: null as ((modulePath: string) => Promise<unknown>) | null,
-};
+let cachedEngine: SignUpRiskEngine | null = null;
 
-let cachedEngine: Promise<SignUpRiskEngine> | null = null;
-
-function isEngine(value: unknown): value is SignUpRiskEngine {
-  return typeof value === "object" && value !== null
-    && "calculateRiskAssessment" in value
-    && typeof (value as Record<string, unknown>).calculateRiskAssessment === "function";
-}
-
-function extractEngine(mod: unknown): SignUpRiskEngine {
-  const nested = (obj: unknown, key: string): unknown =>
-    typeof obj === "object" && obj !== null && key in obj ? (obj as Record<string, unknown>)[key] : undefined;
-
-  const defaultExport = nested(mod, "default");
-  for (const candidate of [mod, nested(mod, "signUpRiskEngine"), defaultExport, nested(defaultExport, "signUpRiskEngine")]) {
-    if (isEngine(candidate)) return candidate;
-  }
-
-  throw new StackAssertionError("Private sign-up risk module does not export a valid signUpRiskEngine");
-}
-
-function getFallbackPaths(): string[] {
-  if (_testOverrides.rootPath != null) {
-    return [path.join(_testOverrides.rootPath, PRIVATE_MODULE_PATH)];
-  }
+function getPrivateEngineCandidates(): string[] {
   const cwd = process.cwd();
   return [
-    path.join(cwd, "packages/private", PRIVATE_MODULE_PATH),       // monorepo root
-    path.join(cwd, "../../packages/private", PRIVATE_MODULE_PATH),  // workspace dir (e.g. apps/backend)
+    path.resolve(cwd, PRIVATE_ENGINE_SUBPATH),
+    path.resolve(cwd, "../..", PRIVATE_ENGINE_SUBPATH),
   ];
 }
 
-function isModuleNotFound(e: unknown): boolean {
-  if (typeof e === "object" && e !== null && "code" in e) {
-    const code = (e as { code: unknown }).code;
-    return code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
+function extractEngine(mod: Record<string, unknown>, candidate: string): SignUpRiskEngine {
+  const engine = mod.signUpRiskEngine;
+  if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
+    throw new StackAssertionError("Private engine module does not export a valid signUpRiskEngine", { candidate });
   }
-  return false;
+  return engine as SignUpRiskEngine;
 }
 
-// Native dynamic import — the webpackIgnore comment prevents bundler transformation.
-function nativeImport(modulePath: string): Promise<unknown> {
-  return import(/* webpackIgnore: true */ modulePath);
-}
-
-async function loadEngine(): Promise<SignUpRiskEngine> {
-  const importer = _testOverrides.importer ?? nativeImport;
-  const fallbackPaths = getFallbackPaths();
-
-  // 1. Try package-name resolution (works when @stackframe/private is a proper dependency)
-  try {
-    const engine = extractEngine(await importer(PRIVATE_PACKAGE_IMPORT));
-    console.info("[risk-scores] Loaded private sign-up risk engine via package import");
-    return engine;
-  } catch (e: unknown) {
-    if (!isModuleNotFound(e)) {
-      captureError("sign-up-risk-engine-load", new StackAssertionError(
-        "Failed to load private sign-up risk engine via package import",
-        { importPath: PRIVATE_PACKAGE_IMPORT, cause: e },
-      ));
-    }
-  }
-
-  // 2. Fall back to path-based resolution for monorepo setups
-  for (const fullPath of fallbackPaths) {
+async function loadEngine(
+  doImport: (path: string) => Promise<unknown> = (p) => import(/* webpackIgnore: true */ p),
+): Promise<SignUpRiskEngine> {
+  const candidates = getPrivateEngineCandidates();
+  for (const candidate of candidates) {
     try {
-      const engine = extractEngine(await importer(fullPath));
-      console.info("[risk-scores] Loaded private sign-up risk engine from path:", fullPath);
-      return engine;
+      const mod = await doImport(candidate) as Record<string, unknown>;
+      console.info("[risk-scores] Loaded private sign-up risk engine from", candidate);
+      return extractEngine(mod, candidate);
     } catch (e: unknown) {
-      if (!isModuleNotFound(e)) {
-        captureError("sign-up-risk-engine-load", new StackAssertionError(
-          "Failed to load private sign-up risk engine from path",
-          { fullPath, cause: e },
-        ));
+      const code = typeof e === "object" && e != null && "code" in e ? (e as { code: unknown }).code : undefined;
+      if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") {
+        throw e;
       }
     }
   }
-
-  // 3. No engine found — fall back to zero scores
-  captureError("sign-up-risk-engine-not-found", new StackAssertionError(
-    "Private sign-up risk engine not found — using fallback (zero scores)",
-    { searchedPaths: [PRIVATE_PACKAGE_IMPORT, ...fallbackPaths] },
-  ));
-  return fallbackEngine;
+  console.debug("[risk-scores] Private sign-up risk engine not found; using zero scores", { candidates });
+  return {
+    async calculateRiskAssessment() {
+      return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(new Date()) };
+    },
+  };
 }
 
-function getEngine(): Promise<SignUpRiskEngine> {
+async function getEngine(): Promise<SignUpRiskEngine> {
   if (cachedEngine == null) {
-    cachedEngine = loadEngine().catch((e) => {
-      cachedEngine = null; // clear so next call retries
-      throw e;
-    });
+    cachedEngine = await loadEngine();
   }
   return cachedEngine;
-}
-
-function resetForTests() {
-  cachedEngine = null;
-  _testOverrides.rootPath = null;
-  _testOverrides.importer = null;
 }
 
 
@@ -228,16 +150,12 @@ async function loadRecentSignUpStats(
   };
 }
 
-function createDependencies(tenancy: Tenancy): SignUpRiskEngineDependencies {
+function createDependencies(tenancy: Tenancy) {
   return {
-    now: () => new Date(),
-    normalizeEmail,
-    isIpAddress,
-    createAssertionError: (message, details) => new StackAssertionError(message, details),
-    checkPrimaryEmailRisk: async (email) => ({
+    checkPrimaryEmailRisk: async (email: string) => ({
       emailableScore: (await checkEmailWithEmailable(email)).emailableScore,
     }),
-    loadRecentSignUpStats: (request) => loadRecentSignUpStats(tenancy, request),
+    loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => loadRecentSignUpStats(tenancy, request),
   };
 }
 
@@ -249,12 +167,7 @@ export async function calculateSignUpRiskAssessment(
   context: SignUpRiskScoreContext,
 ): Promise<SignUpRiskAssessment> {
   const engine = await getEngine();
-  try {
-    return await engine.calculateRiskAssessment(context, createDependencies(tenancy));
-  } catch (error) {
-    captureError("sign-up-risk-engine-error", error);
-    return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(new Date()) };
-  }
+  return await engine.calculateRiskAssessment(context, createDependencies(tenancy));
 }
 
 export async function calculateSignUpRiskScores(
@@ -267,52 +180,19 @@ export async function calculateSignUpRiskScores(
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-import.meta.vitest?.test("fallback engine returns zero scores", async ({ expect }) => {
-  const now = new Date("2026-03-11T00:00:00.000Z");
-  const assessment = await fallbackEngine.calculateRiskAssessment({
-    primaryEmail: "user@example.com",
-    primaryEmailVerified: false,
-    authMethod: "password",
-    oauthProvider: null,
-    ipAddress: "127.0.0.1",
-    ipTrusted: true,
-    turnstileAssessment: { status: "invalid" },
-  }, {
-    now: () => now,
-    normalizeEmail,
-    isIpAddress,
-    createAssertionError: (msg, details) => new StackAssertionError(msg, details),
-    checkPrimaryEmailRisk: async () => ({ emailableScore: 100 }),
-    loadRecentSignUpStats: async () => ({ sameIpCount: 10, similarEmailCount: 10 }),
+import.meta.vitest?.test("loader falls back to zero scores when engine not found", async ({ expect }) => {
+  const engine = await loadEngine(async () => {
+    throw Object.assign(new Error("not found"), { code: "MODULE_NOT_FOUND" });
   });
-
-  expect(assessment).toEqual({
-    scores: ZERO_SCORES,
-    heuristicFacts: createNeutralSignUpHeuristicFacts(now),
-  });
+  const result = await engine.calculateRiskAssessment(
+    // any: context/deps don't matter for the fallback engine
+    null as any, null as any,
+  );
+  expect(result.scores).toEqual({ bot: 0, free_trial_abuse: 0 });
 });
 
-import.meta.vitest?.test("loader falls back when private submodule is absent", async ({ expect }) => {
-  resetForTests();
-  _testOverrides.rootPath = path.join(process.cwd(), "packages", `private-missing-${Date.now()}`);
-
-  try {
-    expect(await getEngine()).toBe(fallbackEngine);
-  } finally {
-    resetForTests();
-  }
-});
-
-import.meta.vitest?.test("loader falls back when private engine import fails", async ({ expect }) => {
-  resetForTests();
-  _testOverrides.rootPath = path.join(process.cwd(), "packages", "private");
-  _testOverrides.importer = async () => {
+import.meta.vitest?.test("loader rethrows non-module-not-found errors", async ({ expect }) => {
+  await expect(loadEngine(async () => {
     throw new Error("private engine exploded");
-  };
-
-  try {
-    expect(await getEngine()).toBe(fallbackEngine);
-  } finally {
-    resetForTests();
-  }
+  })).rejects.toThrow("private engine exploded");
 });
