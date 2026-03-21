@@ -69,7 +69,7 @@ const zeroSignUpRiskEngine: SignUpRiskEngine = {
 let signUpRiskEngine: SignUpRiskEngine = zeroSignUpRiskEngine;
 
 try {
-  const maybeSignUpRiskEngine: unknown = Reflect.get(await import("../private/dist/sign-up-risk-engine.js"), "signUpRiskEngine");
+  const maybeSignUpRiskEngine: unknown = Reflect.get(await import("../private/src/sign-up-risk-engine"), "signUpRiskEngine");
   if (typeof maybeSignUpRiskEngine === "object" && maybeSignUpRiskEngine != null && "calculateRiskAssessment" in maybeSignUpRiskEngine) {
     signUpRiskEngine = maybeSignUpRiskEngine as SignUpRiskEngine;
   }
