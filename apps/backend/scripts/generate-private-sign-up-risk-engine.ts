@@ -5,8 +5,16 @@ const generatedFilePath = path.join("src", "generated", "private-sign-up-risk-en
 const privateEnginePath = path.join("src", "private", "src", "sign-up-risk-engine.ts");
 
 const generatedFileContents = fs.existsSync(privateEnginePath)
-  ? `export { signUpRiskEngine } from "../private/src/sign-up-risk-engine";\n`
-  : `export const signUpRiskEngine = null;\n`;
+  ? `import * as privateRiskEngineModule from "../private/src/index";
+
+export const signUpRiskEngine: unknown =
+  Reflect.get(privateRiskEngineModule, "signUpRiskEngine")
+  ?? (typeof Reflect.get(privateRiskEngineModule, "default") === "object" && Reflect.get(privateRiskEngineModule, "default") != null
+    ? Reflect.get(Reflect.get(privateRiskEngineModule, "default"), "signUpRiskEngine")
+    : undefined)
+  ?? null;
+`
+  : `export const signUpRiskEngine: unknown = null;\n`;
 
 function main() {
   fs.mkdirSync(path.dirname(generatedFilePath), { recursive: true });

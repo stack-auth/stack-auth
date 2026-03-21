@@ -67,11 +67,12 @@ const zeroSignUpRiskEngine: SignUpRiskEngine = {
   },
 };
 
-function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
-  return typeof value === "object" && value != null && "calculateRiskAssessment" in value;
-}
-
-const signUpRiskEngine: SignUpRiskEngine = isSignUpRiskEngine(importedSignUpRiskEngine) ? importedSignUpRiskEngine : zeroSignUpRiskEngine;
+const signUpRiskEngine: SignUpRiskEngine =
+  typeof importedSignUpRiskEngine === "object" && importedSignUpRiskEngine != null && typeof Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment") === "function"
+    ? {
+        calculateRiskAssessment: Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment"),
+      }
+    : zeroSignUpRiskEngine;
 
 
 // -- DB queries --------------------------------------------------------------
@@ -145,7 +146,6 @@ export async function calculateSignUpRiskScores(
 // -- Tests -------------------------------------------------------------------
 
 import.meta.vitest?.test("private sign-up risk engine resolves at module init", ({ expect }) => {
-  expect(signUpRiskEngine).toBe(isSignUpRiskEngine(importedSignUpRiskEngine) ? importedSignUpRiskEngine : zeroSignUpRiskEngine);
   expect(typeof signUpRiskEngine.calculateRiskAssessment).toBe("function");
 });
 
