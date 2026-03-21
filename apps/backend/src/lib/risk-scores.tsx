@@ -1,4 +1,5 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
+import { signUpRiskEngine as importedSignUpRiskEngine } from "@/generated/private-sign-up-risk-engine";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable } from "./emailable";
@@ -40,7 +41,7 @@ export type SignUpRiskRecentStats = {
   similarEmailCount: number,
 };
 
-type SignUpRiskEngine = {
+export type SignUpRiskEngine = {
   calculateRiskAssessment: (
     context: SignUpRiskScoreContext,
     dependencies: {
@@ -66,16 +67,11 @@ const zeroSignUpRiskEngine: SignUpRiskEngine = {
   },
 };
 
-let signUpRiskEngine: SignUpRiskEngine = zeroSignUpRiskEngine;
-
-try {
-  const maybeSignUpRiskEngine: unknown = Reflect.get(await import("../private/src/sign-up-risk-engine"), "signUpRiskEngine");
-  if (typeof maybeSignUpRiskEngine === "object" && maybeSignUpRiskEngine != null && "calculateRiskAssessment" in maybeSignUpRiskEngine) {
-    signUpRiskEngine = maybeSignUpRiskEngine as SignUpRiskEngine;
-  }
-} catch {
-  console.warn("Failed to import private sign-up risk engine; using zero scores fallback");
+function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
+  return typeof value === "object" && value != null && "calculateRiskAssessment" in value;
 }
+
+const signUpRiskEngine: SignUpRiskEngine = isSignUpRiskEngine(importedSignUpRiskEngine) ? importedSignUpRiskEngine : zeroSignUpRiskEngine;
 
 
 // -- DB queries --------------------------------------------------------------
@@ -149,7 +145,7 @@ export async function calculateSignUpRiskScores(
 // -- Tests -------------------------------------------------------------------
 
 import.meta.vitest?.test("private sign-up risk engine resolves at module init", ({ expect }) => {
-  expect(signUpRiskEngine).not.toBe(zeroSignUpRiskEngine);
+  expect(signUpRiskEngine).toBe(isSignUpRiskEngine(importedSignUpRiskEngine) ? importedSignUpRiskEngine : zeroSignUpRiskEngine);
   expect(typeof signUpRiskEngine.calculateRiskAssessment).toBe("function");
 });
 
