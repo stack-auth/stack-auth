@@ -3,14 +3,12 @@ import { withSentryConfig } from "@sentry/nextjs";
 import { fileURLToPath } from "node:url";
 
 const monorepoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const privateRiskEngineSourceFile = fileURLToPath(new URL("../../packages/private/src/sign-up-risk-engine.ts", import.meta.url));
-const privateRiskEngineFallbackFile = fileURLToPath(new URL("./src/lib/private-sign-up-risk-engine-fallback.ts", import.meta.url));
-const privateRiskEngineTurbopackAliasTarget = fs.existsSync(privateRiskEngineSourceFile)
+const privateRiskEngineModuleName = "@private-sign-up-risk-engine";
+
+const resolvePath = (relativePath) => fileURLToPath(new URL(relativePath, import.meta.url));
+const privateRiskEngineAliasPath = fs.existsSync(resolvePath("../../packages/private/src/sign-up-risk-engine.ts"))
   ? "../../packages/private/src/sign-up-risk-engine.ts"
   : "./src/lib/private-sign-up-risk-engine-fallback.ts";
-const privateRiskEngineWebpackAliasTarget = fs.existsSync(privateRiskEngineSourceFile)
-  ? privateRiskEngineSourceFile
-  : privateRiskEngineFallbackFile;
 
 const withConfiguredSentryConfig = (nextConfig) =>
   withSentryConfig(
@@ -73,7 +71,7 @@ const nextConfig = {
   turbopack: {
     root: monorepoRoot,
     resolveAlias: {
-      "@private-sign-up-risk-engine": privateRiskEngineTurbopackAliasTarget,
+      [privateRiskEngineModuleName]: privateRiskEngineAliasPath,
     },
   },
   
@@ -82,7 +80,7 @@ const nextConfig = {
   ],
 
   webpack(config) {
-    config.resolve.alias["@private-sign-up-risk-engine"] = privateRiskEngineWebpackAliasTarget;
+    config.resolve.alias[privateRiskEngineModuleName] = resolvePath(privateRiskEngineAliasPath);
     return config;
   },
 
