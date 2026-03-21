@@ -67,6 +67,7 @@ const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
 
 const fallbackEngine: SignUpRiskEngine = {
   async calculateRiskAssessment(_context, deps) {
+    console.debug("[risk-scores] Sign-up risk engine disabled (public build); skipping risk calculation.");
     return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(deps.now()) };
   },
 };
