@@ -7,12 +7,14 @@ const privateEnginePath = path.join("src", "private", "src", "sign-up-risk-engin
 const generatedFileContents = fs.existsSync(privateEnginePath)
   ? `import * as privateRiskEngineModule from "../private/src/index";
 
-export const signUpRiskEngine: unknown =
-  Reflect.get(privateRiskEngineModule, "signUpRiskEngine")
-  ?? (typeof Reflect.get(privateRiskEngineModule, "default") === "object" && Reflect.get(privateRiskEngineModule, "default") != null
-    ? Reflect.get(Reflect.get(privateRiskEngineModule, "default"), "signUpRiskEngine")
-    : undefined)
-  ?? null;
+const importedSignUpRiskEngine: unknown = Reflect.get(privateRiskEngineModule, "signUpRiskEngine");
+const defaultPrivateRiskEngineModule = Reflect.get(privateRiskEngineModule, "default");
+const defaultImportedSignUpRiskEngine: unknown =
+  typeof defaultPrivateRiskEngineModule === "object" && defaultPrivateRiskEngineModule != null
+    ? Reflect.get(defaultPrivateRiskEngineModule, "signUpRiskEngine")
+    : null;
+
+export const signUpRiskEngine: unknown = importedSignUpRiskEngine ?? defaultImportedSignUpRiskEngine;
 `
   : `export const signUpRiskEngine: unknown = null;\n`;
 
