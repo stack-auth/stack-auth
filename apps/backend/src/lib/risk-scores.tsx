@@ -1,7 +1,6 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { checkEmailWithEmailable } from "./emailable";
 import { createNeutralSignUpHeuristicFacts, type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
 import type { Tenancy } from "./tenancies";
@@ -54,43 +53,28 @@ type SignUpRiskEngine = {
 
 // -- Private engine ----------------------------------------------------------
 
-const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
-
 function createZeroRiskAssessment(now: Date): SignUpRiskAssessment {
   return {
-    scores: ZERO_SCORES,
+    scores: { bot: 0, free_trial_abuse: 0 },
     heuristicFacts: createNeutralSignUpHeuristicFacts(now),
   };
 }
 
-function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
-  if (value == null || typeof value !== "object" || !("calculateRiskAssessment" in value)) {
-    return false;
-  }
-  return typeof value.calculateRiskAssessment === "function";
-}
+const zeroSignUpRiskEngine: SignUpRiskEngine = {
+  async calculateRiskAssessment() {
+    return createZeroRiskAssessment(new Date());
+  },
+};
 
-let privateSignUpRiskEngine: SignUpRiskEngine | null = null;
+let signUpRiskEngine: SignUpRiskEngine = zeroSignUpRiskEngine;
 
 try {
-  const signUpRiskEngine: unknown = Reflect.get(await import("../private/dist/sign-up-risk-engine.js"), "signUpRiskEngine");
-  if (!isSignUpRiskEngine(signUpRiskEngine)) {
-    throw new StackAssertionError(
-      "Private sign-up risk engine module did not export a valid signUpRiskEngine",
-      {
-        privateEngineImportPath: "../private/dist/sign-up-risk-engine.js",
-      },
-    );
+  const maybeSignUpRiskEngine: unknown = Reflect.get(await import("../private/dist/sign-up-risk-engine.js"), "signUpRiskEngine");
+  if (typeof maybeSignUpRiskEngine === "object" && maybeSignUpRiskEngine != null && "calculateRiskAssessment" in maybeSignUpRiskEngine) {
+    signUpRiskEngine = maybeSignUpRiskEngine as SignUpRiskEngine;
   }
-  privateSignUpRiskEngine = signUpRiskEngine;
-} catch (error) {
-  captureError("sign-up-risk-engine-load", new StackAssertionError(
-    "Failed to import private sign-up risk engine; using zero scores fallback",
-    {
-      cause: error,
-      privateEngineImportPath: "../private/dist/sign-up-risk-engine.js",
-    },
-  ));
+} catch {
+  console.warn("Failed to import private sign-up risk engine; using zero scores fallback");
 }
 
 
@@ -152,31 +136,7 @@ export async function calculateSignUpRiskAssessment(
   tenancy: Tenancy,
   context: SignUpRiskScoreContext,
 ): Promise<SignUpRiskAssessment> {
-  if (privateSignUpRiskEngine == null) {
-    return createZeroRiskAssessment(new Date());
-  }
-
-  try {
-    return await privateSignUpRiskEngine.calculateRiskAssessment(context, createDependencies(tenancy));
-  } catch (error) {
-    captureError("sign-up-risk-assessment-failed", new StackAssertionError(
-      "Sign-up risk assessment failed; using zero scores fallback",
-      {
-        cause: error,
-        privateEngineImportPath: "../private/dist/sign-up-risk-engine.js",
-        context: {
-          authMethod: context.authMethod,
-          oauthProvider: context.oauthProvider,
-          hasPrimaryEmail: context.primaryEmail != null,
-          primaryEmailVerified: context.primaryEmailVerified,
-          hasIpAddress: context.ipAddress != null,
-          ipTrusted: context.ipTrusted,
-          turnstileAssessment: context.turnstileAssessment,
-        },
-      },
-    ));
-    return createZeroRiskAssessment(new Date());
-  }
+  return await signUpRiskEngine.calculateRiskAssessment(context, createDependencies(tenancy));
 }
 
 export async function calculateSignUpRiskScores(
@@ -186,12 +146,11 @@ export async function calculateSignUpRiskScores(
   return (await calculateSignUpRiskAssessment(tenancy, context)).scores;
 }
 
-
 // -- Tests -------------------------------------------------------------------
 
 import.meta.vitest?.test("private sign-up risk engine resolves at module init", ({ expect }) => {
-  expect(privateSignUpRiskEngine).not.toBeNull();
-  expect(typeof privateSignUpRiskEngine?.calculateRiskAssessment).toBe("function");
+  expect(signUpRiskEngine).not.toBe(zeroSignUpRiskEngine);
+  expect(typeof signUpRiskEngine.calculateRiskAssessment).toBe("function");
 });
 
 import.meta.vitest?.test("loaded private sign-up risk engine can calculate scores", async ({ expect }) => {
@@ -200,12 +159,7 @@ import.meta.vitest?.test("loaded private sign-up risk engine can calculate score
   vi.setSystemTime(new Date("2026-03-20T00:00:00.000Z"));
 
   try {
-    expect(privateSignUpRiskEngine).not.toBeNull();
-    if (privateSignUpRiskEngine == null) {
-      throw new Error("Expected private sign-up risk engine to be available in this test");
-    }
-
-    const assessment = await privateSignUpRiskEngine.calculateRiskAssessment({
+    const assessment = await signUpRiskEngine.calculateRiskAssessment({
       primaryEmail: null,
       primaryEmailVerified: false,
       authMethod: "password",
