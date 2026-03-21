@@ -77,30 +77,48 @@ const ZERO_SCORE_ENGINE: SignUpRiskEngine = {
   },
 };
 
-let cachedEngine: SignUpRiskEngine | null = null;
+let cachedEnginePromise: Promise<SignUpRiskEngine> | null = null;
 
 function getPrivateEnginePathOrThrow(): string {
   return PRIVATE_ENGINE_PATH ?? throwErr("PRIVATE_ENGINE_PATH unexpectedly missing while loading private risk engine");
 }
 
-async function getEngine(): Promise<SignUpRiskEngine> {
-  if (cachedEngine != null) return cachedEngine;
-
+async function loadEngine(): Promise<SignUpRiskEngine> {
   if (PRIVATE_ENGINE_PATH == null) {
     console.debug("[risk-scores] Private sign-up risk engine not found; using zero scores");
-    cachedEngine = ZERO_SCORE_ENGINE;
-    return cachedEngine;
+    return ZERO_SCORE_ENGINE;
   }
 
-  const privateEnginePath = getPrivateEnginePathOrThrow();
-  const mod = await import(/* webpackIgnore: true */ privateEnginePath) as Record<string, unknown>;
+  return await loadEngineFromPath(getPrivateEnginePathOrThrow());
+}
+
+async function loadEngineFromPath(privateEnginePath: string): Promise<SignUpRiskEngine> {
+  let mod: Record<string, unknown>;
+  try {
+    mod = await import(/* webpackIgnore: true */ privateEnginePath) as Record<string, unknown>;
+  } catch (error) {
+    captureError("sign-up-risk-engine-load", new StackAssertionError(
+      "Failed to import private sign-up risk engine; using zero scores fallback",
+      {
+        cause: error,
+        path: privateEnginePath,
+      },
+    ));
+    return ZERO_SCORE_ENGINE;
+  }
   const engine = mod.signUpRiskEngine;
   if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
     throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine", { path: privateEnginePath });
   }
   console.info("[risk-scores] Loaded private sign-up risk engine from", privateEnginePath);
-  cachedEngine = engine as SignUpRiskEngine;
-  return cachedEngine;
+  return engine as SignUpRiskEngine;
+}
+
+async function getEngine(): Promise<SignUpRiskEngine> {
+  if (cachedEnginePromise != null) return await cachedEnginePromise;
+
+  cachedEnginePromise = loadEngine();
+  return await cachedEnginePromise;
 }
 
 
@@ -209,23 +227,32 @@ import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("PRIVATE_ENGINE_PATH resol
 });
 
 import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("getEngine loads the real engine when available", async ({ expect }) => {
-  cachedEngine = null;
-  const engine = await getEngine();
-  await engine.calculateRiskAssessment({
-    primaryEmail: null,
-    primaryEmailVerified: false,
-    authMethod: "password",
-    oauthProvider: null,
-    ipAddress: null,
-    ipTrusted: null,
-    turnstileAssessment: { status: "ok" },
-  }, {
-    checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
-    loadRecentSignUpStats: async () => ({ sameIpCount: 0, similarEmailCount: 0 }),
-  });
-  expect(typeof engine.calculateRiskAssessment).toBe("function");
-  expect(engine).not.toBe(ZERO_SCORE_ENGINE);
-  cachedEngine = null;
+  cachedEnginePromise = null;
+  try {
+    const engine = await getEngine();
+    await engine.calculateRiskAssessment({
+      primaryEmail: null,
+      primaryEmailVerified: false,
+      authMethod: "password",
+      oauthProvider: null,
+      ipAddress: null,
+      ipTrusted: null,
+      turnstileAssessment: { status: "ok" },
+    }, {
+      checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
+      loadRecentSignUpStats: async () => ({ sameIpCount: 0, similarEmailCount: 0 }),
+    });
+    expect(typeof engine.calculateRiskAssessment).toBe("function");
+    expect(engine).not.toBe(ZERO_SCORE_ENGINE);
+  } finally {
+    cachedEnginePromise = null;
+  }
+});
+
+import.meta.vitest?.test("loadEngine returns zero-score engine when private engine import fails", async ({ expect }) => {
+  const missingPrivateEnginePath = path.join(process.cwd(), "__missing-risk-engine__.js");
+  const engine = await loadEngineFromPath(missingPrivateEnginePath);
+  expect(engine).toBe(ZERO_SCORE_ENGINE);
 });
 
 import.meta.vitest?.test("calculateRiskAssessmentWithFallback returns zero scores on engine error", async ({ expect }) => {
