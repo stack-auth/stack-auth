@@ -70,8 +70,8 @@ const zeroSignUpRiskEngine: SignUpRiskEngine = {
 const signUpRiskEngine: SignUpRiskEngine =
   typeof importedSignUpRiskEngine === "object" && importedSignUpRiskEngine != null && typeof Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment") === "function"
     ? {
-        calculateRiskAssessment: Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment"),
-      }
+      calculateRiskAssessment: Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment"),
+    }
     : zeroSignUpRiskEngine;
 
 
