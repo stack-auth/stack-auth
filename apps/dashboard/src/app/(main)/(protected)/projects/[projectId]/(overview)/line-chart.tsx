@@ -30,7 +30,7 @@ type UserListItem = {
   display_name?: string | null,
   primary_email?: string | null,
   last_active_at_millis?: number | null,
-  signed_up_at_millis?: number | null,
+  signed_up_at_millis: number,
 }
 
 const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
@@ -391,9 +391,7 @@ export function TabbedMetricsCard({
                             ? user.last_active_at_millis
                               ? `Active ${fromNow(new Date(user.last_active_at_millis))}`
                               : 'Never active'
-                            : user.signed_up_at_millis
-                              ? `Signed up ${fromNow(new Date(user.signed_up_at_millis))}`
-                              : 'Unknown'
+                            : `Signed up ${fromNow(new Date(user.signed_up_at_millis))}`
                           }
                         </span>
                       </div>

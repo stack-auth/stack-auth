@@ -14,7 +14,7 @@ import {
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from '@/prisma-client';
+import { PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -318,6 +318,9 @@ export async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
+          signedUpAt: new Date(),
+          signUpRiskScoreBot: 0,
+          signUpRiskScoreFreeTrialAbuse: 0,
         }
       });
 
@@ -447,6 +450,9 @@ export async function seed() {
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
+          signedUpAt: new Date(),
+          signUpRiskScoreBot: 0,
+          signUpRiskScoreFreeTrialAbuse: 0,
         }
       });
 
