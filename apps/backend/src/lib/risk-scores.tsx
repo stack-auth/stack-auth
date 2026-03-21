@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import fs from "node:fs";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
@@ -54,52 +54,47 @@ type SignUpRiskEngine = {
 };
 
 
-// ── Private engine loader ──────────────────────────────────────────────
+// ── Private engine ─────────────────────────────────────────────────────
 
 const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
-const PRIVATE_ENGINE_SUBPATH = "packages/private/dist/index.js";
 
-function resolvePrivateEnginePath(): string | null {
+export const PRIVATE_ENGINE_PATH: string | null = (() => {
   const cwd = process.cwd();
-  for (const candidate of [
-    path.resolve(cwd, PRIVATE_ENGINE_SUBPATH),
-    path.resolve(cwd, "../..", PRIVATE_ENGINE_SUBPATH),
-  ]) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
+  for (const relative of ["packages/private/dist/index.js", "../../packages/private/dist/index.js"]) {
+    const resolved = path.resolve(cwd, relative);
+    if (fs.existsSync(resolved)) return resolved;
   }
   return null;
+})();
+
+function createZeroRiskAssessment(now: Date): SignUpRiskAssessment {
+  return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(now) };
 }
 
-const PRIVATE_ENGINE_PATH = resolvePrivateEnginePath();
-const HAS_PRIVATE_ENGINE = PRIVATE_ENGINE_PATH != null;
+const ZERO_SCORE_ENGINE: SignUpRiskEngine = {
+  async calculateRiskAssessment() {
+    return createZeroRiskAssessment(new Date());
+  },
+};
 
 let cachedEngine: SignUpRiskEngine | null = null;
 
-async function loadEngine(): Promise<SignUpRiskEngine> {
-  if (!HAS_PRIVATE_ENGINE) {
+async function getEngine(): Promise<SignUpRiskEngine> {
+  if (cachedEngine != null) return cachedEngine;
+
+  if (PRIVATE_ENGINE_PATH == null) {
     console.debug("[risk-scores] Private sign-up risk engine not found; using zero scores");
-    return {
-      async calculateRiskAssessment() {
-        return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(new Date()) };
-      },
-    };
+    cachedEngine = ZERO_SCORE_ENGINE;
+    return cachedEngine;
   }
 
   const mod = await import(/* webpackIgnore: true */ PRIVATE_ENGINE_PATH) as Record<string, unknown>;
   const engine = mod.signUpRiskEngine;
   if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
-    throw new StackAssertionError("Private engine module does not export a valid signUpRiskEngine", { path: PRIVATE_ENGINE_PATH });
+    throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine", { path: PRIVATE_ENGINE_PATH });
   }
   console.info("[risk-scores] Loaded private sign-up risk engine from", PRIVATE_ENGINE_PATH);
-  return engine as SignUpRiskEngine;
-}
-
-async function getEngine(): Promise<SignUpRiskEngine> {
-  if (cachedEngine == null) {
-    cachedEngine = await loadEngine();
-  }
+  cachedEngine = engine as SignUpRiskEngine;
   return cachedEngine;
 }
 
@@ -155,6 +150,34 @@ function createDependencies(tenancy: Tenancy) {
   };
 }
 
+async function calculateRiskAssessmentWithFallback(
+  engine: SignUpRiskEngine,
+  context: SignUpRiskScoreContext,
+  dependencies: Parameters<SignUpRiskEngine["calculateRiskAssessment"]>[1],
+): Promise<SignUpRiskAssessment> {
+  try {
+    return await engine.calculateRiskAssessment(context, dependencies);
+  } catch (error) {
+    captureError("sign-up-risk-assessment-failed", new StackAssertionError(
+      "Sign-up risk assessment failed; using zero scores fallback",
+      {
+        cause: error,
+        privateEnginePath: PRIVATE_ENGINE_PATH,
+        context: {
+          authMethod: context.authMethod,
+          oauthProvider: context.oauthProvider,
+          hasPrimaryEmail: context.primaryEmail != null,
+          primaryEmailVerified: context.primaryEmailVerified,
+          hasIpAddress: context.ipAddress != null,
+          ipTrusted: context.ipTrusted,
+          turnstileAssessment: context.turnstileAssessment,
+        },
+      },
+    ));
+    return createZeroRiskAssessment(new Date());
+  }
+}
+
 
 // ── Public API ─────────────────────────────────────────────────────────
 
@@ -163,7 +186,7 @@ export async function calculateSignUpRiskAssessment(
   context: SignUpRiskScoreContext,
 ): Promise<SignUpRiskAssessment> {
   const engine = await getEngine();
-  return await engine.calculateRiskAssessment(context, createDependencies(tenancy));
+  return await calculateRiskAssessmentWithFallback(engine, context, createDependencies(tenancy));
 }
 
 export async function calculateSignUpRiskScores(
@@ -176,12 +199,41 @@ export async function calculateSignUpRiskScores(
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-import.meta.vitest?.test("resolvePrivateEnginePath finds the engine in the monorepo", ({ expect }) => {
-  expect(HAS_PRIVATE_ENGINE).toBe(true);
+import.meta.vitest?.test("PRIVATE_ENGINE_PATH resolves in the monorepo", ({ expect }) => {
   expect(PRIVATE_ENGINE_PATH).toMatch(/packages\/private\/dist\/index\.js$/);
 });
 
-import.meta.vitest?.test("loadEngine loads the real engine when available", async ({ expect }) => {
-  const engine = await loadEngine();
+import.meta.vitest?.test("getEngine loads the real engine when available", async ({ expect }) => {
+  cachedEngine = null;
+  const engine = await getEngine();
   expect(typeof engine.calculateRiskAssessment).toBe("function");
+  expect(engine).not.toBe(ZERO_SCORE_ENGINE);
+  cachedEngine = null;
+});
+
+import.meta.vitest?.test("calculateRiskAssessmentWithFallback returns zero scores on engine error", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-03-20T00:00:00.000Z"));
+
+  try {
+    const assessment = await calculateRiskAssessmentWithFallback({
+      async calculateRiskAssessment() { throw new Error("boom"); },
+    }, {
+      primaryEmail: "user@example.com",
+      primaryEmailVerified: false,
+      authMethod: "password",
+      oauthProvider: null,
+      ipAddress: "127.0.0.1",
+      ipTrusted: true,
+      turnstileAssessment: { status: "ok" },
+    }, {
+      checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
+      loadRecentSignUpStats: async () => ({ sameIpCount: 0, similarEmailCount: 0 }),
+    });
+
+    expect(assessment).toEqual(createZeroRiskAssessment(new Date("2026-03-20T00:00:00.000Z")));
+  } finally {
+    vi.useRealTimers();
+  }
 });
