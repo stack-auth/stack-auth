@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import fs from "node:fs";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
@@ -79,8 +79,8 @@ const ZERO_SCORE_ENGINE: SignUpRiskEngine = {
 
 let cachedEnginePromise: Promise<SignUpRiskEngine> | null = null;
 
-function getPrivateEnginePathOrThrow(): string {
-  return PRIVATE_ENGINE_PATH ?? throwErr("PRIVATE_ENGINE_PATH unexpectedly missing while loading private risk engine");
+function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
+  return value != null && typeof value === "object" && typeof (value as Record<string, unknown>).calculateRiskAssessment === "function";
 }
 
 async function loadEngine(): Promise<SignUpRiskEngine> {
@@ -89,7 +89,7 @@ async function loadEngine(): Promise<SignUpRiskEngine> {
     return ZERO_SCORE_ENGINE;
   }
 
-  return await loadEngineFromPath(getPrivateEnginePathOrThrow());
+  return await loadEngineFromPath(PRIVATE_ENGINE_PATH);
 }
 
 async function loadEngineFromPath(privateEnginePath: string): Promise<SignUpRiskEngine> {
@@ -107,17 +107,21 @@ async function loadEngineFromPath(privateEnginePath: string): Promise<SignUpRisk
     return ZERO_SCORE_ENGINE;
   }
   const engine = mod.signUpRiskEngine;
-  if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
-    throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine", { path: privateEnginePath });
+  if (!isSignUpRiskEngine(engine)) {
+    captureError("sign-up-risk-engine-invalid", new StackAssertionError(
+      "Private engine does not export a valid signUpRiskEngine; using zero scores fallback",
+      { path: privateEnginePath },
+    ));
+    return ZERO_SCORE_ENGINE;
   }
   console.info("[risk-scores] Loaded private sign-up risk engine from", privateEnginePath);
-  return engine as SignUpRiskEngine;
+  return engine;
 }
 
-async function getEngineWithLoader(load: () => Promise<SignUpRiskEngine>): Promise<SignUpRiskEngine> {
+async function getEngine(): Promise<SignUpRiskEngine> {
   if (cachedEnginePromise != null) return await cachedEnginePromise;
 
-  const enginePromise = load();
+  const enginePromise = loadEngine();
   cachedEnginePromise = enginePromise;
 
   try {
@@ -128,10 +132,6 @@ async function getEngineWithLoader(load: () => Promise<SignUpRiskEngine>): Promi
     }
     throw error;
   }
-}
-
-async function getEngine(): Promise<SignUpRiskEngine> {
-  return await getEngineWithLoader(loadEngine);
 }
 
 
@@ -268,21 +268,16 @@ import.meta.vitest?.test("loadEngine returns zero-score engine when private engi
   expect(engine).toBe(ZERO_SCORE_ENGINE);
 });
 
-import.meta.vitest?.test("getEngineWithLoader clears rejected cached promise", async ({ expect }) => {
-  let loadCallCount = 0;
-  const loader = async (): Promise<SignUpRiskEngine> => {
-    loadCallCount += 1;
-    throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine");
-  };
+import.meta.vitest?.test("loadEngineFromPath returns zero-score engine when private engine export is invalid", async ({ expect }) => {
+  const invalidPrivateEnginePath = path.join(process.cwd(), "__invalid-risk-engine__.mjs");
+  const invalidPrivateEngineSource = "export const signUpRiskEngine = {};\n";
+  fs.writeFileSync(invalidPrivateEnginePath, invalidPrivateEngineSource);
 
-  cachedEnginePromise = null;
   try {
-    await expect(getEngineWithLoader(loader)).rejects.toThrow("Private engine does not export a valid signUpRiskEngine");
-    expect(cachedEnginePromise).toBeNull();
-    await expect(getEngineWithLoader(loader)).rejects.toThrow("Private engine does not export a valid signUpRiskEngine");
-    expect(loadCallCount).toBe(2);
+    const engine = await loadEngineFromPath(invalidPrivateEnginePath);
+    expect(engine).toBe(ZERO_SCORE_ENGINE);
   } finally {
-    cachedEnginePromise = null;
+    fs.unlinkSync(invalidPrivateEnginePath);
   }
 });
 
