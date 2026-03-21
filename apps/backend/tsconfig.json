@@ -23,6 +23,9 @@
       }
     ],
     "paths": {
+      "@private-sign-up-risk-engine": [
+        "./src/lib/private-sign-up-risk-engine-fallback.ts"
+      ],
       "@/*": [
         "./src/*"
       ]

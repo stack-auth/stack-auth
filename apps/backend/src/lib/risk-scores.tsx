@@ -1,16 +1,15 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
+import { signUpRiskEngine as compiledPrivateSignUpRiskEngine } from "@private-sign-up-risk-engine";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import fs from "node:fs";
-import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
 import { createNeutralSignUpHeuristicFacts, type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
 import type { Tenancy } from "./tenancies";
 import type { SignUpTurnstileAssessment } from "./turnstile";
 
 
-// ── Types ──────────────────────────────────────────────────────────────
+// -- Types -------------------------------------------------------------------
 
 export type SignUpRiskScores = SignUpRiskScoresCrud;
 
@@ -54,18 +53,11 @@ type SignUpRiskEngine = {
 };
 
 
-// ── Private engine ─────────────────────────────────────────────────────
+// -- Private engine ----------------------------------------------------------
 
 const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
 
-export const PRIVATE_ENGINE_PATH: string | null = (() => {
-  const cwd = process.cwd();
-  for (const relative of ["packages/private/dist/index.js", "../../packages/private/dist/index.js"]) {
-    const resolved = path.resolve(cwd, relative);
-    if (fs.existsSync(resolved)) return resolved;
-  }
-  return null;
-})();
+const PRIVATE_ENGINE_MODULE_SPECIFIER = "@private-sign-up-risk-engine";
 
 function createZeroRiskAssessment(now: Date): SignUpRiskAssessment {
   return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(now) };
@@ -77,65 +69,36 @@ const ZERO_SCORE_ENGINE: SignUpRiskEngine = {
   },
 };
 
-let cachedEnginePromise: Promise<SignUpRiskEngine> | null = null;
-
 function isSignUpRiskEngine(value: unknown): value is SignUpRiskEngine {
-  return value != null && typeof value === "object" && typeof (value as Record<string, unknown>).calculateRiskAssessment === "function";
-}
-
-async function loadEngine(): Promise<SignUpRiskEngine> {
-  if (PRIVATE_ENGINE_PATH == null) {
-    console.debug("[risk-scores] Private sign-up risk engine not found; using zero scores");
-    return ZERO_SCORE_ENGINE;
+  if (value == null || typeof value !== "object") {
+    return false;
   }
-
-  return await loadEngineFromPath(PRIVATE_ENGINE_PATH);
+  if (!("calculateRiskAssessment" in value)) {
+    return false;
+  }
+  return typeof value.calculateRiskAssessment === "function";
 }
 
-async function loadEngineFromPath(privateEnginePath: string): Promise<SignUpRiskEngine> {
-  let mod: Record<string, unknown>;
-  try {
-    mod = await import(/* webpackIgnore: true */ privateEnginePath) as Record<string, unknown>;
-  } catch (error) {
-    captureError("sign-up-risk-engine-load", new StackAssertionError(
-      "Failed to import private sign-up risk engine; using zero scores fallback",
+const COMPILED_PRIVATE_ENGINE: SignUpRiskEngine = (() => {
+  if (!isSignUpRiskEngine(compiledPrivateSignUpRiskEngine)) {
+    throw new StackAssertionError(
+      "Expected packages/private to export a valid signUpRiskEngine during the backend build",
       {
-        cause: error,
-        path: privateEnginePath,
+        privateEngineModuleSpecifier: PRIVATE_ENGINE_MODULE_SPECIFIER,
       },
-    ));
-    return ZERO_SCORE_ENGINE;
+    );
   }
-  const engine = mod.signUpRiskEngine;
-  if (!isSignUpRiskEngine(engine)) {
-    captureError("sign-up-risk-engine-invalid", new StackAssertionError(
-      "Private engine does not export a valid signUpRiskEngine; using zero scores fallback",
-      { path: privateEnginePath },
-    ));
-    return ZERO_SCORE_ENGINE;
-  }
-  console.info("[risk-scores] Loaded private sign-up risk engine from", privateEnginePath);
-  return engine;
-}
 
-async function getEngine(): Promise<SignUpRiskEngine> {
-  if (cachedEnginePromise != null) return await cachedEnginePromise;
+  console.info("[risk-scores] Compiled private sign-up risk engine from", PRIVATE_ENGINE_MODULE_SPECIFIER);
+  return compiledPrivateSignUpRiskEngine;
+})();
 
-  const enginePromise = loadEngine();
-  cachedEnginePromise = enginePromise;
-
-  try {
-    return await enginePromise;
-  } catch (error) {
-    if (cachedEnginePromise === enginePromise) {
-      cachedEnginePromise = null;
-    }
-    throw error;
-  }
+function getEngine(): SignUpRiskEngine {
+  return COMPILED_PRIVATE_ENGINE;
 }
 
 
-// ── DB queries ─────────────────────────────────────────────────────────
+// -- DB queries --------------------------------------------------------------
 
 async function loadRecentSignUpStats(
   tenancy: Tenancy,
@@ -198,7 +161,7 @@ async function calculateRiskAssessmentWithFallback(
       "Sign-up risk assessment failed; using zero scores fallback",
       {
         cause: error,
-        privateEnginePath: PRIVATE_ENGINE_PATH,
+        privateEngineModuleSpecifier: PRIVATE_ENGINE_MODULE_SPECIFIER,
         context: {
           authMethod: context.authMethod,
           oauthProvider: context.oauthProvider,
@@ -215,14 +178,13 @@ async function calculateRiskAssessmentWithFallback(
 }
 
 
-// ── Public API ─────────────────────────────────────────────────────────
+// -- Public API --------------------------------------------------------------
 
 export async function calculateSignUpRiskAssessment(
   tenancy: Tenancy,
   context: SignUpRiskScoreContext,
 ): Promise<SignUpRiskAssessment> {
-  const engine = await getEngine();
-  return await calculateRiskAssessmentWithFallback(engine, context, createDependencies(tenancy));
+  return await calculateRiskAssessmentWithFallback(getEngine(), context, createDependencies(tenancy));
 }
 
 export async function calculateSignUpRiskScores(
@@ -233,17 +195,21 @@ export async function calculateSignUpRiskScores(
 }
 
 
-// ── Tests ──────────────────────────────────────────────────────────────
+// -- Tests -------------------------------------------------------------------
 
-import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("PRIVATE_ENGINE_PATH resolves in the monorepo", ({ expect }) => {
-  expect(PRIVATE_ENGINE_PATH).toMatch(/packages\/private\/dist\/index\.js$/);
+import.meta.vitest?.test("compiled private sign-up risk engine export is valid", ({ expect }) => {
+  expect(isSignUpRiskEngine(compiledPrivateSignUpRiskEngine)).toBe(true);
+  expect(getEngine()).toBe(COMPILED_PRIVATE_ENGINE);
+  expect(getEngine()).not.toBe(ZERO_SCORE_ENGINE);
 });
 
-import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("getEngine loads the real engine when available", async ({ expect }) => {
-  cachedEnginePromise = null;
+import.meta.vitest?.test("compiled private sign-up risk engine can calculate scores", async ({ expect }) => {
+  const { vi } = import.meta.vitest!;
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-03-20T00:00:00.000Z"));
+
   try {
-    const engine = await getEngine();
-    await engine.calculateRiskAssessment({
+    const assessment = await getEngine().calculateRiskAssessment({
       primaryEmail: null,
       primaryEmailVerified: false,
       authMethod: "password",
@@ -255,29 +221,26 @@ import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("getEngine loads the real 
       checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
       loadRecentSignUpStats: async () => ({ sameIpCount: 0, similarEmailCount: 0 }),
     });
-    expect(typeof engine.calculateRiskAssessment).toBe("function");
-    expect(engine).not.toBe(ZERO_SCORE_ENGINE);
+
+    expect(assessment).toMatchInlineSnapshot(`
+      {
+        "heuristicFacts": {
+          "emailBase": null,
+          "emailNormalized": null,
+          "signUpEmailBase": null,
+          "signUpEmailNormalized": null,
+          "signUpIp": null,
+          "signUpIpTrusted": null,
+          "signedUpAt": 2026-03-20T00:00:00.000Z,
+        },
+        "scores": {
+          "bot": 0,
+          "free_trial_abuse": 0,
+        },
+      }
+    `);
   } finally {
-    cachedEnginePromise = null;
-  }
-});
-
-import.meta.vitest?.test("loadEngine returns zero-score engine when private engine import fails", async ({ expect }) => {
-  const missingPrivateEnginePath = path.join(process.cwd(), "__missing-risk-engine__.js");
-  const engine = await loadEngineFromPath(missingPrivateEnginePath);
-  expect(engine).toBe(ZERO_SCORE_ENGINE);
-});
-
-import.meta.vitest?.test("loadEngineFromPath returns zero-score engine when private engine export is invalid", async ({ expect }) => {
-  const invalidPrivateEnginePath = path.join(process.cwd(), "__invalid-risk-engine__.mjs");
-  const invalidPrivateEngineSource = "export const signUpRiskEngine = {};\n";
-  fs.writeFileSync(invalidPrivateEnginePath, invalidPrivateEngineSource);
-
-  try {
-    const engine = await loadEngineFromPath(invalidPrivateEnginePath);
-    expect(engine).toBe(ZERO_SCORE_ENGINE);
-  } finally {
-    fs.unlinkSync(invalidPrivateEnginePath);
+    vi.useRealTimers();
   }
 });
 
