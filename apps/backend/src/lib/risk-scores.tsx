@@ -2,6 +2,7 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } f
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import fs from "node:fs";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
 import { createNeutralSignUpHeuristicFacts, type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
@@ -58,46 +59,41 @@ type SignUpRiskEngine = {
 const ZERO_SCORES: SignUpRiskScores = { bot: 0, free_trial_abuse: 0 };
 const PRIVATE_ENGINE_SUBPATH = "packages/private/dist/index.js";
 
-let cachedEngine: SignUpRiskEngine | null = null;
-
-function getPrivateEngineCandidates(): string[] {
+function resolvePrivateEnginePath(): string | null {
   const cwd = process.cwd();
-  return [
+  for (const candidate of [
     path.resolve(cwd, PRIVATE_ENGINE_SUBPATH),
     path.resolve(cwd, "../..", PRIVATE_ENGINE_SUBPATH),
-  ];
-}
-
-function extractEngine(mod: Record<string, unknown>, candidate: string): SignUpRiskEngine {
-  const engine = mod.signUpRiskEngine;
-  if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
-    throw new StackAssertionError("Private engine module does not export a valid signUpRiskEngine", { candidate });
-  }
-  return engine as SignUpRiskEngine;
-}
-
-async function loadEngine(
-  doImport: (path: string) => Promise<unknown> = (p) => import(/* webpackIgnore: true */ p),
-): Promise<SignUpRiskEngine> {
-  const candidates = getPrivateEngineCandidates();
-  for (const candidate of candidates) {
-    try {
-      const mod = await doImport(candidate) as Record<string, unknown>;
-      console.info("[risk-scores] Loaded private sign-up risk engine from", candidate);
-      return extractEngine(mod, candidate);
-    } catch (e: unknown) {
-      const code = typeof e === "object" && e != null && "code" in e ? (e as { code: unknown }).code : undefined;
-      if (code !== "MODULE_NOT_FOUND" && code !== "ERR_MODULE_NOT_FOUND") {
-        throw e;
-      }
+  ]) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
     }
   }
-  console.debug("[risk-scores] Private sign-up risk engine not found; using zero scores", { candidates });
-  return {
-    async calculateRiskAssessment() {
-      return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(new Date()) };
-    },
-  };
+  return null;
+}
+
+const PRIVATE_ENGINE_PATH = resolvePrivateEnginePath();
+const HAS_PRIVATE_ENGINE = PRIVATE_ENGINE_PATH != null;
+
+let cachedEngine: SignUpRiskEngine | null = null;
+
+async function loadEngine(): Promise<SignUpRiskEngine> {
+  if (!HAS_PRIVATE_ENGINE) {
+    console.debug("[risk-scores] Private sign-up risk engine not found; using zero scores");
+    return {
+      async calculateRiskAssessment() {
+        return { scores: ZERO_SCORES, heuristicFacts: createNeutralSignUpHeuristicFacts(new Date()) };
+      },
+    };
+  }
+
+  const mod = await import(/* webpackIgnore: true */ PRIVATE_ENGINE_PATH) as Record<string, unknown>;
+  const engine = mod.signUpRiskEngine;
+  if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
+    throw new StackAssertionError("Private engine module does not export a valid signUpRiskEngine", { path: PRIVATE_ENGINE_PATH });
+  }
+  console.info("[risk-scores] Loaded private sign-up risk engine from", PRIVATE_ENGINE_PATH);
+  return engine as SignUpRiskEngine;
 }
 
 async function getEngine(): Promise<SignUpRiskEngine> {
@@ -180,19 +176,12 @@ export async function calculateSignUpRiskScores(
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-import.meta.vitest?.test("loader falls back to zero scores when engine not found", async ({ expect }) => {
-  const engine = await loadEngine(async () => {
-    throw Object.assign(new Error("not found"), { code: "MODULE_NOT_FOUND" });
-  });
-  const result = await engine.calculateRiskAssessment(
-    // any: context/deps don't matter for the fallback engine
-    null as any, null as any,
-  );
-  expect(result.scores).toEqual({ bot: 0, free_trial_abuse: 0 });
+import.meta.vitest?.test("resolvePrivateEnginePath finds the engine in the monorepo", ({ expect }) => {
+  expect(HAS_PRIVATE_ENGINE).toBe(true);
+  expect(PRIVATE_ENGINE_PATH).toMatch(/packages\/private\/dist\/index\.js$/);
 });
 
-import.meta.vitest?.test("loader rethrows non-module-not-found errors", async ({ expect }) => {
-  await expect(loadEngine(async () => {
-    throw new Error("private engine exploded");
-  })).rejects.toThrow("private engine exploded");
+import.meta.vitest?.test("loadEngine loads the real engine when available", async ({ expect }) => {
+  const engine = await loadEngine();
+  expect(typeof engine.calculateRiskAssessment).toBe("function");
 });
