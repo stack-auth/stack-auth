@@ -1,7 +1,7 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
-import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import fs from "node:fs";
 import path from "node:path";
 import { checkEmailWithEmailable } from "./emailable";
@@ -79,6 +79,10 @@ const ZERO_SCORE_ENGINE: SignUpRiskEngine = {
 
 let cachedEngine: SignUpRiskEngine | null = null;
 
+function getPrivateEnginePathOrThrow(): string {
+  return PRIVATE_ENGINE_PATH ?? throwErr("PRIVATE_ENGINE_PATH unexpectedly missing while loading private risk engine");
+}
+
 async function getEngine(): Promise<SignUpRiskEngine> {
   if (cachedEngine != null) return cachedEngine;
 
@@ -88,12 +92,13 @@ async function getEngine(): Promise<SignUpRiskEngine> {
     return cachedEngine;
   }
 
-  const mod = await import(/* webpackIgnore: true */ PRIVATE_ENGINE_PATH) as Record<string, unknown>;
+  const privateEnginePath = getPrivateEnginePathOrThrow();
+  const mod = await import(/* webpackIgnore: true */ privateEnginePath) as Record<string, unknown>;
   const engine = mod.signUpRiskEngine;
   if (engine == null || typeof (engine as Record<string, unknown>).calculateRiskAssessment !== "function") {
-    throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine", { path: PRIVATE_ENGINE_PATH });
+    throw new StackAssertionError("Private engine does not export a valid signUpRiskEngine", { path: privateEnginePath });
   }
-  console.info("[risk-scores] Loaded private sign-up risk engine from", PRIVATE_ENGINE_PATH);
+  console.info("[risk-scores] Loaded private sign-up risk engine from", privateEnginePath);
   cachedEngine = engine as SignUpRiskEngine;
   return cachedEngine;
 }
@@ -199,13 +204,25 @@ export async function calculateSignUpRiskScores(
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-import.meta.vitest?.test("PRIVATE_ENGINE_PATH resolves in the monorepo", ({ expect }) => {
+import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("PRIVATE_ENGINE_PATH resolves in the monorepo", ({ expect }) => {
   expect(PRIVATE_ENGINE_PATH).toMatch(/packages\/private\/dist\/index\.js$/);
 });
 
-import.meta.vitest?.test("getEngine loads the real engine when available", async ({ expect }) => {
+import.meta.vitest?.test.skipIf(!PRIVATE_ENGINE_PATH)("getEngine loads the real engine when available", async ({ expect }) => {
   cachedEngine = null;
   const engine = await getEngine();
+  await engine.calculateRiskAssessment({
+    primaryEmail: null,
+    primaryEmailVerified: false,
+    authMethod: "password",
+    oauthProvider: null,
+    ipAddress: null,
+    ipTrusted: null,
+    turnstileAssessment: { status: "ok" },
+  }, {
+    checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
+    loadRecentSignUpStats: async () => ({ sameIpCount: 0, similarEmailCount: 0 }),
+  });
   expect(typeof engine.calculateRiskAssessment).toBe("function");
   expect(engine).not.toBe(ZERO_SCORE_ENGINE);
   cachedEngine = null;
