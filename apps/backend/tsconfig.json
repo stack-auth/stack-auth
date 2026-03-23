@@ -42,7 +42,6 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "src/private",
     "node_modules",
     ".next/dev"
   ]

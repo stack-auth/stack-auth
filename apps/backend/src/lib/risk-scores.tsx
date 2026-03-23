@@ -1,9 +1,9 @@
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
-import { signUpRiskEngine as importedSignUpRiskEngine } from "@/generated/private-sign-up-risk-engine";
+import { signUpRiskEngine } from "@/private";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
 import { checkEmailWithEmailable } from "./emailable";
-import { createNeutralSignUpHeuristicFacts, type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
+import { type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
 import type { Tenancy } from "./tenancies";
 import type { SignUpTurnstileAssessment } from "./turnstile";
 
@@ -41,38 +41,17 @@ export type SignUpRiskRecentStats = {
   similarEmailCount: number,
 };
 
+export type SignUpRiskEngineDependencies = {
+  checkPrimaryEmailRisk: (email: string) => Promise<{ emailableScore: number | null }>,
+  loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => Promise<SignUpRiskRecentStats>,
+};
+
 export type SignUpRiskEngine = {
   calculateRiskAssessment: (
     context: SignUpRiskScoreContext,
-    dependencies: {
-      checkPrimaryEmailRisk: (email: string) => Promise<{ emailableScore: number | null }>,
-      loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => Promise<SignUpRiskRecentStats>,
-    },
+    dependencies: SignUpRiskEngineDependencies,
   ) => Promise<SignUpRiskAssessment>,
 };
-
-
-// -- Private engine ----------------------------------------------------------
-
-function createZeroRiskAssessment(now: Date): SignUpRiskAssessment {
-  return {
-    scores: { bot: 0, free_trial_abuse: 0 },
-    heuristicFacts: createNeutralSignUpHeuristicFacts(now),
-  };
-}
-
-const zeroSignUpRiskEngine: SignUpRiskEngine = {
-  async calculateRiskAssessment() {
-    return createZeroRiskAssessment(new Date());
-  },
-};
-
-const signUpRiskEngine: SignUpRiskEngine =
-  typeof importedSignUpRiskEngine === "object" && importedSignUpRiskEngine != null && typeof Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment") === "function"
-    ? {
-      calculateRiskAssessment: Reflect.get(importedSignUpRiskEngine, "calculateRiskAssessment"),
-    }
-    : zeroSignUpRiskEngine;
 
 
 // -- DB queries --------------------------------------------------------------
