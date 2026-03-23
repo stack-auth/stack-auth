@@ -113,7 +113,16 @@ describe("local emulator config restrictions", () => {
     expect(response.body).toStrictEqual({ success: true });
 
     const fileContent = await fs.readFile(filePath, "utf-8");
-    expect(fileContent).toContain('import type { StackConfig } from "@stackframe/js";');
-    expect(fileContent).toContain('"teams": {\n    "allowClientTeamCreation": true\n  }');
+    expect(fileContent).toMatchInlineSnapshot(`
+      deindent\`
+        import type { StackConfig } from "@stackframe/js";
+        
+        export const config: StackConfig = {
+          "teams": {
+            "allowClientTeamCreation": true
+          }
+        };
+      \` + "\\n"
+    `);
   });
 });
