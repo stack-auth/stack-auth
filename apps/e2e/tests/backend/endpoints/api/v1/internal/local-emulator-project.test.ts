@@ -85,7 +85,7 @@ describe("local emulator project endpoint", () => {
     expect(JSON.parse(response.body.branch_config_override_string)).toEqual({});
 
     const fileContent = await fs.readFile(filePath, "utf-8");
-    expect(fileContent).toContain('import type { StackConfig } from "@stackframe/stack-shared/config";');
+    expect(fileContent).toContain('import type { StackConfig } from "@stackframe/js";');
     expect(fileContent).toContain("export const config: StackConfig =");
   });
 

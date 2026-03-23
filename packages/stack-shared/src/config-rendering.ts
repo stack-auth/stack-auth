@@ -1,6 +1,6 @@
 import { isValidConfig, normalize } from "./config/format";
 
-const stackConfigTypeImport = 'import type { StackConfig } from "@stackframe/stack-shared/config";';
+const stackConfigTypeImport = 'import type { StackConfig } from "@stackframe/js";';
 
 export function renderConfigFileContent(config: unknown): string {
   if (!isValidConfig(config)) {

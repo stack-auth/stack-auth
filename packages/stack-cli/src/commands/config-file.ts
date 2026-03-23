@@ -73,7 +73,7 @@ export function registerConfigCommand(program: Command) {
 
       const config = configModule.config;
       if (!isPlainObject(config)) {
-        throw new CliError('Config file must export a plain `config` object. Example: import type { StackConfig } from "@stackframe/stack-shared/config"; export const config: StackConfig = { ... };');
+        throw new CliError('Config file must export a plain `config` object. Example: import type { StackConfig } from "@stackframe/js"; export const config: StackConfig = { ... };');
       }
 
       await project.replaceConfigOverride("branch", config);

@@ -320,7 +320,7 @@ describe("Stack CLI", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@stackframe/stack-shared/config";');
+    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
     expect(content).toContain("export const config: StackConfig");
   });
 
@@ -383,7 +383,7 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain('import type { StackConfig } from "@stackframe/stack-shared/config";');
+    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
     expect(content).toContain("export const config: StackConfig");
     expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
       apps: {
