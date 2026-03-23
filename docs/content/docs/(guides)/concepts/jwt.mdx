@@ -42,6 +42,7 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`project_id`**: Your Stack Auth project ID
 - **`branch_id`**: The project branch (currently always `main`)
 - **`refresh_token_id`**: ID of the associated refresh token
+- **`requires_totp_mfa`**: Whether the user has TOTP multi-factor authentication enabled
 - **`role`**: Always set to `authenticated` for valid users
 - **`name`**: The user's display name (nullable)
 - **`email`**: The user's primary email address (nullable)
