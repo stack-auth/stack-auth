@@ -83,6 +83,10 @@ export const InternalProjectKeys = Object.freeze({
   superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
 });
 
+export async function withInternalProject<T>(fn: () => Promise<T>): Promise<T> {
+  return await backendContext.with({ projectKeys: InternalProjectKeys, userAuth: null }, fn);
+}
+
 export const InternalProjectClientKeys = Object.freeze({
   projectId: STACK_INTERNAL_PROJECT_ID,
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,

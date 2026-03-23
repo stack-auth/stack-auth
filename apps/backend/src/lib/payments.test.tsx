@@ -1,7 +1,7 @@
 import type { PrismaClientTransaction } from '@/prisma-client';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getItemQuantityForCustomer, getSubscriptions, validatePurchaseSession } from './payments';
+import { getCustomerPurchaseContext, getItemQuantityForCustomer, getSubscriptions, validatePurchaseSession } from './payments';
 import type { Tenancy } from './tenancies';
 
 function createMockPrisma(overrides: Partial<PrismaClientTransaction> = {}): PrismaClientTransaction {
@@ -657,7 +657,52 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     vi.useRealTimers();
   });
 
-  it('canceled subscription contributes only expired transactions (no active quantity)', async () => {
+  it('cancelAtPeriodEnd=true with active status still provides items until period ends', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'scheduledCancelItem';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'S', customerType: 'team' } },
+      productLines: { plans: { displayName: 'Plans', customerType: 'team' } },
+      products: {
+        teamPlan: {
+          displayName: 'Team',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 4, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          id: 'sub-1',
+          productId: 'teamPlan',
+          product: tenancy.config.payments.products['teamPlan'],
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          quantity: 1,
+          cancelAtPeriodEnd: true,
+          status: 'active',
+          stripeSubscriptionId: 'stripe-sub-1',
+        }],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'team-1', customerType: 'team' });
+    // User scheduled cancellation but period hasn't ended - should still have 4 seats
+    expect(qty).toBe(4);
+    vi.useRealTimers();
+  });
+
+  it('subscription with ended period contributes no quantity (items expired via when-purchase-expires)', async () => {
     const now = new Date('2025-02-10T00:00:00.000Z');
     vi.setSystemTime(now);
     const itemId = 'canceledItem';
@@ -690,6 +735,74 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(0);
+    vi.useRealTimers();
+  });
+
+  /**
+   * BUG: canceled-but-not-expired subscription should still provide items
+   *
+   * When a subscription is canceled but currentPeriodEnd is still in the future,
+   * the user paid for that period and should still receive the items.
+   * The default (free) plan should NOT be injected until the period actually ends.
+   *
+   * Current behavior: The default plan gets injected immediately on cancellation,
+   * causing both the canceled subscription's items AND the default plan's items
+   * to be counted together (e.g., 4 + 1 = 5 seats instead of just 4).
+   */
+  it.fails('BUG: canceled-but-not-expired subscription should provide items without default plan injection', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'seats';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'Seats', customerType: 'team' } },
+      productLines: { plans: { displayName: 'Plans', customerType: 'team' } },
+      products: {
+        freePlan: {
+          displayName: 'Free',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+        teamPlan: {
+          displayName: 'Team',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 4, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [
+          {
+            id: 'sub-1',
+            productId: 'teamPlan',
+            product: tenancy.config.payments.products['teamPlan'],
+            currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+            quantity: 1,
+            status: 'canceled',
+            stripeSubscriptionId: 'stripe-sub-1',
+          },
+        ],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'team-1', customerType: 'team' });
+    // Should be 4 (from canceled-but-not-expired Team plan), NOT 5 (4 + 1 from injected Free plan)
+    expect(qty).toBe(4);
     vi.useRealTimers();
   });
 
@@ -763,6 +876,235 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(5);
+    vi.useRealTimers();
+  });
+});
+
+describe('getItemQuantityForCustomer - add-ons', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it('add-on items count when base plan is active', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'seats';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'Seats', customerType: 'team' } },
+      productLines: { plans: { displayName: 'Plans', customerType: 'team' } },
+      products: {
+        teamPlan: {
+          displayName: 'Team',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 4, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+        extraSeat: {
+          displayName: 'Extra Seat',
+          productLineId: undefined,
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: { monthly: { USD: '10', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: { teamPlan: true },
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [
+          {
+            id: 'sub-1',
+            productId: 'teamPlan',
+            product: tenancy.config.payments.products['teamPlan'],
+            currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+            quantity: 1,
+            status: 'active',
+            stripeSubscriptionId: 'stripe-sub-1',
+          },
+          {
+            id: 'sub-2',
+            productId: 'extraSeat',
+            product: tenancy.config.payments.products['extraSeat'],
+            currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+            quantity: 1,
+            status: 'active',
+            stripeSubscriptionId: 'stripe-sub-2',
+          },
+        ],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'team-1', customerType: 'team' });
+    // 4 from Team plan + 1 from add-on = 5
+    expect(qty).toBe(5);
+    vi.useRealTimers();
+  });
+
+  it('add-on with expires=never persists after base plan expires', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'seats';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'Seats', customerType: 'team' } },
+      productLines: { plans: { displayName: 'Plans', customerType: 'team' } },
+      products: {
+        freePlan: {
+          displayName: 'Free',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+        teamPlan: {
+          displayName: 'Team',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 4, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+        extraSeat: {
+          displayName: 'Extra Seat',
+          productLineId: undefined,
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: { monthly: { USD: '10', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'never' } },
+          isAddOnTo: { teamPlan: true },
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [
+          {
+            id: 'sub-1',
+            productId: 'teamPlan',
+            product: tenancy.config.payments.products['teamPlan'],
+            currentPeriodStart: new Date('2025-01-01T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-02-01T00:00:00.000Z'),
+            quantity: 1,
+            status: 'canceled',
+            stripeSubscriptionId: 'stripe-sub-1',
+          },
+          {
+            id: 'sub-2',
+            productId: 'extraSeat',
+            product: tenancy.config.payments.products['extraSeat'],
+            currentPeriodStart: new Date('2025-01-15T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-02-15T00:00:00.000Z'),
+            quantity: 1,
+            status: 'active',
+            stripeSubscriptionId: 'stripe-sub-2',
+          },
+        ],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'team-1', customerType: 'team' });
+    // Team plan expired (0 seats) + Free plan injected (1 seat) + add-on with expires=never (1 seat) = 2
+    expect(qty).toBe(2);
+    vi.useRealTimers();
+  });
+
+  it('add-on with expires=when-purchase-expires loses items when add-on subscription expires', async () => {
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+    const itemId = 'seats';
+
+    const tenancy = createMockTenancy({
+      items: { [itemId]: { displayName: 'Seats', customerType: 'team' } },
+      productLines: { plans: { displayName: 'Plans', customerType: 'team' } },
+      products: {
+        freePlan: {
+          displayName: 'Free',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: 'include-by-default',
+          includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+        teamPlan: {
+          displayName: 'Team',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 4, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: false,
+        },
+        extraSeat: {
+          displayName: 'Extra Seat',
+          productLineId: undefined,
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: true,
+          prices: { monthly: { USD: '10', serverOnly: false } },
+          includedItems: { [itemId]: { quantity: 1, repeat: 'never', expires: 'when-purchase-expires' } },
+          isAddOnTo: { teamPlan: true },
+        },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [
+          {
+            id: 'sub-1',
+            productId: 'teamPlan',
+            product: tenancy.config.payments.products['teamPlan'],
+            currentPeriodStart: new Date('2025-01-01T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-02-01T00:00:00.000Z'),
+            quantity: 1,
+            status: 'canceled',
+            stripeSubscriptionId: 'stripe-sub-1',
+          },
+          {
+            id: 'sub-2',
+            productId: 'extraSeat',
+            product: tenancy.config.payments.products['extraSeat'],
+            currentPeriodStart: new Date('2025-01-01T00:00:00.000Z'),
+            currentPeriodEnd: new Date('2025-02-01T00:00:00.000Z'),
+            quantity: 1,
+            status: 'canceled',
+            stripeSubscriptionId: 'stripe-sub-2',
+          },
+        ],
+      },
+    } as any);
+
+    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'team-1', customerType: 'team' });
+    // Team plan expired (0) + add-on expired (0) + Free plan injected (1) = 1
+    expect(qty).toBe(1);
     vi.useRealTimers();
   });
 });
@@ -1280,5 +1622,206 @@ describe('getSubscriptions - defaults behavior', () => {
       customerType: 'custom',
       customerId: 'c-1',
     })).rejects.toThrowError('Multiple include-by-default products configured in the same product line');
+  });
+});
+
+describe('getCustomerPurchaseContext', () => {
+  /**
+   * BUG: canceled subscriptions should not block re-purchase
+   *
+   * When a user cancels their subscription, they should be able to re-purchase
+   * the same product (or upgrade to a different one) without being blocked by
+   * the "already owns product" check.
+   *
+   * Current behavior: canceled subscriptions are included in the alreadyOwnsProduct
+   * check, preventing users from re-purchasing after cancellation.
+   */
+  it.fails('BUG: alreadyOwnsProduct should be false for canceled subscriptions', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      products: {
+        'team-plan': {
+          displayName: 'Team Plan',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      productLines: {
+        plans: { displayName: 'Plans', customerType: 'team' },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          id: 'sub-1',
+          productId: 'team-plan',
+          product: {
+            displayName: 'Team Plan',
+            productLineId: 'plans',
+            customerType: 'team',
+            prices: { monthly: { USD: '49', serverOnly: false } },
+            includedItems: {},
+          },
+          quantity: 1,
+          currentPeriodStart: new Date('2025-01-01'),
+          currentPeriodEnd: new Date('2025-02-01'),
+          cancelAtPeriodEnd: false,
+          status: 'canceled',
+          createdAt: new Date('2025-01-01'),
+          stripeSubscriptionId: 'stripe-sub-1',
+        }],
+      },
+      oneTimePurchase: {
+        findMany: async () => [],
+      },
+    } as any);
+
+    const result = await getCustomerPurchaseContext({
+      prisma,
+      tenancy,
+      customerType: 'team',
+      customerId: 'team-1',
+      productId: 'team-plan',
+    });
+
+    expect(result.alreadyOwnsProduct).toBe(false);
+  });
+
+  /**
+   * BUG: canceled-but-not-expired subscriptions should allow re-purchase
+   *
+   * When a subscription is canceled but currentPeriodEnd is still in the future,
+   * the user should be able to re-purchase/renew. The purchase flow should then
+   * reactivate the existing subscription rather than creating a new one.
+   *
+   * Current behavior: alreadyOwnsProduct = true, blocking re-purchase entirely.
+   */
+  it.fails('BUG: alreadyOwnsProduct should be false for canceled-but-not-expired subscriptions (to allow renewal)', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2025-02-10T00:00:00.000Z');
+    vi.setSystemTime(now);
+
+    const tenancy = createMockTenancy({
+      items: {},
+      products: {
+        'team-plan': {
+          displayName: 'Team Plan',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      productLines: {
+        plans: { displayName: 'Plans', customerType: 'team' },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          id: 'sub-1',
+          productId: 'team-plan',
+          product: {
+            displayName: 'Team Plan',
+            productLineId: 'plans',
+            customerType: 'team',
+            prices: { monthly: { USD: '49', serverOnly: false } },
+            includedItems: {},
+          },
+          quantity: 1,
+          currentPeriodStart: new Date('2025-02-01T00:00:00.000Z'),
+          currentPeriodEnd: new Date('2025-03-01T00:00:00.000Z'),
+          cancelAtPeriodEnd: false,
+          status: 'canceled',
+          createdAt: new Date('2025-02-01T00:00:00.000Z'),
+          stripeSubscriptionId: 'stripe-sub-1',
+        }],
+      },
+      oneTimePurchase: {
+        findMany: async () => [],
+      },
+    } as any);
+
+    const result = await getCustomerPurchaseContext({
+      prisma,
+      tenancy,
+      customerType: 'team',
+      customerId: 'team-1',
+      productId: 'team-plan',
+    });
+
+    // Should be false so user can re-purchase/renew (purchase flow should then reactivate, not create new)
+    expect(result.alreadyOwnsProduct).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('alreadyOwnsProduct should be true for active subscriptions', async () => {
+    const tenancy = createMockTenancy({
+      items: {},
+      products: {
+        'team-plan': {
+          displayName: 'Team Plan',
+          productLineId: 'plans',
+          customerType: 'team',
+          freeTrial: undefined,
+          serverOnly: false,
+          stackable: false,
+          prices: { monthly: { USD: '49', serverOnly: false } },
+          includedItems: {},
+          isAddOnTo: false,
+        },
+      },
+      productLines: {
+        plans: { displayName: 'Plans', customerType: 'team' },
+      },
+    });
+
+    const prisma = createMockPrisma({
+      subscription: {
+        findMany: async () => [{
+          id: 'sub-1',
+          productId: 'team-plan',
+          product: {
+            displayName: 'Team Plan',
+            productLineId: 'plans',
+            customerType: 'team',
+            prices: { monthly: { USD: '49', serverOnly: false } },
+            includedItems: {},
+          },
+          quantity: 1,
+          currentPeriodStart: new Date('2025-01-01'),
+          currentPeriodEnd: new Date('2025-02-01'),
+          cancelAtPeriodEnd: false,
+          status: 'active',
+          createdAt: new Date('2025-01-01'),
+          stripeSubscriptionId: 'stripe-sub-1',
+        }],
+      },
+      oneTimePurchase: {
+        findMany: async () => [],
+      },
+    } as any);
+
+    const result = await getCustomerPurchaseContext({
+      prisma,
+      tenancy,
+      customerType: 'team',
+      customerId: 'team-1',
+      productId: 'team-plan',
+    });
+
+    expect(result.alreadyOwnsProduct).toBe(true);
   });
 });
