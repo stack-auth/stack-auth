@@ -21,6 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
   Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Typography,
 } from "@/components/ui";
 import {
@@ -55,7 +58,8 @@ import { validateRiskScore } from "@/lib/risk-score-utils";
 // Analytics types
 type RuleAnalytics = {
   ruleId: string,
-  totalCount: number,
+  countInTimespan: number,
+  allTimeCount: number,
   hourlyCounts: { hour: string, count: number }[],
 };
 
@@ -120,11 +124,15 @@ type ConfigWithSignUpRules = CompleteConfig & {
 // Compact sparkline component for rule analytics (inline next to buttons)
 function RuleSparkline({
   data,
-  totalCount,
+  countInTimespan,
+  allTimeCount,
+  timespanHours,
   isLoading,
 }: {
   data: { hour: string, count: number }[],
-  totalCount: number,
+  countInTimespan: number,
+  allTimeCount: number,
+  timespanHours: number,
   isLoading: boolean,
 }) {
   // Show skeleton while loading
@@ -141,26 +149,37 @@ function RuleSparkline({
   const chartData = data.length >= 2 ? data : [{ hour: '0', count: 0 }, { hour: '1', count: 0 }];
   // Calculate max for Y domain - use at least 1 to avoid divide-by-zero
   const maxCount = Math.max(1, ...chartData.map(d => d.count));
+  const timespanLabel = `Last ${timespanHours}h`;
 
   return (
-    <div className="flex items-center gap-1" title="past 48h">
-      <ResponsiveContainer width={40} height={16}>
-        <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
-          <YAxis hide domain={[0, maxCount]} />
-          <Area
-            type="monotone"
-            dataKey="count"
-            stroke="currentColor"
-            strokeWidth={1}
-            fill="currentColor"
-            fillOpacity={0.15}
-            className="text-muted-foreground"
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-      <span className="text-[10px] text-muted-foreground tabular-nums">{totalCount}</span>
-    </div>
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-1 cursor-help">
+          <ResponsiveContainer width={40} height={16}>
+            <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
+              <YAxis hide domain={[0, maxCount]} />
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="currentColor"
+                strokeWidth={1}
+                fill="currentColor"
+                fillOpacity={0.15}
+                className="text-muted-foreground"
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+          <span className="text-[10px] text-muted-foreground tabular-nums">{countInTimespan}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[11px]">
+        <div className="space-y-0.5">
+          <div>{timespanLabel}: {countInTimespan.toLocaleString()}</div>
+          <div>All-time: {allTimeCount.toLocaleString()}</div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -319,6 +338,7 @@ function RuleEditor({
 function SortableRuleRow({
   entry,
   analytics,
+  analyticsTimespanHours,
   isAnalyticsLoading,
   isEditing,
   onEdit,
@@ -329,6 +349,7 @@ function SortableRuleRow({
 }: {
   entry: SignUpRuleEntry,
   analytics?: RuleAnalytics,
+  analyticsTimespanHours: number,
   isAnalyticsLoading: boolean,
   isEditing: boolean,
   onEdit: () => void,
@@ -444,7 +465,9 @@ function SortableRuleRow({
         <div className="hidden sm:flex items-center mr-1">
           <RuleSparkline
             data={analytics?.hourlyCounts ?? []}
-            totalCount={analytics?.totalCount ?? 0}
+            countInTimespan={analytics?.countInTimespan ?? 0}
+            allTimeCount={analytics?.allTimeCount ?? 0}
+            timespanHours={analyticsTimespanHours}
             isLoading={isAnalyticsLoading}
           />
         </div>
@@ -991,6 +1014,7 @@ function DeleteRuleDialog({
 function useSignUpRulesAnalytics() {
   const stackAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
+  const [timespanHours, setTimespanHours] = useState(48);
   const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
@@ -1010,12 +1034,14 @@ function useSignUpRulesAnalytics() {
       }
 
       const data = await response.json();
+      setTimespanHours(data.analytics_hours);
 
       const analyticsMap = new Map<string, RuleAnalytics>();
       for (const trigger of data.rule_triggers ?? []) {
         analyticsMap.set(trigger.rule_id, {
           ruleId: trigger.rule_id,
-          totalCount: trigger.total_count,
+          countInTimespan: trigger.total_count,
+          allTimeCount: trigger.all_time_count,
           hourlyCounts: trigger.hourly_counts ?? [],
         });
       }
@@ -1031,7 +1057,7 @@ function useSignUpRulesAnalytics() {
     };
   }, [stackAdminApp]);
 
-  return { analytics, isLoading };
+  return { analytics, timespanHours, isLoading };
 }
 
 export default function PageClient() {
@@ -1047,7 +1073,11 @@ export default function PageClient() {
   const [ruleToDelete, setRuleToDelete] = useState<SignUpRuleEntry | null>(null);
 
   // Fetch analytics data
-  const { analytics: ruleAnalytics, isLoading: isAnalyticsLoading } = useSignUpRulesAnalytics();
+  const {
+    analytics: ruleAnalytics,
+    timespanHours: analyticsTimespanHours,
+    isLoading: isAnalyticsLoading,
+  } = useSignUpRulesAnalytics();
 
   // Type assertion needed because schema changes take effect at build time
   const configWithRules = config as ConfigWithSignUpRules;
@@ -1269,6 +1299,7 @@ export default function PageClient() {
                         key={entry.id}
                         entry={entry}
                         analytics={ruleAnalytics.get(entry.id)}
+                        analyticsTimespanHours={analyticsTimespanHours}
                         isAnalyticsLoading={isAnalyticsLoading}
                         isEditing={editingRuleId === entry.id}
                         onEdit={() => {
@@ -1306,6 +1337,7 @@ export default function PageClient() {
                     key={entry.id}
                     entry={entry}
                     analytics={ruleAnalytics.get(entry.id)}
+                    analyticsTimespanHours={analyticsTimespanHours}
                     isAnalyticsLoading={isAnalyticsLoading}
                     isEditing={editingRuleId === entry.id}
                     onEdit={() => {

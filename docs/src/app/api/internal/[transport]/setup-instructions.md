@@ -45,8 +45,10 @@ Ensure they are added to the repo.
 #### For Next.js Projects:
 Required vars (from Stack dashboard):
 - `NEXT_PUBLIC_STACK_PROJECT_ID`
-- `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
 - `STACK_SECRET_SERVER_KEY`
+
+Optional unless your project requires publishable client keys:
+- `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
 
 Check `.env.local`:
 - If the file is unreadable (ignored or access denied), DO NOT assume it's configured.
@@ -63,7 +65,8 @@ import { StackClientApp } from "@stackframe/react";
 export const stackClientApp = new StackClientApp({
   // You should store these in environment variables
   projectId: "YOUR_PROJECT_ID_HERE",
-  publishableClientKey: "YOUR_PUBLISHABLE_CLIENT_KEY_HERE",
+  // Only include this if your project requires publishable client keys
+  // publishableClientKey: "YOUR_PUBLISHABLE_CLIENT_KEY_HERE",
   tokenStore: "cookie",
   // redirectMethod: {
   //   useNavigate,
@@ -85,8 +88,8 @@ TODO in your web browser:
 3) Choose your framework: Next.js
 4) Copy these keys:
    - NEXT_PUBLIC_STACK_PROJECT_ID=...
-   - NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=...
    - STACK_SECRET_SERVER_KEY=...
+   - NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=... (only if your project requires publishable client keys)
 5) Paste them into your local `.env.local` (do not commit this file).
 6) Save the file.
 
@@ -104,10 +107,10 @@ TODO in your web browser:
 3) Choose your framework: React
 4) Copy these keys:
    - Project ID
-   - Publishable Client Key
+   - Publishable Client Key (only if your project requires publishable client keys)
 5) Update the `stack/client.ts` file with your keys:
    - Replace "YOUR_PROJECT_ID_HERE" with your Project ID
-   - Replace "YOUR_PUBLISHABLE_CLIENT_KEY_HERE" with your Publishable Client Key
+   - If needed, uncomment and replace "YOUR_PUBLISHABLE_CLIENT_KEY_HERE" with your Publishable Client Key
 6) Save the file.
 
 Reply here when done:
@@ -187,4 +190,3 @@ Reply with 1 or 2:
 
 If user replies `1`: Proceed to UI Installation Workflow calling the tool install UI components.
 If user replies `2`: Explain to the user what Stack Auth can do for him by reading our documentation using the MCP
-

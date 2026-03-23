@@ -31,7 +31,7 @@ Depending on whether you're on a client or a server, you will want to create sta
 The stack client app has client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 The stack server app has full read and write access to all users. It requires STACK_SECRET_SERVER_KEY env variable and should only be used in secure context
 
-In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so the constructor needs no explicit config. For other frameworks, you must pass projectId and publishableClientKey explicitly using the framework's env var access method.
+In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so the constructor needs no explicit config. For other frameworks, you must pass projectId explicitly using the framework's env var access method. Pass publishableClientKey only if your project is configured to require publishable client keys.
 
 The tokenStore should be "nextjs-cookie" for Next.js, or "cookie" for all other frameworks.
 
@@ -44,7 +44,7 @@ import { StackClientApp } from "@stackframe/stack"; // or "@stackframe/react" or
 
 export const stackClientApp = new StackClientApp({
   // Next.js: omit projectId/publishableClientKey (auto-detected from NEXT_PUBLIC_ env vars)
-  // Other frameworks: pass explicitly, e.g. for Vite:
+  // Other frameworks: pass projectId explicitly, and publishableClientKey only if required by your project. For Vite:
   //   projectId: import.meta.env.VITE_STACK_PROJECT_ID,
   //   publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "nextjs-cookie", // or "cookie" for non-Next.js,
@@ -99,8 +99,9 @@ Rename the env var keys in .env to match the framework's convention for client-e
 
 The required variables are:
 - Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
-- Publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.)
 - Secret server key: STACK_SECRET_SERVER_KEY (only for frameworks with server-side support, no prefix needed)
+
+The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
 
 ### 6) React only: Wrap the entire page in a Stack provider
 
@@ -123,4 +124,3 @@ return (
 );
 \`\`\`
 `;
-
