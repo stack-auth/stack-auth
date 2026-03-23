@@ -126,6 +126,40 @@ describe('cel-visual-parser', () => {
       expect(cel).toContain('inject\\"attack.com');
       expect(cel).toContain('also\\\\bad.com');
     });
+
+    it('should serialize numeric risk score comparisons', () => {
+      const greaterThan = visualTreeToCel({
+        ...createEmptyCondition(),
+        field: 'riskScores.bot' as const,
+        operator: 'greater_than' as const,
+        value: 80,
+      });
+      const lessOrEqual = visualTreeToCel({
+        ...createEmptyCondition(),
+        field: 'riskScores.free_trial_abuse' as const,
+        operator: 'less_or_equal' as const,
+        value: 40,
+      });
+
+      expect(greaterThan).toBe('riskScores.bot > 80');
+      expect(lessOrEqual).toBe('riskScores.free_trial_abuse <= 40');
+    });
+
+    it('should normalize country code values to uppercase', () => {
+      expect(visualTreeToCel({
+        ...createEmptyCondition(),
+        field: 'countryCode' as const,
+        operator: 'equals' as const,
+        value: 'us',
+      })).toBe('countryCode == "US"');
+
+      expect(visualTreeToCel({
+        ...createEmptyCondition(),
+        field: 'countryCode' as const,
+        operator: 'in_list' as const,
+        value: ['us', 'ca'],
+      })).toBe('countryCode in ["US", "CA"]');
+    });
   });
 
   describe('CEL to visual tree parsing', () => {
@@ -166,5 +200,36 @@ describe('cel-visual-parser', () => {
         expect(result.value).toBe('test\\value');
       }
     });
+
+    it('should parse numeric risk score comparisons', () => {
+      const result = parseCelToVisualTree('riskScores.bot >= 75');
+      expect(result).toBeDefined();
+      if (result?.type === 'condition') {
+        expect(result.field).toBe('riskScores.bot');
+        expect(result.operator).toBe('greater_or_equal');
+        expect(result.value).toBe(75);
+      }
+    });
+
+    it('should parse country code equality condition', () => {
+      const result = parseCelToVisualTree('countryCode == "US"');
+      expect(result).toBeDefined();
+      if (result?.type === 'condition') {
+        expect(result.field).toBe('countryCode');
+        expect(result.operator).toBe('equals');
+        expect(result.value).toBe('US');
+      }
+    });
+
+    it('should parse country code in_list condition', () => {
+      const result = parseCelToVisualTree('countryCode in ["US", "CA"]');
+      expect(result).toBeDefined();
+      if (result?.type === 'condition') {
+        expect(result.field).toBe('countryCode');
+        expect(result.operator).toBe('in_list');
+        expect(result.value).toEqual(['US', 'CA']);
+      }
+    });
   });
+
 });
