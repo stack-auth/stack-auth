@@ -1,10 +1,10 @@
-import fs from "fs/promises";
-import path from "path";
-import { createJiti } from "jiti";
+import { globalPrismaClient } from "@/prisma-client";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { globalPrismaClient } from "@/prisma-client";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import fs from "fs/promises";
+import { createJiti } from "jiti";
+import path from "path";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
 export const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
@@ -19,10 +19,6 @@ export const LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV = "STACK_LOCAL_EMULATOR_HOST_MOU
 
 export function isLocalEmulatorEnabled() {
   return getEnvVariable("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR", "") === "true";
-}
-
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === "object" && error !== null && "code" in error;
 }
 
 export async function isLocalEmulatorProject(projectId: string) {
@@ -41,84 +37,66 @@ export async function isLocalEmulatorProject(projectId: string) {
   return project !== null;
 }
 
-async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch (error) {
-    if (isErrnoException(error) && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
+export async function getLocalEmulatorFilePath(projectId: string): Promise<string | null> {
+  const result = await globalPrismaClient.localEmulatorProject.findUnique({
+    where: { projectId },
+    select: { absoluteFilePath: true },
+  });
+  return result?.absoluteFilePath ?? null;
 }
 
-/**
- * Resolves the file path for config files in the local emulator.
- *
- * In the QEMU emulator, the host filesystem is mounted separately at /host, outside the
- * guest qcow2 overlay. The DB stores absolute host paths (for example
- * /Users/foo/project/stack.config.ts), so we map them to /host/<path> when the host mount
- * is configured. We fail loudly if the host mount root is configured but inaccessible,
- * because silently writing to a guest-local lookalike path would desync the dashboard from
- * the user's real stack.config.ts file.
- */
-async function resolveConfigFilePath(filePath: string): Promise<string> {
+export function resolveEmulatorPath(filePath: string): string {
   const hostMountRoot = getEnvVariable(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, "");
-  if (hostMountRoot !== "") {
-    const hostMountedPath = path.join(hostMountRoot, filePath);
-    if (await pathExists(hostMountedPath) || await pathExists(path.dirname(hostMountedPath))) {
-      return hostMountedPath;
-    }
-
-    throw new Error(
-      `Local emulator host mount root ${hostMountRoot} is configured, but ${hostMountedPath} is not accessible. ` +
-      "Restart the QEMU emulator so the host share is mounted, or choose a config path under the shared host root."
-    );
+  if (hostMountRoot) {
+    return path.join(hostMountRoot, filePath);
   }
-
   return filePath;
 }
 
 export async function readConfigFromFile(filePath: string): Promise<Record<string, unknown>> {
+  // Check for base64-encoded config content override from env var
   const envContent = getEnvVariable("STACK_LOCAL_EMULATOR_CONFIG_CONTENT", "");
-  const resolvedPath = envContent ? filePath : await resolveConfigFilePath(filePath);
-  const content = envContent
-    ? Buffer.from(envContent, "base64").toString("utf-8")
-    : await fs.readFile(resolvedPath, "utf-8").catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
+  let content: string;
+  if (envContent) {
+    content = Buffer.from(envContent, "base64").toString("utf-8");
+  } else {
+    const resolvedPath = resolveEmulatorPath(filePath);
+    try {
+      content = await fs.readFile(resolvedPath, "utf-8");
+    } catch (e: any) {
+      if (e?.code === "ENOENT") {
+        return {};
+      }
+      throw e;
+    }
+  }
 
-  if (content === null || content.trim() === "") {
+  if (content.trim() === "") {
     return {};
   }
 
   const jiti = createJiti(import.meta.url, { cache: false });
-  const mod = jiti.evalModule(content, { filename: resolvedPath });
-  const invalidConfigMessage = `Invalid config in ${filePath}. The file must export a 'config' object.`;
-  if (typeof mod !== "object" || mod === null || !("config" in mod)) {
-    throw new StatusError(StatusError.BadRequest, invalidConfigMessage);
-  }
+  const mod = jiti.evalModule(content, { filename: filePath }) as Record<string, unknown>;
   const config = mod.config;
   if (!isValidConfig(config)) {
-    throw new StatusError(StatusError.BadRequest, invalidConfigMessage);
+    throw new StatusError(StatusError.BadRequest, `Invalid config in ${filePath}. The file must export a 'config' object.`);
   }
   return config;
 }
 
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
-  const resolvedPath = await resolveConfigFilePath(filePath);
-  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-  const configString = JSON.stringify(config, null, 2);
-  const content = `export const config = ${configString};\n`;
+  const resolvedPath = resolveEmulatorPath(filePath);
+  const dir = path.dirname(resolvedPath);
+  const hostMountRoot = getEnvVariable(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, "");
+  if (hostMountRoot) {
+    try {
+      await fs.access(dir);
+    } catch {
+      throw new Error(`Local emulator host mount root ${hostMountRoot} is configured but the parent directory for ${filePath} is not available at ${dir}. Ensure the host filesystem is mounted correctly.`);
+    }
+  } else {
+    await fs.mkdir(dir, { recursive: true });
+  }
+  const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
   await fs.writeFile(resolvedPath, content, "utf-8");
-}
-
-export async function getLocalEmulatorFilePath(projectId: string): Promise<string | null> {
-  const project = await globalPrismaClient.localEmulatorProject.findUnique({
-    where: { projectId },
-    select: { absoluteFilePath: true },
-  });
-  return project?.absoluteFilePath ?? null;
 }

@@ -33,7 +33,7 @@ export default function Header() {
           <UserButton colorModeToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         </div>
       </div>
-      <div className="min-h-12"/>
+      <div className="min-h-12"/> {/* Placeholder for fixed header */}
     </>
   );
 }

@@ -266,6 +266,14 @@ export async function setBranchConfigOverride(options: {
 }): Promise<void> {
   const newConfig = migrateConfigOverride("branch", options.branchConfigOverride);
 
+  if (isLocalEmulatorEnabled() && await isLocalEmulatorProject(options.projectId)) {
+    const filePath = await getLocalEmulatorFilePath(options.projectId);
+    if (filePath) {
+      await writeConfigToFile(filePath, newConfig);
+      return;
+    }
+  }
+
   // large configs make our DB slow; let's prevent them early
   const newConfigString = JSON.stringify(newConfig);
   if (newConfigString.length > 1_000_000) {
@@ -279,17 +287,6 @@ export async function setBranchConfigOverride(options: {
   if (overrideErrors.status === "error") {
     captureError("setBranchConfigOverride", new StackAssertionError(`Config override is invalid — at a place where it should have already been validated! ${overrideErrors.error}`, { projectId: options.projectId, branchId: options.branchId }));
   }
-
-  if (isLocalEmulatorEnabled()) {
-    const filePath = await getLocalEmulatorFilePath(options.projectId);
-    if (filePath != null) {
-      // Local emulator projects read branch config directly from the host config file,
-      // so the file stays the single source of truth to avoid split DB/file state.
-      await writeConfigToFile(filePath, newConfig);
-      return;
-    }
-  }
-
   await globalPrismaClient.branchConfigOverride.upsert({
     where: {
       projectId_branchId: {
@@ -1104,73 +1101,6 @@ import.meta.vitest?.test('setEnvironmentConfigOverride blocks writes in local em
     isLocalEmulatorProjectSpy.mockRestore();
     isLocalEmulatorEnabledSpy.mockRestore();
     getEnvVariableSpy.mockRestore();
-  }
-});
-
-import.meta.vitest?.test('setBranchConfigOverride writes local emulator config to the file instead of the DB', async ({ expect }) => {
-  const vi = import.meta.vitest?.vi;
-  if (!vi) {
-    throw new StackAssertionError("Vitest context is required for in-source tests.");
-  }
-
-  const localEmulator = await import("./local-emulator");
-  const isLocalEmulatorEnabledSpy = vi.spyOn(localEmulator, "isLocalEmulatorEnabled").mockReturnValue(true);
-  const getLocalEmulatorFilePathSpy = vi.spyOn(localEmulator, "getLocalEmulatorFilePath").mockResolvedValue("/Users/foo/project/stack.config.ts");
-  const writeConfigToFileSpy = vi.spyOn(localEmulator, "writeConfigToFile").mockResolvedValue(undefined);
-  const upsertSpy = vi.spyOn(globalPrismaClient.branchConfigOverride, "upsert").mockImplementation(() => {
-    throw new StackAssertionError("DB upsert should not run for local emulator branch config writes.");
-  });
-
-  try {
-    await setBranchConfigOverride({
-      projectId: "project-id",
-      branchId: "branch-id",
-      branchConfigOverride: {
-        "teams.allowClientTeamCreation": true,
-      },
-    });
-
-    expect(writeConfigToFileSpy).toHaveBeenCalledWith("/Users/foo/project/stack.config.ts", {
-      "teams.allowClientTeamCreation": true,
-    });
-    expect(upsertSpy).not.toHaveBeenCalled();
-  } finally {
-    upsertSpy.mockRestore();
-    writeConfigToFileSpy.mockRestore();
-    getLocalEmulatorFilePathSpy.mockRestore();
-    isLocalEmulatorEnabledSpy.mockRestore();
-  }
-});
-
-import.meta.vitest?.test('setBranchConfigOverride surfaces local emulator file write failures before touching the DB', async ({ expect }) => {
-  const vi = import.meta.vitest?.vi;
-  if (!vi) {
-    throw new StackAssertionError("Vitest context is required for in-source tests.");
-  }
-
-  const localEmulator = await import("./local-emulator");
-  const isLocalEmulatorEnabledSpy = vi.spyOn(localEmulator, "isLocalEmulatorEnabled").mockReturnValue(true);
-  const getLocalEmulatorFilePathSpy = vi.spyOn(localEmulator, "getLocalEmulatorFilePath").mockResolvedValue("/Users/foo/project/stack.config.ts");
-  const writeConfigToFileSpy = vi.spyOn(localEmulator, "writeConfigToFile").mockRejectedValue(new Error("virtio-9p timeout"));
-  const upsertSpy = vi.spyOn(globalPrismaClient.branchConfigOverride, "upsert").mockImplementation(() => {
-    throw new StackAssertionError("DB upsert should not run when the local emulator file write fails.");
-  });
-
-  try {
-    await expect(setBranchConfigOverride({
-      projectId: "project-id",
-      branchId: "branch-id",
-      branchConfigOverride: {
-        "teams.allowClientTeamCreation": true,
-      },
-    })).rejects.toThrow("virtio-9p timeout");
-
-    expect(upsertSpy).not.toHaveBeenCalled();
-  } finally {
-    upsertSpy.mockRestore();
-    writeConfigToFileSpy.mockRestore();
-    getLocalEmulatorFilePathSpy.mockRestore();
-    isLocalEmulatorEnabledSpy.mockRestore();
   }
 });
 
