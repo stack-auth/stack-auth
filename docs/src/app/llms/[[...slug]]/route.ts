@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getLLMText } from '../../../../lib/get-llm-text';
 import { apiSource, source } from '../../../../lib/source';
 
+// revalidate = false applies only to the statically generated page content paths
+// (those emitted by generateStaticParams). The empty-slug redirect is always dynamic.
 export const revalidate = false;
 
 function resolvePage(slug: string[] | undefined) {

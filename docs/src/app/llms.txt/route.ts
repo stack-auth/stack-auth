@@ -12,14 +12,20 @@ export async function GET(request: Request) {
   const apiBaseUrl = `${origin}/llms/api/`;
 
   for (const page of source.getPages()) {
-    const relativeUrl = page.url.replace(/^\/docs\/?/, '');
+    if (page.url !== '/docs' && !page.url.startsWith('/docs/')) {
+      throw new Error(`Unexpected page URL "${page.url}" in docs source — expected "/docs" or "/docs/..." prefix`);
+    }
+    const relativeUrl = page.url === '/docs' ? '' : page.url.slice('/docs/'.length);
     if (relativeUrl !== '') {
       docsUrls.add(relativeUrl);
     }
   }
 
   for (const page of apiSource.getPages()) {
-    const relativeUrl = page.url.replace(/^\/api\/?/, '');
+    if (page.url !== '/api' && !page.url.startsWith('/api/')) {
+      throw new Error(`Unexpected page URL "${page.url}" in API source — expected "/api" or "/api/..." prefix`);
+    }
+    const relativeUrl = page.url === '/api' ? '' : page.url.slice('/api/'.length);
     if (relativeUrl !== '') {
       apiUrls.add(relativeUrl);
     }

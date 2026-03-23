@@ -19,7 +19,7 @@ export async function GET(
   }
 
   if (!page) {
-    return NextResponse.redirect(new URL('/', request.url), 307);
+    return NextResponse.redirect(new URL('/llms.txt', request.url), 307);
   }
 
   try {
