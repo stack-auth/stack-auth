@@ -10,10 +10,7 @@ export async function GET(
 ) {
   const { slug } = await params;
 
-  // Try to find the page in either source
   let page = source.getPage(slug);
-
-  // If not found in main docs, try API docs
   if (!page) {
     page = apiSource.getPage(slug);
   }
@@ -23,7 +20,11 @@ export async function GET(
   }
 
   try {
-    return new NextResponse(await getLLMText(page));
+    return new NextResponse(await getLLMText(page), {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+    });
   } catch (error) {
     console.error('Error generating LLM text:', error);
     return new NextResponse('Error generating content', { status: 500 });
@@ -31,15 +32,5 @@ export async function GET(
 }
 
 export function generateStaticParams() {
-  try {
-    // Generate static params for both main docs and API docs
-    const docsParams = source.generateParams();
-    const apiParams = apiSource.generateParams();
-
-    return [...docsParams, ...apiParams];
-  } catch (error) {
-    console.error('Error generating static params:', error);
-    // Return empty array to prevent build failure
-    return [];
-  }
+  return [...source.generateParams(), ...apiSource.generateParams()];
 }

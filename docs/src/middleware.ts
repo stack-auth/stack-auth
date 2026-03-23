@@ -16,12 +16,8 @@ export default function middleware(request: NextRequest, event: NextFetchEvent) 
   runAsynchronously(trackPromise);
   event.waitUntil(trackPromise);
 
-  if (
-    pathname === '/SKILL.md' ||
-    pathname === '/SKILLS.md' ||
-    pathname === '/skill.md' ||
-    pathname === '/skills.md'
-  ) {
+  const lowerPathname = pathname.toLowerCase();
+  if (lowerPathname === '/skill.md' || lowerPathname === '/skills.md') {
     const url = request.nextUrl.clone();
     url.pathname = '/llms.txt';
     return NextResponse.redirect(url, 307);

@@ -6,11 +6,7 @@ import { apiSource, source } from '../../../../lib/source';
 // (those emitted by generateStaticParams). The empty-slug redirect is always dynamic.
 export const revalidate = false;
 
-function resolvePage(slug: string[] | undefined) {
-  if (slug == null || slug.length === 0) {
-    return null;
-  }
-
+function resolvePage(slug: string[]) {
   const [prefix, ...rest] = slug;
 
   if (prefix === 'docs') {
