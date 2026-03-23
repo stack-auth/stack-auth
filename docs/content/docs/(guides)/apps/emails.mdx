@@ -2,6 +2,7 @@
 title: Emails
 description: Send custom emails to your users with Stack Auth's email system.
 icon: Mail
+lastModified: "2026-03-11"
 ---
 
 Stack Auth provides emails that allows you to send custom emails to your users. The system supports both custom HTML emails and template-based emails with theming.
@@ -65,6 +66,24 @@ const result = await stackServerApp.sendEmail({
 });
 ```
 
+### Scheduling Emails
+
+Schedule emails for future delivery with the `scheduledAtMillis` option:
+
+```typescript
+// Schedule an email to be sent in 1 hour
+const oneHourFromNow = Date.now() + 60 * 60 * 1000;
+
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-id'],
+  subject: 'Reminder: Your trial ends soon',
+  html: '<p>Your trial period ends tomorrow. Upgrade now to keep access.</p>',
+  scheduledAtMillis: oneHourFromNow,
+});
+```
+
+If `scheduledAtMillis` is not provided, the email is sent immediately.
+
 ### Email Options
 
 The `sendEmail` method accepts the following options:
@@ -78,6 +97,7 @@ type SendEmailOptions = {
   html?: string;                        // Custom HTML content
   templateId?: string;                  // Template ID to use
   variables?: Record<string, any>;      // Template variables
+  scheduledAtMillis?: number;           // When to send (timestamp in milliseconds)
 };
 ```
 
@@ -125,7 +145,7 @@ These templates can be customized through the admin interface or programmaticall
 
 ## Email Configuration
 
-Email configuration is managed through the Stack Auth dashboard or admin API, not directly in your application code. You have two options:
+Email configuration is managed through the Stack Auth dashboard or admin API, not directly in your application code. You have three options:
 
 ### Shared Email Provider (Development)
 
@@ -135,9 +155,27 @@ For development and testing, you can use Stack's shared email provider. This sen
 - Select "Shared" as your email server type
 - No additional configuration required
 
+### Managed by Stack Auth (Production)
+
+Stack Auth can automatically manage your email domain and DNS configuration, letting you send emails from your own domain without manually configuring SMTP.
+
+**Setup:**
+
+1. Go to your project's Email settings in the dashboard and click "Managed Setup"
+2. Enter your subdomain (e.g., `mail.yourdomain.com`) and sender local part (e.g., `noreply`)
+3. Stack Auth will display nameserver records — add these NS records at your DNS provider for the subdomain
+4. Wait for DNS propagation (status will change from "pending_verification" to "verified")
+5. Click "Use This Domain" to activate
+
+Your emails will be sent from `{sender}@{subdomain}` (e.g., `noreply@mail.yourdomain.com`).
+
+<Info>
+DNS propagation can take anywhere from a few minutes to 48 hours depending on your DNS provider.
+</Info>
+
 ### Custom Email Server (Production)
 
-For production, configure your own SMTP server through the dashboard:
+If you prefer to use your own SMTP server, configure it through the dashboard:
 
 - Go to your project's Email settings in the dashboard  
 - Select "Custom SMTP server" as your email server type
