@@ -131,7 +131,7 @@ export async function linkOAuthAccountToUser(
     tenancyId: string,
     providerId: string,
     providerAccountId: string,
-    email?: string,
+    email: string | null,
     projectUserId: string,
   }
 ): Promise<{ oauthAccountId: string }> {
@@ -189,12 +189,12 @@ export async function createOAuthUserAndAccount(
   params: {
     providerId: string,
     providerAccountId: string,
-    email?: string,
+    email: string | null,
     emailVerified: boolean,
     primaryEmailAuthEnabled: boolean,
-    currentUser?: UsersCrud["Admin"]["Read"] | null,
-    displayName?: string,
-    profileImageUrl?: string,
+    currentUser: UsersCrud["Admin"]["Read"] | null,
+    displayName: string | null,
+    profileImageUrl: string | null,
     signUpRuleOptions: SignUpRuleOptions,
   }
 ): Promise<{ projectUserId: string, oauthAccountId: string }> {
@@ -206,7 +206,7 @@ export async function createOAuthUserAndAccount(
   // Create new user (or upgrade anonymous user) with sign-up rule evaluation
   const newUser = await createOrUpgradeAnonymousUserWithRules(
     tenancy,
-    params.currentUser ?? null,
+    params.currentUser,
     {
       display_name: params.displayName,
       profile_image_url: params.profileImageUrl,
