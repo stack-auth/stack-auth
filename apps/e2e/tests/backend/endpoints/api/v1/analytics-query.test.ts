@@ -1534,8 +1534,51 @@ it("returns a safe error for illegal type of argument (code 43)", async ({ expec
       "status": 400,
       "body": {
         "code": "ANALYTICS_QUERY_ERROR",
-        "details": { "error": "Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). " },
-        "error": "Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). ",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not leak column names from restricted tables via illegal type of argument (code 43)", async ({ expect }) => {
+  // ClickHouse resolves identifiers and checks types before checking permissions,
+  // so a code 43 error referencing a restricted table column could leak its name/type
+  const response = await runQuery({
+    query: "SELECT arrayJoin(query) FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+        \`,
       },
       "headers": Headers {
         "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
