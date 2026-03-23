@@ -1433,10 +1433,6 @@ async function syncClickhouseMapping(
   }
 
   const clickhouseTableName = `analytics_internal.${mapping.targetTable}`;
-  // Skip ensureClickhouseSchema — we only sync to our own internal ClickHouse
-  // where tables are already created. CREATE TABLE IF NOT EXISTS is always a
-  // no-op but costs a slow DDL round trip per mapping per sync invocation.
-
   let lastSequenceId = await getClickhouseLastSyncedSequenceId(client, tenancyId, mappingId);
 
   const BATCH_LIMIT = 1000;
