@@ -1,4 +1,7 @@
 import { createOAuthUserAndAccount, findExistingOAuthAccount, getProjectUserIdFromOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
+import { getDisabledBotChallengeAssessment, isBotChallengeDisabled } from "@/lib/turnstile";
 import { createAuthTokens } from "@/lib/tokens";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -18,7 +21,7 @@ const appleJWKS = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/key
  */
 async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): Promise<{
   sub: string,
-  email?: string,
+  email: string | null,
   emailVerified: boolean,
 }> {
   try {
@@ -29,7 +32,7 @@ async function verifyAppleIdToken(idToken: string, allowedBundleIds: string[]): 
 
     return {
       sub: payload.sub ?? throwErr("No sub claim in Apple ID token"),
-      email: typeof payload.email === "string" ? payload.email : undefined,
+      email: typeof payload.email === "string" ? payload.email : null,
       emailVerified: payload.email_verified === true || payload.email_verified === "true",
     };
   } catch (error) {
@@ -119,17 +122,26 @@ export const POST = createSmartRouteHandler({
         projectUserId = linkedUserId;
       } else {
         // ========================== Create new user ==========================
+        const requestContext = await getBestEffortEndUserRequestContext();
         const result = await createOAuthUserAndAccount(prisma, tenancy, {
           providerId: "apple",
           providerAccountId: appleUser.sub,
           email: appleUser.email,
           emailVerified: appleUser.emailVerified,
           primaryEmailAuthEnabled,
-          signUpRuleOptions: {
+          currentUser: null,
+          displayName: null,
+          profileImageUrl: null,
+          signUpRuleOptions: buildSignUpRuleOptions({
             authMethod: 'oauth',
             oauthProvider: 'apple',
-            // Note: Request context not easily available in native OAuth callback
-          },
+            requestContext,
+            turnstileAssessment: isBotChallengeDisabled()
+              ? getDisabledBotChallengeAssessment()
+              : { status: "invalid" },
+            // Apple native OAuth doesn't pass a turnstile token because the
+            // authentication happens in the native Apple sign-in flow outside our control
+          }),
         });
         projectUserId = result.projectUserId;
         isNewUser = true;
