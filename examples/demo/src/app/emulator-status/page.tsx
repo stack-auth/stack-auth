@@ -166,10 +166,10 @@ export default function EmulatorStatusPage() {
             <Typography className="text-sm">Start the all-in-one local emulator dependencies:</Typography>
             <pre className="bg-gray-100 dark:bg-gray-900 rounded p-3 text-xs font-mono overflow-x-auto">
               {`# Start (single container with all services)
-pnpm run emulator-compose up --detach --build
+pnpm run emulator:compose up --detach --build
 
 # Stop and remove volumes
-pnpm run emulator-compose down -v`}
+pnpm run emulator:compose down -v`}
             </pre>
             <Typography className="text-sm text-gray-500">
               This single container replaces the 17+ containers from the full docker-compose setup.

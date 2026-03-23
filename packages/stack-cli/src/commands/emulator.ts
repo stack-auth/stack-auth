@@ -9,7 +9,6 @@ const DEFAULT_BRANCH = "dev";
 const EMULATOR_ARCHES = ["arm64", "amd64"] as const;
 
 type EmulatorArch = typeof EMULATOR_ARCHES[number];
-type BuildTargetArch = EmulatorArch | "both";
 
 function detectArch(): EmulatorArch {
   switch (process.arch) {
@@ -79,14 +78,6 @@ function ghRelease(args: string[]): string {
   }
 }
 
-function parseBuildArch(arch: string | undefined): BuildTargetArch {
-  const resolvedArch = arch ?? detectArch();
-  if (resolvedArch === "arm64" || resolvedArch === "amd64" || resolvedArch === "both") {
-    return resolvedArch;
-  }
-  throw new CliError(`Unsupported build architecture: ${resolvedArch}. Use arm64, amd64, or both.`);
-}
-
 function isValidEmulatorArch(arch: string): arch is EmulatorArch {
   return arch === "arm64" || arch === "amd64";
 }
@@ -149,9 +140,9 @@ export function registerEmulatorCommand(program: Command) {
   emulator
     .command("pull")
     .description("Download the latest emulator image from GitHub Releases")
-    .option("--arch <arch>", "Target architecture (arm64 or amd64)")
+    .option("--arch <arch>", `Target architecture (arm64 or amd64, default: current system arch)`)
     .option("--branch <branch>", `Release branch (default: ${DEFAULT_BRANCH})`)
-    .option("--tag <tag>", "Specific release tag")
+    .option("--tag <tag>", "Specific release tag (default: latest)")
     .option("--repo <repo>", `GitHub repository (default: ${DEFAULT_REPO})`)
     .action(async (opts) => {
       const arch = parseEmulatorArch(opts.arch);
@@ -163,9 +154,9 @@ export function registerEmulatorCommand(program: Command) {
     });
 
   emulator
-    .command("run")
-    .description("Start the emulator (auto-pulls if no image exists)")
-    .option("--arch <arch>", "Target architecture")
+    .command("start")
+    .description("Start the emulator in the background (auto-pulls the latest image if none exists)")
+    .option("--arch <arch>", "Target architecture (arm64 or amd64, default: current system arch). Using a non-native architecture will use software emulation and be significantly slower.")
     .action(async (opts) => {
       const arch = parseEmulatorArch(opts.arch);
       const qemuDir = findQemuDir();
@@ -181,7 +172,7 @@ export function registerEmulatorCommand(program: Command) {
 
   emulator
     .command("stop")
-    .description("Stop the emulator")
+    .description("Stop the emulator (data is preserved; use 'reset' to clear all state)")
     .action(() => runEmulatorAction("stop"));
 
   emulator
@@ -193,15 +184,6 @@ export function registerEmulatorCommand(program: Command) {
     .command("status")
     .description("Show emulator and service health")
     .action(() => runEmulatorAction("status"));
-
-  emulator
-    .command("build")
-    .description("Build the QEMU emulator image locally")
-    .option("--arch <arch>", "Target architecture (arm64, amd64, or both)")
-    .action(async (opts) => {
-      const arch = parseBuildArch(opts.arch);
-      await runScript(findQemuDir(), "build-image.sh", [arch]);
-    });
 
   emulator
     .command("list-releases")
