@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
-import net from 'net';
 
 export const dynamic = 'force-dynamic';
-
-const PORT_PREFIX = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? '81';
 
 type ServiceCheck = {
   name: string;
@@ -15,63 +12,30 @@ type ServiceCheck = {
 
 const SERVICES: ServiceCheck[] = [
   {
-    name: 'PostgreSQL',
-    description: 'Primary database',
-    port: Number(`${PORT_PREFIX}28`),
-    protocol: 'tcp',
-  },
-  {
-    name: 'Inbucket (HTTP)',
-    description: 'Email capture UI',
-    port: Number(`${PORT_PREFIX}05`),
+    name: 'Stack Dashboard',
+    description: 'Dashboard UI',
+    port: 26700,
     protocol: 'http',
-    httpPath: '/',
-  },
-  {
-    name: 'Inbucket (SMTP)',
-    description: 'Email SMTP server',
-    port: Number(`${PORT_PREFIX}29`),
-    protocol: 'tcp',
-  },
-  {
-    name: 'Svix',
-    description: 'Webhook delivery',
-    port: Number(`${PORT_PREFIX}13`),
-    protocol: 'http',
-    httpPath: '/api/v1/health/',
-  },
-  {
-    name: 'ClickHouse',
-    description: 'Analytics database',
-    port: Number(`${PORT_PREFIX}36`),
-    protocol: 'http',
-    httpPath: '/ping',
-  },
-  {
-    name: 'MinIO (S3)',
-    description: 'Object storage',
-    port: Number(`${PORT_PREFIX}21`),
-    protocol: 'http',
-    httpPath: '/minio/health/live',
-  },
-  {
-    name: 'QStash',
-    description: 'Job queue',
-    port: Number(`${PORT_PREFIX}25`),
-    protocol: 'http',
-    httpPath: '/',
+    httpPath: '/handler/sign-in',
   },
   {
     name: 'Stack Backend',
     description: 'API server',
-    port: Number(`${PORT_PREFIX}02`),
+    port: 26701,
     protocol: 'http',
-    httpPath: '/',
+    httpPath: '/health?db=1',
   },
   {
-    name: 'Stack Dashboard',
-    description: 'Dashboard UI',
-    port: Number(`${PORT_PREFIX}01`),
+    name: 'MinIO (S3)',
+    description: 'Object storage',
+    port: 26702,
+    protocol: 'http',
+    httpPath: '/minio/health/live',
+  },
+  {
+    name: 'Inbucket (HTTP)',
+    description: 'Email capture UI',
+    port: 26703,
     protocol: 'http',
     httpPath: '/',
   },
@@ -90,27 +54,10 @@ async function checkHttp(port: number, path: string, timeoutMs = 3000): Promise<
   }
 }
 
-async function checkTcp(port: number, timeoutMs = 3000): Promise<{ up: boolean; latencyMs: number }> {
-  const start = performance.now();
-  return await new Promise((resolve) => {
-    const socket = net.createConnection({ host: '127.0.0.1', port }, () => {
-      socket.destroy();
-      resolve({ up: true, latencyMs: Math.round(performance.now() - start) });
-    });
-    socket.on('error', () => resolve({ up: false, latencyMs: Math.round(performance.now() - start) }));
-    socket.setTimeout(timeoutMs, () => {
-      socket.destroy();
-      resolve({ up: false, latencyMs: Math.round(performance.now() - start) });
-    });
-  });
-}
-
 export async function GET() {
   const results = await Promise.all(
     SERVICES.map(async (svc) => {
-      const check = svc.protocol === 'http'
-        ? await checkHttp(svc.port, svc.httpPath ?? '/')
-        : await checkTcp(svc.port);
+      const check = await checkHttp(svc.port, svc.httpPath ?? '/');
       return {
         name: svc.name,
         description: svc.description,

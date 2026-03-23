@@ -13,6 +13,13 @@ VM_CPUS="${EMULATOR_CPUS:-4}"
 PORT_PREFIX="${PORT_PREFIX:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}}"
 READY_TIMEOUT="${EMULATOR_READY_TIMEOUT:-240}"
 
+# Fixed host-side ports for the QEMU emulator (267xx range).
+# Only user-facing services are exposed; internal deps stay inside the VM.
+EMULATOR_DASHBOARD_PORT="${EMULATOR_DASHBOARD_PORT:-26700}"
+EMULATOR_BACKEND_PORT="${EMULATOR_BACKEND_PORT:-26701}"
+EMULATOR_MINIO_PORT="${EMULATOR_MINIO_PORT:-26702}"
+EMULATOR_INBUCKET_PORT="${EMULATOR_INBUCKET_PORT:-26703}"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -106,18 +113,13 @@ service_is_up() {
 }
 
 deps_ready() {
-  service_is_up "${PORT_PREFIX}28" tcp &&
-    service_is_up "${PORT_PREFIX}05" http / &&
-    service_is_up "${PORT_PREFIX}29" tcp &&
-    service_is_up "${PORT_PREFIX}13" http /api/v1/health/ &&
-    service_is_up "${PORT_PREFIX}36" http /ping &&
-    service_is_up "${PORT_PREFIX}21" http /minio/health/live &&
-    service_is_up "${PORT_PREFIX}25" http / 401
+  service_is_up "$EMULATOR_MINIO_PORT" http /minio/health/live &&
+    service_is_up "$EMULATOR_INBUCKET_PORT" http /
 }
 
 app_ready() {
-  service_is_up "${PORT_PREFIX}02" http "/health?db=1" &&
-    service_is_up "${PORT_PREFIX}01" http /handler/sign-in
+  service_is_up "$EMULATOR_BACKEND_PORT" http "/health?db=1" &&
+    service_is_up "$EMULATOR_DASHBOARD_PORT" http /handler/sign-in
 }
 
 all_ready() {
@@ -194,19 +196,11 @@ build_qemu_cmd() {
   esac
 
   local netdev="user,id=net0"
-  # Deps services
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}28-:5432"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}29-:2500"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}05-:9001"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}30-:1100"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}13-:8071"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}21-:9090"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}25-:8080"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}36-:8123"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}37-:9009"
-  # App services
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}01-:${PORT_PREFIX}01"
-  netdev+=",hostfwd=tcp::${PORT_PREFIX}02-:${PORT_PREFIX}02"
+  # Only expose user-facing services; internal deps stay inside the VM.
+  netdev+=",hostfwd=tcp::${EMULATOR_DASHBOARD_PORT}-:${PORT_PREFIX}01"
+  netdev+=",hostfwd=tcp::${EMULATOR_BACKEND_PORT}-:${PORT_PREFIX}02"
+  netdev+=",hostfwd=tcp::${EMULATOR_MINIO_PORT}-:9090"
+  netdev+=",hostfwd=tcp::${EMULATOR_INBUCKET_PORT}-:9001"
 
   QEMU_CMD=(
     "$qemu_bin"
@@ -251,11 +245,11 @@ tail_vm_logs() {
 }
 
 ensure_ports_free() {
-  local ports=("${PORT_PREFIX}01" "${PORT_PREFIX}02" "${PORT_PREFIX}05" "${PORT_PREFIX}13" "${PORT_PREFIX}21" "${PORT_PREFIX}25" "${PORT_PREFIX}28" "${PORT_PREFIX}29" "${PORT_PREFIX}30" "${PORT_PREFIX}36" "${PORT_PREFIX}37")
+  local ports=("$EMULATOR_DASHBOARD_PORT" "$EMULATOR_BACKEND_PORT" "$EMULATOR_MINIO_PORT" "$EMULATOR_INBUCKET_PORT")
   local port
   for port in "${ports[@]}"; do
     if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-      err "Port $port is already in use. Stop the Docker emulator or other services first."
+      err "Port $port is already in use. Stop any conflicting services first."
       exit 1
     fi
   done
@@ -297,7 +291,8 @@ cmd_start() {
   mkdir -p "$RUN_DIR"
 
   info "Starting QEMU local emulator"
-  info "Arch: $ARCH | Accel: $ACCEL | Prefix: $PORT_PREFIX"
+  info "Arch: $ARCH | Accel: $ACCEL"
+  info "Ports: Dashboard=$EMULATOR_DASHBOARD_PORT Backend=$EMULATOR_BACKEND_PORT MinIO=$EMULATOR_MINIO_PORT Inbucket=$EMULATOR_INBUCKET_PORT"
 
   start_vm
 
@@ -313,7 +308,9 @@ cmd_start() {
     exit 1
   fi
 
-  log "All services are green. The qcow2 overlay preserves emulator state across restarts, while /host stays a live host share outside the VM disk."
+  log "All services are green."
+  info "Dashboard: http://localhost:${EMULATOR_DASHBOARD_PORT}"
+  info "Backend:   http://localhost:${EMULATOR_BACKEND_PORT}"
 }
 
 cmd_stop() {
@@ -354,14 +351,10 @@ cmd_status() {
   fi
   echo ""
   echo "Services:"
-  print_service_status "Dashboard" "${PORT_PREFIX}01" http /handler/sign-in
-  print_service_status "Backend" "${PORT_PREFIX}02" http "/health?db=1"
-  print_service_status "PostgreSQL" "${PORT_PREFIX}28" tcp
-  print_service_status "Inbucket HTTP" "${PORT_PREFIX}05" http /
-  print_service_status "Svix" "${PORT_PREFIX}13" http /api/v1/health/
-  print_service_status "MinIO" "${PORT_PREFIX}21" http /minio/health/live
-  print_service_status "QStash" "${PORT_PREFIX}25" http / 401
-  print_service_status "ClickHouse" "${PORT_PREFIX}36" http /ping
+  print_service_status "Dashboard" "$EMULATOR_DASHBOARD_PORT" http /handler/sign-in
+  print_service_status "Backend" "$EMULATOR_BACKEND_PORT" http "/health?db=1"
+  print_service_status "MinIO" "$EMULATOR_MINIO_PORT" http /minio/health/live
+  print_service_status "Inbucket HTTP" "$EMULATOR_INBUCKET_PORT" http /
   exit "$STATUS_FAILED"
 }
 
