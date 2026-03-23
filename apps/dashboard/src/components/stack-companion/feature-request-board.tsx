@@ -71,6 +71,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
   // Fetch existing feature requests from secure backend
   const fetchFeatureRequests = useCallback(async () => {
     if (user == null) {
+      setIsLoadingRequests(false);
       return;
     }
 

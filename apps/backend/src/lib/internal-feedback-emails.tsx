@@ -4,10 +4,9 @@ import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { throwErr, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { escapeHtml } from "@stackframe/stack-shared/dist/utils/html";
 
-const defaultRecipient = "team@stack-auth.com";
 const transactionalCategoryId = getNotificationCategoryByName("Transactional")?.id ?? throwErr("Transactional notification category not found");
 
 function formatTextForHtml(text: string): string {
@@ -46,7 +45,7 @@ function buildInternalEmailHtml(options: {
 }
 
 export function getInternalFeedbackRecipients(): string[] {
-  const rawRecipients = getEnvVariable("STACK_INTERNAL_FEEDBACK_RECIPIENTS", defaultRecipient);
+  const rawRecipients = getEnvVariable("STACK_INTERNAL_FEEDBACK_RECIPIENTS");
   const recipients = rawRecipients.split(",").map((recipient) => recipient.trim());
 
   if (recipients.some((recipient) => recipient.length === 0)) {
@@ -72,7 +71,7 @@ async function sendInternalOperationsEmail(options: {
     tsxSource,
     extraVariables: {},
     themeId: null,
-    isHighPriority: true,
+    isHighPriority: false,
     shouldSkipDeliverabilityCheck: true,
     scheduledAt: new Date(),
     createdWith: { type: "programmatic-call", templateId: null },
@@ -112,6 +111,10 @@ import.meta.vitest?.test("getInternalFeedbackRecipients()", ({ expect }) => {
   const previousValue = process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
 
   try {
+    // eslint-disable-next-line no-restricted-syntax
+    delete process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
+    expect(() => getInternalFeedbackRecipients()).toThrow("Missing environment variable");
+
     // eslint-disable-next-line no-restricted-syntax
     process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS = "TEAM@stack-auth.com, team@stack-auth.com , another@example.com";
     expect(getInternalFeedbackRecipients()).toEqual([
