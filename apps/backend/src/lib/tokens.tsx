@@ -11,6 +11,7 @@ import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-s
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
+import { turnstileResultValues } from '@stackframe/stack-shared/dist/utils/turnstile';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
@@ -45,6 +46,10 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
+  // TODO next-release: make these .defined() once all deployments write these fields into the cookie
+  turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
+  turnstileVisibleChallengeResult: yupString().oneOf(turnstileResultValues).optional(),
+  responseMode: yupString().oneOf(['json', 'redirect']).optional(),
 });
 
 type UserType = 'normal' | 'restricted' | 'anonymous';

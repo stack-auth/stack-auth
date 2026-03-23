@@ -171,6 +171,7 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "auth_with_email": false,
         "client_metadata": null,
         "client_read_only_metadata": null,
+        "country_code": null,
         "display_name": "Manual User",
         "has_password": false,
         "id": "<stripped UUID>",
@@ -189,6 +190,12 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "restricted_by_admin_private_details": null,
         "restricted_by_admin_reason": null,
         "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
         "selected_team": null,
         "selected_team_id": null,
         "server_metadata": null,
@@ -227,6 +234,7 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "auth_with_email": false,
         "client_metadata": null,
         "client_read_only_metadata": null,
+        "country_code": null,
         "display_name": "Manual User",
         "has_password": false,
         "id": "<stripped UUID>",
@@ -251,6 +259,12 @@ it("should allow OAuth login with manually created account when sign-ups are dis
         "restricted_by_admin_private_details": null,
         "restricted_by_admin_reason": null,
         "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
         "selected_team": null,
         "selected_team_id": null,
         "server_metadata": null,

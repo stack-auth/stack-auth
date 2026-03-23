@@ -88,7 +88,7 @@ insert_env_config AS (
 ),
 insert_users AS (
   INSERT INTO "ProjectUser"
-    ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "displayName", "projectId", "createdAt", "updatedAt")
+    ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "displayName", "projectId", "createdAt", "updatedAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
   SELECT
     tenancy_id,
     project_user_id,
@@ -97,7 +97,9 @@ insert_users AS (
     'External Sync User ' || padded_idx,
     project_id,
     ts,
-    ts
+    ts,
+    0,
+    0
   FROM small_projects
   RETURNING "tenancyId", "projectUserId"
 ),
@@ -239,7 +241,7 @@ BEGIN
       CROSS JOIN generate_series(batch_start, batch_end) AS gs
     )
     INSERT INTO "ProjectUser"
-      ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "displayName", "projectId", "createdAt", "updatedAt")
+      ("tenancyId", "projectUserId", "mirroredProjectId", "mirroredBranchId", "displayName", "projectId", "createdAt", "updatedAt", "signUpRiskScoreBot", "signUpRiskScoreFreeTrialAbuse")
     SELECT
       tenancy_id,
       project_user_id,
@@ -248,7 +250,9 @@ BEGIN
       'Mega User ' || padded_project_idx || '-' || padded_user_idx,
       project_id,
       ts,
-      ts
+      ts,
+      0,
+      0
     FROM mega_users;
 
     RAISE NOTICE 'Inserted users %-% of % per project', batch_start, batch_end, users_per_project;

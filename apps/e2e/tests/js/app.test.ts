@@ -105,6 +105,29 @@ it("should create user on the server", async ({ expect }) => {
   `);
 });
 
+it("should create user on the server with country code and risk scores", async ({ expect }) => {
+  const { serverApp } = await createApp();
+  const user = await serverApp.createUser({
+    primaryEmail: "imported-risk@test.com",
+    primaryEmailAuthEnabled: true,
+    countryCode: "US",
+    riskScores: {
+      signUp: {
+        bot: 61,
+        freeTrialAbuse: 27,
+      },
+    },
+  });
+
+  expect(user.countryCode).toBe("US");
+  expect(user.riskScores).toEqual({
+    signUp: {
+      bot: 61,
+      freeTrialAbuse: 27,
+    },
+  });
+});
+
 it("should throw a helpful error when destructuring user", async ({ expect }) => {
   const { clientApp, serverApp } = await createApp();
 
