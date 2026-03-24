@@ -1245,14 +1245,13 @@ model OutgoingRequest {
 }
 
 model BulldozerStorageEngine {
-  id            String                @id @default(uuid()) @db.Uuid
+  id            String                 @id @default(uuid()) @db.Uuid
   keyPath       Json[]
   keyPathParent Unsupported("jsonb[]")
   value         Json
 
   @@unique([keyPath], map: "BulldozerStorageEngine_keyPath_key")
   @@index([keyPathParent], map: "BulldozerStorageEngine_keyPathParent_idx")
-  @@ignore
 }
 
 model DeletedRow {
