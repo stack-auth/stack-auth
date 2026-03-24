@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { z } from "zod";
 
 type DocsToolHttpResult = {
@@ -22,11 +23,9 @@ function getDocsToolsBaseUrl(): string {
 async function postDocsToolAction(action: Record<string, unknown>): Promise<string> {
   const base = getDocsToolsBaseUrl();
   const secret = getEnvVariable("STACK_INTERNAL_DOCS_TOOLS_SECRET", "");
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const headers = new Headers({ "Content-Type": "application/json" });
   if (secret !== "") {
-    headers["x-stack-internal-docs-tools-secret"] = secret;
+    headers.set("x-stack-internal-docs-tools-secret", secret);
   }
 
   const res = await fetch(`${base}/api/internal/docs-tools`, {
@@ -37,6 +36,7 @@ async function postDocsToolAction(action: Record<string, unknown>): Promise<stri
 
   if (!res.ok) {
     const errBody = await res.text();
+    captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
     return `Stack Auth docs tools error (${res.status}): ${errBody}`;
   }
 

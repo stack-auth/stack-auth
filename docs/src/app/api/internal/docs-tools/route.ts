@@ -50,6 +50,6 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json(
     { error: "Use POST with a DocsToolAction body" },
-    { status: 405 },
+    { status: 405, headers: { Allow: "POST" } },
   );
 }
