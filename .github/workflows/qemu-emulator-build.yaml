@@ -6,6 +6,9 @@ on:
       - main
       - dev
   pull_request:
+    paths:
+      - 'docker/local-emulator/**'
+      - '.github/workflows/qemu-emulator-build.yaml'
   workflow_dispatch:
     inputs:
       publish:
