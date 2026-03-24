@@ -1,5 +1,12 @@
 """Stack Auth Python SDK."""
 
+from stack_auth._auth import (
+    AuthState,
+    TokenPartialUser,
+    async_authenticate_request,
+    decode_access_token_claims,
+    sync_authenticate_request,
+)
 from stack_auth._pagination import PaginatedResult
 from stack_auth._version import __version__
 from stack_auth.errors import (
@@ -66,6 +73,12 @@ __all__ = [
     "RateLimitError",
     "CliError",
     "AnalyticsError",
+    # Auth
+    "AuthState",
+    "TokenPartialUser",
+    "decode_access_token_claims",
+    "sync_authenticate_request",
+    "async_authenticate_request",
     # Models
     "BaseUser",
     "ServerUser",
