@@ -1,5 +1,6 @@
 """Stack Auth Python SDK."""
 
+from stack_auth._pagination import PaginatedResult
 from stack_auth._version import __version__
 from stack_auth.errors import (
     AnalyticsError,
@@ -17,9 +18,40 @@ from stack_auth.errors import (
     StackAuthError,
     ValidationError,
 )
+from stack_auth.models import (
+    ActiveSession,
+    ApiKey,
+    BaseUser,
+    ContactChannel,
+    GeoInfo,
+    Item,
+    NotificationCategory,
+    OAuthConnection,
+    OAuthProvider,
+    Product,
+    Project,
+    ProjectConfig,
+    ProjectPermission,
+    ServerTeam,
+    ServerUser,
+    Team,
+    TeamApiKey,
+    TeamApiKeyFirstView,
+    TeamInvitation,
+    TeamMemberProfile,
+    TeamPermission,
+    UserApiKey,
+    UserApiKeyFirstView,
+)
+
+# NOTE: SyncAPIClient and AsyncAPIClient are intentionally NOT exported here.
+# They are internal transport classes in _client.py.
+# Phase 3 will add the public StackServerApp and AsyncStackServerApp facades.
 
 __all__ = [
     "__version__",
+    "PaginatedResult",
+    # Errors
     "StackAuthError",
     "AuthenticationError",
     "NotFoundError",
@@ -34,4 +66,28 @@ __all__ = [
     "RateLimitError",
     "CliError",
     "AnalyticsError",
+    # Models
+    "BaseUser",
+    "ServerUser",
+    "Team",
+    "ServerTeam",
+    "TeamMemberProfile",
+    "TeamInvitation",
+    "ActiveSession",
+    "GeoInfo",
+    "ContactChannel",
+    "TeamPermission",
+    "ProjectPermission",
+    "Project",
+    "ProjectConfig",
+    "ApiKey",
+    "UserApiKey",
+    "UserApiKeyFirstView",
+    "TeamApiKey",
+    "TeamApiKeyFirstView",
+    "OAuthConnection",
+    "OAuthProvider",
+    "Product",
+    "Item",
+    "NotificationCategory",
 ]
