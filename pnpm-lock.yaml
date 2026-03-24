@@ -228,6 +228,9 @@ importers:
       dotenv-cli:
         specifier: ^7.3.0
         version: 7.4.1
+      emailable:
+        specifier: ^3.1.1
+        version: 3.1.1
       freestyle-sandboxes:
         specifier: ^0.1.6
         version: 0.1.6
@@ -1696,6 +1699,12 @@ importers:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)
 
+  packages/private:
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.2
+        version: 6.1.2
+
   packages/react:
     dependencies:
       '@hookform/resolvers':
@@ -1786,6 +1795,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.3
         version: 13.0.3
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.1
       autoprefixer:
         specifier: ^10.4.17
         version: 10.4.20(postcss@8.5.2)
@@ -1858,9 +1870,6 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
-      '@types/react-dom':
-        specifier: ^18.2.0
-        version: 18.3.1
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -1922,6 +1931,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.3
         version: 13.0.3
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.1
       autoprefixer:
         specifier: ^10.4.17
         version: 10.4.19(postcss@8.4.47)
@@ -2307,9 +2319,6 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
-      '@types/react-dom':
-        specifier: ^18.2.0
-        version: 18.3.1
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -2371,6 +2380,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.3
         version: 13.0.3
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.1
       autoprefixer:
         specifier: ^10.4.17
         version: 10.4.20(postcss@8.4.47)
@@ -11234,6 +11246,9 @@ packages:
 
   elliptic@6.5.7:
     resolution: {integrity: sha512-ESVCtTwiA+XhY3wyh24QqRGBoP3rEdDUl3EDUUo9tft074fi19IrdpH7hLCMMP3CIj7jb3W96rn8lt/BqIlt5Q==}
+
+  emailable@3.1.1:
+    resolution: {integrity: sha512-u29D/famJqKBee+4V8SctKiwMP9+qS9WFu2mZtwMQQGN/wrK7iFY/Yi3LfiO2hfQpgv+19swsbhJsBm+WCDSGA==}
 
   embla-carousel-react@8.6.0:
     resolution: {integrity: sha512-0/PjqU7geVmo6F734pmPqpyHqiM99olvyecY7zdweCw+6tKEXnrE90pBiBbMMU8s5tICemzpQ3hi5EpxzGW+JA==}
@@ -28038,6 +28053,12 @@ snapshots:
       inherits: 2.0.4
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
+
+  emailable@3.1.1:
+    dependencies:
+      axios: 1.7.7
+    transitivePeerDependencies:
+      - debug
 
   embla-carousel-react@8.6.0(react@18.3.1):
     dependencies:

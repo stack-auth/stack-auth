@@ -176,27 +176,29 @@ function evaluateSignUpRulesInternal(
         }
       }
       if (actionType === 'allow' || actionType === 'reject') {
+        const outcome = {
+          restrictedBecauseOfSignUpRuleId,
+          shouldAllow: actionType === 'allow',
+          decision: actionType,
+          decisionRuleId: ruleId,
+        };
         return {
           evaluations,
-          outcome: {
-            restrictedBecauseOfSignUpRuleId,
-            shouldAllow: actionType === 'allow',
-            decision: actionType,
-            decisionRuleId: ruleId,
-          },
+          outcome,
         };
       }
     }
   }
 
   const shouldAllow = config.auth.signUpRulesDefaultAction !== 'reject';
+  const outcome = {
+    restrictedBecauseOfSignUpRuleId,
+    shouldAllow,
+    decision: shouldAllow ? 'default-allow' as const : 'default-reject' as const,
+    decisionRuleId: null,
+  };
   return {
     evaluations,
-    outcome: {
-      restrictedBecauseOfSignUpRuleId,
-      shouldAllow,
-      decision: shouldAllow ? 'default-allow' : 'default-reject',
-      decisionRuleId: null,
-    },
+    outcome,
   };
 }

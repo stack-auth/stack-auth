@@ -10,6 +10,28 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0
 
 const MAX_EVENTS = 500;
 
+// Lone surrogates (\uD800-\uDFFF not part of a valid pair) are technically
+// representable in JS strings but rejected by ClickHouse's JSON parser.
+// The client-side event tracker can produce these when .substring() truncates
+// text in the middle of a surrogate pair (e.g. emoji characters).
+// eslint-disable-next-line no-control-regex
+const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function stripLoneSurrogates(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(LONE_SURROGATE_RE, "\uFFFD");
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripLoneSurrogates);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, stripLoneSurrogates(v)])
+    );
+  }
+  return value;
+}
+
 export const POST = createSmartRouteHandler({
   metadata: {
     summary: "Upload analytics event batch",
@@ -69,7 +91,7 @@ export const POST = createSmartRouteHandler({
     const rows = body.events.map((event) => ({
       event_type: event.event_type,
       event_at: new Date(event.event_at_ms),
-      data: event.data,
+      data: stripLoneSurrogates(event.data),
       project_id: projectId,
       branch_id: branchId,
       user_id: userId,

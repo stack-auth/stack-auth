@@ -268,11 +268,23 @@ model ProjectUser {
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
+  signUpCountryCode      String?
 
   // Admin restriction fields - can be set by signup rules or manually by admins
   restrictedByAdmin               Boolean @default(false)
   restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
   restrictedByAdminPrivateDetails String? // Private details (server access only)
+
+  // Sign-up metadata
+  signedUpAt                      DateTime @default(now())
+  signUpIp                        String?
+  signUpIpTrusted                 Boolean?
+  signUpEmailNormalized           String?
+  signUpEmailBase                 String?
+
+  // Sign-up risk scores (0-100, set at sign-up time)
+  signUpRiskScoreBot              Int @default(0) @db.SmallInt
+  signUpRiskScoreFreeTrialAbuse   Int @default(0) @db.SmallInt
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
@@ -298,6 +310,9 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
+  @@index([tenancyId, isAnonymous, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
+  @@index([tenancyId, isAnonymous, signUpIp, signedUpAt], name: "ProjectUser_signUpIp_recent_idx")
+  @@index([tenancyId, isAnonymous, signUpEmailBase, signedUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
   @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
   @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUser_shouldUpdateSequenceId_idx")
 }
