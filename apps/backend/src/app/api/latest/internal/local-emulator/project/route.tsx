@@ -140,7 +140,7 @@ async function getOrCreateCredentials(projectId: string) {
     },
   });
 
-  if (!keySet.secretServerKey || !keySet.superSecretAdminKey) {
+  if (!keySet.publishableClientKey || !keySet.secretServerKey || !keySet.superSecretAdminKey) {
     throw new StackAssertionError("Local emulator key set is missing required keys.", {
       projectId,
       keySetId: keySet.id,
@@ -148,6 +148,7 @@ async function getOrCreateCredentials(projectId: string) {
   }
 
   return {
+    publishableClientKey: keySet.publishableClientKey,
     secretServerKey: keySet.secretServerKey,
     superSecretAdminKey: keySet.superSecretAdminKey,
   };
@@ -177,6 +178,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       project_id: yupString().defined(),
+      publishable_client_key: yupString().defined(),
       secret_server_key: yupString().defined(),
       super_secret_admin_key: yupString().defined(),
       branch_config_override_string: yupString().defined(),
@@ -207,6 +209,7 @@ export const POST = createSmartRouteHandler({
       bodyType: "json" as const,
       body: {
         project_id: projectId,
+        publishable_client_key: credentials.publishableClientKey,
         secret_server_key: credentials.secretServerKey,
         super_secret_admin_key: credentials.superSecretAdminKey,
         branch_config_override_string: JSON.stringify(fileConfig),
