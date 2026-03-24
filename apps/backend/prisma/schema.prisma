@@ -1244,6 +1244,20 @@ model OutgoingRequest {
   @@index([startedFulfillingAt, deduplicationKey])
 }
 
+model BulldozerStorageEngine {
+  id            String   @id @default(uuid()) @db.Uuid
+  keyPath       String[]
+  keyPathParent String[]
+  value         Json
+
+  @@unique([keyPath], map: "BulldozerStorageEngine_keyPath_key")
+  // keyPathParent is a generated column in the SQL migration:
+  // CASE WHEN cardinality(keyPath) > 1 THEN keyPath[1:cardinality(keyPath)-1] ELSE keyPath END
+  // It also has a self-referencing foreign key to keyPath.
+  // Prisma schema cannot currently express this generated column + self-reference setup on arrays.
+  @@index([keyPathParent], map: "BulldozerStorageEngine_keyPathParent_idx")
+}
+
 model DeletedRow {
   id        String @id @default(uuid()) @db.Uuid
   tenancyId String @db.Uuid
