@@ -78,7 +78,7 @@ const handler = createMcpHandler(
   {
     capabilities: {
       tools: {
-        askStackAuth: {
+        ask_stack_auth: {
           description:
             "Ask the Stack Auth documentation assistant any question about Stack Auth (setup, APIs, SDKs, configuration, troubleshooting).",
           parameters: {
