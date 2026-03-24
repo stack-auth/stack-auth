@@ -1,3 +1,4 @@
+import { getEnvBoolean } from "@stackframe/stack-shared/dist/utils/env";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
@@ -14,6 +15,15 @@ type WorkloadOperation =
 const TEST_DB_PREFIX = "stack_bulldozer_db_perf_test";
 const DEFAULT_WARMUP_OPS = 80;
 const DEFAULT_MEASURED_OPS = 500;
+const DEFAULT_LOAD_ROW_COUNT = getEnvBoolean("CI") ? 200_000 : 20_000;
+const LOAD_PREFILL_MAX_MS = 30_000;
+const LOAD_COUNT_QUERY_MAX_MS = 5_000;
+const LOAD_POINT_MUTATION_MAX_MS = 400;
+const LOAD_SET_ROW_AVG_ITERATIONS = 10;
+const LOAD_SET_ROW_AVG_MAX_MS = 50;
+const LOAD_TABLE_DELETE_MAX_MS = 20_000;
+const LOAD_DERIVED_INIT_MAX_MS = 90_000;
+const LOAD_DERIVED_COUNT_QUERY_MAX_MS = 10_000;
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -77,15 +87,6 @@ function createWorkload(seed: number, operationCount: number): WorkloadOperation
   return operations;
 }
 
-function operationCountFromEnv(varName: string, fallback: number): number {
-  const env = Reflect.get(import.meta, "env");
-  const raw = Reflect.get(env, varName);
-  if (typeof raw !== "string") return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-  return Math.floor(parsed);
-}
-
 function logLine(message: string): void {
   console.log(`${message}\n`);
 }
@@ -102,6 +103,53 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
 
   async function readRows(query: SqlQuery) {
     return await sql.unsafe(toQueryableSqlQuery(query));
+  }
+
+  async function measureMs<T>(label: string, fn: () => Promise<T>): Promise<{ result: T, elapsedMs: number }> {
+    const startedAt = performance.now();
+    const result = await fn();
+    const elapsedMs = performance.now() - startedAt;
+    logLine(`[bulldozer-perf] ${label}: ${elapsedMs.toFixed(1)} ms`);
+    return { result, elapsedMs };
+  }
+
+  async function prefillStoredTableInSingleStatement(tableId: string, rowCount: number): Promise<void> {
+    const externalId = `external:${tableId}`;
+    await sql`
+      INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+      SELECT "seedRows"."keyPath", "seedRows"."value"
+      FROM (
+        VALUES
+          (ARRAY[to_jsonb('table'::text), to_jsonb(${externalId}::text)]::jsonb[], 'null'::jsonb),
+          (ARRAY[to_jsonb('table'::text), to_jsonb(${externalId}::text), to_jsonb('storage'::text)]::jsonb[], 'null'::jsonb),
+          (ARRAY[to_jsonb('table'::text), to_jsonb(${externalId}::text), to_jsonb('storage'::text), to_jsonb('rows'::text)]::jsonb[], 'null'::jsonb),
+          (ARRAY[to_jsonb('table'::text), to_jsonb(${externalId}::text), to_jsonb('storage'::text), to_jsonb('metadata'::text)]::jsonb[], '{ "version": 1 }'::jsonb)
+      ) AS "seedRows"("keyPath", "value")
+      UNION ALL
+      SELECT
+        ARRAY[
+          to_jsonb('table'::text),
+          to_jsonb(${externalId}::text),
+          to_jsonb('storage'::text),
+          to_jsonb('rows'::text),
+          to_jsonb(('seed-' || "n"::text)::text)
+        ]::jsonb[],
+        jsonb_build_object(
+          'rowData',
+          jsonb_build_object(
+            'team',
+            CASE
+              WHEN "n" % 4 = 0 THEN 'null'::jsonb
+              WHEN "n" % 4 = 1 THEN to_jsonb('alpha'::text)
+              WHEN "n" % 4 = 2 THEN to_jsonb('beta'::text)
+              ELSE to_jsonb('gamma'::text)
+            END,
+            'value',
+            to_jsonb(("n" % 1000)::int)
+          )
+        )
+      FROM generate_series(1, ${rowCount}) AS "n"
+    `;
   }
 
   async function executeWorkload(
@@ -186,10 +234,8 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
   });
 
   it("reports ops/sec for baseline and composed example setup", async () => {
-    const warmupCount = operationCountFromEnv("STACK_BULLDOZER_PERF_WARMUP_OPS", DEFAULT_WARMUP_OPS);
-    const measuredCount = operationCountFromEnv("STACK_BULLDOZER_PERF_MEASURED_OPS", DEFAULT_MEASURED_OPS);
-    const warmupOperations = createWorkload(111, warmupCount);
-    const measuredOperations = createWorkload(222, measuredCount);
+    const warmupOperations = createWorkload(111, DEFAULT_WARMUP_OPS);
+    const measuredOperations = createWorkload(222, DEFAULT_MEASURED_OPS);
 
     const baseline = await benchmarkScenario({
       name: "stored-table baseline",
@@ -266,10 +312,202 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
 
     const slowdownFactor = baseline.operationsPerSecond / composed.operationsPerSecond;
     logLine(`[bulldozer-perf] slowdown factor (baseline/composed): ${slowdownFactor.toFixed(2)}x`);
-    logLine(`[bulldozer-perf] config: warmup=${warmupCount}, measured=${measuredCount}`);
+    logLine(`[bulldozer-perf] config: warmup=${DEFAULT_WARMUP_OPS}, measured=${DEFAULT_MEASURED_OPS}`);
 
     expect(baseline.operationsPerSecond).toBeGreaterThan(0);
     expect(composed.operationsPerSecond).toBeGreaterThan(0);
   });
+
+  it("load test: prefilled stored table with hundreds of thousands of rows stays functional and fast", async () => {
+    const loadRowCount = DEFAULT_LOAD_ROW_COUNT;
+    const tableId = "load-prefilled-users";
+    const externalTableId = `external:${tableId}`;
+    const table = declareStoredTable<{ value: number, team: string | null }>({ tableId });
+
+    const prefill = await measureMs(`load prefill (${loadRowCount} rows)`, async () => {
+      await prefillStoredTableInSingleStatement(tableId, loadRowCount);
+    });
+    expect(prefill.elapsedMs).toBeLessThan(LOAD_PREFILL_MAX_MS);
+
+    const metadataInitializedRows = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ARRAY[
+          to_jsonb('table'::text),
+          to_jsonb(${externalTableId}::text),
+          to_jsonb('storage'::text),
+          to_jsonb('metadata'::text)
+        ]::jsonb[]
+      ) AS "initialized"
+    `;
+    expect(metadataInitializedRows[0].initialized).toBe(true);
+
+    const listRowsQuery = table.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
+    const countRows = await measureMs("load count via listRowsInGroup", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(listRowsQuery)}) AS "rows"
+      `);
+    });
+    expect(countRows.elapsedMs).toBeLessThan(LOAD_COUNT_QUERY_MAX_MS);
+    expect(Number(countRows.result[0].count)).toBe(loadRowCount);
+
+    const setRowIterationTimes: number[] = [];
+    for (let i = 0; i < LOAD_SET_ROW_AVG_ITERATIONS; i++) {
+      const startedAt = performance.now();
+      await runStatements(table.setRow(
+        `seed-${Math.floor(loadRowCount / 2) + i}`,
+        expr(jsonbLiteral({ team: "beta", value: 777 + i })),
+      ));
+      setRowIterationTimes.push(performance.now() - startedAt);
+    }
+    const setRowAverageMs = setRowIterationTimes.reduce((acc, value) => acc + value, 0) / setRowIterationTimes.length;
+    logLine(`[bulldozer-perf] load setRow average (${LOAD_SET_ROW_AVG_ITERATIONS} iterations): ${setRowAverageMs.toFixed(1)} ms`);
+    expect(setRowAverageMs).toBeLessThanOrEqual(LOAD_SET_ROW_AVG_MAX_MS);
+
+    const pointDelete = await measureMs("load point delete (deleteRow existing)", async () => {
+      await runStatements(table.deleteRow(`seed-${Math.floor(loadRowCount / 2) - 1}`));
+    });
+    expect(pointDelete.elapsedMs).toBeLessThan(LOAD_POINT_MUTATION_MAX_MS);
+
+    const countAfterDelete = await sql.unsafe(`
+      SELECT COUNT(*)::int AS "count"
+      FROM (${toQueryableSqlQuery(listRowsQuery)}) AS "rows"
+    `);
+    expect(Number(countAfterDelete[0].count)).toBe(loadRowCount - 1);
+
+    const groupedByTeam = declareGroupByTable({
+      tableId: "load-prefilled-users-by-team",
+      fromTable: table,
+      groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
+    });
+    const mappedByTeam = declareMapTable({
+      tableId: "load-prefilled-users-mapped",
+      fromTable: groupedByTeam,
+      mapper: { type: "mapper", sql: `
+        ("rowData"->'team') AS "team",
+        (("rowData"->>'value')::int + 10) AS "valuePlusTen",
+        (
+          CASE
+            WHEN (("rowData"->>'value')::int + 10) >= 700 THEN 'high'
+            ELSE 'low'
+          END
+        ) AS "bucket"
+      ` },
+    });
+    const mappedTwice = declareMapTable({
+      tableId: "load-prefilled-users-mapped-twice",
+      fromTable: mappedByTeam,
+      mapper: { type: "mapper", sql: `
+        ("rowData"->'team') AS "team",
+        ("rowData"->'bucket') AS "bucket",
+        ((("rowData"->>'valuePlusTen')::int * 2)) AS "valueScaled"
+      ` },
+    });
+    const groupedByBucket = declareGroupByTable({
+      tableId: "load-prefilled-users-by-bucket",
+      fromTable: mappedTwice,
+      groupBy: { type: "mapper", sql: `"rowData"->'bucket' AS "groupKey"` },
+    });
+
+    const groupInit = await measureMs("load init groupedByTeam", async () => {
+      await runStatements(groupedByTeam.init());
+    });
+    expect(groupInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
+    const mapInit = await measureMs("load init mappedByTeam", async () => {
+      await runStatements(mappedByTeam.init());
+    });
+    expect(mapInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
+    const mapTwiceInit = await measureMs("load init mappedTwice", async () => {
+      await runStatements(mappedTwice.init());
+    });
+    expect(mapTwiceInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
+    const bucketInit = await measureMs("load init groupedByBucket", async () => {
+      await runStatements(groupedByBucket.init());
+    });
+    expect(bucketInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
+
+    const groupedCountQuery = groupedByTeam.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
+    const mappedCountQuery = mappedTwice.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
+    const bucketCountQuery = groupedByBucket.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
+    const derivedCounts = await measureMs("load count derived tables", async () => {
+      return await Promise.all([
+        sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(groupedCountQuery)}) AS "rows"`),
+        sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(mappedCountQuery)}) AS "rows"`),
+        sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(bucketCountQuery)}) AS "rows"`),
+      ]);
+    });
+    expect(derivedCounts.elapsedMs).toBeLessThan(LOAD_DERIVED_COUNT_QUERY_MAX_MS);
+    expect(Number(derivedCounts.result[0][0].count)).toBe(loadRowCount - 1);
+    expect(Number(derivedCounts.result[1][0].count)).toBe(loadRowCount - 1);
+    expect(Number(derivedCounts.result[2][0].count)).toBe(loadRowCount - 1);
+
+    await runStatements(table.setRow(
+      "seed-100000",
+      expr(jsonbLiteral({ team: "delta", value: 999 })),
+    ));
+    const deltaGroupedRows = await readRows(groupedByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(deltaGroupedRows.some((row) => row.rowidentifier === "seed-100000")).toBe(true);
+    const highBucketRows = await readRows(groupedByBucket.listRowsInGroup({
+      groupKey: expr(`to_jsonb('high'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    const highBucketRow = highBucketRows.find((row) => row.rowidentifier === "seed-100000");
+    expect(highBucketRow).toBeDefined();
+    expect(highBucketRow?.rowdata).toEqual({
+      team: "delta",
+      bucket: "high",
+      valueScaled: 2018,
+    });
+
+    const bulkDelete = await measureMs("load full table delete", async () => {
+      await runStatements(table.delete());
+    });
+    expect(bulkDelete.elapsedMs).toBeLessThan(LOAD_TABLE_DELETE_MAX_MS);
+
+    const isInitializedRows = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ARRAY[
+          to_jsonb('table'::text),
+          to_jsonb(${externalTableId}::text),
+          to_jsonb('storage'::text),
+          to_jsonb('metadata'::text)
+        ]::jsonb[]
+      ) AS "initialized"
+    `;
+    expect(isInitializedRows[0].initialized).toBe(false);
+
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+  }, 180_000);
 });
 
