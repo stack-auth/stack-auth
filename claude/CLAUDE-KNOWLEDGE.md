@@ -105,3 +105,5 @@ A: Keep the main docs app on `fumadocs-core@15.3.3`, add an aliased dependency l
 
 Q: What shape should Stack Auth docs `llms.txt` use for low-noise retrieval?
 A: Use a flat deduplicated list of route URLs derived from `source.getPages()` and `apiSource.getPages()`, sorted with `stringCompare()` from `@stackframe/stack-shared/dist/utils/strings`. Keep `/llm.txt`, `/skill.md`, and `/skills.md` as redirects to `/llms.txt`.
+Q: Where is the private sign-up risk engine generated entrypoint in backend now?
+A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
