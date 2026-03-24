@@ -204,6 +204,8 @@ build_qemu_cmd() {
   netdev+=",hostfwd=tcp::${PORT_PREFIX}25-:8080"
   netdev+=",hostfwd=tcp::${PORT_PREFIX}36-:8123"
   netdev+=",hostfwd=tcp::${PORT_PREFIX}37-:9009"
+  # SSH
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}22-:22"
   # App services
   netdev+=",hostfwd=tcp::${PORT_PREFIX}01-:${PORT_PREFIX}01"
   netdev+=",hostfwd=tcp::${PORT_PREFIX}02-:${PORT_PREFIX}02"
@@ -362,6 +364,7 @@ cmd_status() {
   print_service_status "MinIO" "${PORT_PREFIX}21" http /minio/health/live
   print_service_status "QStash" "${PORT_PREFIX}25" http / 401
   print_service_status "ClickHouse" "${PORT_PREFIX}36" http /ping
+  print_service_status "SSH" "${PORT_PREFIX}22" tcp
   exit "$STATUS_FAILED"
 }
 

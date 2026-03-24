@@ -15,7 +15,7 @@ chpasswd:
     stack:stack-emulator
   expire: false
 
-ssh_pwauth: false
+ssh_pwauth: true
 
 package_update: true
 package_upgrade: false
@@ -163,8 +163,8 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-  - systemctl disable --now ssh || true
-  - systemctl mask ssh || true
+  - systemctl unmask ssh || true
+  - systemctl enable --now ssh || true
   - bash /usr/local/bin/install-emulator-containers
   - systemctl daemon-reload
   - systemctl enable stack.service

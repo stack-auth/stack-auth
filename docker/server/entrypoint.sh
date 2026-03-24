@@ -114,12 +114,27 @@ done
 
 # ============= START BACKEND AND DASHBOARD =============
 
+# When running inside the QEMU emulator with a 9p host mount, the guest kernel
+# checks file permissions using guest UIDs. Files on the host are owned by the
+# host user (e.g. UID 501) so the app processes must run as that UID to be able
+# to read/write config files on the host filesystem (including in sticky-bit
+# directories like /tmp).
+HOST_MOUNT_ROOT="${STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT:-}"
+RUN_AS=""
+if [ -n "$HOST_MOUNT_ROOT" ] && [ -d "$HOST_MOUNT_ROOT" ]; then
+  HOST_UID=$(stat -c %u "$HOST_MOUNT_ROOT/etc" 2>/dev/null || echo "")
+  if [ -n "$HOST_UID" ] && [ "$HOST_UID" != "0" ]; then
+    useradd -u "$HOST_UID" -M -s /bin/false -d "$WORK_DIR" hostuser 2>/dev/null || true
+    RUN_AS="gosu $HOST_UID"
+  fi
+fi
+
 echo "Starting backend on port $BACKEND_PORT..."
 cd "$WORK_DIR"
-PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
+$RUN_AS env PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
 
 echo "Starting dashboard on port $DASHBOARD_PORT..."
-PORT=$DASHBOARD_PORT HOSTNAME=0.0.0.0 node apps/dashboard/server.js &
+$RUN_AS env PORT=$DASHBOARD_PORT HOSTNAME=0.0.0.0 node apps/dashboard/server.js &
 
 # Wait for both to finish
 wait -n
