@@ -6,8 +6,8 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   tableId: TableId,
 
   // Query groups and rows
-  listGroups(options: { start: SqlExpression<GK>, end: SqlExpression<GK>, startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ groupKey: GK }>>,
-  listRowsInGroup(options: { groupKey: SqlExpression<GK>, start: SqlExpression<SK>, end: SqlExpression<SK>, startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ rowIdentifier: RowIdentifier, rowSortKey: SK, rowData: RD }>>,
+  listGroups(options: { start: SqlExpression<GK> | "start", end: SqlExpression<GK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ groupKey: GK }>>,
+  listRowsInGroup(options: { groupKey?: SqlExpression<GK>, start: SqlExpression<SK> | "start", end: SqlExpression<SK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ rowIdentifier: RowIdentifier, rowSortKey: SK, rowData: RD }>>,
 
   // Sorting and grouping
   compareGroupKeys(a: SqlExpression<GK>, b: SqlExpression<GK>): SqlExpression<number>,
@@ -34,37 +34,23 @@ export function declareStoredTable<RD extends RowData>(options: {
   deleteRow(rowIdentifier: RowIdentifier): SqlStatement[],
 } {
   const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
-  const ensureRowsHierarchyStatement = createInsertPathRowsStatement(options.tableId, ["rows"]);
 
   // Note that this table has only one group and sort key (null), so all groups and rows are always returned by every filter.
   return {
     tableId: options.tableId,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
-      SELECT 'null'::jsonb AS groupKey
-      WHERE ${startInclusive && endInclusive ? sqlExpression`1 = 1` : sqlExpression`1 = 0`}
-    `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => sqlQuery`
-      SELECT
-        "keyPath"[cardinality("keyPath")] AS rowIdentifier,
-        'null'::jsonb AS rowSortKey,
-        "value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine"
-      WHERE "keyPathParent" = ${getStorageEnginePath(options.tableId, ["rows"])}::text[]
-        AND ${startInclusive && endInclusive ? sqlExpression`1 = 1` : sqlExpression`1 = 0`}
-    `,
     compareGroupKeys: (a, b) => sqlExpression` 0 `,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
-    init: () => [ensureRowsHierarchyStatement, sqlStatement`
-      -- Create metadata about the table.
+    init: () => [sqlStatement`
       INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
-      VALUES (
-        ${getStorageEnginePath(options.tableId, ["metadata"])}::text[],
-        '{ "version": 1 }'::jsonb
-      )
+      VALUES
+      (${getTablePath(options.tableId)}, 'null'::jsonb),
+      (${getStorageEnginePath(options.tableId, [])}, 'null'::jsonb),
+      (${getStorageEnginePath(options.tableId, ["rows"])}, 'null'::jsonb),
+      (${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
     `],
     delete: () => [sqlStatement`
       WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getStorageEnginePath(options.tableId, [])}::text[] AS "path"
+        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
         UNION ALL
         SELECT "BulldozerStorageEngine"."keyPath" AS "path"
         FROM "BulldozerStorageEngine"
@@ -76,8 +62,21 @@ export function declareStoredTable<RD extends RowData>(options: {
     isInitialized: () => sqlExpression`
       EXISTS (
         SELECT 1 FROM "BulldozerStorageEngine"
-        WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::text[]
+        WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
       )
+    `,
+    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+      SELECT 'null'::jsonb AS groupKey
+      WHERE ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    `,
+    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => sqlQuery`
+      SELECT
+        ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
+        'null'::jsonb AS rowSortKey,
+        "value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPathParent" = ${getStorageEnginePath(options.tableId, ["rows"])}::jsonb[]
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
@@ -95,16 +94,15 @@ export function declareStoredTable<RD extends RowData>(options: {
         )
       `;
       return [
-        ensureRowsHierarchyStatement,
         sqlQuery`
           SELECT "value"->'rowData' AS "oldRowData"
           FROM "BulldozerStorageEngine"
-          WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::text[]
+          WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::jsonb[]
         `.toStatement(oldRowsTableName),
         sqlQuery`
           INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
           VALUES (
-            ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::text[],
+            ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::jsonb[],
             ${rowValue}::jsonb
           )
           ON CONFLICT ("keyPath") DO UPDATE
@@ -132,7 +130,7 @@ export function declareStoredTable<RD extends RowData>(options: {
       return [
         sqlQuery`
           DELETE FROM "BulldozerStorageEngine"
-            WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::text[]
+            WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::jsonb[]
             RETURNING "value"->'rowData' AS "oldRowData"
         `.toStatement(deletedRowsTableName),
         sqlQuery`
@@ -151,26 +149,286 @@ export function declareStoredTable<RD extends RowData>(options: {
   };
 }
 
-declare function declareMapTable<
+export function declareGroupByTable<
   GK extends Json,
-  SK extends Json,
   OldRD extends RowData,
   NewRD extends RowData,
 >(options: {
   tableId: TableId,
-  fromTable: Table<GK, SK, OldRD>,
-  mapper: SqlMapper<OldRD, NewRD>,
-}): Table<GK, SK, NewRD>;
+  fromTable: Table<GK, any, OldRD>,
+  groupBy: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: OldRD }, { groupKey: GK }>,
+}): Table<GK, null, NewRD> {
+  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
+  const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
+  const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
+  const isInitializedExpression = sqlExpression`
+    EXISTS (
+      SELECT 1 FROM "BulldozerStorageEngine"
+      WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
+    )
+  `;
 
-declare function declareFilterTable<
+  options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+    const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
+    const groupedChangesTableName = `grouped_changes_${generateSecureRandomString()}`;
+
+    return [
+      sqlQuery`
+        SELECT
+          "changes"."rowIdentifier" AS "rowIdentifier",
+          "changes"."oldRowData" AS "oldRowData",
+          "changes"."newRowData" AS "newRowData",
+          ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+          ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow",
+          "oldGroup"."groupKey" AS "oldGroupKey",
+          "newGroup"."groupKey" AS "newGroupKey"
+        FROM ${fromChangesTable} AS "changes"
+        LEFT JOIN LATERAL (
+          SELECT "mapped"."groupKey"
+          FROM (
+            SELECT ${options.groupBy}
+            FROM (
+              SELECT
+                "changes"."rowIdentifier" AS "rowIdentifier",
+                "changes"."oldRowData" AS "rowData"
+            ) AS "groupByInput"
+          ) AS "mapped"
+        ) AS "oldGroup" ON ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object')
+        LEFT JOIN LATERAL (
+          SELECT "mapped"."groupKey"
+          FROM (
+            SELECT ${options.groupBy}
+            FROM (
+              SELECT
+                "changes"."rowIdentifier" AS "rowIdentifier",
+                "changes"."newRowData" AS "rowData"
+            ) AS "groupByInput"
+          ) AS "mapped"
+        ) AS "newGroup" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
+        WHERE ${isInitializedExpression}
+      `.toStatement(mappedChangesTableName),
+      sqlStatement`
+        INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+        SELECT DISTINCT
+          ${getGroupKeyPath(sqlExpression`"newGroupKey"`)}::jsonb[],
+          'null'::jsonb
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasNewRow"
+        UNION
+        SELECT DISTINCT
+          ${getGroupRowsPath(sqlExpression`"newGroupKey"`)}::jsonb[],
+          'null'::jsonb
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasNewRow"
+        ON CONFLICT ("keyPath") DO NOTHING
+      `,
+      sqlStatement`
+        DELETE FROM "BulldozerStorageEngine" AS "target"
+        USING ${quoteSqlIdentifier(mappedChangesTableName)} AS "changes"
+        WHERE "changes"."hasOldRow"
+          AND "target"."keyPath" = ${getGroupRowPath(
+            sqlExpression`"changes"."oldGroupKey"`,
+            sqlExpression`to_jsonb("changes"."rowIdentifier"::text)`,
+          )}::jsonb[]
+      `,
+      sqlStatement`
+        INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+        SELECT
+          ${getGroupRowPath(
+            sqlExpression`"newGroupKey"`,
+            sqlExpression`to_jsonb("rowIdentifier"::text)`,
+          )}::jsonb[],
+          jsonb_build_object('rowData', "newRowData")
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasNewRow"
+        ON CONFLICT ("keyPath") DO UPDATE
+        SET "value" = EXCLUDED."value"
+      `,
+      sqlStatement`
+        DELETE FROM "BulldozerStorageEngine" AS "staleGroupPath"
+        USING ${quoteSqlIdentifier(mappedChangesTableName)} AS "changes"
+        WHERE "changes"."hasOldRow"
+          AND "staleGroupPath"."keyPath" IN (
+            ${getGroupRowsPath(sqlExpression`"changes"."oldGroupKey"`)}::jsonb[],
+            ${getGroupKeyPath(sqlExpression`"changes"."oldGroupKey"`)}::jsonb[]
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "BulldozerStorageEngine" AS "groupRow"
+            WHERE "groupRow"."keyPathParent" = ${getGroupRowsPath(sqlExpression`"changes"."oldGroupKey"`)}::jsonb[]
+          )
+      `,
+      sqlQuery`
+        SELECT
+          "oldGroupKey" AS "groupKey",
+          "rowIdentifier" AS "rowIdentifier",
+          'null'::jsonb AS "oldRowSortKey",
+          'null'::jsonb AS "newRowSortKey",
+          "oldRowData" AS "oldRowData",
+          CASE
+            WHEN "hasNewRow" AND "oldGroupKey" IS NOT DISTINCT FROM "newGroupKey" THEN "newRowData"
+            ELSE 'null'::jsonb
+          END AS "newRowData"
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasOldRow"
+        UNION ALL
+        SELECT
+          "newGroupKey" AS "groupKey",
+          "rowIdentifier" AS "rowIdentifier",
+          'null'::jsonb AS "oldRowSortKey",
+          'null'::jsonb AS "newRowSortKey",
+          'null'::jsonb AS "oldRowData",
+          "newRowData" AS "newRowData"
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasNewRow"
+          AND (NOT "hasOldRow" OR "oldGroupKey" IS DISTINCT FROM "newGroupKey")
+      `.toStatement(groupedChangesTableName),
+      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(groupedChangesTableName))),
+    ];
+  });
+
+  return {
+    tableId: options.tableId,
+    compareGroupKeys: (a, b) => sqlExpression` 0 `,
+    compareSortKeys: (a, b) => sqlExpression` 0 `,
+    init: () => {
+      const fromTableAllRowsTableName = `from_table_all_rows_${generateSecureRandomString()}`;
+      const fromTableRowsWithGroupKeyTableName = `from_table_rows_with_group_key_${generateSecureRandomString()}`;
+
+      return [
+        sqlStatement`
+          INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+          VALUES
+          (${getTablePath(options.tableId)}, 'null'::jsonb),
+          (${getStorageEnginePath(options.tableId, [])}, 'null'::jsonb),
+          (${getStorageEnginePath(options.tableId, ["groups"])}, 'null'::jsonb),
+          (${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
+        `,
+        options.fromTable.listRowsInGroup({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }).toStatement(fromTableAllRowsTableName),
+        sqlQuery`
+          SELECT
+            "rows"."rowidentifier" AS "rowIdentifier",
+            "rows"."rowdata" AS "rowData",
+            "mapped"."groupKey" AS "groupKey"
+          FROM ${quoteSqlIdentifier(fromTableAllRowsTableName)} AS "rows"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."groupKey"
+            FROM (
+              SELECT ${options.groupBy}
+              FROM (
+                SELECT
+                  "rows"."rowidentifier" AS "rowIdentifier",
+                  "rows"."rowdata" AS "rowData"
+              ) AS "groupByInput"
+            ) AS "mapped"
+          ) AS "mapped" ON true
+        `.toStatement(fromTableRowsWithGroupKeyTableName),
+        sqlStatement`
+          INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+          SELECT DISTINCT
+            ${getGroupKeyPath(sqlExpression`"groupKey"`)}::jsonb[],
+            'null'::jsonb
+          FROM ${quoteSqlIdentifier(fromTableRowsWithGroupKeyTableName)}
+          UNION
+          SELECT DISTINCT
+            ${getGroupRowsPath(sqlExpression`"groupKey"`)}::jsonb[],
+            'null'::jsonb
+          FROM ${quoteSqlIdentifier(fromTableRowsWithGroupKeyTableName)}
+          UNION
+          SELECT
+            ${getGroupRowPath(
+              sqlExpression`"groupKey"`,
+              sqlExpression`to_jsonb("rowIdentifier"::text)`,
+            )}::jsonb[],
+            jsonb_build_object('rowData', "rowData")
+          FROM ${quoteSqlIdentifier(fromTableRowsWithGroupKeyTableName)}
+        `,
+      ];
+    },
+    delete: () => [sqlStatement`
+      WITH RECURSIVE "pathsToDelete" AS (
+        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+        UNION ALL
+        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+        FROM "BulldozerStorageEngine"
+        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+      )
+      DELETE FROM "BulldozerStorageEngine"
+      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+    `],
+    isInitialized: () => sqlExpression`
+      EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
+      )
+    `,
+    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+      SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND EXISTS (
+          SELECT 1
+          FROM "BulldozerStorageEngine" AS "groupRowsPath"
+          INNER JOIN "BulldozerStorageEngine" AS "groupRow"
+            ON "groupRow"."keyPathParent" = "groupRowsPath"."keyPath"
+          WHERE "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+            AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
+        )
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    `,
+    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+      SELECT
+        ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
+        'null'::jsonb AS rowSortKey,
+        "value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"])}::jsonb[]
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    ` : sqlQuery`
+      -- Get all rows from all groups
+      SELECT
+        "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS groupKey,
+        ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
+        'null'::jsonb AS rowSortKey,
+        "rows"."value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine" AS "groupRows"
+      INNER JOIN "BulldozerStorageEngine" AS "rows" ON "rows"."keyPathParent" = "groupRows"."keyPath"
+      WHERE "groupRows"."keyPathParent"[1:cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[])] = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    `,
+    registerRowChangeTrigger: (trigger) => {
+      const id = generateSecureRandomString();
+      triggers.set(id, trigger);
+      return { deregister: () => triggers.delete(id) };
+    },
+  };
+}
+
+export declare function declareMapTable<
   GK extends Json,
-  SK extends Json,
+  OldRD extends RowData,
+  NewRD extends RowData,
+>(options: {
+  tableId: TableId,
+  fromTable: Table<GK, any, OldRD>,
+  mapper: SqlMapper<OldRD, NewRD>,
+}): Table<GK, null, NewRD>;
+
+export declare function declareFilterTable<
+  GK extends Json,
   RD extends RowData,
 >(options: {
   tableId: TableId,
-  fromTable: Table<GK, SK, RD>,
+  fromTable: Table<GK, any, RD>,
   filter: SqlPredicate<RD>,
-}): Table<GK, SK, RD>;
+}): Table<GK, null, RD>;
 
 
 // ====== Executing SQL Statements ======
@@ -201,7 +459,7 @@ export function toExecutableSqlTransaction(statements: SqlStatement[]): string {
 const sqlTemplateLiteral = <T>(type: T) => (strings: TemplateStringsArray, ...values: { sql: string }[]) => ({ type, sql: templateIdentity(strings, ...values.map(v => v.sql)) });
 type SqlStatement = { type: "statement", outputName?: string, sql: string };
 const sqlStatement = sqlTemplateLiteral<"statement">("statement");
-type SqlQuery<R extends void | Iterable<unknown> = void> = { type: "query", outputName?: string, sql: string };
+type SqlQuery<R extends void | Iterable<unknown> = void> = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
 const sqlQuery = (...args: Parameters<ReturnType<typeof sqlTemplateLiteral<"query">>>) => {
   return {
     ...sqlTemplateLiteral<"query">("query")(...args),
@@ -216,6 +474,7 @@ type SqlMapper<OldRD extends RowData, NewRD extends RowData> = { type: "mapper",
 const sqlMapper = sqlTemplateLiteral<"mapper">("mapper");
 type SqlPredicate<RD extends RowData> = { type: "predicate", sql: string };  // ex.: "user_id = 123"
 const sqlPredicate = sqlTemplateLiteral<"predicate">("predicate");
+const sqlArray = (exprs: (SqlExpression<Json> | SqlMapper<any, any>)[]) => ({ type: "expression", sql: `ARRAY[${exprs.map(e => e.sql).join(", ")}]` } as const);
 type RowData = Record<string, Json>;
 type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 type RowIdentifier = string;
@@ -229,10 +488,20 @@ function quoteSqlIdentifier(input: string): SqlExpression<string> {
 function quoteSqlStringLiteral(input: string): SqlExpression<string> {
   return { type: "expression", sql: `'${input.replaceAll("'", "''")}'` };
 }
-function getStorageEnginePath(tableId: TableId, path: string[]): SqlExpression<string[]> {
-  return pathSegmentsToSqlExpression(getStorageEnginePathSegments(tableId, path));
+function quoteSqlJsonbLiteral(input: Json): SqlExpression<Json> {
+  return { type: "expression", sql: `${quoteSqlStringLiteral(JSON.stringify(input)).sql}::jsonb` };
 }
-function getStorageEnginePathSegments(tableId: TableId, path: string[]): string[] {
+function getTablePath(tableId: TableId): SqlExpression<Json[]> {
+  return sqlArray(getTablePathSegments(tableId));
+}
+function getStorageEnginePath(tableId: TableId, path: (string | SqlExpression<Json> | SqlMapper<any, any>)[]): SqlExpression<Json[]> {
+  return sqlArray([
+    ...getTablePathSegments(tableId),
+    quoteSqlJsonbLiteral("storage"),
+    ...path.map(p => typeof p === "string" ? quoteSqlJsonbLiteral(p) : p),
+  ]);
+}
+function getTablePathSegments(tableId: TableId): SqlExpression<Json>[] {
   const tableIdWithParents = [];
   let currentTableId = tableId;
   while (true) {
@@ -245,24 +514,17 @@ function getStorageEnginePathSegments(tableId: TableId, path: string[]): string[
       currentTableId = currentTableId.parent;
     }
   }
-  return [...tableIdWithParents.reverse().flatMap(id => ["table", id]), "storage", ...path];
+  return [
+    ...tableIdWithParents.reverse().flatMap(id => ["table", id]),
+  ].map(id => quoteSqlJsonbLiteral(id));
 }
-function pathSegmentsToSqlExpression(pathSegments: string[]): SqlExpression<string[]> {
-  return {
-    type: "expression",
-    sql: `ARRAY[${pathSegments.map((segment) => quoteSqlStringLiteral(segment).sql).join(", ")}]::text[]`,
-  };
-}
-function createInsertPathRowsStatement(tableId: TableId, path: string[]): SqlStatement {
-  const segments = getStorageEnginePathSegments(tableId, path);
-  const uniquePathSqlExpressions = [...new Set(segments.map((_, idx) => pathSegmentsToSqlExpression(segments.slice(0, idx + 1)).sql))];
-  return {
-    type: "statement",
-    sql: deindent`
-      INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
-      VALUES
-      ${uniquePathSqlExpressions.map((pathSql) => `(${pathSql}, 'null'::jsonb)`).join(",\n")}
-      ON CONFLICT ("keyPath") DO NOTHING
-    `,
-  };
+function singleNullSortKeyRangePredicate(options: {
+  start: SqlExpression<unknown> | "start",
+  end: SqlExpression<unknown> | "end",
+  startInclusive: boolean,
+  endInclusive: boolean,
+}): SqlExpression<boolean> {
+  return (options.start === "start" || options.startInclusive) && (options.end === "end" || options.endInclusive)
+    ? sqlExpression`1 = 1`
+    : sqlExpression`1 = 0`;
 }

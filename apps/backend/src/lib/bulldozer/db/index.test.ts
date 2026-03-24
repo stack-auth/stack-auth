@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareGroupByTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -24,10 +24,14 @@ function getTestDbUrls(): TestDb {
 
 type SqlExpression<T> = { type: "expression", sql: string };
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
-type SqlQuery = { type: "query", sql: string };
+type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
+type SqlMapper = { type: "mapper", sql: string };
 
 function expr<T>(sql: string): SqlExpression<T> {
   return { type: "expression", sql };
+}
+function mapper(sql: string): SqlMapper {
+  return { type: "mapper", sql };
 }
 
 const sqlStringLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`;
@@ -66,6 +70,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       ORDER BY "id"
     `);
   }
+  async function readGroupTriggerAuditRows() {
+    return await sql.unsafe(`
+      SELECT
+        "event",
+        "groupKey"#>>'{}' AS "groupKey",
+        "rowIdentifier",
+        "oldRowData",
+        "newRowData"
+      FROM "BulldozerGroupTriggerAudit"
+      ORDER BY "id"
+    `);
+  }
 
   beforeAll(async () => {
     await adminSql.unsafe(`CREATE DATABASE ${dbName}`);
@@ -73,22 +89,22 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   beforeEach(async () => {
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`DROP TABLE IF EXISTS "BulldozerGroupTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerStorageEngine"`;
     await sql`
       CREATE TABLE "BulldozerStorageEngine" (
         "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-        "keyPath" TEXT[] NOT NULL,
-        "keyPathParent" TEXT[] GENERATED ALWAYS AS (
+        "keyPath" JSONB[] NOT NULL,
+        "keyPathParent" JSONB[] GENERATED ALWAYS AS (
           CASE
-            WHEN cardinality("keyPath") > 1 THEN "keyPath"[1:cardinality("keyPath") - 1]
-            ELSE "keyPath"
+            WHEN cardinality("keyPath") = 0 THEN NULL
+            ELSE "keyPath"[1:cardinality("keyPath") - 1]
           END
         ) STORED,
         "value" JSONB NOT NULL,
         CONSTRAINT "BulldozerStorageEngine_pkey" PRIMARY KEY ("id"),
         CONSTRAINT "BulldozerStorageEngine_keyPath_key" UNIQUE ("keyPath"),
-        CONSTRAINT "BulldozerStorageEngine_keyPath_non_empty_check" CHECK (cardinality("keyPath") >= 1),
         CONSTRAINT "BulldozerStorageEngine_keyPathParent_fkey"
           FOREIGN KEY ("keyPathParent")
           REFERENCES "BulldozerStorageEngine"("keyPath")
@@ -97,9 +113,25 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     `;
     await sql`CREATE INDEX "BulldozerStorageEngine_keyPathParent_idx" ON "BulldozerStorageEngine"("keyPathParent")`;
     await sql`
+      INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+      VALUES
+        (ARRAY[]::jsonb[], 'null'::jsonb),
+        (ARRAY[to_jsonb('table'::text)]::jsonb[], 'null'::jsonb)
+    `;
+    await sql`
       CREATE TABLE "BulldozerTriggerAudit" (
         "id" SERIAL PRIMARY KEY,
         "event" TEXT NOT NULL,
+        "rowIdentifier" TEXT,
+        "oldRowData" JSONB,
+        "newRowData" JSONB
+      )
+    `;
+    await sql`
+      CREATE TABLE "BulldozerGroupTriggerAudit" (
+        "id" SERIAL PRIMARY KEY,
+        "event" TEXT NOT NULL,
+        "groupKey" JSONB,
         "rowIdentifier" TEXT,
         "oldRowData" JSONB,
         "newRowData" JSONB
@@ -133,6 +165,38 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         )
         SELECT
           ${expr<string>(sqlStringLiteral(event))},
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function createGroupedTable() {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    return { fromTable, groupedTable };
+  }
+  function registerGroupAuditTrigger(
+    table: ReturnType<typeof createGroupedTable>["groupedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerGroupTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
           "rowIdentifier",
           "oldRowData",
           "newRowData"
@@ -302,7 +366,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     await runStatements(table.setRow("plain-row", expr(`'{"value":3,"label":"third"}'::jsonb`)));
 
     const rows = await sql.unsafe(`
-      SELECT array_to_string("keyPath", ' -> ') AS "keyPath", "value"
+      SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), ' -> ') AS "keyPath", "value"
       FROM "BulldozerStorageEngine"
       ORDER BY "keyPath"
     `);
@@ -310,6 +374,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
     expect(snapshotRows).toMatchInlineSnapshot(`
       [
+        {
+          "keyPath": "",
+          "value": null,
+        },
         {
           "keyPath": "table",
           "value": null,
@@ -358,8 +426,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     await expect(sql`
       INSERT INTO "BulldozerStorageEngine" ("keyPath", "keyPathParent", "value")
       VALUES (
-        ARRAY['table', 'external:users', 'storage', 'rows', 'x']::text[],
-        ARRAY['table', 'external:users', 'storage']::text[],
+        ARRAY[to_jsonb('table'::text), to_jsonb('external:users'::text), to_jsonb('storage'::text), to_jsonb('rows'::text), to_jsonb('x'::text)]::jsonb[],
+        ARRAY[to_jsonb('table'::text), to_jsonb('external:users'::text), to_jsonb('storage'::text)]::jsonb[],
         '{"rowData":{"value":1}}'::jsonb
       )
     `).rejects.toThrow('cannot insert a non-DEFAULT value into column "keyPathParent"');
@@ -369,7 +437,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     await expect(sql`
       INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
       VALUES (
-        ARRAY['missing-parent', 'child']::text[],
+        ARRAY[to_jsonb('missing-parent'::text), to_jsonb('child'::text)]::jsonb[],
         '{"rowData":{"value":1}}'::jsonb
       )
     `).rejects.toThrow('BulldozerStorageEngine_keyPathParent_fkey');
@@ -467,6 +535,294 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(remainingRows).toHaveLength(0);
+  });
+
+  test("groupBy init backfills groups and rows from source table", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+
+    await runStatements(groupedTable.init());
+
+    const groups = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const alphaRows = await readRows(groupedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
+      { rowIdentifier: "u1", rowData: { team: "alpha", value: 1 } },
+      { rowIdentifier: "u3", rowData: { team: "alpha", value: 3 } },
+    ]);
+
+    const allRows = await readRows(groupedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
+      { groupKey: "alpha", rowIdentifier: "u1" },
+      { groupKey: "alpha", rowIdentifier: "u3" },
+      { groupKey: "beta", rowIdentifier: "u2" },
+    ]);
+  });
+
+  test("groupBy registerRowChangeTrigger emits insert/update/move/delete changes", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerGroupAuditTrigger(groupedTable, "group_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    expect(await readGroupTriggerAuditRows()).toEqual([
+      {
+        event: "group_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", value: 1 },
+      },
+      {
+        event: "group_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", value: 1 },
+        newRowData: { team: "alpha", value: 2 },
+      },
+      {
+        event: "group_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", value: 2 },
+        newRowData: null,
+      },
+      {
+        event: "group_change",
+        groupKey: "beta",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "beta", value: 3 },
+      },
+      {
+        event: "group_change",
+        groupKey: "beta",
+        rowIdentifier: "u1",
+        oldRowData: { team: "beta", value: 3 },
+        newRowData: null,
+      },
+    ]);
+  });
+
+  test("groupBy deregistered trigger no longer runs", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    const handle = registerGroupAuditTrigger(groupedTable, "group_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    handle.deregister();
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+
+    expect(await readGroupTriggerAuditRows()).toEqual([
+      {
+        event: "group_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", value: 1 },
+      },
+    ]);
+  });
+
+  test("groupBy stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    registerGroupAuditTrigger(groupedTable, "group_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+
+    expect(await readBoolean(groupedTable.isInitialized())).toBe(false);
+    expect(await readGroupTriggerAuditRows()).toEqual([]);
+    const groups = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups).toEqual([]);
+  });
+
+  test("groupBy delete cleans up and re-init backfills from source", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(groupedTable.delete());
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+
+    expect(await readBoolean(groupedTable.isInitialized())).toBe(false);
+    const groupsBeforeReinit = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsBeforeReinit).toEqual([]);
+
+    await runStatements(groupedTable.init());
+    const groupsAfterReinit = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterReinit.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+  });
+
+  test("groupBy listGroups returns all groups when the range is inclusive", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"gamma","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init());
+
+    const inclusive = await readRows(groupedTable.listGroups({
+      start: expr(`to_jsonb('beta'::text)`),
+      end: expr(`to_jsonb('gamma'::text)`),
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(inclusive.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta", "gamma"]);
+
+    const exclusive = await readRows(groupedTable.listGroups({
+      start: expr(`to_jsonb('beta'::text)`),
+      end: expr(`to_jsonb('gamma'::text)`),
+      startInclusive: false,
+      endInclusive: false,
+    }));
+    expect(exclusive).toEqual([]);
+  });
+
+  test("groupBy removes empty groups after moves and deletes", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    const groupsAfterInsert = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterInsert.map((row) => row.groupkey)).toEqual(["alpha"]);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    const groupsAfterMove = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterMove.map((row) => row.groupkey)).toEqual(["beta"]);
+
+    await runStatements(fromTable.deleteRow("u1"));
+    const groupsAfterDelete = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterDelete).toEqual([]);
+  });
+
+  test("groupBy listRowsInGroup handles missing groups and exclusive bounds", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    const missingGroupRows = await readRows(groupedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('missing'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(missingGroupRows).toEqual([]);
+
+    const exclusiveRows = await readRows(groupedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: expr(`'null'::jsonb`),
+      end: expr(`'null'::jsonb`),
+      startInclusive: false,
+      endInclusive: false,
+    }));
+    expect(exclusiveRows).toEqual([]);
+
+    const inclusiveRows = await readRows(groupedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: expr(`'null'::jsonb`),
+      end: expr(`'null'::jsonb`),
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(inclusiveRows).toHaveLength(2);
+  });
+
+  test("groupBy multiple triggers run in one transaction", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerGroupAuditTrigger(groupedTable, "group_trigger_a");
+    registerGroupAuditTrigger(groupedTable, "group_trigger_b");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+
+    const rows = await readGroupTriggerAuditRows();
+    expect(rows.map((row) => row.event).sort(stringCompare)).toEqual(["group_trigger_a", "group_trigger_b"]);
+  });
+
+  test("groupBy supports null group keys and transitions away cleanly", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":null,"value":1}'::jsonb`)));
+    const nullGroupRows = await readRows(groupedTable.listRowsInGroup({
+      groupKey: expr(`'null'::jsonb`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(nullGroupRows.map((row) => row.rowidentifier)).toEqual(["u1"]);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    const groups = await readRows(groupedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey)).toEqual(["alpha"]);
   });
 
   test("toExecutableSqlTransaction handles empty statements", async () => {

@@ -5,25 +5,25 @@ export const postMigration = async (sql: Sql) => {
   await sql`
     INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
     VALUES
-      ('00000000-0000-0000-0000-000000000001'::uuid, ARRAY['root']::text[], '{"node":"root"}'::jsonb),
-      ('00000000-0000-0000-0000-000000000002'::uuid, ARRAY['root', 'branch']::text[], '{"node":"branch"}'::jsonb),
-      ('00000000-0000-0000-0000-000000000003'::uuid, ARRAY['root', 'branch', 'leaf']::text[], '{"node":"leaf"}'::jsonb),
-      ('00000000-0000-0000-0000-000000000004'::uuid, ARRAY['root', 'other']::text[], '{"node":"other"}'::jsonb)
+      ('00000000-0000-0000-0000-000000000001'::uuid, ARRAY[to_jsonb('root'::text)]::jsonb[], '{"node":"root"}'::jsonb),
+      ('00000000-0000-0000-0000-000000000002'::uuid, ARRAY[to_jsonb('root'::text), to_jsonb('branch'::text)]::jsonb[], '{"node":"branch"}'::jsonb),
+      ('00000000-0000-0000-0000-000000000003'::uuid, ARRAY[to_jsonb('root'::text), to_jsonb('branch'::text), to_jsonb('leaf'::text)]::jsonb[], '{"node":"leaf"}'::jsonb),
+      ('00000000-0000-0000-0000-000000000004'::uuid, ARRAY[to_jsonb('root'::text), to_jsonb('other'::text)]::jsonb[], '{"node":"other"}'::jsonb)
   `;
 
   const exactRows = await sql`
     SELECT "value"
     FROM "BulldozerStorageEngine"
-    WHERE "keyPath" = ARRAY['root', 'branch', 'leaf']::text[]
+    WHERE "keyPath" = ARRAY[to_jsonb('root'::text), to_jsonb('branch'::text), to_jsonb('leaf'::text)]::jsonb[]
   `;
 
   expect(exactRows).toHaveLength(1);
   expect(exactRows[0].value).toEqual({ node: "leaf" });
 
   const nestedRows = await sql`
-    SELECT array_to_string("keyPath", '.') AS "keyPath"
+    SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
     FROM "BulldozerStorageEngine"
-    WHERE "keyPath"[1:cardinality(ARRAY['root', 'branch']::text[])] = ARRAY['root', 'branch']::text[]
+    WHERE "keyPath"[1:cardinality(ARRAY[to_jsonb('root'::text), to_jsonb('branch'::text)]::jsonb[])] = ARRAY[to_jsonb('root'::text), to_jsonb('branch'::text)]::jsonb[]
     ORDER BY "keyPath"
   `;
 
@@ -33,10 +33,9 @@ export const postMigration = async (sql: Sql) => {
   ]);
 
   const directChildrenRows = await sql`
-    SELECT array_to_string("keyPath", '.') AS "keyPath"
+    SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
     FROM "BulldozerStorageEngine"
-    WHERE "keyPathParent" = ARRAY['root']::text[]
-      AND cardinality("keyPath") = cardinality(ARRAY['root']::text[]) + 1
+    WHERE "keyPathParent" = ARRAY[to_jsonb('root'::text)]::jsonb[]
     ORDER BY "keyPath"
   `;
 
@@ -62,6 +61,18 @@ export const postMigration = async (sql: Sql) => {
     "BulldozerStorageEngine_keyPath_key",
   ]);
 
+  const seededRootRows = await sql`
+    SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
+    FROM "BulldozerStorageEngine"
+    WHERE "keyPath" IN (ARRAY[]::jsonb[], ARRAY[to_jsonb('table'::text)]::jsonb[])
+    ORDER BY cardinality("keyPath")
+  `;
+
+  expect(seededRootRows.map((row) => row.keyPath)).toEqual([
+    "",
+    "table",
+  ]);
+
   const generatedColumnRows = await sql`
     SELECT attname
     FROM pg_attribute
@@ -85,8 +96,8 @@ export const postMigration = async (sql: Sql) => {
     INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "keyPathParent", "value")
     VALUES (
       '00000000-0000-0000-0000-000000000005'::uuid,
-      ARRAY['root', 'mismatch']::text[],
-      ARRAY[]::text[],
+      ARRAY[to_jsonb('root'::text), to_jsonb('mismatch'::text)]::jsonb[],
+      ARRAY[]::jsonb[],
       '{"node":"invalid"}'::jsonb
     )
   `).rejects.toThrow('cannot insert a non-DEFAULT value into column "keyPathParent"');
@@ -95,7 +106,7 @@ export const postMigration = async (sql: Sql) => {
     INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
     VALUES (
       '00000000-0000-0000-0000-000000000006'::uuid,
-      ARRAY['missing-parent', 'child']::text[],
+      ARRAY[to_jsonb('missing-parent'::text), to_jsonb('child'::text)]::jsonb[],
       '{"node":"invalid-fk"}'::jsonb
     )
   `).rejects.toThrow('BulldozerStorageEngine_keyPathParent_fkey');
