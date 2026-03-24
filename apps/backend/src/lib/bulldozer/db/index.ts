@@ -694,24 +694,26 @@ export declare function declareFilterTable<
 
 export declare function declareSortTable<
   GK extends Json,
-  SK extends Json,
+  OldSK extends Json,
+  NewSK extends Json,
   RD extends RowData,
 >(options: {
   tableId: TableId,
-  fromTable: Table<GK, any, RD>,
-  getSortKey: SqlMapper<{ rowData: RD }, { sortKey: SK }>,
-  compareSortKeys: (a: SqlExpression<SK>, b: SqlExpression<SK>) => SqlExpression<number>,
-}): Table<GK, SK, RD>;
+  fromTable: Table<GK, OldSK, RD>,
+  getSortKey: SqlMapper<{ rowIdentifier: RowIdentifier, oldSortKey: OldSK, rowData: RD }, { newSortKey: NewSK }>,
+  compareSortKeys: (a: SqlExpression<NewSK>, b: SqlExpression<NewSK>) => SqlExpression<number>,
+}): Table<GK, NewSK, RD>;
 
 export declare function declareLFoldTable<
   GK extends Json,
   OldRD extends RowData,
   NewRD extends RowData,
+  S extends Json,
 >(options: {
   tableId: TableId,
   fromTable: Table<GK, any, OldRD>,
-  initialState: SqlExpression<Json>,
-  reducer: SqlMapper<{ state: Json, oldRowData: OldRD }, { newState: Json, newRowData: NewRD }>,
+  initialState: SqlExpression<S>,
+  reducer: SqlMapper<{ oldState: S, oldRowData: OldRD }, { newState: S, newRowData: NewRD }>,
 }): Table<GK, null, NewRD>;
 
 
