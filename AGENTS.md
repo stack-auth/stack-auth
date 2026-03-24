@@ -108,6 +108,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Any design components you add or modify in the dashboard, update the Playground page accordingly to showcase the changes.
 - Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
 - Ensure **aggressively** that all code has low coupling and high cohesion. This is really important as it makes sure our code remains consistent and maintainable. Eagerly refactor things into better abstractions and look out for them actively.
+- Always let me know about the tradeoffs and decisions you make while implementing a non-trivial change.
 
 ### Code-related
 - Use ES6 maps instead of records wherever you can.

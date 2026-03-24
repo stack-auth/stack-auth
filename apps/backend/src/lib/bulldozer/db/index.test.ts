@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareGroupByTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -82,6 +82,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       ORDER BY "id"
     `);
   }
+  async function readMapTriggerAuditRows() {
+    return await sql.unsafe(`
+      SELECT
+        "event",
+        "groupKey"#>>'{}' AS "groupKey",
+        "rowIdentifier",
+        "oldRowData",
+        "newRowData"
+      FROM "BulldozerMapTriggerAudit"
+      ORDER BY "id"
+    `);
+  }
 
   beforeAll(async () => {
     await adminSql.unsafe(`CREATE DATABASE ${dbName}`);
@@ -89,6 +101,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   beforeEach(async () => {
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`DROP TABLE IF EXISTS "BulldozerMapTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerGroupTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerStorageEngine"`;
@@ -129,6 +142,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     `;
     await sql`
       CREATE TABLE "BulldozerGroupTriggerAudit" (
+        "id" SERIAL PRIMARY KEY,
+        "event" TEXT NOT NULL,
+        "groupKey" JSONB,
+        "rowIdentifier" TEXT,
+        "oldRowData" JSONB,
+        "newRowData" JSONB
+      )
+    `;
+    await sql`
+      CREATE TABLE "BulldozerMapTriggerAudit" (
         "id" SERIAL PRIMARY KEY,
         "event" TEXT NOT NULL,
         "groupKey" JSONB,
@@ -181,6 +204,53 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTable, groupedTable };
   }
+  function createMappedTable() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const mappedTable = declareMapTable({
+      tableId: "users-by-team-mapped",
+      fromTable: groupedTable,
+      mapper: mapper(`
+        ("rowData"->'team') AS "team",
+        (("rowData"->>'value')::int + 100) AS "mappedValue"
+      `),
+    });
+    return { fromTable, groupedTable, mappedTable };
+  }
+  function createStackedMappedTables() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const mappedTableLevel1 = declareMapTable({
+      tableId: "users-by-team-map-level-1",
+      fromTable: groupedTable,
+      mapper: mapper(`
+        ("rowData"->'team') AS "team",
+        (("rowData"->>'value')::int + 10) AS "valuePlusTen"
+      `),
+    });
+    const mappedTableLevel2 = declareMapTable({
+      tableId: "users-by-team-map-level-2",
+      fromTable: mappedTableLevel1,
+      mapper: mapper(`
+        ("rowData"->'team') AS "team",
+        (("rowData"->>'valuePlusTen')::int * 2) AS "valueScaled",
+        (
+          CASE
+            WHEN (("rowData"->>'valuePlusTen')::int * 2) >= 30 THEN 'high'
+            ELSE 'low'
+          END
+        ) AS "bucket"
+      `),
+    });
+    return { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 };
+  }
+  function createGroupMapGroupPipeline() {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
+    const groupedByBucketTable = declareGroupByTable({
+      tableId: "users-by-bucket",
+      fromTable: mappedTableLevel2,
+      groupBy: mapper(`"rowData"->'bucket' AS "groupKey"`),
+    });
+    return { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable };
+  }
   function registerGroupAuditTrigger(
     table: ReturnType<typeof createGroupedTable>["groupedTable"],
     event: string,
@@ -188,6 +258,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     return table.registerRowChangeTrigger((changesTable) => [
       sqlStatement`
         INSERT INTO "BulldozerGroupTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerMapAuditTrigger(
+    table: ReturnType<typeof createMappedTable>["mappedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
           "groupKey",
           "rowIdentifier",
@@ -823,6 +916,564 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(groups.map((row) => row.groupkey)).toEqual(["alpha"]);
+  });
+
+  test("mapTable init backfills groups and mapped rows", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+
+    const groups = await readRows(mappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const alphaRows = await readRows(mappedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
+      { rowIdentifier: "u1", rowData: { team: "alpha", mappedValue: 101 } },
+      { rowIdentifier: "u3", rowData: { team: "alpha", mappedValue: 103 } },
+    ]);
+
+    const allRows = await readRows(mappedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
+      { groupKey: "alpha", rowIdentifier: "u1" },
+      { groupKey: "alpha", rowIdentifier: "u3" },
+      { groupKey: "beta", rowIdentifier: "u2" },
+    ]);
+  });
+
+  test("mapTable registerRowChangeTrigger emits mapped insert/update/move/delete changes", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    registerMapAuditTrigger(mappedTable, "map_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    expect(await readMapTriggerAuditRows()).toEqual([
+      {
+        event: "map_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", mappedValue: 101 },
+      },
+      {
+        event: "map_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", mappedValue: 101 },
+        newRowData: { team: "alpha", mappedValue: 102 },
+      },
+      {
+        event: "map_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", mappedValue: 102 },
+        newRowData: null,
+      },
+      {
+        event: "map_change",
+        groupKey: "beta",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "beta", mappedValue: 103 },
+      },
+      {
+        event: "map_change",
+        groupKey: "beta",
+        rowIdentifier: "u1",
+        oldRowData: { team: "beta", mappedValue: 103 },
+        newRowData: null,
+      },
+    ]);
+  });
+
+  test("mapTable deregistered trigger no longer runs", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    const handle = registerMapAuditTrigger(mappedTable, "map_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    handle.deregister();
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+
+    expect(await readMapTriggerAuditRows()).toEqual([
+      {
+        event: "map_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", mappedValue: 101 },
+      },
+    ]);
+  });
+
+  test("mapTable stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerMapAuditTrigger(mappedTable, "map_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+
+    expect(await readBoolean(mappedTable.isInitialized())).toBe(false);
+    expect(await readMapTriggerAuditRows()).toEqual([]);
+    const groups = await readRows(mappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups).toEqual([]);
+  });
+
+  test("mapTable delete cleans up and re-init backfills from source", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(mappedTable.delete());
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+
+    expect(await readBoolean(mappedTable.isInitialized())).toBe(false);
+    const groupsBeforeReinit = await readRows(mappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsBeforeReinit).toEqual([]);
+
+    await runStatements(mappedTable.init());
+    const groupsAfterReinit = await readRows(mappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterReinit.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+  });
+
+  test("mapTable listRowsInGroup handles missing groups and exclusive bounds", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+
+    const missingGroupRows = await readRows(mappedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('missing'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(missingGroupRows).toEqual([]);
+
+    const exclusiveRows = await readRows(mappedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: expr(`'null'::jsonb`),
+      end: expr(`'null'::jsonb`),
+      startInclusive: false,
+      endInclusive: false,
+    }));
+    expect(exclusiveRows).toEqual([]);
+  });
+
+  test("stacked map tables propagate updates across multiple mapping layers", async () => {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(mappedTableLevel2.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+
+    const groupsAfterMove = await readRows(mappedTableLevel2.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterMove.map((row) => row.groupkey)).toEqual(["alpha"]);
+
+    const alphaRows = await readRows(mappedTableLevel2.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
+      { rowIdentifier: "u1", rowData: { team: "alpha", valueScaled: 30, bucket: "high" } },
+      { rowIdentifier: "u2", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
+    ]);
+
+    await runStatements(fromTable.deleteRow("u1"));
+    const alphaRowsAfterDelete = await readRows(mappedTableLevel2.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRowsAfterDelete.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "u2", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
+    ]);
+  });
+
+  test("stacked map tables handle special row identifiers and null group transitions", async () => {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(mappedTableLevel2.init());
+
+    const specialIdentifier = "user/one:two space";
+    await runStatements(fromTable.setRow(specialIdentifier, expr(`'{"team":null,"value":3}'::jsonb`)));
+
+    const nullGroupRows = await readRows(mappedTableLevel2.listRowsInGroup({
+      groupKey: expr(`'null'::jsonb`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(nullGroupRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: specialIdentifier, rowData: { team: null, valueScaled: 26, bucket: "low" } },
+    ]);
+
+    await runStatements(fromTable.setRow(specialIdentifier, expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    const groupsAfterMove = await readRows(mappedTableLevel2.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterMove.map((row) => row.groupkey)).toEqual(["alpha"]);
+  });
+
+  test("stacked map tables backfill correctly with staggered initialization order", async () => {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+
+    await runStatements(mappedTableLevel2.init());
+    const allRowsAfterInit = await readRows(mappedTableLevel2.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allRowsAfterInit.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
+      { groupKey: "alpha", rowIdentifier: "u1", rowData: { team: "alpha", valueScaled: 22, bucket: "low" } },
+      { groupKey: "alpha", rowIdentifier: "u3", rowData: { team: "alpha", valueScaled: 26, bucket: "low" } },
+      { groupKey: "beta", rowIdentifier: "u2", rowData: { team: "beta", valueScaled: 24, bucket: "low" } },
+    ]);
+
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
+    const betaRows = await readRows(mappedTableLevel2.listRowsInGroup({
+      groupKey: expr(`to_jsonb('beta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(betaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "u2", rowData: { team: "beta", valueScaled: 60, bucket: "high" } },
+    ]);
+  });
+
+  test("groupBy over a stacked map table stays consistent on mapped key transitions", async () => {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable } = createGroupMapGroupPipeline();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(mappedTableLevel2.init());
+    await runStatements(groupedByBucketTable.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"gamma","value":2}'::jsonb`)));
+
+    const initialGroups = await readRows(groupedByBucketTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(initialGroups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["high", "low"]);
+
+    const lowRows = await readRows(groupedByBucketTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('low'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(lowRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1", "u3"]);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u3"));
+
+    const finalGroups = await readRows(groupedByBucketTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(finalGroups.map((row) => row.groupkey)).toEqual(["high"]);
+
+    const highRows = await readRows(groupedByBucketTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('high'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(highRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1", "u2"]);
+  });
+
+  test("composed trigger fanout works for stacked map and downstream groupBy tables", async () => {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable } = createGroupMapGroupPipeline();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(mappedTableLevel2.init());
+    await runStatements(groupedByBucketTable.init());
+
+    mappedTableLevel2.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral("map_level_2_change"))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+    groupedByBucketTable.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerGroupTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral("bucket_group_change"))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    expect(await readMapTriggerAuditRows()).toEqual([
+      {
+        event: "map_level_2_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
+      },
+      {
+        event: "map_level_2_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
+        newRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
+      },
+      {
+        event: "map_level_2_change",
+        groupKey: "alpha",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
+        newRowData: null,
+      },
+    ]);
+    expect(await readGroupTriggerAuditRows()).toEqual([
+      {
+        event: "bucket_group_change",
+        groupKey: "low",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
+      },
+      {
+        event: "bucket_group_change",
+        groupKey: "low",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
+        newRowData: null,
+      },
+      {
+        event: "bucket_group_change",
+        groupKey: "high",
+        rowIdentifier: "u1",
+        oldRowData: null,
+        newRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
+      },
+      {
+        event: "bucket_group_change",
+        groupKey: "high",
+        rowIdentifier: "u1",
+        oldRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
+        newRowData: null,
+      },
+    ]);
+  });
+
+  test("deep pipeline delete and re-init restores exact source truth", async () => {
+    const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable } = createGroupMapGroupPipeline();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(mappedTableLevel2.init());
+    await runStatements(groupedByBucketTable.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"gamma","value":2}'::jsonb`)));
+
+    await runStatements(groupedByBucketTable.delete());
+    await runStatements(mappedTableLevel2.delete());
+    await runStatements(mappedTableLevel1.delete());
+
+    expect(await readBoolean(mappedTableLevel1.isInitialized())).toBe(false);
+    expect(await readBoolean(mappedTableLevel2.isInitialized())).toBe(false);
+    expect(await readBoolean(groupedByBucketTable.isInitialized())).toBe(false);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u2"));
+    await runStatements(fromTable.setRow("u4", expr(`'{"team":"delta","value":0}'::jsonb`)));
+
+    await runStatements(mappedTableLevel1.init());
+    await runStatements(mappedTableLevel2.init());
+    await runStatements(groupedByBucketTable.init());
+
+    const allBucketRows = await readRows(groupedByBucketTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allBucketRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
+      { groupKey: "high", rowIdentifier: "u1", rowData: { team: "alpha", valueScaled: 30, bucket: "high" } },
+      { groupKey: "low", rowIdentifier: "u3", rowData: { team: "gamma", valueScaled: 24, bucket: "low" } },
+      { groupKey: "low", rowIdentifier: "u4", rowData: { team: "delta", valueScaled: 20, bucket: "low" } },
+    ]);
+  });
+
+  test("parallel map tables on the same grouped source stay isolated", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const mapTableA = declareMapTable({
+      tableId: "users-map-a",
+      fromTable: groupedTable,
+      mapper: mapper(`
+        ("rowData"->'team') AS "team",
+        (("rowData"->>'value')::int + 100) AS "mappedValueA"
+      `),
+    });
+    const mapTableB = declareMapTable({
+      tableId: "users-map-b",
+      fromTable: groupedTable,
+      mapper: mapper(`
+        ("rowData"->'team') AS "team",
+        ((("rowData"->>'value')::int) * -1) AS "mappedValueB"
+      `),
+    });
+
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mapTableA.init());
+    await runStatements(mapTableB.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":6}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u2"));
+
+    const alphaRowsA = await readRows(mapTableA.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRowsA.map((row) => row.rowdata)).toEqual([{ team: "alpha", mappedValueA: 106 }]);
+
+    const alphaRowsB = await readRows(mapTableB.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRowsB.map((row) => row.rowdata)).toEqual([{ team: "alpha", mappedValueB: -6 }]);
+
+    const groupsA = await readRows(mapTableA.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    const groupsB = await readRows(mapTableB.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsA.map((row) => row.groupkey)).toEqual(["alpha"]);
+    expect(groupsB.map((row) => row.groupkey)).toEqual(["alpha"]);
   });
 
   test("toExecutableSqlTransaction handles empty statements", async () => {
