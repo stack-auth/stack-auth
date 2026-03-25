@@ -3,6 +3,7 @@ packages:
   - apps/*
   - examples/*
   - docs
+  - tmp/*
   - sdks/*
   - sdks/implementations/*
 

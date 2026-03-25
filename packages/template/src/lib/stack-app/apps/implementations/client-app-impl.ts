@@ -3097,9 +3097,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           throw new StackAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
         }
 
-        const publishableClientKey = "publishableClientKey" in this._interface.options
-          ? this._interface.options.publishableClientKey
-          : undefined;
+        const publishableClientKey = this._interface.publishableClientKey;
 
         return {
           baseUrl: this._options.baseUrl,
@@ -3112,6 +3110,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
+          ...(this._options.localEmulatorConfigFilePath != null ? { localEmulatorConfigFilePath: this._options.localEmulatorConfigFilePath } : {}),
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {

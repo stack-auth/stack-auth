@@ -141,6 +141,31 @@ async function pullImage(arch: EmulatorArch, opts: { repo?: string; branch?: str
   console.log(`Downloaded: ${dest}`);
 }
 
+function isEmulatorRunning(): boolean {
+  const qemuDir = findQemuDir();
+  try {
+    execFileSync(join(qemuDir, "run-emulator.sh"), ["status"], {
+      stdio: "pipe",
+      cwd: qemuDir,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function startEmulator(arch: EmulatorArch) {
+  const qemuDir = findQemuDir();
+  const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
+
+  if (!existsSync(img)) {
+    console.log("No emulator image found. Pulling latest...");
+    await pullImage(arch);
+  }
+
+  await runScript(qemuDir, "run-emulator.sh", ["start"], { EMULATOR_ARCH: arch });
+}
+
 export function registerEmulatorCommand(program: Command) {
   const emulator = program
     .command("emulator")
@@ -163,20 +188,73 @@ export function registerEmulatorCommand(program: Command) {
     });
 
   emulator
-    .command("run")
+    .command("start")
     .description("Start the emulator (auto-pulls if no image exists)")
     .option("--arch <arch>", "Target architecture")
     .action(async (opts) => {
       const arch = parseEmulatorArch(opts.arch);
-      const qemuDir = findQemuDir();
-      const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
+      await startEmulator(arch);
+    });
 
-      if (!existsSync(img)) {
-        console.log("No emulator image found. Pulling latest...");
-        await pullImage(arch);
+  emulator
+    .command("run")
+    .description("Start the emulator, run a command, and stop the emulator when the command exits")
+    .argument("<cmd>", "Command to run (e.g. \"npm run dev\")")
+    .option("--arch <arch>", "Target architecture")
+    .option("--config-file <path>", "Path to a config file (sets NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH)")
+    .action(async (cmd: string, opts: { arch?: string, configFile?: string }) => {
+      const arch = parseEmulatorArch(opts.arch);
+
+      if (opts.configFile) {
+        const resolvedConfigFile = resolve(opts.configFile);
+        if (!existsSync(resolvedConfigFile)) {
+          throw new CliError(`Config file not found: ${resolvedConfigFile}`);
+        }
       }
 
-      await runScript(qemuDir, "run-emulator.sh", ["start"], { EMULATOR_ARCH: arch });
+      const alreadyRunning = isEmulatorRunning();
+      if (alreadyRunning) {
+        console.log("Emulator already running, reusing existing instance.");
+      } else {
+        await startEmulator(arch);
+      }
+
+      const childEnv: Record<string, string> = { ...process.env as Record<string, string> };
+      if (opts.configFile) {
+        childEnv.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH = resolve(opts.configFile);
+      }
+
+      const child = spawn(cmd, {
+        shell: true,
+        stdio: "inherit",
+        env: childEnv,
+      });
+
+      const cleanup = async () => {
+        if (!alreadyRunning) {
+          console.log("\nStopping emulator...");
+          try {
+            await runEmulatorAction("stop");
+          } catch {
+            // best-effort stop
+          }
+        }
+      };
+
+      child.on("close", (code) => {
+        cleanup().then(() => {
+          process.exit(code ?? 1);
+        }).catch(() => {
+          process.exit(code ?? 1);
+        });
+      });
+
+      process.on("SIGINT", () => {
+        child.kill("SIGINT");
+      });
+      process.on("SIGTERM", () => {
+        child.kill("SIGTERM");
+      });
     });
 
   emulator

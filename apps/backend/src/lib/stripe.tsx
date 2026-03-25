@@ -6,17 +6,19 @@ import type { productSchema } from "@stackframe/stack-shared/dist/schema-fields"
 import { typedIncludes } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { isLocalEmulatorEnabled } from "./local-emulator";
 import Stripe from "stripe";
 import type * as yup from "yup";
 import { createStripeProxy, type StripeOverridesMap } from "./stripe-proxy";
 
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
-const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
+const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && (["development", "test"].includes(getNodeEnvironment()) || isLocalEmulatorEnabled());
 const stackPortPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+const stripeMockPort = Number(getEnvVariable("STACK_STRIPE_MOCK_PORT", `${stackPortPrefix}23`));
 const stripeConfig: Stripe.StripeConfig = useStripeMock ? {
   protocol: "http",
   host: "localhost",
-  port: Number(`${stackPortPrefix}23`),
+  port: stripeMockPort,
 } : {};
 
 /** Product type as stored in Stripe metadata (same as config product schema) */

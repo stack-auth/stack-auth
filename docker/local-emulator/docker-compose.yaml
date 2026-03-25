@@ -19,6 +19,7 @@ services:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}37:9009"    # ClickHouse Native
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01:8101"    # Dashboard
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02:8102"    # Backend
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}14:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}14"    # Mock OAuth
     volumes:
       - postgres-data:/data/postgres
       - redis-data:/data/redis
@@ -36,7 +37,7 @@ services:
       NEXT_PUBLIC_STACK_SVIX_SERVER_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}13"
       STACK_S3_PUBLIC_ENDPOINT: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21/stack-storage"
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}01/handler/email-verification"
-      STACK_OAUTH_MOCK_URL: "http://host.docker.internal:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}14"
+      STACK_OAUTH_MOCK_URL: "http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}14"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

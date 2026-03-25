@@ -209,6 +209,7 @@ build_qemu_cmd() {
   # App services
   netdev+=",hostfwd=tcp::${PORT_PREFIX}01-:${PORT_PREFIX}01"
   netdev+=",hostfwd=tcp::${PORT_PREFIX}02-:${PORT_PREFIX}02"
+  netdev+=",hostfwd=tcp::${PORT_PREFIX}14-:${PORT_PREFIX}14"  # Mock OAuth
 
   QEMU_CMD=(
     "$qemu_bin"
