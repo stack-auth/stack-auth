@@ -71,6 +71,16 @@ class TestBuildHeaders:
         )
         assert uuid_pattern.match(nonce), f"Nonce {nonce!r} is not a valid UUID v4"
 
+    def test_publishable_client_key_header_included(self) -> None:
+        client = SyncAPIClient(project_id="proj_123", secret_server_key="sk_secret", publishable_client_key="pk_test")
+        headers = client._build_headers()
+        assert headers["x-stack-publishable-client-key"] == "pk_test"
+
+    def test_publishable_client_key_header_omitted_when_none(self) -> None:
+        client = SyncAPIClient(project_id="proj_123", secret_server_key="sk_secret")
+        headers = client._build_headers()
+        assert "x-stack-publishable-client-key" not in headers
+
 
 # ---------------------------------------------------------------------------
 # URL building tests

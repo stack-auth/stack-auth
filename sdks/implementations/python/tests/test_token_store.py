@@ -138,6 +138,17 @@ class TestExplicitTokenStore:
         assert store.get_stored_access_token() == "at_1"
         assert store.get_stored_refresh_token() == "rt_1"
 
+    def test_defaults_to_none_without_arguments(self) -> None:
+        store = ExplicitTokenStore()
+        assert store.get_stored_access_token() is None
+        assert store.get_stored_refresh_token() is None
+
+    def test_partial_dict_defaults_missing_to_none(self) -> None:
+        store = resolve_token_store({"access_token": "at"}, "proj")
+        assert isinstance(store, ExplicitTokenStore)
+        assert store.get_stored_access_token() == "at"
+        assert store.get_stored_refresh_token() is None
+
 
 # ---------------------------------------------------------------------------
 # RequestTokenStore

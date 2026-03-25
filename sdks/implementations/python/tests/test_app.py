@@ -64,6 +64,14 @@ class TestStackServerAppConstruction:
         )
         assert app is not None
 
+    def test_constructs_with_publishable_client_key(self) -> None:
+        app = StackServerApp(project_id="proj", secret_server_key="sk", publishable_client_key="pk_test")
+        assert app is not None
+
+    def test_async_constructs_with_publishable_client_key(self) -> None:
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk", publishable_client_key="pk_test")
+        assert app is not None
+
     def test_context_manager(self) -> None:
         with StackServerApp(project_id="proj", secret_server_key="sk") as app:
             assert app is not None
