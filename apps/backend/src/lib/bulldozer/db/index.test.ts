@@ -845,6 +845,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(groupsAfterDelete).toEqual([]);
   });
 
+  test("groupBy deletes stale group paths from storage", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    const staleGroupPaths = await sql`
+      SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPath"[1:4] = ARRAY[
+        to_jsonb('table'::text),
+        to_jsonb('external:users-by-team'::text),
+        to_jsonb('storage'::text),
+        to_jsonb('groups'::text)
+      ]::jsonb[]
+      AND cardinality("keyPath") > 4
+      ORDER BY "keyPath"
+    `;
+    expect(staleGroupPaths).toEqual([]);
+  });
+
   test("groupBy listRowsInGroup handles missing groups and exclusive bounds", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
     await runStatements(fromTable.init());
@@ -878,6 +901,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(inclusiveRows).toHaveLength(2);
+  });
+
+  test("groupBy listRowsInGroup (all groups) handles 'rows' collisions in group key and row identifier", async () => {
+    const { fromTable, groupedTable } = createGroupedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    const allRows = await readRows(groupedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    const normalizedRows = allRows
+      .map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata }))
+      .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`));
+
+    expect(normalizedRows).toEqual([
+      { groupKey: "alpha", rowIdentifier: "rows", rowData: { team: "alpha", value: 2 } },
+      { groupKey: "rows", rowIdentifier: "u1", rowData: { team: "rows", value: 1 } },
+    ]);
   });
 
   test("groupBy multiple triggers run in one transaction", async () => {
@@ -1103,6 +1149,54 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: false,
     }));
     expect(exclusiveRows).toEqual([]);
+  });
+
+  test("mapTable listRowsInGroup (all groups) handles 'rows' collisions in group key and row identifier", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    const allRows = await readRows(mappedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    const normalizedRows = allRows
+      .map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata }))
+      .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`));
+
+    expect(normalizedRows).toEqual([
+      { groupKey: "alpha", rowIdentifier: "rows", rowData: { team: "alpha", mappedValue: 102 } },
+      { groupKey: "rows", rowIdentifier: "u1", rowData: { team: "rows", mappedValue: 101 } },
+    ]);
+  });
+
+  test("mapTable deletes stale group paths from storage", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    const staleGroupPaths = await sql`
+      SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPath"[1:4] = ARRAY[
+        to_jsonb('table'::text),
+        to_jsonb('external:users-by-team-mapped'::text),
+        to_jsonb('storage'::text),
+        to_jsonb('groups'::text)
+      ]::jsonb[]
+      AND cardinality("keyPath") > 4
+      ORDER BY "keyPath"
+    `;
+    expect(staleGroupPaths).toEqual([]);
   });
 
   test("stacked map tables propagate updates across multiple mapping layers", async () => {

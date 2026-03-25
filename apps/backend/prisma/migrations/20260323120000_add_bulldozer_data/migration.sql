@@ -1,6 +1,6 @@
 -- CreateTable
 CREATE TABLE "BulldozerStorageEngine" (
-    "id" UUID NOT NULL,
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "keyPath" JSONB[] NOT NULL,
     "keyPathParent" JSONB[] GENERATED ALWAYS AS (
       CASE

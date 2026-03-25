@@ -7,7 +7,7 @@ This file provides guidance to coding agents when working with code in this repo
 ### Essential Commands
 - **Install dependencies**: `pnpm install`
 - **Run tests**: `pnpm test run` (uses Vitest). You can filter with `pnpm test run <file-filters>`. The `run` is important to not trigger watch mode
-- **Lint code**: `pnpm lint`. `pnpm lint --fix` will fix some of the linting errors, prefer that over fixing them manually.
+- **Lint code**: `pnpm lint`. `pnpm lint --fix` will fix some of the linting errors, prefer that over fixing them manually. Use `pnpm -C <package> lint` to lint a specific package.
 - **Type check**: `pnpm typecheck`
 
 #### Extra commands
