@@ -142,8 +142,9 @@ class TestListUsers:
         assert len(result.items) == 0
         # Verify query params were sent
         request = route.calls[0].request
-        assert b"cursor=abc" in request.url.raw_params
-        assert b"limit=10" in request.url.raw_params
+        assert "cursor" in dict(request.url.params)
+        assert request.url.params["cursor"] == "abc"
+        assert request.url.params["limit"] == "10"
 
 
 # ---------------------------------------------------------------------------
