@@ -17,6 +17,7 @@ from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
+from stack_auth.models.permissions import TeamPermission
 from stack_auth.models.sessions import ActiveSession
 from stack_auth.models.teams import ServerTeam, TeamInvitation, TeamMemberProfile
 from stack_auth.models.users import ServerUser
@@ -407,6 +408,129 @@ class StackServerApp:
         profiles = self.list_team_member_profiles(team_id)
         return next((p for p in profiles if p.user_id == user_id), None)
 
+    # -- permissions ---------------------------------------------------------
+
+    def grant_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> None:
+        """Grant a permission to a user.
+
+        Args:
+            user_id: The user to grant the permission to.
+            permission_id: The permission to grant.
+            team_id: If provided, grants at team scope; otherwise project scope.
+        """
+        body = _build_params(
+            team_id=team_id, permission_id=permission_id
+        )
+        self._client.request(
+            "POST", f"/users/{user_id}/permissions", body=body
+        )
+
+    def revoke_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> None:
+        """Revoke a permission from a user.
+
+        Args:
+            user_id: The user to revoke the permission from.
+            permission_id: The permission to revoke.
+            team_id: If provided, revokes at team scope; otherwise project scope.
+        """
+        params = _build_params(team_id=team_id)
+        self._client.request(
+            "DELETE",
+            f"/users/{user_id}/permissions/{permission_id}",
+            params=params,
+        )
+
+    def list_permissions(
+        self,
+        user_id: str,
+        *,
+        team_id: Optional[str] = None,
+        direct: Optional[bool] = None,
+    ) -> list[TeamPermission]:
+        """List permissions for a user.
+
+        Args:
+            user_id: The user whose permissions to list.
+            team_id: Filter by team scope.
+            direct: If ``True``, only return directly assigned permissions.
+
+        Returns:
+            A list of :class:`TeamPermission` objects.
+        """
+        params = _build_params(team_id=team_id, direct=direct)
+        data = self._client.request(
+            "GET", f"/users/{user_id}/permissions", params=params
+        )
+        return [
+            TeamPermission.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def has_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> bool:
+        """Check if a user has a specific permission.
+
+        Args:
+            user_id: The user to check.
+            permission_id: The permission to check for.
+            team_id: Check at team scope if provided.
+
+        Returns:
+            ``True`` if the user has the permission, ``False`` otherwise.
+        """
+        params = _build_params(
+            team_id=team_id, permission_id=permission_id
+        )
+        data = self._client.request(
+            "GET", f"/users/{user_id}/permissions", params=params
+        )
+        return len((data or {}).get("items", [])) > 0
+
+    def get_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> TeamPermission | None:
+        """Get a specific permission for a user.
+
+        Args:
+            user_id: The user to check.
+            permission_id: The permission to look up.
+            team_id: Check at team scope if provided.
+
+        Returns:
+            The :class:`TeamPermission` if found, or ``None``.
+        """
+        params = _build_params(
+            team_id=team_id, permission_id=permission_id
+        )
+        data = self._client.request(
+            "GET", f"/users/{user_id}/permissions", params=params
+        )
+        items = (data or {}).get("items", [])
+        if not items:
+            return None
+        return TeamPermission.model_validate(items[0])
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -790,3 +914,87 @@ class AsyncStackServerApp:
         """
         profiles = await self.list_team_member_profiles(team_id)
         return next((p for p in profiles if p.user_id == user_id), None)
+
+    # -- permissions ---------------------------------------------------------
+
+    async def grant_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> None:
+        """Grant a permission to a user."""
+        body = _build_params(
+            team_id=team_id, permission_id=permission_id
+        )
+        await self._client.request(
+            "POST", f"/users/{user_id}/permissions", body=body
+        )
+
+    async def revoke_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> None:
+        """Revoke a permission from a user."""
+        params = _build_params(team_id=team_id)
+        await self._client.request(
+            "DELETE",
+            f"/users/{user_id}/permissions/{permission_id}",
+            params=params,
+        )
+
+    async def list_permissions(
+        self,
+        user_id: str,
+        *,
+        team_id: Optional[str] = None,
+        direct: Optional[bool] = None,
+    ) -> list[TeamPermission]:
+        """List permissions for a user."""
+        params = _build_params(team_id=team_id, direct=direct)
+        data = await self._client.request(
+            "GET", f"/users/{user_id}/permissions", params=params
+        )
+        return [
+            TeamPermission.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def has_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> bool:
+        """Check if a user has a specific permission."""
+        params = _build_params(
+            team_id=team_id, permission_id=permission_id
+        )
+        data = await self._client.request(
+            "GET", f"/users/{user_id}/permissions", params=params
+        )
+        return len((data or {}).get("items", [])) > 0
+
+    async def get_permission(
+        self,
+        user_id: str,
+        permission_id: str,
+        *,
+        team_id: Optional[str] = None,
+    ) -> TeamPermission | None:
+        """Get a specific permission for a user."""
+        params = _build_params(
+            team_id=team_id, permission_id=permission_id
+        )
+        data = await self._client.request(
+            "GET", f"/users/{user_id}/permissions", params=params
+        )
+        items = (data or {}).get("items", [])
+        if not items:
+            return None
+        return TeamPermission.model_validate(items[0])
