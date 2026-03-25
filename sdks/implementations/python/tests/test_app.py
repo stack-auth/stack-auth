@@ -1028,3 +1028,296 @@ class TestAsyncGetTeamByApiKey:
         team = await app.get_team_by_api_key("invalid")
         assert team is None
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Team membership test data
+# ---------------------------------------------------------------------------
+
+TEAM_MEMBER_PROFILE_JSON = {
+    "userId": "user-1",
+    "displayName": "Alice",
+    "profileImageUrl": None,
+}
+
+TEAM_MEMBER_PROFILE_JSON_2 = {
+    "userId": "user-2",
+    "displayName": "Bob",
+    "profileImageUrl": "https://img.example.com/bob.png",
+}
+
+TEAM_MEMBER_PROFILES_LIST_JSON = {
+    "items": [TEAM_MEMBER_PROFILE_JSON, TEAM_MEMBER_PROFILE_JSON_2]
+}
+
+INVITATION_JSON = {
+    "id": "inv-1",
+    "recipientEmail": "alice@example.com",
+    "expiresAtMillis": 1700100000000,
+}
+
+INVITATION_JSON_2 = {
+    "id": "inv-2",
+    "recipientEmail": "bob@example.com",
+    "expiresAtMillis": 1700200000000,
+}
+
+INVITATIONS_LIST_JSON = {"items": [INVITATION_JSON, INVITATION_JSON_2]}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - add_team_member / remove_team_member
+# ---------------------------------------------------------------------------
+
+
+class TestAddTeamMember:
+    @respx.mock
+    def test_add_team_member(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/team-memberships/team-1/user-1"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.add_team_member("team-1", "user-1")
+        assert result is None
+        assert route.called
+
+
+class TestRemoveTeamMember:
+    @respx.mock
+    def test_remove_team_member(self) -> None:
+        route = respx.delete(
+            f"{API_PREFIX}/team-memberships/team-1/user-1"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.remove_team_member("team-1", "user-1")
+        assert result is None
+        assert route.called
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - team invitations
+# ---------------------------------------------------------------------------
+
+
+class TestSendTeamInvitation:
+    @respx.mock
+    def test_send_team_invitation_basic(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/team-invitations/send-code"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.send_team_invitation("team-1", "a@b.com")
+        assert result is None
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["email"] == "a@b.com"
+        assert body["team_id"] == "team-1"
+
+    @respx.mock
+    def test_send_team_invitation_with_callback_url(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/team-invitations/send-code"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.send_team_invitation(
+            "team-1", "a@b.com", callback_url="https://example.com/accept"
+        )
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["callback_url"] == "https://example.com/accept"
+
+
+class TestListTeamInvitations:
+    @respx.mock
+    def test_list_team_invitations(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/team-1/invitations").mock(
+            return_value=httpx.Response(200, json=INVITATIONS_LIST_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        invitations = app.list_team_invitations("team-1")
+        assert len(invitations) == 2
+        assert invitations[0].id == "inv-1"
+        assert invitations[0].recipient_email == "alice@example.com"
+        assert invitations[1].id == "inv-2"
+
+
+class TestRevokeTeamInvitation:
+    @respx.mock
+    def test_revoke_team_invitation(self) -> None:
+        route = respx.delete(
+            f"{API_PREFIX}/teams/team-1/invitations/inv-1"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.revoke_team_invitation("team-1", "inv-1")
+        assert result is None
+        assert route.called
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - team member profiles
+# ---------------------------------------------------------------------------
+
+
+class TestListTeamMemberProfiles:
+    @respx.mock
+    def test_list_team_member_profiles(self) -> None:
+        respx.get(f"{API_PREFIX}/team-member-profiles").mock(
+            return_value=httpx.Response(
+                200, json=TEAM_MEMBER_PROFILES_LIST_JSON
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        profiles = app.list_team_member_profiles("team-1")
+        assert len(profiles) == 2
+        assert profiles[0].user_id == "user-1"
+        assert profiles[0].display_name == "Alice"
+        assert profiles[1].user_id == "user-2"
+
+
+class TestGetTeamMemberProfile:
+    @respx.mock
+    def test_get_team_member_profile_found(self) -> None:
+        respx.get(f"{API_PREFIX}/team-member-profiles").mock(
+            return_value=httpx.Response(
+                200, json=TEAM_MEMBER_PROFILES_LIST_JSON
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        profile = app.get_team_member_profile("team-1", "user-2")
+        assert profile is not None
+        assert profile.user_id == "user-2"
+        assert profile.display_name == "Bob"
+
+    @respx.mock
+    def test_get_team_member_profile_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/team-member-profiles").mock(
+            return_value=httpx.Response(
+                200, json=TEAM_MEMBER_PROFILES_LIST_JSON
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        profile = app.get_team_member_profile("team-1", "nonexistent")
+        assert profile is None
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - membership, invitations, profiles
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncAddTeamMember:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_add_team_member(self) -> None:
+        respx.post(f"{API_PREFIX}/team-memberships/team-1/user-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.add_team_member("team-1", "user-1")
+        assert result is None
+        await app.aclose()
+
+
+class TestAsyncRemoveTeamMember:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_remove_team_member(self) -> None:
+        respx.delete(f"{API_PREFIX}/team-memberships/team-1/user-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.remove_team_member("team-1", "user-1")
+        assert result is None
+        await app.aclose()
+
+
+class TestAsyncSendTeamInvitation:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_send_team_invitation(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/team-invitations/send-code"
+        ).mock(return_value=httpx.Response(200))
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.send_team_invitation("team-1", "a@b.com")
+        assert result is None
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["email"] == "a@b.com"
+        assert body["team_id"] == "team-1"
+        await app.aclose()
+
+
+class TestAsyncListTeamInvitations:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_team_invitations(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/team-1/invitations").mock(
+            return_value=httpx.Response(200, json=INVITATIONS_LIST_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        invitations = await app.list_team_invitations("team-1")
+        assert len(invitations) == 2
+        assert invitations[0].id == "inv-1"
+        await app.aclose()
+
+
+class TestAsyncRevokeTeamInvitation:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_revoke_team_invitation(self) -> None:
+        respx.delete(f"{API_PREFIX}/teams/team-1/invitations/inv-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.revoke_team_invitation("team-1", "inv-1")
+        assert result is None
+        await app.aclose()
+
+
+class TestAsyncListTeamMemberProfiles:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_team_member_profiles(self) -> None:
+        respx.get(f"{API_PREFIX}/team-member-profiles").mock(
+            return_value=httpx.Response(
+                200, json=TEAM_MEMBER_PROFILES_LIST_JSON
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        profiles = await app.list_team_member_profiles("team-1")
+        assert len(profiles) == 2
+        assert profiles[0].user_id == "user-1"
+        await app.aclose()
+
+
+class TestAsyncGetTeamMemberProfile:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_team_member_profile_found(self) -> None:
+        respx.get(f"{API_PREFIX}/team-member-profiles").mock(
+            return_value=httpx.Response(
+                200, json=TEAM_MEMBER_PROFILES_LIST_JSON
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        profile = await app.get_team_member_profile("team-1", "user-2")
+        assert profile is not None
+        assert profile.display_name == "Bob"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_team_member_profile_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/team-member-profiles").mock(
+            return_value=httpx.Response(
+                200, json=TEAM_MEMBER_PROFILES_LIST_JSON
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        profile = await app.get_team_member_profile("team-1", "nonexistent")
+        assert profile is None
+        await app.aclose()
