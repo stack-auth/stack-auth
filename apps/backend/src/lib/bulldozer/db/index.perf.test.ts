@@ -546,7 +546,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    const highBucketRow = highBucketRows.find((row) => row.rowidentifier === "seed-100000");
+    const highBucketRow = highBucketRows.find((row) => row.rowidentifier === "seed-100000:1:1");
     expect(highBucketRow).toBeDefined();
     expect(highBucketRow?.rowdata).toEqual({
       team: "delta",

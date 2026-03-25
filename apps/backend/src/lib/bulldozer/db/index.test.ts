@@ -1055,8 +1055,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
-      { rowIdentifier: "u1", rowData: { team: "alpha", mappedValue: 101 } },
-      { rowIdentifier: "u3", rowData: { team: "alpha", mappedValue: 103 } },
+      { rowIdentifier: "u1:1", rowData: { team: "alpha", mappedValue: 101 } },
+      { rowIdentifier: "u3:1", rowData: { team: "alpha", mappedValue: 103 } },
     ]);
 
     const allRows = await readRows(mappedTable.listRowsInGroup({
@@ -1066,9 +1066,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(allRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
-      { groupKey: "alpha", rowIdentifier: "u1" },
-      { groupKey: "alpha", rowIdentifier: "u3" },
-      { groupKey: "beta", rowIdentifier: "u2" },
+      { groupKey: "alpha", rowIdentifier: "u1:1" },
+      { groupKey: "alpha", rowIdentifier: "u3:1" },
+      { groupKey: "beta", rowIdentifier: "u2:1" },
     ]);
   });
 
@@ -1088,39 +1088,69 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       {
         event: "map_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1",
         oldRowData: null,
         newRowData: { team: "alpha", mappedValue: 101 },
       },
       {
         event: "map_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1",
         oldRowData: { team: "alpha", mappedValue: 101 },
         newRowData: { team: "alpha", mappedValue: 102 },
       },
       {
         event: "map_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1",
         oldRowData: { team: "alpha", mappedValue: 102 },
         newRowData: null,
       },
       {
         event: "map_change",
         groupKey: "beta",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1",
         oldRowData: null,
         newRowData: { team: "beta", mappedValue: 103 },
       },
       {
         event: "map_change",
         groupKey: "beta",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1",
         oldRowData: { team: "beta", mappedValue: 103 },
         newRowData: null,
       },
     ]);
+  });
+
+  test("mapTable uses flatMap-style rowIdentifier and skips unchanged updates", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    registerMapAuditTrigger(mappedTable, "map_change");
+
+    await runStatements(fromTable.setRow("user:1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("user:1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+
+    expect(await readMapTriggerAuditRows()).toEqual([
+      {
+        event: "map_change",
+        groupKey: "alpha",
+        rowIdentifier: "user:1:1",
+        oldRowData: null,
+        newRowData: { team: "alpha", mappedValue: 101 },
+      },
+    ]);
+
+    const alphaRows = await readRows(mappedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["user:1:1"]);
   });
 
   test("mapTable deregistered trigger no longer runs", async () => {
@@ -1138,7 +1168,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       {
         event: "map_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1",
         oldRowData: null,
         newRowData: { team: "alpha", mappedValue: 101 },
       },
@@ -1236,8 +1266,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`));
 
     expect(normalizedRows).toEqual([
-      { groupKey: "alpha", rowIdentifier: "rows", rowData: { team: "alpha", mappedValue: 102 } },
-      { groupKey: "rows", rowIdentifier: "u1", rowData: { team: "rows", mappedValue: 101 } },
+      { groupKey: "alpha", rowIdentifier: "rows:1", rowData: { team: "alpha", mappedValue: 102 } },
+      { groupKey: "rows", rowIdentifier: "u1:1", rowData: { team: "rows", mappedValue: 101 } },
     ]);
   });
 
@@ -1263,6 +1293,128 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       ORDER BY "keyPath"
     `;
     expect(staleGroupPaths).toEqual([]);
+  });
+
+  test("mapTable matches equivalent single-row flatMap for rows, groups, and trigger payloads", async () => {
+    const { fromTable, groupedTable, mappedTable } = createMappedTable();
+    const equivalentFlatMapTable = declareFlatMapTable({
+      tableId: "users-by-team-mapped-equivalent-flatmap",
+      fromTable: groupedTable,
+      mapper: mapper(`
+        jsonb_build_array(
+          COALESCE(
+            (
+              SELECT to_jsonb("mapped")
+              FROM (
+                SELECT
+                  ("rowData"->'team') AS "team",
+                  (("rowData"->>'value')::int + 100) AS "mappedValue"
+              ) AS "mapped"
+            ),
+            'null'::jsonb
+          )
+        ) AS "rows"
+      `),
+    });
+
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(mappedTable.init());
+    await runStatements(equivalentFlatMapTable.init());
+
+    mappedTable.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral("map"))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+    equivalentFlatMapTable.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral("flat"))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    const mapGroups = await readRows(mappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    const flatGroups = await readRows(equivalentFlatMapTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(mapGroups).toEqual(flatGroups);
+
+    const normalizeRows = (rows: Iterable<Record<string, unknown>>) => [...rows]
+      .map((row) => ({
+        groupKey: (Reflect.get(row, "groupkey") as string | null),
+        rowIdentifier: String(Reflect.get(row, "rowidentifier")),
+        rowData: Reflect.get(row, "rowdata"),
+      }))
+      .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`));
+    const mapRows = normalizeRows(await readRows(mappedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    })));
+    const flatRows = normalizeRows(await readRows(equivalentFlatMapTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    })));
+    expect(mapRows).toEqual(flatRows);
+
+    const normalizeAuditRows = (rows: Iterable<Record<string, unknown>>) => [...rows]
+      .map((row) => ({
+        groupKey: (Reflect.get(row, "groupKey") as string | null),
+        rowIdentifier: String(Reflect.get(row, "rowIdentifier")),
+        oldRowData: Reflect.get(row, "oldRowData"),
+        newRowData: Reflect.get(row, "newRowData"),
+      }))
+      .sort((a, b) => stringCompare(
+        `${a.groupKey}:${a.rowIdentifier}:${JSON.stringify(a.oldRowData)}:${JSON.stringify(a.newRowData)}`,
+        `${b.groupKey}:${b.rowIdentifier}:${JSON.stringify(b.oldRowData)}:${JSON.stringify(b.newRowData)}`,
+      ));
+    const allAuditRows = await readMapTriggerAuditRows();
+    const mapAudit = normalizeAuditRows(allAuditRows.filter((row) => row.event === "map"));
+    const flatAudit = normalizeAuditRows(allAuditRows.filter((row) => row.event === "flat"));
+    expect(mapAudit).toEqual(flatAudit);
   });
 
   test("flatMapTable init backfills fan-out rows and skips empty expansions", async () => {
@@ -1520,7 +1672,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(baseRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: "u2:1", rowData: { team: "beta", kind: "base", mappedValuePlusOne: 103 } },
+      { rowIdentifier: "u2:1:1", rowData: { team: "beta", kind: "base", mappedValuePlusOne: 103 } },
     ]);
 
     const doubleRows = await readRows(groupedByKind.listRowsInGroup({
@@ -1531,7 +1683,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(doubleRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: "u2:2", rowData: { team: "beta", kind: "double", mappedValuePlusOne: 5 } },
+      { rowIdentifier: "u2:2:1", rowData: { team: "beta", kind: "double", mappedValuePlusOne: 5 } },
     ]);
   });
 
@@ -1563,8 +1715,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
-      { rowIdentifier: "u1", rowData: { team: "alpha", valueScaled: 30, bucket: "high" } },
-      { rowIdentifier: "u2", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
+      { rowIdentifier: "u1:1:1", rowData: { team: "alpha", valueScaled: 30, bucket: "high" } },
+      { rowIdentifier: "u2:1:1", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
     ]);
 
     await runStatements(fromTable.deleteRow("u1"));
@@ -1576,7 +1728,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(alphaRowsAfterDelete.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: "u2", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
+      { rowIdentifier: "u2:1:1", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
     ]);
   });
 
@@ -1598,7 +1750,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(nullGroupRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: specialIdentifier, rowData: { team: null, valueScaled: 26, bucket: "low" } },
+      { rowIdentifier: `${specialIdentifier}:1:1`, rowData: { team: null, valueScaled: 26, bucket: "low" } },
     ]);
 
     await runStatements(fromTable.setRow(specialIdentifier, expr(`'{"team":"alpha","value":3}'::jsonb`)));
@@ -1630,9 +1782,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(allRowsAfterInit.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
-      { groupKey: "alpha", rowIdentifier: "u1", rowData: { team: "alpha", valueScaled: 22, bucket: "low" } },
-      { groupKey: "alpha", rowIdentifier: "u3", rowData: { team: "alpha", valueScaled: 26, bucket: "low" } },
-      { groupKey: "beta", rowIdentifier: "u2", rowData: { team: "beta", valueScaled: 24, bucket: "low" } },
+      { groupKey: "alpha", rowIdentifier: "u1:1:1", rowData: { team: "alpha", valueScaled: 22, bucket: "low" } },
+      { groupKey: "alpha", rowIdentifier: "u3:1:1", rowData: { team: "alpha", valueScaled: 26, bucket: "low" } },
+      { groupKey: "beta", rowIdentifier: "u2:1:1", rowData: { team: "beta", valueScaled: 24, bucket: "low" } },
     ]);
 
     await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
@@ -1644,7 +1796,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(betaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: "u2", rowData: { team: "beta", valueScaled: 60, bucket: "high" } },
+      { rowIdentifier: "u2:1:1", rowData: { team: "beta", valueScaled: 60, bucket: "high" } },
     ]);
   });
 
@@ -1675,7 +1827,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    expect(lowRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1", "u3"]);
+    expect(lowRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1:1:1", "u3:1:1"]);
 
     await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
     await runStatements(fromTable.deleteRow("u3"));
@@ -1695,7 +1847,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    expect(highRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1", "u2"]);
+    expect(highRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1:1:1", "u2:1:1"]);
   });
 
   test("composed trigger fanout works for stacked map and downstream groupBy tables", async () => {
@@ -1751,21 +1903,21 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       {
         event: "map_level_2_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: null,
         newRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
       },
       {
         event: "map_level_2_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
         newRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
       },
       {
         event: "map_level_2_change",
         groupKey: "alpha",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
         newRowData: null,
       },
@@ -1774,28 +1926,28 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       {
         event: "bucket_group_change",
         groupKey: "low",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: null,
         newRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
       },
       {
         event: "bucket_group_change",
         groupKey: "low",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: { team: "alpha", valueScaled: 22, bucket: "low" },
         newRowData: null,
       },
       {
         event: "bucket_group_change",
         groupKey: "high",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: null,
         newRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
       },
       {
         event: "bucket_group_change",
         groupKey: "high",
-        rowIdentifier: "u1",
+        rowIdentifier: "u1:1:1",
         oldRowData: { team: "alpha", valueScaled: 80, bucket: "high" },
         newRowData: null,
       },
@@ -1837,9 +1989,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(allBucketRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
-      { groupKey: "high", rowIdentifier: "u1", rowData: { team: "alpha", valueScaled: 30, bucket: "high" } },
-      { groupKey: "low", rowIdentifier: "u3", rowData: { team: "gamma", valueScaled: 24, bucket: "low" } },
-      { groupKey: "low", rowIdentifier: "u4", rowData: { team: "delta", valueScaled: 20, bucket: "low" } },
+      { groupKey: "high", rowIdentifier: "u1:1:1", rowData: { team: "alpha", valueScaled: 30, bucket: "high" } },
+      { groupKey: "low", rowIdentifier: "u3:1:1", rowData: { team: "gamma", valueScaled: 24, bucket: "low" } },
+      { groupKey: "low", rowIdentifier: "u4:1:1", rowData: { team: "delta", valueScaled: 20, bucket: "low" } },
     ]);
   });
 
