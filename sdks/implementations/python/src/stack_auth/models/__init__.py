@@ -10,7 +10,8 @@ from stack_auth.models.api_keys import (
 from stack_auth.models.contact_channels import ContactChannel
 from stack_auth.models.notifications import NotificationCategory
 from stack_auth.models.oauth import OAuthConnection, OAuthProvider
-from stack_auth.models.payments import Item, Product
+from stack_auth.models.email import EmailDeliveryInfo
+from stack_auth.models.payments import AsyncServerItem, Item, Product, ServerItem
 from stack_auth.models.permissions import ProjectPermission, TeamPermission
 from stack_auth.models.projects import OAuthProviderConfig, Project, ProjectConfig
 from stack_auth.models.sessions import ActiveSession, GeoInfo
@@ -41,5 +42,8 @@ __all__ = [
     "OAuthProvider",
     "Product",
     "Item",
+    "ServerItem",
+    "AsyncServerItem",
+    "EmailDeliveryInfo",
     "NotificationCategory",
 ]
