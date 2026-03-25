@@ -18,6 +18,7 @@ from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
 from stack_auth.models.sessions import ActiveSession
+from stack_auth.models.teams import ServerTeam, TeamInvitation, TeamMemberProfile
 from stack_auth.models.users import ServerUser
 
 # Sentinel object to distinguish "not provided" from "explicitly None".
@@ -244,6 +245,96 @@ class StackServerApp:
             params={"user_id": user_id},
         )
 
+    # -- team CRUD -----------------------------------------------------------
+
+    def get_team(self, team_id: str) -> ServerTeam | None:
+        """Fetch a team by ID.
+
+        Returns ``None`` if the team is not found.
+        """
+        try:
+            data = self._client.request("GET", f"/teams/{team_id}")
+        except NotFoundError:
+            return None
+        if data is None:
+            return None
+        return ServerTeam.model_validate(data)
+
+    def list_teams(
+        self, *, user_id: Optional[str] = None
+    ) -> list[ServerTeam]:
+        """List teams, optionally filtered by user membership.
+
+        This endpoint does not support pagination.
+        """
+        params = _build_params(user_id=user_id)
+        data = self._client.request("GET", "/teams", params=params)
+        return [
+            ServerTeam.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def create_team(
+        self,
+        *,
+        display_name: str,
+        profile_image_url: Optional[str] = None,
+        creator_user_id: Optional[str] = None,
+    ) -> ServerTeam:
+        """Create a new team."""
+        body = _build_params(
+            display_name=display_name,
+            profile_image_url=profile_image_url,
+            creator_user_id=creator_user_id,
+        )
+        data = self._client.request("POST", "/teams", body=body)
+        return ServerTeam.model_validate(data)
+
+    def update_team(
+        self,
+        team_id: str,
+        *,
+        display_name: Any = _UNSET,
+        profile_image_url: Any = _UNSET,
+        client_metadata: Any = _UNSET,
+        client_read_only_metadata: Any = _UNSET,
+        server_metadata: Any = _UNSET,
+    ) -> ServerTeam:
+        """Update a team. Only explicitly provided fields are sent.
+
+        Pass ``None`` to clear a field. Omit a parameter to leave it unchanged.
+        """
+        fields = {
+            "display_name": display_name,
+            "profile_image_url": profile_image_url,
+            "client_metadata": client_metadata,
+            "client_read_only_metadata": client_read_only_metadata,
+            "server_metadata": server_metadata,
+        }
+        body = {k: v for k, v in fields.items() if v is not _UNSET}
+        data = self._client.request("PATCH", f"/teams/{team_id}", body=body)
+        return ServerTeam.model_validate(data)
+
+    def delete_team(self, team_id: str) -> None:
+        """Delete a team by ID."""
+        self._client.request("DELETE", f"/teams/{team_id}")
+
+    def get_team_by_api_key(self, api_key: str) -> ServerTeam | None:
+        """Look up a team by its API key.
+
+        Performs a two-step lookup: first validates the key, then fetches the team.
+        Returns ``None`` if the key is invalid or has no associated team.
+        """
+        try:
+            data = self._client.request(
+                "POST", "/api-keys/check", body={"api_key": api_key}
+            )
+        except (NotFoundError, ApiKeyError):
+            return None
+        if data is None or "team_id" not in data:
+            return None
+        return self.get_team(data["team_id"])
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -459,3 +550,95 @@ class AsyncStackServerApp:
             f"/auth/sessions/{session_id}",
             params={"user_id": user_id},
         )
+
+    # -- team CRUD -----------------------------------------------------------
+
+    async def get_team(self, team_id: str) -> ServerTeam | None:
+        """Fetch a team by ID.
+
+        Returns ``None`` if the team is not found.
+        """
+        try:
+            data = await self._client.request("GET", f"/teams/{team_id}")
+        except NotFoundError:
+            return None
+        if data is None:
+            return None
+        return ServerTeam.model_validate(data)
+
+    async def list_teams(
+        self, *, user_id: Optional[str] = None
+    ) -> list[ServerTeam]:
+        """List teams, optionally filtered by user membership.
+
+        This endpoint does not support pagination.
+        """
+        params = _build_params(user_id=user_id)
+        data = await self._client.request("GET", "/teams", params=params)
+        return [
+            ServerTeam.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def create_team(
+        self,
+        *,
+        display_name: str,
+        profile_image_url: Optional[str] = None,
+        creator_user_id: Optional[str] = None,
+    ) -> ServerTeam:
+        """Create a new team."""
+        body = _build_params(
+            display_name=display_name,
+            profile_image_url=profile_image_url,
+            creator_user_id=creator_user_id,
+        )
+        data = await self._client.request("POST", "/teams", body=body)
+        return ServerTeam.model_validate(data)
+
+    async def update_team(
+        self,
+        team_id: str,
+        *,
+        display_name: Any = _UNSET,
+        profile_image_url: Any = _UNSET,
+        client_metadata: Any = _UNSET,
+        client_read_only_metadata: Any = _UNSET,
+        server_metadata: Any = _UNSET,
+    ) -> ServerTeam:
+        """Update a team. Only explicitly provided fields are sent.
+
+        Pass ``None`` to clear a field. Omit a parameter to leave it unchanged.
+        """
+        fields = {
+            "display_name": display_name,
+            "profile_image_url": profile_image_url,
+            "client_metadata": client_metadata,
+            "client_read_only_metadata": client_read_only_metadata,
+            "server_metadata": server_metadata,
+        }
+        body = {k: v for k, v in fields.items() if v is not _UNSET}
+        data = await self._client.request(
+            "PATCH", f"/teams/{team_id}", body=body
+        )
+        return ServerTeam.model_validate(data)
+
+    async def delete_team(self, team_id: str) -> None:
+        """Delete a team by ID."""
+        await self._client.request("DELETE", f"/teams/{team_id}")
+
+    async def get_team_by_api_key(self, api_key: str) -> ServerTeam | None:
+        """Look up a team by its API key.
+
+        Performs a two-step lookup: first validates the key, then fetches the team.
+        Returns ``None`` if the key is invalid or has no associated team.
+        """
+        try:
+            data = await self._client.request(
+                "POST", "/api-keys/check", body={"api_key": api_key}
+            )
+        except (NotFoundError, ApiKeyError):
+            return None
+        if data is None or "team_id" not in data:
+            return None
+        return await self.get_team(data["team_id"])
