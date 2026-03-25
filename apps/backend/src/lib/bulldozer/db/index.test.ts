@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -216,6 +216,49 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTable, groupedTable, mappedTable };
   }
+  function createFlatMappedTable() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const flatMappedTable = declareFlatMapTable({
+      tableId: "users-by-team-flat-mapped",
+      fromTable: groupedTable,
+      mapper: mapper(`
+        CASE
+          WHEN (("rowData"->>'value')::int) < 0 THEN '[]'::jsonb
+          ELSE jsonb_build_array(
+            jsonb_build_object(
+              'team', "rowData"->'team',
+              'kind', 'base',
+              'mappedValue', (("rowData"->>'value')::int + 100)
+            ),
+            jsonb_build_object(
+              'team', "rowData"->'team',
+              'kind', 'double',
+              'mappedValue', (("rowData"->>'value')::int * 2)
+            )
+          )
+        END AS "rows"
+      `),
+    });
+    return { fromTable, groupedTable, flatMappedTable };
+  }
+  function createFlatMapMapGroupPipeline() {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    const mappedAfterFlatMap = declareMapTable({
+      tableId: "users-by-team-flat-map-then-map",
+      fromTable: flatMappedTable,
+      mapper: mapper(`
+        ("rowData"->'team') AS "team",
+        ("rowData"->'kind') AS "kind",
+        (("rowData"->>'mappedValue')::int + 1) AS "mappedValuePlusOne"
+      `),
+    });
+    const groupedByKind = declareGroupByTable({
+      tableId: "users-by-kind",
+      fromTable: mappedAfterFlatMap,
+      groupBy: mapper(`"rowData"->'kind' AS "groupKey"`),
+    });
+    return { fromTable, groupedTable, flatMappedTable, mappedAfterFlatMap, groupedByKind };
+  }
   function createStackedMappedTables() {
     const { fromTable, groupedTable } = createGroupedTable();
     const mappedTableLevel1 = declareMapTable({
@@ -276,6 +319,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   }
   function registerMapAuditTrigger(
     table: ReturnType<typeof createMappedTable>["mappedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerFlatMapAuditTrigger(
+    table: ReturnType<typeof createFlatMappedTable>["flatMappedTable"],
     event: string,
   ) {
     return table.registerRowChangeTrigger((changesTable) => [
@@ -1197,6 +1263,276 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       ORDER BY "keyPath"
     `;
     expect(staleGroupPaths).toEqual([]);
+  });
+
+  test("flatMapTable init backfills fan-out rows and skips empty expansions", async () => {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":-1}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(flatMappedTable.init());
+
+    const groups = await readRows(flatMappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const alphaRows = await readRows(flatMappedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
+      { rowIdentifier: "u1:1", rowData: { team: "alpha", kind: "base", mappedValue: 101 } },
+      { rowIdentifier: "u1:2", rowData: { team: "alpha", kind: "double", mappedValue: 2 } },
+    ]);
+
+    const allRows = await readRows(flatMappedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
+      { groupKey: "alpha", rowIdentifier: "u1:1" },
+      { groupKey: "alpha", rowIdentifier: "u1:2" },
+      { groupKey: "beta", rowIdentifier: "u2:1" },
+      { groupKey: "beta", rowIdentifier: "u2:2" },
+    ]);
+  });
+
+  test("flatMapTable registerRowChangeTrigger emits per-expanded-row inserts, updates, moves, and removals", async () => {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(flatMappedTable.init());
+    registerFlatMapAuditTrigger(flatMappedTable, "flat_map_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":-1}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    const normalizedAuditRows = (await readMapTriggerAuditRows())
+      .map((row) => ({
+        groupKey: row.groupKey,
+        rowIdentifier: row.rowIdentifier,
+        oldRowData: row.oldRowData,
+        newRowData: row.newRowData,
+      }))
+      .sort((a, b) => stringCompare(
+        `${a.groupKey}:${a.rowIdentifier}:${JSON.stringify(a.oldRowData)}:${JSON.stringify(a.newRowData)}`,
+        `${b.groupKey}:${b.rowIdentifier}:${JSON.stringify(b.oldRowData)}:${JSON.stringify(b.newRowData)}`,
+      ));
+    expect(normalizedAuditRows).toEqual([
+      {
+        groupKey: "alpha",
+        rowIdentifier: "u1:1",
+        oldRowData: null,
+        newRowData: { team: "alpha", kind: "base", mappedValue: 101 },
+      },
+      {
+        groupKey: "alpha",
+        rowIdentifier: "u1:1",
+        oldRowData: { team: "alpha", kind: "base", mappedValue: 101 },
+        newRowData: { team: "alpha", kind: "base", mappedValue: 102 },
+      },
+      {
+        groupKey: "alpha",
+        rowIdentifier: "u1:1",
+        oldRowData: { team: "alpha", kind: "base", mappedValue: 102 },
+        newRowData: null,
+      },
+      {
+        groupKey: "alpha",
+        rowIdentifier: "u1:2",
+        oldRowData: null,
+        newRowData: { team: "alpha", kind: "double", mappedValue: 2 },
+      },
+      {
+        groupKey: "alpha",
+        rowIdentifier: "u1:2",
+        oldRowData: { team: "alpha", kind: "double", mappedValue: 2 },
+        newRowData: { team: "alpha", kind: "double", mappedValue: 4 },
+      },
+      {
+        groupKey: "alpha",
+        rowIdentifier: "u1:2",
+        oldRowData: { team: "alpha", kind: "double", mappedValue: 4 },
+        newRowData: null,
+      },
+      {
+        groupKey: "beta",
+        rowIdentifier: "u1:1",
+        oldRowData: null,
+        newRowData: { team: "beta", kind: "base", mappedValue: 103 },
+      },
+      {
+        groupKey: "beta",
+        rowIdentifier: "u1:1",
+        oldRowData: { team: "beta", kind: "base", mappedValue: 103 },
+        newRowData: null,
+      },
+      {
+        groupKey: "beta",
+        rowIdentifier: "u1:2",
+        oldRowData: null,
+        newRowData: { team: "beta", kind: "double", mappedValue: 6 },
+      },
+      {
+        groupKey: "beta",
+        rowIdentifier: "u1:2",
+        oldRowData: { team: "beta", kind: "double", mappedValue: 6 },
+        newRowData: null,
+      },
+    ]);
+  });
+
+  test("flatMapTable stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerFlatMapAuditTrigger(flatMappedTable, "flat_map_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+
+    expect(await readBoolean(flatMappedTable.isInitialized())).toBe(false);
+    expect(await readMapTriggerAuditRows()).toEqual([]);
+    const groups = await readRows(flatMappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups).toEqual([]);
+  });
+
+  test("flatMapTable delete cleans up and re-init backfills from source", async () => {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(flatMappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(flatMappedTable.delete());
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+
+    expect(await readBoolean(flatMappedTable.isInitialized())).toBe(false);
+    const groupsBeforeReinit = await readRows(flatMappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsBeforeReinit).toEqual([]);
+
+    await runStatements(flatMappedTable.init());
+    const groupsAfterReinit = await readRows(flatMappedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groupsAfterReinit.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+  });
+
+  test("flatMapTable listRowsInGroup (all groups) handles 'rows' collisions in group key and source row identifier", async () => {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(flatMappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    const allRows = await readRows(flatMappedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    const normalizedRows = allRows
+      .map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata }))
+      .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`));
+
+    expect(normalizedRows).toEqual([
+      { groupKey: "alpha", rowIdentifier: "rows:1", rowData: { team: "alpha", kind: "base", mappedValue: 102 } },
+      { groupKey: "alpha", rowIdentifier: "rows:2", rowData: { team: "alpha", kind: "double", mappedValue: 4 } },
+      { groupKey: "rows", rowIdentifier: "u1:1", rowData: { team: "rows", kind: "base", mappedValue: 101 } },
+      { groupKey: "rows", rowIdentifier: "u1:2", rowData: { team: "rows", kind: "double", mappedValue: 2 } },
+    ]);
+  });
+
+  test("flatMapTable deletes stale group paths from storage", async () => {
+    const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(flatMappedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":-1}'::jsonb`)));
+
+    const staleGroupPaths = await sql`
+      SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPath"[1:4] = ARRAY[
+        to_jsonb('table'::text),
+        to_jsonb('external:users-by-team-flat-mapped'::text),
+        to_jsonb('storage'::text),
+        to_jsonb('groups'::text)
+      ]::jsonb[]
+      AND cardinality("keyPath") > 4
+      ORDER BY "keyPath"
+    `;
+    expect(staleGroupPaths).toEqual([]);
+  });
+
+  test("flatMap -> map -> groupBy composition stays consistent across updates", async () => {
+    const { fromTable, groupedTable, flatMappedTable, mappedAfterFlatMap, groupedByKind } = createFlatMapMapGroupPipeline();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(flatMappedTable.init());
+    await runStatements(mappedAfterFlatMap.init());
+    await runStatements(groupedByKind.init());
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":-1}'::jsonb`)));
+
+    const groups = await readRows(groupedByKind.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["base", "double"]);
+
+    const baseRows = await readRows(groupedByKind.listRowsInGroup({
+      groupKey: expr(`to_jsonb('base'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(baseRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "u2:1", rowData: { team: "beta", kind: "base", mappedValuePlusOne: 103 } },
+    ]);
+
+    const doubleRows = await readRows(groupedByKind.listRowsInGroup({
+      groupKey: expr(`to_jsonb('double'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(doubleRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "u2:2", rowData: { team: "beta", kind: "double", mappedValuePlusOne: 5 } },
+    ]);
   });
 
   test("stacked map tables propagate updates across multiple mapping layers", async () => {

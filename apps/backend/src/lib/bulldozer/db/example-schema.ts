@@ -1,4 +1,4 @@
-import { declareGroupByTable, declareMapTable, declareStoredTable } from "./index";
+import { declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 
@@ -55,6 +55,38 @@ export const exampleFungibleLedgerSchema = (() => {
     `),
   });
 
+  // Fan out each ledger entry into two directional legs for downstream views.
+  const accountEntryLegs = declareFlatMapTable({
+    tableId: "bulldozer-example-ledger-account-entry-legs",
+    fromTable: entriesByAccount,
+    mapper: mapper(`
+      jsonb_build_array(
+        jsonb_build_object(
+          'accountId', "rowData"->'accountId',
+          'asset', "rowData"->'asset',
+          'legType', 'entry',
+          'signedAmount',
+            CASE
+              WHEN "rowData"->>'side' = 'credit' THEN (("rowData"->>'amount')::numeric)
+              ELSE -(("rowData"->>'amount')::numeric)
+            END,
+          'txHash', "rowData"->'txHash'
+        ),
+        jsonb_build_object(
+          'accountId', "rowData"->'accountId',
+          'asset', "rowData"->'asset',
+          'legType', 'counterparty',
+          'signedAmount',
+            CASE
+              WHEN "rowData"->>'side' = 'credit' THEN -(("rowData"->>'amount')::numeric)
+              ELSE (("rowData"->>'amount')::numeric)
+            END,
+          'txHash', "rowData"->'txHash'
+        )
+      ) AS "rows"
+    `),
+  });
+
   // Build an account+asset partition from normalized entries.
   const accountAssetPartitions = declareGroupByTable({
     tableId: "bulldozer-example-ledger-account-asset-partitions",
@@ -89,6 +121,7 @@ export const exampleFungibleLedgerSchema = (() => {
     entriesByAccount,
     entriesByAsset,
     accountEntriesNormalized,
+    accountEntryLegs,
     accountAssetPartitions,
     assetEntriesNormalized,
   };

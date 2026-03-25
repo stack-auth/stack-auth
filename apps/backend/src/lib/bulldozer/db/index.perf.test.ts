@@ -1,7 +1,7 @@
-import { getEnvBoolean } from "@stackframe/stack-shared/dist/utils/env";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -15,7 +15,12 @@ type WorkloadOperation =
 const TEST_DB_PREFIX = "stack_bulldozer_db_perf_test";
 const DEFAULT_WARMUP_OPS = 80;
 const DEFAULT_MEASURED_OPS = 500;
-const DEFAULT_LOAD_ROW_COUNT = getEnvBoolean("CI") ? 200_000 : 20_000;
+const IS_CI = (() => {
+  const env = Reflect.get(import.meta, "env");
+  const ci = Reflect.get(env, "CI");
+  return ci === true || ci === "true" || ci === "1";
+})();
+const DEFAULT_LOAD_ROW_COUNT = IS_CI ? 200_000 : 20_000;
 const LOAD_PREFILL_MAX_MS = 30_000;
 const LOAD_COUNT_QUERY_MAX_MS = 5_000;
 const LOAD_POINT_MUTATION_MAX_MS = 400;
@@ -24,6 +29,9 @@ const LOAD_SET_ROW_AVG_MAX_MS = 50;
 const LOAD_TABLE_DELETE_MAX_MS = 20_000;
 const LOAD_DERIVED_INIT_MAX_MS = 90_000;
 const LOAD_DERIVED_COUNT_QUERY_MAX_MS = 10_000;
+const LOAD_EXPANDING_INIT_MAX_MS = 120_000;
+const LOAD_EXPANDING_COUNT_QUERY_MAX_MS = 15_000;
+const LOAD_FILTERED_QUERY_MAX_MS = 4_000;
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -414,6 +422,24 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       fromTable: mappedTwice,
       groupBy: { type: "mapper", sql: `"rowData"->'bucket' AS "groupKey"` },
     });
+    const expandedByTeam = declareFlatMapTable({
+      tableId: "load-prefilled-users-expanded",
+      fromTable: groupedByTeam,
+      mapper: { type: "mapper", sql: `
+        jsonb_build_array(
+          jsonb_build_object(
+            'team', "rowData"->'team',
+            'kind', 'base',
+            'mappedValue', (("rowData"->>'value')::int + 10)
+          ),
+          jsonb_build_object(
+            'team', "rowData"->'team',
+            'kind', 'double',
+            'mappedValue', (("rowData"->>'value')::int * 2)
+          )
+        ) AS "rows"
+      ` },
+    });
 
     const groupInit = await measureMs("load init groupedByTeam", async () => {
       await runStatements(groupedByTeam.init());
@@ -431,6 +457,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       await runStatements(groupedByBucket.init());
     });
     expect(bucketInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
+    const expandInit = await measureMs("load init expandedByTeam", async () => {
+      await runStatements(expandedByTeam.init());
+    });
+    expect(expandInit.elapsedMs).toBeLessThan(LOAD_EXPANDING_INIT_MAX_MS);
 
     const groupedCountQuery = groupedByTeam.listRowsInGroup({
       start: "start",
@@ -450,17 +480,52 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     });
+    const expandedCountQuery = expandedByTeam.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
     const derivedCounts = await measureMs("load count derived tables", async () => {
       return await Promise.all([
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(groupedCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(mappedCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(bucketCountQuery)}) AS "rows"`),
+        sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(expandedCountQuery)}) AS "rows"`),
       ]);
     });
     expect(derivedCounts.elapsedMs).toBeLessThan(LOAD_DERIVED_COUNT_QUERY_MAX_MS);
     expect(Number(derivedCounts.result[0][0].count)).toBe(loadRowCount - 1);
     expect(Number(derivedCounts.result[1][0].count)).toBe(loadRowCount - 1);
     expect(Number(derivedCounts.result[2][0].count)).toBe(loadRowCount - 1);
+    expect(Number(derivedCounts.result[3][0].count)).toBe((loadRowCount - 1) * 2);
+
+    const expandedCountOnly = await measureMs("load count expanded table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(expandedCountQuery)}) AS "rows"
+      `);
+    });
+    expect(expandedCountOnly.elapsedMs).toBeLessThan(LOAD_EXPANDING_COUNT_QUERY_MAX_MS);
+    expect(Number(expandedCountOnly.result[0].count)).toBe((loadRowCount - 1) * 2);
+
+    const filteredExpandedBetaBase = await measureMs("load filtered expanded query (team=beta, kind=base)", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (
+          ${toQueryableSqlQuery(expandedByTeam.listRowsInGroup({
+            groupKey: expr(`to_jsonb('beta'::text)`),
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }))}
+        ) AS "rows"
+        WHERE "rows"."rowdata"->>'kind' = 'base'
+      `);
+    });
+    expect(filteredExpandedBetaBase.elapsedMs).toBeLessThan(LOAD_FILTERED_QUERY_MAX_MS);
+    expect(Number(filteredExpandedBetaBase.result[0].count)).toBeGreaterThan(0);
 
     await runStatements(table.setRow(
       "seed-100000",
@@ -488,6 +553,17 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       bucket: "high",
       valueScaled: 2018,
     });
+    const expandedDeltaRows = await readRows(expandedByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(expandedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(String(a.rowIdentifier), String(b.rowIdentifier)))).toEqual([
+      { rowIdentifier: "seed-100000:1", rowData: { team: "delta", kind: "base", mappedValue: 1009 } },
+      { rowIdentifier: "seed-100000:2", rowData: { team: "delta", kind: "double", mappedValue: 1998 } },
+    ]);
 
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());
@@ -507,7 +583,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 180_000);
 });
 
