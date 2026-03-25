@@ -34,10 +34,10 @@ When replay recording is enabled in the browser SDK, client-side `trackEvent()` 
 
 ### Client-side (all frameworks)
 
-Call `trackEvent()` directly on your `StackClientApp` instance:
+Call `trackEvent()` directly on your `StackClientApp` instance. The returned promise resolves once the event has been delivered:
 
 ```ts
-app.trackEvent("upgrade.clicked", {
+await app.trackEvent("upgrade.clicked", {
   plan: "pro",
   source: "pricing-page",
 });
@@ -48,14 +48,30 @@ app.trackEvent("upgrade.clicked", {
 Call `trackEvent()` on your `StackServerApp` instance, passing the request for user attribution:
 
 ```ts
-serverApp.trackEvent("support.ticket.created", {
+await serverApp.trackEvent("support.ticket.created", {
   channel: "chat",
 }, req);
 ```
 
 Any Fetch API `Request`, Express-style `req`, or Hono `c.req.raw` works as the 3rd argument.
 
-Server `trackEvent()` is non-blocking — it buffers events and flushes them in the background. Call `await serverApp.flushAnalytics()` if you need to ensure all events are sent before the process exits.
+### Fire-and-forget
+
+If you don't need confirmation that the event was delivered, simply don't `await` the call. Internally events are still batched — non-awaited calls that happen close together will be sent in the same HTTP request:
+
+```ts
+// Fire-and-forget — events are batched and sent in the background
+serverApp.trackEvent("page.viewed", { path: "/pricing" }, req);
+serverApp.trackEvent("feature.used", { name: "export" }, req);
+```
+
+You can also use `flushAnalytics()` to wait for all pending analytics (including auto-captured events) to be delivered at once — useful before a process exits or a serverless function returns:
+
+```ts
+serverApp.trackEvent("job.finished", { duration });
+serverApp.trackEvent("job.result", { status: "ok" });
+await serverApp.flushAnalytics();
+```
 
 ### Serverless environments
 

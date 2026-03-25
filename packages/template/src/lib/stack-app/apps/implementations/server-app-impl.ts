@@ -455,7 +455,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   async trackEvent(eventType: string, data?: Record<string, unknown>, optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> }): Promise<void> {
-    this._trackEventInternal(eventType, data, optionsOrRequest, false);
+    await this._trackEventInternalAsync(eventType, data, optionsOrRequest, false);
+    // Flush immediately so the returned promise resolves only after the event
+    // has been delivered. This bypasses the batcher's interval/size triggers —
+    // the buffer is still useful for fire-and-forget callers (captureException,
+    // auto-captured events, non-awaited trackEvent calls) that rely on the
+    // background 10s flush.
+    await this.flushAnalytics();
   }
 
   captureException(
@@ -527,6 +533,15 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> },
     allowAutoCaptured?: boolean,
   ): void {
+    runAsynchronously(() => this._trackEventInternalAsync(eventType, data, optionsOrRequest, allowAutoCaptured));
+  }
+
+  private async _trackEventInternalAsync(
+    eventType: string,
+    data?: Record<string, unknown>,
+    optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> },
+    allowAutoCaptured?: boolean,
+  ): Promise<void> {
     assertValidAnalyticsEventName(eventType, { allowAutoCapturedReservedType: allowAutoCaptured });
 
     const { options: rawOptions, headersSource } = this._normalizeRequestArg(
@@ -550,29 +565,26 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       sessionReplaySegmentId: options?.sessionReplaySegmentId,
     });
 
-    const capturedOptions = options;
-    runAsynchronously(async () => {
-      const { session, userId, teamId } = await this._resolveUserContext(capturedOptions);
+    const { session, userId, teamId } = await this._resolveUserContext(options);
 
-      const segmentSpanId = replayLinkOptions.session_replay_segment_id;
-      const activeSpan = getActiveSpanFromTracing();
-      const parentSpanIds = [
-        ...(activeSpan ? [activeSpan.spanId] : []),
-        ...(segmentSpanId ? [segmentSpanId] : []),
-      ];
-      this._serverEventBatcher.push({
-        event_type: eventType,
-        event_id: generateUuid(),
-        // only set trace_id when the event is inside an active span; standalone events don't need one
-        trace_id: activeSpan?.traceId ?? undefined,
-        event_at_ms: eventAtMs,
-        ...(parentSpanIds.length > 0 ? { parent_span_ids: parentSpanIds } : {}),
-        data: eventData,
-        user_id: userId ?? undefined,
-        team_id: teamId ?? undefined,
-        ...replayLinkOptions,
-      }, session);
-    });
+    const segmentSpanId = replayLinkOptions.session_replay_segment_id;
+    const activeSpan = getActiveSpanFromTracing();
+    const parentSpanIds = [
+      ...(activeSpan ? [activeSpan.spanId] : []),
+      ...(segmentSpanId ? [segmentSpanId] : []),
+    ];
+    this._serverEventBatcher.push({
+      event_type: eventType,
+      event_id: generateUuid(),
+      // only set trace_id when the event is inside an active span; standalone events don't need one
+      trace_id: activeSpan?.traceId ?? undefined,
+      event_at_ms: eventAtMs,
+      ...(parentSpanIds.length > 0 ? { parent_span_ids: parentSpanIds } : {}),
+      data: eventData,
+      user_id: userId ?? undefined,
+      team_id: teamId ?? undefined,
+      ...replayLinkOptions,
+    }, session);
   }
 
   async flushAnalytics(): Promise<void> {

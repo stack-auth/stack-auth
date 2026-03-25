@@ -2212,6 +2212,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     if (this._eventTracker) {
       this._eventTracker.trackEvent(eventType, data, options);
+      // Flush immediately so the returned promise resolves only after the event
+      // has been delivered. The buffer is still useful for fire-and-forget callers
+      // (captureException, auto-captured events, non-awaited trackEvent calls)
+      // that rely on the background 10s flush.
+      await this.flushAnalytics();
       return;
     }
 

@@ -253,38 +253,39 @@ export function readHeader(headers: unknown, name: string): string | null {
   return null;
 }
 
+function readJsonHeader<T extends Record<string, string | null>>(
+  headers: unknown,
+  name: string,
+  fields: (keyof T & string)[],
+): T {
+  const result = Object.fromEntries(fields.map((f) => [f, null])) as T;
+  const raw = readHeader(headers, name);
+  if (!raw) return result;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    for (const field of fields) {
+      if (typeof parsed[field] === "string") {
+        (result as any)[field] = parsed[field];
+      }
+    }
+  } catch {
+    // malformed header
+  }
+  return result;
+}
+
 export function serializeTraceContext(span: { traceId: string; spanId: string }): Record<string, string> {
   return {
     "x-stack-trace": JSON.stringify({ trace_id: span.traceId, span_id: span.spanId }),
   };
 }
 
-export function extractTraceContext(headers: unknown): { traceId: string | null; parentSpanId: string | null } {
-  const raw = readHeader(headers, "x-stack-trace");
-  if (!raw) return { traceId: null, parentSpanId: null };
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      traceId: typeof parsed.trace_id === "string" ? parsed.trace_id : null,
-      parentSpanId: typeof parsed.span_id === "string" ? parsed.span_id : null,
-    };
-  } catch {
-    return { traceId: null, parentSpanId: null };
-  }
+export function extractTraceContext(headers: unknown) {
+  const { trace_id, span_id } = readJsonHeader(headers, "x-stack-trace", ["trace_id", "span_id"]);
+  return { traceId: trace_id, parentSpanId: span_id };
 }
 
-export function extractReplayLink(headers: unknown): { sessionReplayId: string | null; sessionReplaySegmentId: string | null } {
-  const raw = readHeader(headers, "x-stack-replay");
-  if (!raw) return { sessionReplayId: null, sessionReplaySegmentId: null };
-
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      sessionReplayId: typeof parsed.session_replay_id === "string" ? parsed.session_replay_id : null,
-      sessionReplaySegmentId: typeof parsed.session_replay_segment_id === "string" ? parsed.session_replay_segment_id : null,
-    };
-  } catch {
-    return { sessionReplayId: null, sessionReplaySegmentId: null };
-  }
+export function extractReplayLink(headers: unknown) {
+  const { session_replay_id, session_replay_segment_id } = readJsonHeader(headers, "x-stack-replay", ["session_replay_id", "session_replay_segment_id"]);
+  return { sessionReplayId: session_replay_id, sessionReplaySegmentId: session_replay_segment_id };
 }

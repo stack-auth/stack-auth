@@ -158,10 +158,23 @@ export class EventTracker {
 
   trackEvent(eventType: string, data: Record<string, unknown> = {}, options?: { at?: Date | number } & AnalyticsReplayLinkOptions) {
     assertValidAnalyticsEventName(eventType);
-    const defaultReplayLinkOptions = this._getDefaultReplayLinkOptions();
+    this._enqueueEvent(eventType, data, {
+      at: options?.at,
+      sessionReplayId: options?.sessionReplayId,
+      sessionReplaySegmentId: options?.sessionReplaySegmentId,
+    });
+  }
+
+  private _pushAutoCapturedEvent(eventType: AutoCapturedAnalyticsEventType, data: Record<string, unknown>) {
+    assertValidAnalyticsEventName(eventType, { allowAutoCapturedReservedType: true });
+    this._enqueueEvent(eventType, data);
+  }
+
+  private _enqueueEvent(eventType: string, data: Record<string, unknown>, options?: { at?: Date | number } & AnalyticsReplayLinkOptions) {
+    const defaults = this._getDefaultReplayLinkOptions();
     const replayLinkOptions = normalizeAnalyticsReplayLinkOptions({
-      sessionReplayId: options?.sessionReplayId ?? defaultReplayLinkOptions.sessionReplayId,
-      sessionReplaySegmentId: options?.sessionReplaySegmentId ?? defaultReplayLinkOptions.sessionReplaySegmentId,
+      sessionReplayId: options?.sessionReplayId ?? defaults.sessionReplayId,
+      sessionReplaySegmentId: options?.sessionReplaySegmentId ?? defaults.sessionReplaySegmentId,
     });
     const segmentSpanId = replayLinkOptions.session_replay_segment_id;
     const activeSpan = getActiveSpan();
@@ -169,49 +182,23 @@ export class EventTracker {
       ...(activeSpan ? [activeSpan.spanId] : []),
       ...(segmentSpanId ? [segmentSpanId] : []),
     ];
-    this._pushEvent({
+    const superProps = this._deps.getSuperProperties?.() ?? {};
+    const normalizedData = normalizeAnalyticsEventPayload(data);
+    const event: AnalyticsBatchEvent = {
       event_type: eventType,
       event_id: generateUuid(),
-      // only set trace_id when the event is inside an active span; standalone events don't need one
+      // only set trace_id when inside an active span
       trace_id: activeSpan?.traceId ?? undefined,
       event_at_ms: normalizeAnalyticsEventAt(options?.at),
       ...(parentSpanIds.length > 0 ? { parent_span_ids: parentSpanIds } : {}),
-      data: normalizeAnalyticsEventPayload(data),
+      data: Object.keys(superProps).length > 0 ? { ...superProps, ...normalizedData } : normalizedData,
       ...replayLinkOptions,
-    });
-  }
-
-  private _pushEvent(event: AnalyticsBatchEvent) {
-    const superProps = this._deps.getSuperProperties?.() ?? {};
-    if (Object.keys(superProps).length > 0) {
-      event = { ...event, data: { ...superProps, ...event.data } };
-    }
+    };
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }
-  }
-
-  private _pushAutoCapturedEvent(eventType: AutoCapturedAnalyticsEventType, data: Record<string, unknown>) {
-    assertValidAnalyticsEventName(eventType, { allowAutoCapturedReservedType: true });
-    const replayLinkOptions = normalizeAnalyticsReplayLinkOptions(this._getDefaultReplayLinkOptions());
-    const segmentSpanId = replayLinkOptions.session_replay_segment_id;
-    const activeSpan = getActiveSpan();
-    const parentSpanIds = [
-      ...(activeSpan ? [activeSpan.spanId] : []),
-      ...(segmentSpanId ? [segmentSpanId] : []),
-    ];
-    this._pushEvent({
-      event_type: eventType,
-      event_id: generateUuid(),
-      // only set trace_id when the event is inside an active span; standalone events don't need one
-      trace_id: activeSpan?.traceId ?? undefined,
-      event_at_ms: Date.now(),
-      ...(parentSpanIds.length > 0 ? { parent_span_ids: parentSpanIds } : {}),
-      data: normalizeAnalyticsEventPayload(data),
-      ...replayLinkOptions,
-    });
   }
 
   private _getDefaultReplayLinkOptions(): AnalyticsReplayLinkOptions {

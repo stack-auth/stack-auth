@@ -8,8 +8,6 @@ export type AnalyticsReplayLinkOptions = {
   sessionReplaySegmentId?: string | null,
 };
 
-export const autoCapturedAnalyticsEventTypes = AUTO_CAPTURED_ANALYTICS_EVENT_TYPES;
-
 const autoCapturedAnalyticsEventTypeSet = new Set<string>(AUTO_CAPTURED_ANALYTICS_EVENT_TYPES);
 
 export function assertValidAnalyticsEventName(

@@ -282,7 +282,6 @@ it("should allow explicit session replay linkage from the client app", async ({ 
     amount: 4200,
     currency: "usd",
   }, {
-    browserSessionId,
     sessionReplayId,
     sessionReplaySegmentId,
   });
@@ -370,13 +369,9 @@ it("should track project-scoped and request-bound custom analytics events from t
   await serverApp.trackEvent(explicitLinkedEventType, {
     source: "cron",
   }, {
-    browserSessionId: explicitBrowserSessionId,
     sessionReplayId: explicitSessionReplayId,
     sessionReplaySegmentId: explicitSessionReplaySegmentId,
   });
-
-  // Server trackEvent is now non-blocking; flush to ensure events are sent before querying
-  await serverApp.flushAnalytics();
 
   const requestBoundResponse = await queryAnalyticsByEventTypeWithRetry(adminApp, requestBoundEventType);
   expect(requestBoundResponse.result[0]).toMatchObject({
