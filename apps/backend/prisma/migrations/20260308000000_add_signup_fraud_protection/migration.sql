@@ -10,6 +10,10 @@ ALTER TABLE "ProjectUser"
   ADD COLUMN "signUpEmailNormalized" TEXT,
   ADD COLUMN "signUpEmailBase" TEXT;
 
+-- Backward compatibility during rollout: old backends omit `signedUpAt` on
+-- INSERT, so set a default immediately in the first migration.
+ALTER TABLE "ProjectUser" ALTER COLUMN "signedUpAt" SET DEFAULT CURRENT_TIMESTAMP;
+
 -- Add the risk score bounds without validating existing rows yet.
 ALTER TABLE "ProjectUser"
   ADD CONSTRAINT "ProjectUser_risk_score_bot_range"
