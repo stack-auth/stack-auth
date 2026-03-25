@@ -29,8 +29,10 @@ from stack_auth.errors import (
 from stack_auth.models import (
     ActiveSession,
     ApiKey,
+    AsyncServerItem,
     BaseUser,
     ContactChannel,
+    EmailDeliveryInfo,
     GeoInfo,
     Item,
     NotificationCategory,
@@ -40,6 +42,7 @@ from stack_auth.models import (
     Project,
     ProjectConfig,
     ProjectPermission,
+    ServerItem,
     ServerTeam,
     ServerUser,
     Team,
@@ -101,5 +104,8 @@ __all__ = [
     "OAuthProvider",
     "Product",
     "Item",
+    "ServerItem",
+    "AsyncServerItem",
+    "EmailDeliveryInfo",
     "NotificationCategory",
 ]

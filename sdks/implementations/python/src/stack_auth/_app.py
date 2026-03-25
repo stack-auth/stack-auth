@@ -17,6 +17,8 @@ from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
+from stack_auth.models.email import EmailDeliveryInfo
+from stack_auth.models.payments import AsyncServerItem, Item, Product, ServerItem
 from stack_auth.models.api_keys import (
     TeamApiKey,
     TeamApiKeyFirstView,
@@ -37,6 +39,34 @@ _UNSET = object()
 def _build_params(**kwargs: Any) -> dict[str, Any]:
     """Build a dict from keyword arguments, omitting any whose value is None."""
     return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def _resolve_customer_path(
+    user_id: str | None = None,
+    team_id: str | None = None,
+    custom_customer_id: str | None = None,
+) -> tuple[str, str, str]:
+    """Resolve polymorphic customer identification.
+
+    Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+    provided.
+
+    Returns:
+        A tuple of ``(customer_type, customer_id, id_field_name)`` where
+        *customer_type* is one of ``"user"``, ``"team"``, ``"custom"`` and
+        *id_field_name* is the corresponding body key.
+    """
+    options = [
+        ("user", user_id, "user_id"),
+        ("team", team_id, "team_id"),
+        ("custom", custom_customer_id, "custom_customer_id"),
+    ]
+    provided = [(t, i, f) for t, i, f in options if i is not None]
+    if len(provided) != 1:
+        raise ValueError(
+            "Exactly one of user_id, team_id, or custom_customer_id must be provided"
+        )
+    return provided[0]
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +794,137 @@ class StackServerApp:
         """
         return self.list_oauth_providers(user_id)
 
+    # -- payments ------------------------------------------------------------
+
+    def list_products(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+        cursor: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> PaginatedResult[Product]:
+        """List products for a customer.
+
+        Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+        provided.
+        """
+        ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
+        params = _build_params(cursor=cursor, limit=limit)
+        data = self._client.request(
+            "GET", f"/customers/{ctype}/{cid}/products", params=params
+        )
+        if data is None:
+            return PaginatedResult(items=[])
+        items = [Product.model_validate(i) for i in data.get("items", [])]
+        pagination = _PaginationMeta(**(data.get("pagination") or {}))
+        return PaginatedResult(items=items, pagination=pagination)
+
+    def get_item(
+        self,
+        item_id: str,
+        *,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+    ) -> ServerItem:
+        """Get a server-side item with quantity modification methods.
+
+        Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+        provided.
+        """
+        ctype, cid, field_name = _resolve_customer_path(
+            user_id, team_id, custom_customer_id
+        )
+        data = self._client.request(
+            "GET", f"/customers/{ctype}/{cid}/items/{item_id}"
+        )
+        item = Item.model_validate(data)
+        return ServerItem(
+            item,
+            _client=self._client,
+            _customer_path=f"/customers/{ctype}/{cid}",
+            _item_id=item_id,
+            _customer_id_field=field_name,
+            _customer_id_value=cid,
+        )
+
+    def grant_product(
+        self,
+        *,
+        product_id: Optional[str] = None,
+        product: Optional[dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+        quantity: Optional[int] = None,
+    ) -> None:
+        """Grant a product to a customer.
+
+        Provide either *product_id* (existing product) or *product* (inline
+        product definition). Exactly one of *user_id*, *team_id*, or
+        *custom_customer_id* must be provided.
+        """
+        ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
+        body = _build_params(
+            product_id=product_id,
+            product=product,
+            quantity=quantity,
+        )
+        self._client.request(
+            "POST", f"/customers/{ctype}/{cid}/products", body=body
+        )
+
+    def cancel_subscription(
+        self,
+        product_id: str,
+        *,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+    ) -> None:
+        """Cancel a subscription for a customer.
+
+        Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+        provided.
+        """
+        _, cid, field_name = _resolve_customer_path(
+            user_id, team_id, custom_customer_id
+        )
+        body: dict[str, Any] = {"product_id": product_id, field_name: cid}
+        self._client.request("POST", "/subscriptions/cancel", body=body)
+
+    # -- email ---------------------------------------------------------------
+
+    def send_email(
+        self,
+        to: str | list[str],
+        subject: str,
+        *,
+        html: Optional[str] = None,
+        text: Optional[str] = None,
+    ) -> None:
+        """Send a transactional email.
+
+        Args:
+            to: Recipient email address or list of addresses.
+            subject: Email subject line.
+            html: HTML body content.
+            text: Plain-text body content.
+        """
+        body: dict[str, Any] = {"to": to, "subject": subject}
+        if html is not None:
+            body["html"] = html
+        if text is not None:
+            body["text"] = text
+        self._client.request("POST", "/emails", body=body)
+
+    def get_email_delivery_stats(self) -> EmailDeliveryInfo:
+        """Get email delivery statistics."""
+        data = self._client.request("GET", "/emails/delivery-stats")
+        return EmailDeliveryInfo.model_validate(data)
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -1438,3 +1599,134 @@ class AsyncStackServerApp:
         This is an alias for :meth:`list_oauth_providers`.
         """
         return await self.list_oauth_providers(user_id)
+
+    # -- payments ------------------------------------------------------------
+
+    async def list_products(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+        cursor: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> PaginatedResult[Product]:
+        """List products for a customer.
+
+        Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+        provided.
+        """
+        ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
+        params = _build_params(cursor=cursor, limit=limit)
+        data = await self._client.request(
+            "GET", f"/customers/{ctype}/{cid}/products", params=params
+        )
+        if data is None:
+            return PaginatedResult(items=[])
+        items = [Product.model_validate(i) for i in data.get("items", [])]
+        pagination = _PaginationMeta(**(data.get("pagination") or {}))
+        return PaginatedResult(items=items, pagination=pagination)
+
+    async def get_item(
+        self,
+        item_id: str,
+        *,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+    ) -> AsyncServerItem:
+        """Get a server-side item with async quantity modification methods.
+
+        Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+        provided.
+        """
+        ctype, cid, field_name = _resolve_customer_path(
+            user_id, team_id, custom_customer_id
+        )
+        data = await self._client.request(
+            "GET", f"/customers/{ctype}/{cid}/items/{item_id}"
+        )
+        item = Item.model_validate(data)
+        return AsyncServerItem(
+            item,
+            _client=self._client,
+            _customer_path=f"/customers/{ctype}/{cid}",
+            _item_id=item_id,
+            _customer_id_field=field_name,
+            _customer_id_value=cid,
+        )
+
+    async def grant_product(
+        self,
+        *,
+        product_id: Optional[str] = None,
+        product: Optional[dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+        quantity: Optional[int] = None,
+    ) -> None:
+        """Grant a product to a customer.
+
+        Provide either *product_id* (existing product) or *product* (inline
+        product definition). Exactly one of *user_id*, *team_id*, or
+        *custom_customer_id* must be provided.
+        """
+        ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
+        body = _build_params(
+            product_id=product_id,
+            product=product,
+            quantity=quantity,
+        )
+        await self._client.request(
+            "POST", f"/customers/{ctype}/{cid}/products", body=body
+        )
+
+    async def cancel_subscription(
+        self,
+        product_id: str,
+        *,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        custom_customer_id: Optional[str] = None,
+    ) -> None:
+        """Cancel a subscription for a customer.
+
+        Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
+        provided.
+        """
+        _, cid, field_name = _resolve_customer_path(
+            user_id, team_id, custom_customer_id
+        )
+        body: dict[str, Any] = {"product_id": product_id, field_name: cid}
+        await self._client.request("POST", "/subscriptions/cancel", body=body)
+
+    # -- email ---------------------------------------------------------------
+
+    async def send_email(
+        self,
+        to: str | list[str],
+        subject: str,
+        *,
+        html: Optional[str] = None,
+        text: Optional[str] = None,
+    ) -> None:
+        """Send a transactional email.
+
+        Args:
+            to: Recipient email address or list of addresses.
+            subject: Email subject line.
+            html: HTML body content.
+            text: Plain-text body content.
+        """
+        body: dict[str, Any] = {"to": to, "subject": subject}
+        if html is not None:
+            body["html"] = html
+        if text is not None:
+            body["text"] = text
+        await self._client.request("POST", "/emails", body=body)
+
+    async def get_email_delivery_stats(self) -> EmailDeliveryInfo:
+        """Get email delivery statistics."""
+        data = await self._client.request("GET", "/emails/delivery-stats")
+        return EmailDeliveryInfo.model_validate(data)
