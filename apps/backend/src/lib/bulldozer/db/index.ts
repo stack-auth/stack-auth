@@ -765,6 +765,16 @@ export function declareMapTable<
   };
 }
 
+export declare function declareFlatMapTable<
+  GK extends Json,
+  OldRD extends RowData,
+  NewRD extends RowData,
+>(options: {
+  tableId: TableId,
+  fromTable: Table<GK, any, OldRD>,
+  mapper: SqlMapper<OldRD, { rows: NewRD[] }>,
+}): Table<GK, null, NewRD>;
+
 export declare function declareFilterTable<
   GK extends Json,
   RD extends RowData,
