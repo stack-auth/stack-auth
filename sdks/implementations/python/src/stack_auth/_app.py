@@ -17,6 +17,7 @@ from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
+from stack_auth.models.sessions import ActiveSession
 from stack_auth.models.users import ServerUser
 
 # Sentinel object to distinguish "not provided" from "explicitly None".
@@ -200,6 +201,49 @@ class StackServerApp:
             return None
         return self.get_user(data["user_id"])
 
+    # -- session management --------------------------------------------------
+
+    def list_sessions(self, user_id: str) -> list[ActiveSession]:
+        """List active sessions for a user.
+
+        Args:
+            user_id: The user whose sessions to list.
+
+        Returns:
+            A list of :class:`ActiveSession` objects.
+        """
+        data = self._client.request(
+            "GET", "/auth/sessions", params={"user_id": user_id}
+        )
+        return [
+            ActiveSession.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def get_session(
+        self, session_id: str, *, user_id: str
+    ) -> ActiveSession | None:
+        """Get a specific session by ID.
+
+        Fetches all sessions for the user and filters by *session_id*.
+        Returns ``None`` if the session is not found.
+        """
+        sessions = self.list_sessions(user_id)
+        return next((s for s in sessions if s.id == session_id), None)
+
+    def revoke_session(self, session_id: str, *, user_id: str) -> None:
+        """Revoke (delete) a session.
+
+        Args:
+            session_id: The session to revoke.
+            user_id: The user who owns the session.
+        """
+        self._client.request(
+            "DELETE",
+            f"/auth/sessions/{session_id}",
+            params={"user_id": user_id},
+        )
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -372,3 +416,46 @@ class AsyncStackServerApp:
         if data is None or "user_id" not in data:
             return None
         return await self.get_user(data["user_id"])
+
+    # -- session management --------------------------------------------------
+
+    async def list_sessions(self, user_id: str) -> list[ActiveSession]:
+        """List active sessions for a user.
+
+        Args:
+            user_id: The user whose sessions to list.
+
+        Returns:
+            A list of :class:`ActiveSession` objects.
+        """
+        data = await self._client.request(
+            "GET", "/auth/sessions", params={"user_id": user_id}
+        )
+        return [
+            ActiveSession.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def get_session(
+        self, session_id: str, *, user_id: str
+    ) -> ActiveSession | None:
+        """Get a specific session by ID.
+
+        Fetches all sessions for the user and filters by *session_id*.
+        Returns ``None`` if the session is not found.
+        """
+        sessions = await self.list_sessions(user_id)
+        return next((s for s in sessions if s.id == session_id), None)
+
+    async def revoke_session(self, session_id: str, *, user_id: str) -> None:
+        """Revoke (delete) a session.
+
+        Args:
+            session_id: The session to revoke.
+            user_id: The user who owns the session.
+        """
+        await self._client.request(
+            "DELETE",
+            f"/auth/sessions/{session_id}",
+            params={"user_id": user_id},
+        )
