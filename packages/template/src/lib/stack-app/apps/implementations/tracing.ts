@@ -97,7 +97,7 @@ export class SpanImpl implements Span {
   private _startedAtMs: number;
   private _endedAtMs: number | null = null;
   private _parentIds: string[];
-  private _data: Record<string, unknown>;
+  private _data = new Map<string, unknown>();
   private _status: SpanStatus = "unset";
   private _statusMessage: string | undefined;
   private _sessionReplayId: string | null;
@@ -110,7 +110,11 @@ export class SpanImpl implements Span {
     this._spanType = options.spanType;
     this._startedAtMs = options.startedAtMs ?? Date.now();
     this._parentIds = options.parentIds ?? [];
-    this._data = { ...(options.data ?? {}) };
+    if (options.data) {
+      for (const [k, v] of Object.entries(options.data)) {
+        this._data.set(k, v);
+      }
+    }
     this._sessionReplayId = options.sessionReplayId ?? null;
     this._sessionReplaySegmentId = options.sessionReplaySegmentId ?? null;
     this._onEnd = options.onEnd;
@@ -118,12 +122,14 @@ export class SpanImpl implements Span {
 
   setAttribute(key: string, value: unknown): void {
     if (this._endedAtMs != null) return;
-    this._data[key] = value;
+    this._data.set(key, value);
   }
 
   setAttributes(attrs: Record<string, unknown>): void {
     if (this._endedAtMs != null) return;
-    Object.assign(this._data, attrs);
+    for (const [key, value] of Object.entries(attrs)) {
+      this._data.set(key, value);
+    }
   }
 
   setStatus(status: SpanStatus, message?: string): void {
@@ -141,9 +147,9 @@ export class SpanImpl implements Span {
     if (this._endedAtMs != null) return;
     this._endedAtMs = Date.now();
     if (this._status !== "unset") {
-      this._data["$status"] = this._status;
+      this._data.set("$status", this._status);
       if (this._statusMessage) {
-        this._data["$status_message"] = this._statusMessage;
+        this._data.set("$status_message", this._statusMessage);
       }
     }
     this._onEnd(this);
@@ -162,7 +168,7 @@ export class SpanImpl implements Span {
       started_at_ms: this._startedAtMs,
       ended_at_ms: this._endedAtMs,
       parent_ids: this._parentIds.length > 0 ? this._parentIds : undefined,
-      data: this._data,
+      data: Object.fromEntries(this._data),
       session_replay_id: this._sessionReplayId ?? undefined,
       session_replay_segment_id: this._sessionReplaySegmentId ?? undefined,
     };

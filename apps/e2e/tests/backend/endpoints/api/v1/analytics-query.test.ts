@@ -523,6 +523,7 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON URL FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW DATABASES ON default.* TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.events TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.spans TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.users TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.aggregate_function_combinators TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.collations TO limited_user" },
@@ -567,6 +568,10 @@ it("can see only some tables", async ({ expect }) => {
           },
           {
             "database": "default",
+            "name": "spans",
+          },
+          {
+            "database": "default",
             "name": "users",
           },
         ],
@@ -587,6 +592,7 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
       "body": {
         "result": [
           { "name": "events" },
+          { "name": "spans" },
           { "name": "users" },
         ],
       },
@@ -1069,6 +1075,7 @@ it("shows grants", async ({ expect }) => {
       "body": {
         "result": [
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.spans TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.users TO limited_user" },
         ],
       },

@@ -5,7 +5,6 @@ import { Auth, Project, backendContext, niceBackendFetch } from "../../../backen
 
 async function uploadEventBatch(options: {
   accessType?: "client" | "server" | "admin",
-  browserSessionId?: string,
   sessionReplayId?: string,
   sessionReplaySegmentId?: string,
   batchId: string,
@@ -16,7 +15,6 @@ async function uploadEventBatch(options: {
     data: Record<string, unknown>,
     user_id?: string,
     team_id?: string,
-    browser_session_id?: string,
     session_replay_id?: string,
     session_replay_segment_id?: string,
   }[],
@@ -25,7 +23,6 @@ async function uploadEventBatch(options: {
     method: "POST",
     accessType: options.accessType ?? "client",
     body: {
-      browser_session_id: options.browserSessionId,
       session_replay_id: options.sessionReplayId,
       session_replay_segment_id: options.sessionReplaySegmentId,
       batch_id: options.batchId,
@@ -41,7 +38,7 @@ async function queryEventsByTypeWithRetry(eventType: string) {
     accessType: "admin",
     body: {
       query: `
-        SELECT event_type, user_id, team_id, browser_session_id, session_replay_id, session_replay_segment_id
+        SELECT event_type, user_id, team_id, session_replay_id, session_replay_segment_id
         FROM events
         WHERE event_type = {event_type:String}
         ORDER BY event_at DESC
@@ -62,7 +59,7 @@ async function queryEventsByTypeWithRetry(eventType: string) {
       accessType: "admin",
       body: {
         query: `
-          SELECT event_type, user_id, team_id, browser_session_id, session_replay_id, session_replay_segment_id
+          SELECT event_type, user_id, team_id, session_replay_id, session_replay_segment_id
           FROM events
           WHERE event_type = {event_type:String}
           ORDER BY event_at DESC
@@ -820,12 +817,12 @@ it("rejects custom event types that use the reserved $ prefix", async ({ expect 
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/analytics/events/batch:
-              - event_type must be "$page-view", "$click", "$tab-in", "$tab-out", "$window-focus", "$window-blur", "$submit", "$scroll-depth", "$rage-click", "$copy", "$paste", "$error", or a custom event name that does not start with "$" and only contains letters, numbers, ".", "_", ":", or "-"
+              - event_type must be "$page-view", "$click", "$tab-in", "$tab-out", "$window-focus", "$window-blur", "$submit", "$scroll-depth", "$rage-click", "$copy", "$paste", "$error", "$request", or a custom event name that does not start with "$" and only contains letters, numbers, ".", "_", ":", or "-"
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/analytics/events/batch:
-            - event_type must be "$page-view", "$click", "$tab-in", "$tab-out", "$window-focus", "$window-blur", "$submit", "$scroll-depth", "$rage-click", "$copy", "$paste", "$error", or a custom event name that does not start with "$" and only contains letters, numbers, ".", "_", ":", or "-"
+            - event_type must be "$page-view", "$click", "$tab-in", "$tab-out", "$window-focus", "$window-blur", "$submit", "$scroll-depth", "$rage-click", "$copy", "$paste", "$error", "$request", or a custom event name that does not start with "$" and only contains letters, numbers, ".", "_", ":", or "-"
         \`,
       },
       "headers": Headers {
@@ -963,7 +960,6 @@ it("stores explicit session replay linkage and lets event-level segment ids over
   const eventSessionReplaySegmentId = randomUUID();
   const eventType = `checkout.explicit-link.${randomUUID()}`;
   const uploadEventRes = await uploadEventBatch({
-    browserSessionId,
     sessionReplayId,
     sessionReplaySegmentId: batchSessionReplaySegmentId,
     batchId: randomUUID(),
@@ -980,7 +976,6 @@ it("stores explicit session replay linkage and lets event-level segment ids over
   const queryRes = await queryEventsByTypeWithRetry(eventType);
   expect(queryRes.body?.result?.[0]).toMatchObject({
     event_type: eventType,
-    browser_session_id: browserSessionId,
     session_replay_id: sessionReplayId,
     session_replay_segment_id: eventSessionReplaySegmentId,
   });

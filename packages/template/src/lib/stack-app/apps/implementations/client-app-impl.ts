@@ -65,6 +65,15 @@ import { type Span, type StartSpanOptions, SpanImpl, getActiveSpan as getActiveS
 import { useAsyncCache } from "./common";
 // END_PLATFORM
 
+function isSameOriginUrl(url: string): boolean {
+  if (isRelative(url)) return true;
+  try {
+    return typeof window !== "undefined" && new URL(url).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
@@ -574,10 +583,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           requestUrl = input;
         }
 
-        // Only inject headers on same-origin or relative URLs
-        const isSameOrigin = isRelative(requestUrl) || (() => {
-          try { return new URL(requestUrl).origin === window.location.origin; } catch { return false; }
-        })();
+        const isSameOrigin = isSameOriginUrl(requestUrl);
         if (isSameOrigin) {
           const headers = new Headers(init?.headers);
           // Inject trace context from the active span for distributed tracing
@@ -2479,7 +2485,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
-    return isRelative(url) || (typeof window !== "undefined" && window.location.origin === new URL(url).origin);
+    return isSameOriginUrl(url);
   }
 
   get urls(): Readonly<HandlerUrls> {
