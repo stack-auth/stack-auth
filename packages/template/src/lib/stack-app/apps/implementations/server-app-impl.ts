@@ -542,8 +542,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const eventAtMs = normalizeAnalyticsEventAt(options?.at);
     const rawEventData = normalizeAnalyticsEventPayload(data);
-    const eventData = Object.keys(this._superProperties).length > 0
-      ? { ...this._superProperties, ...rawEventData }
+    const eventData = this._superProperties.size > 0
+      ? { ...Object.fromEntries(this._superProperties), ...rawEventData }
       : rawEventData;
     const replayLinkOptions = normalizeAnalyticsReplayLinkOptions({
       sessionReplayId: options?.sessionReplayId,

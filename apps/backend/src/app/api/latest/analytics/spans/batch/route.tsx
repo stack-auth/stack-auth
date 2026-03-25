@@ -3,6 +3,7 @@ import { insertSpans } from "@/lib/spans";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 const MAX_SPANS = 200;
 
@@ -59,6 +60,10 @@ export const POST = createSmartRouteHandler({
     const branchId = auth.tenancy.branchId;
     const defaultUserId = auth.user?.id ?? null;
 
+    if (auth.type === "client" && body.spans.some((span) => span.user_id != null || span.team_id != null)) {
+      throw new StatusError(StatusError.BadRequest, "Client analytics spans cannot override user_id or team_id");
+    }
+
     const rows = body.spans.map((span) => ({
       span_type: span.span_type,
       span_id: span.span_id,
@@ -69,8 +74,8 @@ export const POST = createSmartRouteHandler({
       data: span.data,
       project_id: projectId,
       branch_id: branchId,
-      user_id: span.user_id ?? defaultUserId,
-      team_id: span.team_id ?? null,
+      user_id: auth.type === "client" ? defaultUserId : (span.user_id ?? defaultUserId),
+      team_id: auth.type === "client" ? null : (span.team_id ?? null),
       refresh_token_id: auth.refreshTokenId ?? null,
       session_replay_id: span.session_replay_id ?? null,
       session_replay_segment_id: span.session_replay_segment_id ?? null,

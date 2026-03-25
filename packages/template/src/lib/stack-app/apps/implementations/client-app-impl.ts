@@ -106,7 +106,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
   private _clientSpanBatcher: ClientSpanBatcher | null = null;
-  protected _superProperties: Record<string, unknown> = {};
+  protected _superProperties = new Map<string, unknown>();
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -575,7 +575,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
 
         // Only inject headers on same-origin or relative URLs
-        const isSameOrigin = isRelative(requestUrl) || requestUrl.startsWith(window.location.origin);
+        const isSameOrigin = isRelative(requestUrl) || (() => {
+          try { return new URL(requestUrl).origin === window.location.origin; } catch { return false; }
+        })();
         if (isSameOrigin) {
           const headers = new Headers(init?.headers);
           // Inject trace context from the active span for distributed tracing
@@ -612,7 +614,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             sessionReplaySegmentId: replayLinkState.sessionReplaySegmentId,
           };
         },
-        getSuperProperties: () => this._superProperties,
+        getSuperProperties: () => Object.fromEntries(this._superProperties),
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
         },
@@ -2228,7 +2230,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           // only set trace_id when the event is inside an active span; standalone events don't need one
           trace_id: getActiveSpanFromTracing()?.traceId ?? undefined,
           event_at_ms: normalizeAnalyticsEventAt(options?.at),
-          data: { ...this._superProperties, ...normalizeAnalyticsEventPayload(data) },
+          data: { ...Object.fromEntries(this._superProperties), ...normalizeAnalyticsEventPayload(data) },
           ...replayLinkOptions,
         }],
       }),
@@ -2284,11 +2286,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   register(properties: Record<string, unknown>): void {
-    Object.assign(this._superProperties, properties);
+    for (const [key, value] of Object.entries(properties)) {
+      this._superProperties.set(key, value);
+    }
   }
 
   unregister(key: string): void {
-    delete this._superProperties[key];
+    this._superProperties.delete(key);
   }
 
   startSpan<T>(name: string, callback: (span: Span) => T | Promise<T>): Promise<T>;
